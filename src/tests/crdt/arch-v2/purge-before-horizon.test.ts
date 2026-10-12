@@ -24,6 +24,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { bindCrdt, defaultSemantics } from '$lib/crdt/index.js';
 import { packed } from '$lib/crdt/storage.js';
 import { replica, seedUpdate, syncAll, wellFormed, LIVE } from './replica-harness.js';
+import { blockNodeOf, candidatesOf, view as modelView } from '../../../lib/crdt/placement/model.js';
 
 const crdt = bindCrdt(Y);
 const PURGE = Symbol('purge');
@@ -61,7 +62,7 @@ const healthy = (...reps) => {
 	}
 };
 
-const registryHas = (r, id: string) => r.ed.model.blockNodeOf(r.doc, id) !== null;
+const registryHas = (r, id: string) => blockNodeOf(r.doc, id) !== null;
 /** Whether `text` appears in the bytes a replica would store. */
 const holdsText = (r, text: string) =>
 	new TextDecoder('utf-8', { fatal: false }).decode(Y.encodeStateAsUpdate(r.doc)).includes(text);
@@ -166,7 +167,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
-		ok(ada.ed.setBlockData('p1b', { tag: 'gone' }));
+		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
 		ok(ada.ed.mergeBlocks('p4', 'p1b')); // p1b claims p4
 		ok(ada.ed.deleteBlocks(['p1b']));
 		syncAll([room, ada]);
@@ -174,10 +175,10 @@ describe('H7: purge what was deleted before the horizon', () => {
 		purge(room, epoch(room));
 		syncAll([room, ada]);
 		expect(room.canonical()).toBe(before);
-		const node = room.ed.model.blockNodeOf(room.doc, 'p1b');
+		const node = blockNodeOf(room.doc, 'p1b');
 		expect(node).not.toBe(null);
 		expect([...node.attrKeys()].filter((k) => k.startsWith('d/') || k === 'data')).toEqual([]);
-		expect(room.ed.model.view(room.doc).blocks.get('p1b').claims).toEqual([]);
+		expect(modelView(room.doc).blocks.get('p1b').claims).toEqual([]);
 		expect(ada.ed.blockText('p1')).toBe('live ');
 		healthy(room, ada);
 		room.destroy();
@@ -196,7 +197,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 0 }));
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 3 }));
 		syncAll([room, ada]);
-		const candidates = (r) => r.ed.model.candidatesOf(r.ed.model.blockNodeOf(r.doc, 'p4')).length;
+		const candidates = (r) => candidatesOf(blockNodeOf(r.doc, 'p4')).length;
 		const held = candidates(room);
 		expect(held).toBeGreaterThanOrEqual(2);
 		expect(registryHas(room, 'x')).toBe(true);
@@ -284,8 +285,8 @@ describe('H7: purge what was deleted before the horizon', () => {
 		const bob = open('bob', 3);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
 		syncAll([room, ada, bob]);
-		ok(bob.ed.setBlockData('p1b', { color: 'blue' }));
-		ok(ada.ed.setBlockData('p1', { color: 'red' }));
+		ok(bob.ed.patchData('p1b', [{ path: [], value: { color: 'blue' } }]));
+		ok(ada.ed.patchData('p1', [{ path: [], value: { color: 'red' } }]));
 		syncAll([room, ada, bob]);
 		expect(room.ed.blockAttribution('p1b')).toMatchObject({ createdBy: 'ada' });
 		expect([...room.ed.blockAttribution('p1b').contributors]).toEqual(['bob']);
@@ -329,7 +330,7 @@ describe('H7: the stored size after a purge', () => {
 		const room = replica('room', seedUpdate(blocks, defaultSemantics), LIVE + 1, {
 			semantics: defaultSemantics
 		});
-		const size = () => Y.encodeStateAsUpdateV2(room.doc).length;
+		const size = () => Y.encodeStateAsUpdate(room.doc).length;
 		const full = size();
 		ok(room.ed.deleteBlocks(blocks.slice(1).map((b) => b.id)));
 		const deleted = size();
@@ -340,8 +341,8 @@ describe('H7: the stored size after a purge', () => {
 		const alone = replica('alone', seedUpdate([blocks[0]], defaultSemantics), LIVE + 2, {
 			semantics: defaultSemantics
 		});
-		const visible = Y.encodeStateAsUpdateV2(alone.doc).length;
-		const stored = async (r) => (await packed(Y.encodeStateAsUpdateV2(r.doc))).length;
+		const visible = Y.encodeStateAsUpdate(alone.doc).length;
+		const stored = async (r) => (await packed(Y.encodeStateAsUpdate(r.doc))).length;
 		console.info(
 			`H7 size (v2 / gzip v2): purged ${purged} / ${await stored(room)} B, deleted ${deleted} B, full ${full} B, visible alone ${visible} / ${await stored(alone)} B`
 		);

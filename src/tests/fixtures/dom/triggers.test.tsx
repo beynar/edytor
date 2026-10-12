@@ -17,15 +17,17 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import type { InputRule, Plugin } from '$lib/plugins.js';
+import type {
+	InputRule,
+	Plugin,
+	PluginDefinitions,
+	PluginOperations,
+	Trigger
+} from '$lib/plugins.js';
+import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { createMentionPlugin, type MentionItem } from '$lib/plugins/mention/MentionPlugin.svelte';
-import {
-	createPageLinkPlugin,
-	type PageLinkItem
-} from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
+import { type MentionItem } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { type PageLinkItem } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchComposition,
@@ -35,10 +37,29 @@ import {
 	renderDomEdytor,
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import {
+	chrome,
+	codePlugin,
+	mention as createMentionPlugin,
+	pageLink as createPageLinkPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
+
+/** A plugin whose definitions declare rules and triggers, wired by the wrapper. */
+const ruled =
+	(
+		make: () => PluginDefinitions &
+			PluginOperations & { inputRules?: InputRule[]; triggers?: Trigger[] }
+	): Plugin =>
+	(edytor) => {
+		const { inputRules, triggers, ...own } = make();
+		return withRulesAndTriggers(edytor, own, { inputRules, triggers });
+	};
 
 const p = (id: string, text = id): JSONBlock => ({ id, type: 'paragraph', content: [{ text }] });
 
@@ -81,7 +102,7 @@ const emoji: InputRule = {
 	find: /:(\w+):$/,
 	replace: ([, name]) => EMOJI[name!] ?? null
 };
-const emojiPlugin: Plugin = () => ({ inputRules: [emoji] });
+const emojiPlugin: Plugin = ruled(() => ({ inputRules: [emoji] }));
 
 describe('the caret in block offsets', () => {
 	it('reads and sets a caret as { block, offset }, an atom counting 1', async () => {
@@ -95,9 +116,9 @@ describe('the caret in block offsets', () => {
 		await caretAt(edytor, 'a', 6);
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 6 });
 		// The text after the atom: offset 6 is 2 into "there".
-		expect(edytor.selection.state.startText?.stringContent).toBe('there');
-		expect(edytor.selection.state.yStart).toBe(2);
-		edytor.selection.setAtRange(
+		expect(selectionState(edytor).startText?.stringContent).toBe('there');
+		expect(selectionState(edytor).yStart).toBe(2);
+		edytor.selection.selectText(
 			edytor.idToBlock.get('a')!.firstText,
 			0,
 			edytor.idToBlock.get('a')!.firstText,
@@ -113,11 +134,10 @@ describe('the caret in block offsets', () => {
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 3 });
 	});
 
-	it('addInlineBlock takes a block offset', async () => {
+	it('insertInline takes a block offset', async () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
-		const after = block.addInlineBlock({ offset: 2, block: { type: 'widget', data: {} } });
-		expect(after?.stringContent).toBe('llo');
+		expect(edytor.insertInline('a', 2, { type: 'widget', data: {} }).status).toBe('applied');
 		expect(block.value.content).toEqual([
 			{ text: 'he' },
 			expect.objectContaining({ type: 'widget' }),
@@ -158,7 +178,7 @@ describe('input rules', () => {
 	it('a refused replacement types the text as typed and keeps the match', async () => {
 		const veto: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'deleteContentAtRange') prevent();
+				if (operation === 'deleteText') prevent();
 			}
 		});
 		const { edytor, editor } = await render([p('a', 'hi :smile')], [emojiPlugin, veto]);
@@ -170,7 +190,7 @@ describe('input rules', () => {
 
 	it('ctx.from and ctx.to are block offsets: after an inline atom too', async () => {
 		const seen: number[][] = [];
-		const probe: Plugin = () => ({
+		const probe: Plugin = ruled(() => ({
 			inputRules: [
 				{
 					find: /->$/,
@@ -180,7 +200,7 @@ describe('input rules', () => {
 					}
 				}
 			]
-		});
+		}));
 		const { edytor, editor } = await render(
 			[
 				{
@@ -203,7 +223,7 @@ describe('input rules', () => {
 		const second: InputRule = { find: /ax$/, replace: () => 'Y' };
 		const { edytor, editor } = await render(
 			[p('a', 'a')],
-			[() => ({ inputRules: [first, second] })]
+			[ruled(() => ({ inputRules: [first, second] }))]
 		);
 		await caretAt(edytor, 'a', 1);
 		await type(editor, 'x');
@@ -211,18 +231,18 @@ describe('input rules', () => {
 	});
 
 	it('ctx.remove leads the rule operation: one step, refused together', async () => {
-		const arrowTodo: Plugin = () => ({
+		const arrowTodo: Plugin = ruled(() => ({
 			inputRules: [
 				{
 					find: /^->\s$/,
 					replace: (_match, { block, from, remove }) =>
 						from === 0 &&
 						remove(() => {
-							block.type = 'todo-item';
+							block.edytor.setBlock(block.id, { type: 'todo-item' });
 						})
 				}
 			]
-		});
+		}));
 		const { edytor, editor } = await render([p('a', '-')], [arrowTodo]);
 		await caretAt(edytor, 'a', 1);
 		const steps = edytor.undoManager.undoStack.length;
@@ -394,7 +414,7 @@ describe('the @ mention menu', () => {
 	it('a refused pick keeps the query and puts the caret after it', async () => {
 		const veto: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'addInlineBlock') prevent();
+				if (operation === 'insertInline') prevent();
 			}
 		});
 		const { edytor, editor } = await render([p('a', '')], [mentions, veto]);
@@ -505,11 +525,8 @@ describe('review fixes', () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
 		await caretAt(edytor, 'a', 1);
-		const out = edytor.dispatcher.caret(null, () => {
-			block.firstText!.insertText({ value: '!', start: 5, end: 5 });
-			return 'ran';
-		});
-		expect(out).toBe('ran');
+		const out = edytor.dispatcher.caret(null, () => edytor.insertText(block.id, 5, '!'));
+		expect(out?.status).toBe('applied');
 		expect(contentOf(edytor, 'a')).toBe('hello!');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 1 });
 	});
@@ -517,23 +534,22 @@ describe('review fixes', () => {
 	it('dispatcher.caret({ block, offset }, ops): declared before ops, it follows the edit', async () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
-		const out = edytor.dispatcher.caret({ block, offset: 3 }, () => {
-			block.firstText!.insertText({ value: 'XY', start: 0, end: 0 });
-			return true;
-		});
-		expect(out).toBe(true);
+		const out = edytor.dispatcher.caret({ block, offset: 3 }, () =>
+			edytor.insertText(block.id, 0, 'XY')
+		);
+		expect(out?.status).toBe('applied');
 		expect(contentOf(edytor, 'a')).toBe('XYhello');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 5 });
 	});
 
 	it("a plugin's own hook answering a truthy value does not silence its rules", async () => {
 		const seen: string[] = [];
-		const plugin: Plugin = () => ({
+		const plugin: Plugin = ruled(() => ({
 			inputRules: [emoji],
 			// A concise arrow with a side effect: answers the new length (truthy).
 			onBeforeOperation: ({ operation }) =>
 				(operation === 'insertText' && seen.push(operation)) as never
-		});
+		}));
 		const { edytor, editor } = await render([p('a', 'hi :smile')], [plugin]);
 		await caretAt(edytor, 'a', 9);
 		await type(editor, ':');
@@ -543,7 +559,7 @@ describe('review fixes', () => {
 
 	it('a URL pasted at the caret completes no rule', async () => {
 		const asked: string[] = [];
-		const probe: Plugin = () => ({
+		const probe: Plugin = ruled(() => ({
 			inputRules: [
 				{
 					find: /https:\/\/\S+$/,
@@ -553,7 +569,7 @@ describe('review fixes', () => {
 					}
 				}
 			]
-		});
+		}));
 		const URL = 'https://example.com/a';
 		const { edytor, editor } = await render([p('a', 'Read ')], [probe]);
 		await caretAt(edytor, 'a', 5);
@@ -563,7 +579,7 @@ describe('review fixes', () => {
 	});
 
 	it('a replacement of the typed text alone is its own undo step; the typing after it another', async () => {
-		const smart: Plugin = () => ({ inputRules: [{ find: /"$/, replace: () => '\u201c' }] });
+		const smart: Plugin = ruled(() => ({ inputRules: [{ find: /"$/, replace: () => '\u201c' }] }));
 		const { edytor, editor } = await render([p('a', '')], [smart]);
 		await caretAt(edytor, 'a', 0);
 		const steps = edytor.undoManager.undoStack.length;
@@ -584,9 +600,16 @@ describe('review fixes', () => {
 	});
 
 	it('rows sharing a key or a label render, each with its own element id', async () => {
-		const tags: Plugin = () => ({
-			triggers: [{ char: '#', items: () => ['tag', 'tag', 'a b', 'a_b'], onPick: () => false }]
-		});
+		const tags: Plugin = ruled(() => ({
+			triggers: [
+				{
+					char: '#',
+					items: () => ['tag', 'tag', 'a b', 'a_b'],
+					onPick: () => false,
+					menu: chrome.triggerMenu
+				}
+			]
+		}));
 		const { edytor, editor } = await render([p('a', '')], [tags]);
 		await caretAt(edytor, 'a', 0);
 		await type(editor, '#');

@@ -6,8 +6,8 @@
  *
  * - F-O3 — range delete, paste, split, convert and move with a counting
  *   extension: every hook call happens before the transaction, once for the
- *   prepared command and once per planned step (by its documented name); none
- *   happens inside it. Two more rows restore the hook visibility D6/D7 lost:
+ *   prepared command and once per planned step (as the write it performs);
+ *   none happens inside it. Two more rows restore the hook visibility D6/D7 lost:
  *   the block-selection replacement and drop.
  * - F-M1 / F-M2 through the real Backspace (`beforeinput`).
  * - Gap list (D6/D7): a veto on a planned step of the block-selection
@@ -32,7 +32,6 @@ import { attemptOf } from '$lib/session/attempt.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchCut,
@@ -42,6 +41,8 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S1. */
 const row = it;
@@ -192,11 +193,11 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		// The plan (D6) deletes the tail's prefix after the merge, where it then
 		// shows: in the head. A step is shown on the block it names.
 		expectHooksBeforeWrites(calls, [
-			'deleteContentWithinSelection:',
-			'deleteContentAtRange:aa',
-			'deleteContentAtRange:aa',
-			'removeBlock:bb',
-			'mergeBlockBackward:cc'
+			'deleteRange:aa',
+			'deleteText:aa',
+			'deleteText:aa',
+			'deleteBlock:bb',
+			'mergeBlocks:cc'
 		]);
 	});
 
@@ -214,7 +215,7 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		expect(texts(edytor)).toEqual(['HelloX', 'YWorld']);
 		// Text written into the block the split creates is part of its creation.
 		expectHooksBeforeWrites(calls, [
-			'insertFlow:',
+			'insertFlow:HelloWorld',
 			'splitBlock:HelloWorld',
 			'insertText:HelloWorld'
 		]);
@@ -245,11 +246,11 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		);
 		calls.length = 0;
 		track(edytor, calls);
-		edytor.root!.children[0]!.setBlock({ value: { type: 'heading', data: { level: 'h1' } } });
+		edytor.setBlock(edytor.root!.children[0]!.id, { type: 'heading', data: { level: 'h1' } });
 		await flushDomUpdates();
 		expect(edytor.value.children?.[0]?.type).toBe('heading');
-		// The data write is a planned step every data write shows as: `patchData`.
-		expectHooksBeforeWrites(calls, ['setBlock:abcd', 'patchData:abcd']);
+		// The retype and the data write are its planned steps: `setBlockType`, `patchData`.
+		expectHooksBeforeWrites(calls, ['setBlock:abcd', 'setBlockType:abcd', 'patchData:abcd']);
 	});
 
 	row('move (a after c)', async () => {
@@ -261,10 +262,10 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		calls.length = 0;
 		track(edytor, calls);
 		const [a, , c] = edytor.root!.children;
-		expect(edytor.moveBlocks({ blocks: [a!], target: c!, position: 'after' })).toEqual([a]);
+		expect(edytor.move({ blocks: [a!], target: c!, position: 'after' })).toEqual([a]);
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['bb', 'cc', 'aa']);
-		expectHooksBeforeWrites(calls, ['moveBlock:aa']);
+		expectHooksBeforeWrites(calls, ['moveBlocks:aa']);
 	});
 
 	row('block-selection replacement (Backspace over selected b, c) — D6 gap', async () => {
@@ -274,13 +275,13 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!, edytor.root!.children[2]!);
+		selectBlocks(edytor, edytor.root!.children[1]!, edytor.root!.children[2]!);
 		await flushDomUpdates();
 		calls.length = 0;
 		track(edytor, calls);
 		await dispatchDomKeyDown(editor, { key: 'Backspace' });
 		expect(texts(edytor)).toEqual(['aa']);
-		expectHooksBeforeWrites(calls, ['deleteBlocks:', 'removeBlock:bb', 'removeBlock:cc']);
+		expectHooksBeforeWrites(calls, ['deleteBlocks:bb', 'deleteBlock:bb', 'deleteBlock:cc']);
 	});
 
 	row('drop (a plain "X" at Hello|World) — D7 gap', async () => {
@@ -295,7 +296,7 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		await drop(edytor, { 'text/plain': 'X' });
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['HelloXWorld']);
-		expectHooksBeforeWrites(calls, ['insertFlow:', 'insertText:HelloWorld']);
+		expectHooksBeforeWrites(calls, ['insertFlow:HelloWorld', 'insertText:HelloWorld']);
 	});
 });
 
@@ -323,9 +324,9 @@ describe('F-M1 / F-M2 through Backspace', () => {
 		expect(watch.errors.map(String)).toContain('Error: after-hook failed');
 	});
 
-	row('F-M2: refusing the removeBlock step for c refuses the range delete', async () => {
+	row('F-M2: refusing the deleteBlock step for c refuses the range delete', async () => {
 		const { edytor, editor } = await renderDomEdytor(abcd(), {
-			plugins: plugins(vetoing('removeBlock', 'cc')),
+			plugins: plugins(vetoing('deleteBlock', 'cc')),
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 1, textOf(edytor, 3), 1);
@@ -339,13 +340,13 @@ describe('F-M1 / F-M2 through Backspace', () => {
 });
 
 describe('gap list — a veto on a planned step refuses the whole command', () => {
-	row('block-selection replacement: refusing removeBlock for c keeps b and c', async () => {
+	row('block-selection replacement: refusing deleteBlock for c keeps b and c', async () => {
 		const { edytor, editor } = await renderDomEdytor(abc(), {
-			plugins: plugins(vetoing('removeBlock', 'cc')),
+			plugins: plugins(vetoing('deleteBlock', 'cc')),
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!, edytor.root!.children[2]!);
+		selectBlocks(edytor, edytor.root!.children[1]!, edytor.root!.children[2]!);
 		await flushDomUpdates();
 		const { bytes } = track(edytor);
 		await dispatchDomKeyDown(editor, { key: 'Backspace' });
@@ -455,7 +456,7 @@ describe('F-P19 (hook half) — documented hook surfaces', () => {
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!);
+		selectBlocks(edytor, edytor.root!.children[1]!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(editor, { key: 'Backspace' });
 		expect(texts(edytor)).toEqual(['aa', 'bb', 'cc']);
@@ -512,7 +513,7 @@ describe('F-P19 (hook half) — documented hook surfaces', () => {
 	pin('moveBlocks returns the moved blocks', async () => {
 		const { edytor } = await renderDomEdytor(abc(), { autoSelectFixture: false });
 		const [a, b, c] = edytor.root!.children;
-		expect(edytor.moveBlocks({ blocks: [a!, b!], target: c!, position: 'after' })).toEqual([a, b]);
+		expect(edytor.move({ blocks: [a!, b!], target: c!, position: 'after' })).toEqual([a, b]);
 	});
 });
 

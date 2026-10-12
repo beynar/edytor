@@ -15,16 +15,14 @@ node.setAttr('type', 'root');
 const child = new Y.Node('paragraph');
 node.insert(0, [child]);
 child.insert(0, 'typed');
-const d = child.delta.toJSON();
+const d: string[] = [...child.attrKeys()];
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const um: Y.UndoManager = new Y.UndoManager(doc);
-const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
-const json = Y.relativePositionToJSON(rpos);
+const at: Y.ID | null = Y.idAtIndex(child, 1);
+const json = at === null ? null : Y.indexOfId(doc, at);
 void d;
 void doc2;
-void um;
 void json;
 
 // ── binding surface types (Doc + Awareness + facade + providers + sync) ──
@@ -33,7 +31,7 @@ const crdtDoc: bindings.YDoc = crdt.createDoc();
 const ed = crdt.doc.create(crdtDoc as unknown as bindings.EngineDoc);
 ed.init();
 const ids: string[] = ed.childrenIds(null);
-ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 ed.insertText('b1', 0, 'typed');
 ed.formatRange('b1', 0, 5, { bold: true });
 const v: number | undefined = ed.schemaVersion();
@@ -41,7 +39,6 @@ const undo = ed.createUndoManager({ captureTimeout: 0 });
 const storyJson: ReturnType<typeof ed.toJSON> = ed.toJSON();
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: protocol.SyncProtocol = crdt.sync;
 const sv: Uint8Array = Y.encodeStateVector(crdtDoc);
 const delta: Uint8Array = Y.encodeStateAsUpdate(crdtDoc, sv);
@@ -57,7 +54,6 @@ void undo;
 void storyJson;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // `<Edytor {sync}>` factories are reachable through the bound stack too —
@@ -120,10 +116,8 @@ const docErrors: (
 	bindings.SemanticConflictError
 ];
 // ── U2 attribution surface — compact per-block records + actor
-// dictionary + the `legacy()` read over pre-existing `a/` records;
-// `ContentRun` carries no per-item authorship.
+// dictionary; `ContentRun` carries no per-item authorship.
 const contentRun: bindings.ContentRun = { kind: 'text', text: 'x' };
-const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attribution.legacy();
 const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
 const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
 // The server-coordinator frame contract (`edytor/protocol`; site server/protocol).
@@ -132,7 +126,6 @@ const coordinatorFrame: Uint8Array = protocol.frame(protocol.messageSync, (e: pr
 );
 type _engineTx = bindings.EngineTransaction;
 void contentRun;
-void legacyMap;
 void blockAttr;
 void actorsMap;
 void coordinatorFrame;

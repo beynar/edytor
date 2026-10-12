@@ -47,8 +47,6 @@ export type Modifiers = {
 export type HotKeyCombination = Key | `${Modifiers}+${Key}`;
 
 const MODIFIERS = ['mod', 'alt', 'ctrl', 'shift'];
-/** Every token a keydown's chord can carry (`chordOf`). */
-const TOKENS = new Set<string>([...MODIFIERS, ...CHARS, ...NAMED]);
 
 /** The canonical chord: lower case, modifiers in one order, then the key. */
 const chord = (parts: string[]) => {
@@ -57,25 +55,27 @@ const chord = (parts: string[]) => {
 	return [...MODIFIERS.filter((modifier) => lower.includes(modifier)), ...key].join('+');
 };
 
-/** US-layout keys and what Shift makes of them: a keydown reports the character typed. */
-const [BASE, SHIFT] = ["`1234567890-=[]\\;',./", '~!@#$%^&*()_+{}|:"<>?'];
-const SHIFTED = new Map([...BASE].map((base, index) => [base, SHIFT[index]!]));
-/** Characters only Shift types (the numeric keypad types `+` and `*` unshifted). */
-const TYPED_WITH_SHIFT = new Set([...SHIFTED.values()].filter((key) => !'+*'.includes(key)));
-
 /**
- * Why a well-formed chord still never fires (a development hint), or null:
- * a character Shift types needs `shift` (`mod+shift+?`), Shift turns a key
- * into another character (`shift+/` arrives as `?`), and on macOS Option
- * with a character types text (`alt+b` is `∫`) unless `mod` or `ctrl` holds.
+ * Why a chord never fires (a development hint), or null: a part that is no
+ * token a keydown's chord can carry (`#chordOf`); a character Shift types
+ * needs `shift` (`mod+shift+?`), Shift turns a key into another character
+ * (`shift+/` arrives as `?`: US-layout keys, a keydown reports the
+ * character typed; the numeric keypad types `+` and `*` unshifted), and on
+ * macOS Option with a character types text (`alt+b` is `∫`) unless `mod` or
+ * `ctrl` holds.
  */
 const silent = (parts: string[]) => {
 	const lower = parts.map((part) => part.toLowerCase());
+	const tokens = new Set<string>([...MODIFIERS, ...CHARS, ...NAMED]);
+	const dead = lower.find((part) => !tokens.has(part));
+	if (dead !== undefined)
+		return `"${parts[lower.indexOf(dead)]}" is neither a modifier (mod, alt, ctrl, shift) nor a key name`;
 	const key = lower.find((part) => !MODIFIERS.includes(part)) ?? '';
 	const has = (modifier: string) => lower.includes(modifier);
-	if (!has('shift') && TYPED_WITH_SHIFT.has(key))
+	const [base, shift] = ["`1234567890-=[]\\;',./", '~!@#$%^&*()_+{}|:"<>?'];
+	if (!has('shift') && key && shift.includes(key) && !'+*'.includes(key))
 		return `"${key}" is typed with Shift: bind "${chord([...lower, 'shift'])}"`;
-	const shifted = SHIFTED.get(key);
+	const shifted = key && shift[base.indexOf(key)];
 	if (has('shift') && shifted)
 		return `Shift turns "${key}" into "${shifted}": bind "${chord([...lower.filter((part) => part !== key), shifted])}"`;
 	if (has('alt') && !has('mod') && !has('ctrl') && key.length === 1)
@@ -126,13 +126,7 @@ export class Keymap {
 					continue;
 				}
 				const parts = keys.split(/\+(?!$)/);
-				const dead = parts.find((part) => !TOKENS.has(part.toLowerCase()));
-				if (DEV && dead !== undefined)
-					console.warn(
-						`[edytor] hotkey "${keys}" never fires: "${dead}" is neither a modifier ` +
-							'(mod, alt, ctrl, shift) nor a key name.'
-					);
-				const hint = DEV && dead === undefined && silent(parts);
+				const hint = DEV && silent(parts);
 				if (hint) console.warn(`[edytor] hotkey "${keys}" never fires: ${hint}.`);
 				const at = chord(parts);
 				this.table.set(at, [...(this.table.get(at) ?? []), binding as HotKey]);
@@ -144,7 +138,10 @@ export class Keymap {
 	 * Apple bare Ctrl stays `ctrl` (the Emacs rows); a reverse tab is Shift+Tab;
 	 * the space bar is `space`.
 	 */
-	chordOf = (event: KeyboardEvent, key = event.key === ' ' ? 'space' : event.key.toLowerCase()) => {
+	#chordOf = (
+		event: KeyboardEvent,
+		key = event.key === ' ' ? 'space' : event.key.toLowerCase()
+	) => {
 		const back = key === 'iso_left_tab' || key === 'backtab';
 		const mac = this.isMac;
 		return chord([
@@ -160,7 +157,7 @@ export class Keymap {
 	handle = (event: KeyboardEvent): boolean => {
 		if (composesText(event)) return false;
 		const fallback = layoutKey(event);
-		const chords = [this.chordOf(event), ...(fallback ? [this.chordOf(event, fallback)] : [])];
+		const chords = [this.#chordOf(event), ...(fallback ? [this.#chordOf(event, fallback)] : [])];
 		this.offered = chords[0]!;
 		const claimed = chords.some((at) => this.run(at, event));
 		if (claimed) this.offered = null;

@@ -9,12 +9,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { bareTogglePlugin } from './BareToggle.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { createDocument } from '$lib/crdt/index.js';
 import {
 	canonicalTree,
@@ -24,6 +21,8 @@ import {
 	renderDomEdytor,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { blockMenuPlugin, codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -65,7 +64,7 @@ const texts = ({ edytor }: View) =>
 const typeZ = (view: View) =>
 	dispatchDomBeforeInput(view.editor, { inputType: 'insertText', data: 'Z' });
 const select = async ({ edytor }: View, ...ids: string[]) => {
-	edytor.selection.selectBlocks(...ids.map((id) => edytor.idToBlock.get(id)!));
+	selectBlocks(edytor, ...ids.map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 };
 const key = (key: string) => dispatchDomKeyDown(document, { key });
@@ -224,7 +223,7 @@ describe('the caret beside a line holding an inline atom (YW-04)', () => {
 });
 
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return [startBlock?.id, yStart, isCollapsed];
 };
 
@@ -288,7 +287,7 @@ describe('a toggle override with no child wrapper (YW-12)', () => {
 			);
 			const { edytor } = view;
 			const [t, z] = [edytor.idToBlock.get('t')!, edytor.idToBlock.get('zed')!];
-			edytor.selection.setAtRange(t.firstText!, 0, z.firstText!, 1);
+			edytor.selection.selectText(t.firstText!, 0, z.firstText!, 1);
 			await flushDomUpdates();
 			await key('Backspace');
 			expect(texts(view)).toEqual(['ed']);
@@ -301,7 +300,7 @@ describe('nested closed toggles: copy and delete agree', () => {
 	const doc = () => [p('a'), toggle('o', [toggle('i', [p('deep')])]), p('zed')];
 	const range = async ({ edytor }: View, from: number) => {
 		const [o, z] = [edytor.idToBlock.get('o')!, edytor.idToBlock.get('zed')!];
-		edytor.selection.setAtRange(o.firstText!, from, z.firstText!, 1);
+		edytor.selection.selectText(o.firstText!, from, z.firstText!, 1);
 		await flushDomUpdates();
 	};
 	const copied = async (view: View) => {
@@ -383,13 +382,13 @@ describe('the block menu’s “Turn into” flyout opened with the mouse (SW8-p
 describe('markdown shortcuts read the insertion point, not the caret (SW8-plugins-2)', () => {
 	it('an insertText away from the caret never completes a shortcut at the caret', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'x', type: 'paragraph', content: [{ text: 'a *b' }] }]
 		);
 		const text = view.edytor.idToBlock.get('x')!.firstText!;
-		view.edytor.selection.setAtTextOffset(text, 4);
+		view.edytor.selection.selectText(text, 4);
 		await flushDomUpdates();
-		text.insertText({ value: '*', start: 1, end: 1 });
+		view.edytor.insertText(text.parent.id, text.segStart + 1, '*');
 		await flushDomUpdates();
 		expect(canonicalTree(view.edytor)).toEqual([
 			{ type: 'paragraph', content: [{ text: 'a* *b' }] }
@@ -398,13 +397,13 @@ describe('markdown shortcuts read the insertion point, not the caret (SW8-plugin
 
 	it('nor a block prefix: `#` inserted mid-block keeps the paragraph', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'x', type: 'paragraph', content: [{ text: '# ab' }] }]
 		);
 		const text = view.edytor.idToBlock.get('x')!.firstText!;
-		view.edytor.selection.setAtTextOffset(text, 1);
+		view.edytor.selection.selectText(text, 1);
 		await flushDomUpdates();
-		text.insertText({ value: ' ', start: 4, end: 4 });
+		view.edytor.insertText(text.parent.id, text.segStart + 4, ' ');
 		await flushDomUpdates();
 		expect(canonicalTree(view.edytor)).toEqual([
 			{ type: 'paragraph', content: [{ text: '# ab ' }] }
@@ -420,7 +419,7 @@ describe('the menus focus the editor as the editor itself does (SW8-plugins-3)',
 
 	it('the block menu Delete draws its caret, and its focus is no user gesture', async () => {
 		const view = await render([blockMenuPlugin], [p('a'), p('x'), p('zed')]);
-		view.edytor.selection.setAtTextOffset(view.edytor.idToBlock.get('zed')!.firstText!, 2);
+		view.edytor.selection.selectText(view.edytor.idToBlock.get('zed')!.firstText!, 2);
 		await flushDomUpdates();
 		const block = view.edytor.idToBlock.get('x')!;
 		view.editor.dispatchEvent(
@@ -482,11 +481,11 @@ describe('Mod+A climbs text → block → document in every kind (sweep)', () =>
 			(target.node as HTMLDetailsElement).open = true;
 			await flushDomUpdates();
 		}
-		edytor.selection.setAtTextOffset(target.firstText!, 2);
+		edytor.selection.selectText(target.firstText!, 2);
 		await flushDomUpdates();
 		const mod = () => dispatchDomKeyDown(document, { key: 'a', ctrlKey: true });
 		await mod();
-		const { startBlock, endBlock, yStart, isCollapsed } = edytor.selection.state;
+		const { startBlock, endBlock, yStart, isCollapsed } = selectionState(edytor);
 		expect([startBlock?.id, endBlock?.id, yStart, isCollapsed]).toEqual([id, id, 0, false]);
 		expect(edytor.selection.projection.isAtEndOfBlock).toBe(true);
 		await mod();
@@ -519,7 +518,7 @@ describe('Delete in an empty block before a code block, after a divider (SW8-plu
 				{ id: 'c', type: 'code', children: [{ type: 'codeLine', content: [{ text: 'x' }] }] }
 			]
 		);
-		view.edytor.selection.setAtTextOffset(view.edytor.idToBlock.get('e')!.firstText!, 0);
+		view.edytor.selection.selectText(view.edytor.idToBlock.get('e')!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentForward' });
 		expect(canonicalTree(view.edytor).map((b) => b.type)).toEqual(['paragraph', 'divider', 'code']);

@@ -56,7 +56,7 @@ The carets live in the editor's overlay layer, next to the editable host, so the
 </div>
 ```
 
-Target these attributes from your stylesheet to restyle them. Positions and colors are set inline.
+The editor sets their positions inline, and each client's color as the variable `--edytor-remote-color` on its caret and ranges (its label inherits it). The [Notion theme](/docs/customization/styling#notion-theme) paints them with it: a 2px caret, a pill with the name, a translucent range. Without the theme they are placed and unpainted: target these attributes from your stylesheet and read the variable ([Without the theme](/docs/customization/styling#without-the-theme)).
 
 ## Sharing less at scale
 

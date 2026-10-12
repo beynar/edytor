@@ -20,11 +20,10 @@
  * manager tracks: receiving a peer's delete over text this user formatted
  * pushed an invisible step onto this user's undo stack, and the next undo
  * reverted that cleanup instead of the user's last edit
- * (`conc.undo.actor-local`, `hist.capture-group`). The cleanup now runs
- * under an origin nobody tracks; it is still an ordinary local write that
- * providers broadcast.
+ * (`conc.undo.actor-local`, `hist.capture-group`). YP19 removed the cleanup
+ * with plain formats: receiving writes nothing at all.
  *
- * Each row is also run against the tree with the patch's hunks stripped
+ * Each YP9 row is also run against the tree with the patch's hunks stripped
  * (the YP7 method): the stripped engine must show the failure, so the row
  * discriminates.
  */
@@ -35,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { permutations, replica, seedUpdate } from './arch-v2/replica-harness.js';
+import { undoManagerOf } from './harness/undo.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');
@@ -165,7 +165,7 @@ describe('YP9 — a pending struct whose dependency arrives later is retried', (
 	});
 });
 
-describe('YP10 — the formatting cleanup after a remote change is not an undo step', () => {
+describe('YP10, YP19 — receiving a change over marked text writes nothing and is no undo step', () => {
 	/** A bolds D[0..2] and types `!` in E; B deletes inside the bold run; A receives. */
 	const run = (variant: string) => {
 		const seed = seedUpdate([
@@ -174,7 +174,7 @@ describe('YP10 — the formatting cleanup after a remote change is not an undo s
 		]);
 		const a = replica('A', seed, 100);
 		const b = replica('B', seed, 200);
-		a.ed.setMark('D', 0, 2, 'bold', true);
+		a.ed.formatRange('D', 0, 2, { bold: true });
 		a.ed.insertText('E', 4, '!');
 		const steps = a.document.history.undoStack.length;
 		if (variant === 'replace')
@@ -207,25 +207,4 @@ describe('YP10 — the formatting cleanup after a remote change is not an undo s
 			expect(b.tree()).toBe(a.tree());
 		});
 	}
-
-	it('the stripped engine’s cleanup lands on the undo stack (the row discriminates)', async () => {
-		/** Raw engine, edytor's capture rule: remote applies are non-local. */
-		const stack = (E) => {
-			const a = mkDoc(E, 100);
-			const b = mkDoc(E, 200);
-			a.get('t').insert(0, 'delta');
-			E.applyUpdate(b, E.encodeStateAsUpdate(a), 'remote');
-			const um = new E.UndoManager(a.get('t'), {
-				captureTimeout: 0,
-				captureTransaction: (tr) => tr.local !== false
-			});
-			a.get('t').format(0, 2, { bold: true });
-			const before = um.undoStack.length;
-			b.get('t').delete(0, 5); // concurrent: B has not seen the format
-			E.applyUpdate(a, E.encodeStateAsUpdate(b), 'remote');
-			return um.undoStack.length - before;
-		};
-		expect(stack(await baseline('YP10', 'utils/Transaction.js'))).toBe(1);
-		expect(stack(Y)).toBe(0);
-	});
 });

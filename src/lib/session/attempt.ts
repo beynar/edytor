@@ -18,8 +18,6 @@
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import type { EdgeSide } from './editing/text.js';
-import type { SelectionValue } from './selection.js';
 
 type Kind = 'text' | 'composition' | 'payload' | 'break' | 'delete' | 'history';
 export type IntentRow = {
@@ -28,40 +26,54 @@ export type IntentRow = {
 	key?: string;
 	/** A delete whose extent the model computes; a declared range only locates the caret edge. */
 	dir?: 'back' | 'fwd';
+	/** A delete's unit at a collapsed caret (none: a cut, drag or composition fragment, which deletes nothing there). */
+	unit?: 'char' | 'word' | 'soft' | 'hard' | 'line';
 };
-const row = (kind: Kind, key?: string, dir?: IntentRow['dir']): IntentRow => ({ kind, key, dir });
+/** The inputTypes of each kind (the directional deletes are generated below). */
+const KINDS: Record<Kind, string> = {
+	text: 'insertText insertReplacementText insertFromYank insertTranspose',
+	composition: 'insertCompositionText insertFromComposition deleteCompositionText',
+	payload: 'insertFromPaste insertFromPasteAsQuotation insertFromDrop',
+	break: 'insertParagraph insertLineBreak',
+	delete: 'deleteByCut deleteByDrag deleteByComposition deleteContent deleteEntireSoftLine',
+	history: 'historyUndo historyRedo'
+};
+const KEYS: Record<string, string> = {
+	insertParagraph: 'enter',
+	insertLineBreak: 'shift+enter',
+	deleteContentBackward: 'backspace',
+	deleteContentForward: 'delete'
+};
 
 /** The one inputType → intent table; everything downstream switches on its rows. */
-export const INTENTS: Record<string, IntentRow | undefined> = {
-	insertText: row('text'),
-	insertReplacementText: row('text'),
-	insertFromYank: row('text'),
-	insertTranspose: row('text'),
-	insertCompositionText: row('composition'),
-	insertFromComposition: row('composition'),
-	deleteCompositionText: row('composition'),
-	insertFromPaste: row('payload'),
-	insertFromPasteAsQuotation: row('payload'),
-	insertFromDrop: row('payload'),
-	insertParagraph: row('break', 'enter'),
-	insertLineBreak: row('break', 'shift+enter'),
-	deleteContentBackward: row('delete', 'backspace', 'back'),
-	deleteContentForward: row('delete', 'delete', 'fwd'),
-	deleteWordBackward: row('delete', undefined, 'back'),
-	deleteSoftLineBackward: row('delete', undefined, 'back'),
-	deleteHardLineBackward: row('delete', undefined, 'back'),
-	deleteWordForward: row('delete', undefined, 'fwd'),
-	deleteSoftLineForward: row('delete', undefined, 'fwd'),
-	deleteHardLineForward: row('delete', undefined, 'fwd'),
-	deleteByCut: row('delete'),
-	deleteByDrag: row('delete'),
-	deleteByComposition: row('delete'),
-	deleteContent: row('delete'),
-	deleteEntireSoftLine: row('delete'),
-	historyUndo: row('history'),
-	historyRedo: row('history')
-};
+export const INTENTS: Record<string, IntentRow | undefined> = {};
+for (const [kind, types] of Object.entries(KINDS) as [Kind, string][])
+	for (const type of types.split(' ')) INTENTS[type] = { kind, key: KEYS[type] };
+INTENTS.deleteContent!.unit = 'char';
+INTENTS.deleteEntireSoftLine!.unit = 'line';
+// `delete<Unit><Backward|Forward>`: the name says the unit and the direction.
+for (const [part, unit] of [
+	['Content', 'char'],
+	['Word', 'word'],
+	['SoftLine', 'soft'],
+	['HardLine', 'hard']
+] as const)
+	for (const [side, dir] of [
+		['Backward', 'back'],
+		['Forward', 'fwd']
+	] as const) {
+		const type = `delete${part}${side}`;
+		INTENTS[type] = { kind: 'delete', key: KEYS[type], dir, unit };
+	}
 export const kindOf = (inputType: string) => INTENTS[inputType]?.kind;
+
+/** The intent a key stands for (Enter, Shift+Enter, Backspace, Delete): the table's `key`, read back. */
+export const keyIntentOf = (key: string, shift: boolean) => {
+	const name = key.toLowerCase();
+	const hotkey = shift && name === 'enter' ? 'shift+enter' : name;
+	for (const type in KEYS) if (KEYS[type] === hotkey) return type;
+	return null;
+};
 
 /**
  * The intent of a reported inputType (misreport overrides): a text insertion
@@ -98,37 +110,34 @@ export const targetless = (edytor: Edytor, intent: string) => {
 export const untargeted = (edytor: Edytor) =>
 	edytor.selection.value.kind === 'none' && !edytor.ports.surface.placed();
 
-/** The target's facts a command reads, projected when the attempt runs. */
+/**
+ * The target as a command reads it when the attempt runs: the anchored
+ * value, its projection (edges, spans, island and void roots) and its
+ * endpoints lowered to text segments (`selection.textRange`), with the
+ * mark-edge side the DOM showed a caret with and whether focus is in a
+ * void's own field.
+ */
 const facts = (edytor: Edytor) => {
-	const { state, projection } = edytor.selection;
-	const { startText } = state;
-	// Its block's place by id: no handle for every sibling (the root's on a long page).
-	const at = startText && edytor.facade.positionOf(startText.parent.id);
+	const { selection } = edytor;
+	const projection = selection.projection;
 	return {
-		startText,
-		endText: state.endText,
-		texts: state.texts,
-		yStart: state.yStart,
-		yEnd: state.yEnd,
+		/** The anchored target, fixed at admission. */
+		target: selection.value,
+		...selection.textRange(projection),
+		projection,
+		isCollapsed: projection.isCollapsed,
 		/** The admitted mark-edge side of a caret. */
-		edge: state.edge as EdgeSide | undefined,
-		isCollapsed: state.isCollapsed,
-		isTextSpanning: projection.isTextSpanning,
-		isBlockSpanning: projection.isBlockSpanning,
-		isAtStartOfBlock: projection.isAtStartOfBlock,
-		isAtEndOfBlock: projection.isAtEndOfBlock,
-		isAtStartOfText: projection.isAtStartOfText,
-		isAtEndOfText: projection.isAtEndOfText,
-		islandRoot: edytor.idToBlock.get(projection.islandRoot ?? '') ?? null,
-		isVoidEditableElement: state.isVoidEditableElement,
-		isFirstChildOfDocument: Boolean(at && at.parent === null && at.index === 0),
-		isNested: Boolean(startText && startText.parent.parent !== edytor.root),
-		isLastChild: Boolean(at && at.index === edytor.facade.childrenIds(at.parent).length - 1)
+		edge: selection.edge,
+		isVoidEditableElement: selection.voidField
 	};
 };
 
-/** How DOM drift around a model-owned attempt is handled: re-render, restore the caret, or also discard structure. */
-export type Drift = 'refresh' | 'restore' | 'discard';
+/**
+ * How DOM drift around a model-owned attempt is repaired: the observer
+ * inverts it (`refresh`), and its `input` also shows the caret again and
+ * re-renders the text it landed in (`restore`).
+ */
+export type Drift = 'refresh' | 'restore';
 export type TextPoint = { text: Text; offset: number };
 export type Expect =
 	/** The model performs the attempt; DOM changes before its deadline are drift. */
@@ -160,8 +169,6 @@ export type Attempt = ReturnType<typeof facts> & {
 	declared: StaticRange | null;
 	/** Admitted from a keydown (the key's intent wins; the browser may never announce it). */
 	isStructuralKeyFallback: boolean;
-	/** The anchored target, fixed at admission. */
-	target: SelectionValue;
 	owner: 'model' | 'browser';
 	expect: Expect | null;
 	phase: 'open' | 'applied' | 'failed' | 'closed';
@@ -190,7 +197,6 @@ export const attemptOf = (edytor: Edytor, occurrence: Occurrence, keyIntent?: st
 		hasDataTransferTextPayload: payload !== null,
 		declared: occurrence.declared ?? null,
 		isStructuralKeyFallback: Boolean(keyIntent),
-		target: edytor.selection.value,
 		owner: 'model',
 		expect: null,
 		phase: 'open'
@@ -205,7 +211,7 @@ export const intentSnapshot = (edytor: Edytor, inputType: string) =>
 export const caretAt = (edytor: Edytor, text: Text | null | undefined, offset: number) => {
 	if (!text) return;
 	edytor.attempts.caret(text, offset);
-	edytor.selection.setAtTextOffset(text, offset);
+	edytor.selection.selectText(text, offset);
 };
 
 /** Re-project an attempt's anchored target when it runs later than its admission. */

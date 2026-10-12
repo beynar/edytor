@@ -10,8 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -20,6 +18,9 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import type { EngineDoc, EngineNode } from '$lib/crdt/engine-api.js';
+import { selectionState } from '../../selection.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
+import { imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>
@@ -46,7 +47,7 @@ const shape = (edytor: Mounted['edytor']) => {
 	return (edytor.value.children ?? []).map(show);
 };
 const caret = (edytor: Mounted['edytor']) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return [startBlock?.type, startBlock?.firstText?.stringContent, yStart, isCollapsed];
 };
 
@@ -54,7 +55,7 @@ const at = async (edytor: Mounted['edytor'], path: number[], end: boolean) => {
 	let block = edytor.root!;
 	for (const index of path) block = block.children[index]!;
 	const t = end ? block.lastText! : block.firstText!;
-	edytor.selection.setAtTextOffset(t, end ? t.length : 0);
+	edytor.selection.selectText(t, end ? t.length : 0);
 	await flushDomUpdates();
 };
 
@@ -189,14 +190,14 @@ describe('YW-07: Enter at the end of a typeless block with children', () => {
 		]);
 		// The transient state: the attr's current value deleted, its replacement not yet here.
 		const nodeOf = (id: string): EngineNode => {
-			const node = edytor.facade.model.blockNodeOf(edytor.doc as unknown as EngineDoc, id);
+			const node = blockNodeOf(edytor.doc as unknown as EngineDoc, id);
 			if (node === null) throw new Error(`no block node for ${id}`);
 			return node;
 		};
 		nodeOf('A').deleteAttr('type');
 		await flushDomUpdates();
 		const a = edytor.idToBlock.get('A')!;
-		edytor.selection.setAtTextOffset(a.lastText!, 5);
+		edytor.selection.selectText(a.lastText!, 5);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 		const born = edytor.facade.order().filter((id) => !['Q', 'A', 'A1'].includes(id));
@@ -327,7 +328,7 @@ describe('ZW-01: the keys never leave a non-item directly in a list', () => {
 	it('Tab over two paragraphs after a list → both nest under the last item', async () => {
 		const { edytor } = await render([p('p'), ul(li('a'), li('b')), p('q'), p('r')]);
 		const [q, r] = edytor.root!.children.slice(2);
-		edytor.selection.setAtRange(q!.firstText!, 0, r!.firstText!, 1);
+		edytor.selection.selectText(q!.firstText!, 0, r!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
 		expect(shape(edytor)).toEqual([
@@ -343,7 +344,7 @@ describe('ZW-01: the keys never leave a non-item directly in a list', () => {
 /**
  * DR-crdt-1/2 (follow-up review of ZW-01): the outdent's answer is one —
  * the move command's `out` step (a text range plus Shift+Tab, the block
- * handle's Alt+ArrowLeft, `canMoveBlocks`) asks the outdent plan itself, so
+ * handle's Alt+ArrowLeft, `canMove`) asks the outdent plan itself, so
  * a paragraph under an item outdents into the list as its item on every
  * path. An image nested under a bullet stays an image when a key sheds it
  * into the list. Hand-authored.
@@ -364,17 +365,17 @@ describe('DR-crdt-1/2: outdent and shed blocks next to a list, on every path', (
 	it('Shift+Tab over two paragraphs under an item → both are items of the list', async () => {
 		const { edytor } = await render([p('p'), ul(li('a', [p('x'), p('y')]))]);
 		const [x, y] = edytor.root!.children[1]!.children[0]!.children;
-		edytor.selection.setAtRange(x!.firstText!, 0, y!.firstText!, 1);
+		edytor.selection.selectText(x!.firstText!, 0, y!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab', shiftKey: true });
 		expect(shape(edytor)).toEqual(outdented);
 	});
 
-	it('canMoveBlocks/moveBlocks `out` agree with Shift+Tab on one such paragraph', async () => {
+	it('canMove/move `out` agree with Shift+Tab on one such paragraph', async () => {
 		const { edytor } = await render([p('p'), ul(li('a', [p('x')]))]);
 		const x = edytor.root!.children[1]!.children[0]!.children[0]!;
-		expect(edytor.canMoveBlocks({ blocks: [x], direction: 'out' })).toBe(true);
-		expect(edytor.moveBlocks({ blocks: [x], direction: 'out' })).toHaveLength(1);
+		expect(edytor.canMove({ blocks: [x], direction: 'out' })).toBe(true);
+		expect(edytor.move({ blocks: [x], direction: 'out' })).toHaveLength(1);
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual([
 			'paragraph "p"',

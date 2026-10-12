@@ -32,6 +32,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since D7. */
 const row = it;
@@ -46,9 +47,9 @@ const texts = (edytor: Edytor) =>
 	);
 
 const caret = (edytor: Edytor) => ({
-	block: edytor.selection.state.startBlock?.path,
-	at: edytor.selection.state.yStart,
-	collapsed: edytor.selection.state.isCollapsed
+	block: selectionState(edytor).startBlock?.path,
+	at: selectionState(edytor).yStart,
+	collapsed: selectionState(edytor).isCollapsed
 });
 
 const blockText = (edytor: Edytor, index: number) => edytor.root!.children[index]!.firstText;
@@ -165,7 +166,7 @@ describe('clipboard spec assertions (dom lane)', () => {
 		const source = edytor.root!.children[0]!;
 		const original = [source.id, source.children[0]!.id];
 		// A block selection is exactly its members: the nested blocks are selected too.
-		edytor.selection.selectBlocks(source, ...source.children);
+		selectBlocks(edytor, source, ...source.children);
 		const copied = await dispatchCopy(editor);
 		await setNativeSelection(edytor, blockText(edytor, 1), 5);
 		await dispatchClipboardPaste(editor, copied.clipboardData);
@@ -185,7 +186,7 @@ describe('clipboard spec assertions (dom lane)', () => {
 		const { edytor, editor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
 		await setNativeSelection(edytor, blockText(edytor, 0), 0, blockText(edytor, 0), 2);
 		const copied = await dispatchCopy(editor);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!);
+		selectBlocks(edytor, edytor.root!.children[1]!);
 		await dispatchClipboardPaste(editor, copied.clipboardData);
 		expect(texts(edytor)).toEqual(['lead', 'le', '']);
 	});

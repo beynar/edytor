@@ -12,10 +12,10 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDocument, layoutSemantics } from '$lib/crdt/index.js';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { renderDomEdytor } from '../../dom/test.utils.js';
 import { column, columns, contractDoc, p, renderColumns, tree } from './columns.helpers.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -89,7 +89,7 @@ describe('a layout renders its columns side by side', () => {
 					</column>
 				</columns>
 			</root>,
-			{ plugins: [columnsPlugin, richTextPlugin], autoSelectFixture: false }
+			{ plugins: [createColumnsPlugin(), richTextPlugin], autoSelectFixture: false }
 		);
 		const items = [...editor.querySelectorAll<HTMLElement>('[data-edytor-column]')];
 		expect(items.map((item) => [item.style.flexGrow, item.textContent?.trim()])).toEqual([
@@ -143,7 +143,11 @@ describe('a layout renders its columns side by side', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: [columnsPlugin, richTextPlugin], document: shared, autoSelectFixture: false }
+			{
+				plugins: [createColumnsPlugin(), richTextPlugin],
+				document: shared,
+				autoSelectFixture: false
+			}
 		);
 		expect(edytor.facade.isLayout('C')).toBe(true);
 		expect(document.querySelectorAll('[data-edytor-column]')).toHaveLength(2);

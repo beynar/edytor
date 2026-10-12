@@ -24,10 +24,12 @@ vi.mock('$lib/plugins/equation/importUrl.js', () => ({ importUrl }));
 
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 import { KATEX_CDN, cdnKatex } from '$lib/plugins/equation/katex.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	equation as createEquationPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

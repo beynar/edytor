@@ -1,12 +1,11 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
+	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { presetId } from '$lib/kinds.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
-	import type { Snippet } from 'svelte';
 	import {
 		openLink,
 		pastedLink,
@@ -20,24 +19,31 @@
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith, type PartialLabels, type RichTextLabels } from '$lib/labels.js';
-	import { richTextLabels } from './labels.js';
-	import { onPress } from '$lib/events/onFocus.js';
+	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
-	import CalloutIconMenu from './CalloutIconMenu.svelte';
+	import RichTextControl from './RichTextControl.svelte';
 	import {
-		CALLOUT_ICONS,
-		CalloutIconPicker,
 		DEFAULT_CALLOUT_ICON,
 		calloutHtml,
-		calloutIconViews,
+		calloutIcons,
+		calloutPickers,
 		iconOf
-	} from './calloutIcons.svelte.js';
+	} from './callouts.js';
+	import { listen } from '$lib/utils/listen.js';
+	import type { Snippet } from 'svelte';
+	import {
+		richTextControls,
+		toggleTodo,
+		type CalloutIconPayload,
+		type EmptyBodyPayload,
+		type TodoCheckboxPayload
+	} from './controls.svelte.js';
 
-	export { richTextOperations, CALLOUT_ICONS, CalloutIconPicker };
-	export type { CalloutIconOption } from './calloutIcons.svelte.js';
+	export type { CalloutIconPayload, EmptyBodyPayload, TodoCheckboxPayload };
+
+	export { richTextOperations };
 
 	const nativeFormatMarks = {
 		formatBold: 'bold',
@@ -57,7 +63,7 @@
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	/** The kinds drawn as a disclosure: a toggle this view creates opens (`body.open`). */
-	const DISCLOSURES = new Set(['toggle', 'toggle-heading', 'details']);
+	const DISCLOSURES = new Set(['toggle', 'toggle-heading']);
 	/**
 	 * A list's elements without list semantics (`role="none"`): a list's items
 	 * are sibling blocks, never the only children of one `ul` or `ol`, so an
@@ -106,123 +112,108 @@
 			undefined;
 
 	/**
-	 * Notion's placeholders in `labels` (English by default): headings,
-	 * lists, to-dos, toggles and quotes name their kind while empty; a
-	 * paragraph invites a command only while focused.
+	 * The kinds whose empty text names them, by placeholder (a callout's
+	 * title, as a toggle's, names itself).
 	 */
-	export const createRichTextPlaceholder = (labels?: PartialLabels<'richText'>) => {
-		const { placeholders } = labelsWith('richText', labels);
-		return ({ type, data, focused }: PlaceholderView): string | null => {
-			if (type === 'heading')
-				return placeholders.heading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
-			if (type === 'toggle-heading')
-				return placeholders.toggleHeading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
-			if (type === 'bulleted-list-item' || type === 'numbered-list-item') return placeholders.list;
-			if (type === 'todo-item') return placeholders.todo;
-			if (type === 'toggle') return placeholders.toggle;
-			if (type === 'quote') return placeholders.quote;
-			// A callout's title, as a toggle's, names itself while empty.
-			if (type === 'callout') return placeholders.callout;
-			if (type === 'image' || Object.hasOwn(mediaKinds, type))
-				return focused ? placeholders.caption : null;
-			// Code shows nothing in an empty line (Notion).
-			if (type === 'codeLine') return null;
-			return focused ? placeholders.empty : null;
-		};
+	const NAMED: Record<string, 'list' | 'todo' | 'toggle' | 'quote' | 'callout'> = {
+		'bulleted-list-item': 'list',
+		'numbered-list-item': 'list',
+		'todo-item': 'todo',
+		toggle: 'toggle',
+		quote: 'quote',
+		callout: 'callout'
 	};
 
-	/** Notion's placeholders, in English. */
-	export const richTextPlaceholder = createRichTextPlaceholder();
+	/**
+	 * Notion's placeholders, in the view's `richText` labels (English by
+	 * default): headings, lists, to-dos, toggles and quotes name their kind
+	 * while empty; a paragraph invites a command only while focused.
+	 */
+	export const richTextPlaceholder = (
+		{ type, data, focused }: PlaceholderView,
+		edytor?: Edytor
+	): string | null => {
+		const { placeholders } = labelsOf(edytor, 'richText', richTextEnglish);
+		if (type === 'heading' || type === 'toggle-heading')
+			return placeholders[type === 'heading' ? 'heading' : 'toggleHeading'](
+				Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3
+			);
+		if (Object.hasOwn(NAMED, type)) return placeholders[NAMED[type]!];
+		// Code shows nothing in an empty line (Notion).
+		if (type === 'codeLine' || !focused) return null;
+		return type === 'image' || Object.hasOwn(mediaKinds, type)
+			? placeholders.caption
+			: placeholders.empty;
+	};
 
 	export type RichTextPluginOptions = {
-		/** The kinds', marks' and checkbox's words (English by default). */
-		labels?: PartialLabels<'richText'>;
-		/**
-		 * The slash menu's keywords of a kind, by command id (`block.heading1`):
-		 * they replace that preset's own (list the English ones to keep them).
-		 */
-		keywords?: Partial<Record<string, string[]>>;
-		/** Callouts' icons. */
+		/** Callouts' icons (their picker is `createCalloutIconsPlugin`'s). */
 		callout?: {
 			/**
 			 * A new callout's icon, and the one a callout whose `data.icon` is
 			 * unset shows (`💡` by default).
 			 */
 			icon?: string;
-			/** The icon picker's choices (`CALLOUT_ICONS` by default). */
-			icons?: readonly string[];
-			/**
-			 * Replace the icon picker's markup: it renders while the picker is
-			 * open, placed under the icon. Put `{@attach picker.keys}` and
-			 * `{@attach picker.popup}` on its element and spread
-			 * `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
-			 */
-			picker?: Snippet<[CalloutIconPicker]>;
 		};
+		/**
+		 * A to-do's checkbox (default: a native `input type="checkbox"`). Spread
+		 * `checkbox.attributes` on the control, an `input` (with
+		 * `checked={checkbox.checked}`) or a `button`: its click checks the to-do
+		 * through the document.
+		 */
+		checkbox?: Snippet<[TodoCheckboxPayload]>;
+		/**
+		 * A callout's icon (default: a `button` showing it, or the icon alone
+		 * where it cannot be picked). Spread `icon.attributes` on its element:
+		 * a click opens the view's picker (`createCalloutIconsPlugin`), which
+		 * opens under it.
+		 */
+		calloutIcon?: Snippet<[CalloutIconPayload]>;
+		/**
+		 * The hint an open toggle's or a callout's empty body shows (default: a
+		 * `div` with the view's `richText.emptyBody` words). Spread
+		 * `hint.attributes` on it: a click starts the body, a dragged block
+		 * drops inside.
+		 */
+		emptyBody?: Snippet<[EmptyBodyPayload]>;
 	};
 
-	const richTextPlugins = new WeakSet<Plugin>();
-
-	/** Recognize any rich text plugin instance (the component's default yields to yours). */
-	export const isRichTextPlugin = (plugin: Plugin) => richTextPlugins.has(plugin);
-
-	// One key patched: a peer's concurrent edit of another key is kept.
-	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
-
-	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids). */
-	const TURN_INTO: Record<string, string> = {
-		'mod+alt+0': 'block.paragraph',
-		'mod+alt+1': 'block.heading1',
-		'mod+alt+2': 'block.heading2',
-		'mod+alt+3': 'block.heading3',
-		'mod+alt+4': 'block.todo-item',
-		'mod+alt+5': 'block.bulleted-list-item',
-		'mod+alt+6': 'block.numbered-list-item',
-		'mod+alt+7': 'block.toggle',
-		'mod+alt+8': 'block.code'
-	};
+	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids, by digit). */
+	const TURN_INTO = [
+		'paragraph',
+		'heading1',
+		'heading2',
+		'heading3',
+		'todo-item',
+		'bulleted-list-item',
+		'numbered-list-item',
+		'toggle',
+		'code'
+	];
 
 	/**
-	 * The rich text kinds and marks, with their words in `labels` and their
-	 * slash keywords in `keywords` (English by default).
+	 * The rich text kinds and marks, their words and slash keywords the
+	 * view's (`labels`, English by default).
 	 */
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
-		const labels = labelsWith('richText', options.labels);
 		const plugin: Plugin = (edytor) => {
-			richTextLabels.claim(edytor, labels);
-			// The view's callout icons: the first rich text plugin listed claims them.
-			const picker = calloutIconViews.has(edytor)
-				? undefined
-				: new CalloutIconPicker(
-						edytor,
-						options.callout?.icon ?? DEFAULT_CALLOUT_ICON,
-						options.callout?.icons ?? CALLOUT_ICONS,
-						labels
-					);
-			if (picker) calloutIconViews.set(edytor, picker);
-			return richText(edytor, labels, options, picker);
+			const labels = labelsOf(edytor, 'richText', richTextEnglish);
+			// The view's default callout icon and its controls' markup: the first rich text plugin listed sets them.
+			if (edytor && !calloutIcons.has(edytor)) {
+				calloutIcons.set(edytor, options.callout?.icon ?? DEFAULT_CALLOUT_ICON);
+				const { checkbox, calloutIcon, emptyBody } = options;
+				richTextControls.set(edytor, { checkbox, calloutIcon, emptyBody });
+			}
+			return richText(edytor, labels, options);
 		};
-		richTextPlugins.add(plugin);
-		return plugin;
+		return branded('richText', plugin);
 	};
 
-	/** A preset whose slash keywords `keywords` may replace, by its command id. */
-	const preset = (
-		id: string,
-		row: KindPreset,
-		keywords: RichTextPluginOptions['keywords']
-	): KindPreset => {
-		const own = keywordsOf(id, row.keywords, keywords);
-		return own ? { ...row, keywords: own } : row;
-	};
-
-	/** The rich text records of `edytor`, in `labels`, its presets' keywords replaced by `keywords`. */
+	/** The rich text records of `edytor`, in `labels`, its presets' keywords the view's. */
 	const richText = (
 		edytor: Edytor,
 		labels: RichTextLabels,
-		{ keywords, callout: calloutOptions }: RichTextPluginOptions,
-		/** The view's callout icon picker, when this plugin claimed it (the first listed). */
-		picker: CalloutIconPicker | undefined
+		{ callout: calloutOptions, checkbox, calloutIcon, emptyBody }: RichTextPluginOptions
 	): ReturnType<Plugin> => {
 		const { kinds, marks: words } = labels;
 		/** A new callout's icon. */
@@ -232,7 +223,10 @@
 		/** The disclosures this view created, opened once drawn (`onBlockAttached`). */
 		const opening = new Set<string>();
 		const presets = (type: string, rows: KindPreset[]) =>
-			rows.map((row, index) => preset(presetId(type, index, rows.length), row, keywords));
+			rows.map((row, index) => {
+				const own = keywordsOf(edytor, presetId(type, index, rows.length), row.keywords);
+				return own ? { ...row, keywords: own } : row;
+			});
 		const operations = richTextOperations(edytor);
 		/** The space an autolink types itself: its own insertion is not looked at again. */
 		let autolinking = false;
@@ -281,9 +275,10 @@
 					});
 				},
 				...Object.fromEntries(
-					Object.entries(TURN_INTO).map(([chord, id]): [string, HotKey] => [
-						chord,
+					TURN_INTO.map((type, digit): [string, HotKey] => [
+						`mod+alt+${digit}`,
 						({ prevent }) => {
+							const id = `block.${type}`;
 							if (edytor.commands.has(id)) prevent(() => void edytor.runCommand(id));
 						}
 					])
@@ -297,7 +292,8 @@
 				if (!linkable()) return;
 				const href = pastedLink(e.clipboardData?.getData('text/plain'));
 				if (!href) return;
-				const { isCollapsed, startText: text, yStart } = edytor.selection.state;
+				const { startText: text, yStart } = edytor.selection.textRange();
+				const { isCollapsed } = edytor.selection.projection;
 				if (!isCollapsed)
 					return prevent(() =>
 						edytor.dispatcher.run('insertFromPaste', () => operations.setLinkAtRange({ href }))
@@ -306,7 +302,7 @@
 				prevent(() => {
 					const end = yStart + href.length;
 					edytor.dispatcher.run('insertFromPaste', () => {
-						text.insertText({ value: href, start: yStart, end: yStart });
+						edytor.insertText(text.parent.id, text.segStart + yStart, href);
 						edytor.dispatcher.caret(text, end);
 					});
 					if (text.stringContent.slice(yStart, end) === href)
@@ -318,10 +314,11 @@
 			// (`link.autolink.typed`, Notion).
 			onBeforeOperation: (change) => {
 				// A block without children retyped into a disclosure from another kind (the
-				// slash menu, a markdown shortcut, Turn into): the toggle it becomes opens on
-				// its empty body (`body.open`). One with children keeps them out of sight.
-				if (change.operation === 'setBlock') {
-					const type = change.payload.value.type ?? change.block.type;
+				// slash menu, a markdown shortcut, Turn into: their planned `setBlockType`):
+				// the toggle it becomes opens on its empty body (`body.open`). One with
+				// children keeps them out of sight.
+				if (change.operation === 'setBlockType') {
+					const [, type] = change.payload;
 					const opens =
 						DISCLOSURES.has(type) &&
 						!DISCLOSURES.has(change.block.type) &&
@@ -330,9 +327,11 @@
 				}
 				if (autolinking || change.operation !== 'insertText') return;
 				const { payload, text, prevent } = change;
-				if (payload.value !== ' ' || !linkable()) return;
-				const { startText, yStart, isCollapsed } = edytor.selection.state;
-				if (!isCollapsed || text !== startText || (payload.start ?? yStart) !== yStart) return;
+				if (payload[2] !== ' ' || !linkable()) return;
+				const { startText, yStart } = edytor.selection.textRange();
+				const { isCollapsed } = edytor.selection.projection;
+				if (!isCollapsed || !text || text !== startText) return;
+				if (payload[1] !== text.segStart + yStart) return;
 				const found = typedLink(text.stringContent.slice(0, yStart));
 				const end = found && found.start + found.href.length;
 				if (!found || !end) return;
@@ -343,7 +342,7 @@
 				prevent(() => {
 					autolinking = true;
 					try {
-						text.insertText(payload);
+						edytor.insertText(...payload);
 					} finally {
 						autolinking = false;
 					}
@@ -352,7 +351,7 @@
 				});
 			},
 			onAfterOperation: (change) => {
-				if (change.operation !== 'setBlock' || retyping !== change.block.id) return;
+				if (retyping !== change.block.id) return;
 				retyping = null;
 				if (DISCLOSURES.has(change.block.type)) opening.add(change.block.id);
 			},
@@ -364,7 +363,7 @@
 			},
 			// Mod+click on a link opens it in a new tab (`link.mod-click`): a plain
 			// click places the caret, as in Notion. Mod is read as the keymap reads
-			// it: Meta, or Ctrl off a Mac. The callout icon picker is in the overlay.
+			// it: Meta, or Ctrl off a Mac.
 			onEdytorAttached: ({ node }) => {
 				const click = (event: MouseEvent) => {
 					if (!event.metaKey && !(event.ctrlKey && !edytor.keymap.isMac)) return;
@@ -375,25 +374,7 @@
 					event.preventDefault();
 					openLink(href, node.ownerDocument.defaultView);
 				};
-				node.addEventListener('click', click);
-				// A press outside the picker closes it (WebKit's lone `mousedown` too).
-				const offPress = picker && onPress(edytor, node.ownerDocument, picker.pressed, true);
-				const unmount =
-					picker &&
-					edytor.overlay.mount(
-						CalloutIconMenu,
-						{ picker, menu: calloutOptions?.picker },
-						'edytor-callout-icons-host',
-						// With the menus: above the handles and the image chrome.
-						70,
-						picker.measure
-					);
-				return () => {
-					node.removeEventListener('click', click);
-					offPress?.();
-					unmount?.();
-					picker?.close(false);
-				};
+				return listen(node, 'click', click);
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;
@@ -545,7 +526,8 @@
 				},
 				'todo-item': {
 					continues: true,
-					snippet: todoItem,
+					// The app's control markup, if any, through its own snippet: the default costs no branch.
+					snippet: checkbox ? todoItemOwn : todoItem,
 					presets: presets('todo-item', [
 						{
 							label: kinds.todoList,
@@ -565,7 +547,7 @@
 				toggle: {
 					continues: true,
 					container: true,
-					snippet: details,
+					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
 					presets: presets('toggle', [
 						{
@@ -582,7 +564,7 @@
 				// line is a toggle heading 1.
 				'toggle-heading': {
 					container: true,
-					snippet: details,
+					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
 					contentElement: (data) => headingLevel(data.level),
 					presets: presets(
@@ -619,13 +601,14 @@
 				callout: {
 					container: true,
 					body: true,
-					snippet: callout,
+					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
 					presets: presets('callout', [
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
-					// The block menu's Change icon: the keyboard's way to the picker.
-					menu: (block) =>
-						picker
+					// The block menu's Change icon, while the view lists a picker: the keyboard's way to it.
+					menu: (block) => {
+						const picker = calloutPickers.get(edytor);
+						return picker
 							? [
 									{
 										id: 'callout.icon',
@@ -634,14 +617,15 @@
 										run: () => picker.open(block)
 									}
 								]
-							: [],
+							: [];
+					},
 					// HTML import: its own export, the icon in its attribute.
 					parse: (el) => {
 						const own = el.getAttribute('data-edytor-callout');
 						return own === null ? undefined : { icon: own };
 					},
 					html: (block, content, children) =>
-						calloutHtml(iconOf(block.data, icon), content, children)
+						calloutHtml(iconOf(block.data, edytor), content, children)
 				},
 				quote: {
 					container: true,
@@ -660,7 +644,6 @@
 					empty: { content: [], children: [] },
 					...rule
 				},
-				details: { snippet: details, ...disclosure },
 				'ordered-list': {
 					...richTextKinds['ordered-list'],
 					itemKind: 'numbered-list-item',
@@ -675,18 +658,10 @@
 					element: unlisted('ul'),
 					html: 'ul'
 				},
-				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' },
-				horizontalRule: {
-					...richTextKinds.horizontalRule,
-					element: 'hr',
-					...rule
-				}
+				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' }
 			}
 		};
 	};
-
-	/** The rich text kinds and marks, in English. */
-	export const richTextPlugin: Plugin = createRichTextPlugin();
 </script>
 
 <!--
@@ -740,9 +715,35 @@
 
 <!-- prettier-ignore -->
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
---><TodoCheckbox {block} toggle={toggleTodo} /><!--
+--><TodoCheckbox {block} /><!--
 --><div>{@render content()}</div><!--
 -->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
+
+<!--
+	The same kinds, their controls drawn by the app's snippets (`checkbox`,
+	`calloutIcon`, `emptyBody`) where it passes them.
+-->
+<!-- prettier-ignore -->
+{#snippet todoItemOwn({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
+--><RichTextControl {block} control="checkbox" /><!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
+
+<!-- prettier-ignore -->
+{#snippet detailsOwn({ block, content, children }: BlockSnippetPayload)}<!--
+--><summary>{@render content()}</summary><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<RichTextControl {block} control="toggle" />{/if}<!--
+-->{/snippet}
+
+<!-- prettier-ignore -->
+{#snippet calloutOwn({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
+--><RichTextControl {block} control="calloutIcon" /><!--
+--><div data-edytor-callout-title>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<RichTextControl {block} control="callout" />{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
@@ -761,25 +762,8 @@
 -->{/snippet}
 
 <style>
-	/* A callout's title reads as its heading (Notion); its content below it. */
-	:global([data-edytor-callout-title]) {
-		font-weight: 600;
-	}
-	/* An empty body's hint: chrome, not text (`body.hint`). */
+	/* An empty body's hint: chrome, not text (`body.hint`); its look is a theme's. */
 	:global([data-edytor-empty-body]) {
-		padding: 3px 2px;
-		color: #73726e;
-		cursor: pointer;
 		user-select: none;
-	}
-	/* The icon button reads as the icon. */
-	:global(button[data-edytor-callout-icon]) {
-		padding: 0;
-		border: 0;
-		border-radius: 4px;
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		cursor: pointer;
 	}
 </style>

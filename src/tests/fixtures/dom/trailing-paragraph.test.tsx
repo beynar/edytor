@@ -20,11 +20,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin, tablePlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -57,7 +56,7 @@ const render = (children: JSONBlock[], readonly = false) =>
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [codePlugin, columnsPlugin, tablePlugin, richTextPlugin],
+			plugins: [codePlugin, createColumnsPlugin(), tablePlugin, richTextPlugin],
 			value: { children },
 			autoSelectFixture: false,
 			readonly
@@ -83,13 +82,13 @@ const open = async (edytor: Edytor, id: string) => {
 
 const caretIn = async (edytor: Edytor, id: string, offset?: number) => {
 	const text = edytor.idToBlock.get(id)!.lastText!;
-	edytor.selection.setAtTextOffset(text, offset ?? text.length);
+	edytor.selection.selectText(text, offset ?? text.length);
 	await flushDomUpdates();
 };
 
 /** The model caret: its block's type and whether it is top-level, its offset. */
 const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return {
 		type: startBlock?.type,
 		topLevel: !startBlock?.isNested,
@@ -98,7 +97,7 @@ const caret = (edytor: Edytor) => {
 		isCollapsed
 	};
 };
-const caretId = (edytor: Edytor) => edytor.selection.state.startBlock?.id;
+const caretId = (edytor: Edytor) => selectionState(edytor).startBlock?.id;
 
 const arrowDown = (editor: HTMLElement, shiftKey = false) =>
 	dispatchDomKeyDown(editor, { key: 'ArrowDown', shiftKey });
@@ -131,7 +130,7 @@ describe('ArrowDown at the last stop leaves a nested block (nav.trailing.exit)',
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['paragraph:p', 'toggle:title[paragraph:child]']);
 		expect(caretId(edytor)).toBe('C');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	it("a closed toggle's header: its hidden body holds no stop", async () => {
@@ -285,7 +284,7 @@ describe('ArrowDown where the rule does not apply', () => {
 		await caretIn(edytor, 'C', 0);
 		await arrowDown(editor, true);
 		expect(shape(edytor)).toEqual(['toggle:title[paragraph:child]']);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 	});
 
 	it('a readonly view inserts nothing', async () => {

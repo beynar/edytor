@@ -34,6 +34,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 300_000;
@@ -62,12 +63,12 @@ const push = (from: Y.Doc, to: Y.Doc) => {
 describe('R3 — undo restores text into the wrong paragraph', () => {
 	test('sequential undo returns the atoms to the split tail', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		expect(ed.blockText('b')).toBe('hello ');
 		expect(ed.blockText('tail')).toBe('world');
 
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		expect(ed.blockText('tail')).toBe('');
 		um.undo();
 
@@ -78,9 +79,9 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('binary save → reload keeps the correct ownership', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		um.undo();
 
 		const reloaded = new Y.Doc();
@@ -99,10 +100,10 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		push(doc, remote); // peer synced at the split state
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		push(doc, remote); // peer receives the delete only
 		um.undo();
 		push(doc, remote); // peer receives the undo
@@ -117,10 +118,10 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('marks on the deleted text are restored with the atoms — in tail', () => {
 		const { ed } = seed();
-		ed.setMark('b', 6, 5, 'b', true); // 'world' bold before the split
-		ed.block('b').split(6, 'tail');
+		ed.formatRange('b', 6, 5, { b: true }); // 'world' bold before the split
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		um.undo();
 
 		// OBSERVED: tail='' and b's runs are [{text:'hello '},{text:'world',
@@ -135,7 +136,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		push(doc, remote);
 		// Remote peer edits 'b' BEFORE the local delete — selective undo must
 		// keep it while restoring 'tail'.
@@ -143,7 +144,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		push(remote, doc);
 		expect(ed.blockText('b')).toBe('hello !');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		um.undo();
 		push(doc, remote);
 
@@ -161,10 +162,10 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		push(doc, remote);
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		push(doc, remote);
 		// The remote edit lands AFTER the delete but BEFORE the undo. The
 		// doc-scoped UndoManager captures it into the LOCAL undo stack
@@ -187,12 +188,12 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('raw Y.UndoManager (no facade factory) gets the same repair', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		// The repair attaches once per DOC (doc-level update observer), so a
 		// directly-constructed UndoManager — e.g. the peer harness's
 		// `enableUndo` — produces the same ownership as createUndoManager().
-		const um = new Y.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		ed.deleteText('tail', 0, 5);
 		um.undo();
 		expect(ed.blockText('b')).toBe('hello ');
 		expect(ed.blockText('tail')).toBe('world');
@@ -200,12 +201,12 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('selection anchors in the deleted range resolve into tail after undo', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const mid = ed.anchorAt('tail', 2);
 		const start = ed.anchorAt('tail', 0, 'right');
 		const end = ed.anchorAt('tail', 5);
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		um.undo();
 		// The anchors bound the TOMBSTONED originals, which sit at the end of
 		// the resurrected run in the item sequence — so they resolve into
@@ -219,14 +220,14 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('repeated delete/undo cycles keep restoring the tail', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		// Each undo writes a fresh repair claim at g+1 over the NEW copy
 		// atoms; the next delete tombstones them and the next undo
 		// resurrects yet another generation. Stale claims must never
 		// corrupt the cycle.
 		for (let i = 0; i < 2; i++) {
-			ed.block('tail').deleteText(0, 5);
+			ed.deleteText('tail', 0, 5);
 			expect(ed.blockText('tail')).toBe('');
 			um.undo();
 			expect(ed.blockText('b')).toBe('hello ');
@@ -277,10 +278,10 @@ describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)',
 			]
 		});
 		const ed2 = E.create(doc);
-		ed1.block('b').split(6, 'tail');
+		ed1.splitBlock('b', 6, 'tail');
 		ed1.dispose(); // repair must survive for ed2
 		const um = ed2.createUndoManager({ captureTimeout: 0 });
-		ed2.block('tail').deleteText(0, 5);
+		ed2.deleteText('tail', 0, 5);
 		um.undo();
 		expect(ed2.blockText('b')).toBe('hello ');
 		expect(ed2.blockText('tail')).toBe('world');
@@ -300,9 +301,9 @@ describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)',
 				}
 			]
 		});
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		ed.dispose(); // no live facade — the doc-level listener still repairs
 		um.undo();
 		// The pre-fix outcome persisted b='hello world'/tail='' after a new

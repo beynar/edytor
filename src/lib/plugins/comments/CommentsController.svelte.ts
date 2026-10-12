@@ -4,7 +4,7 @@ import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
 import { Text } from '$lib/text/text.svelte.js';
-import { reveal } from '$lib/selection/replaceSelection.js';
+import { showText } from '../planned.js';
 import {
 	COMMENT_MARK,
 	blockCommentRuns,
@@ -21,7 +21,7 @@ import type {
 	CommentResult,
 	CommentsClient
 } from '$lib/collaboration/comments/client.js';
-import { englishLabels, type CommentsLabels } from '$lib/labels.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /** Who a comment's author is, as the sidebar shows them. */
 export type CommentUser = {
@@ -57,7 +57,6 @@ export type CommentsControllerOptions = {
 	user: CommentUser;
 	users?: (id: string) => Omit<CommentUser, 'id'> | undefined;
 	onComment?: (change: CommentChange, notice: CommentNotice) => void;
-	labels?: CommentsLabels;
 };
 
 const avatarColors = ['#e16259', '#d9730d', '#cb912f', '#448361', '#337ea9', '#9065b0', '#c14c8a'];
@@ -88,7 +87,6 @@ export class CommentsController {
 	#off: Array<() => void> = [];
 	readonly client: CommentsClient;
 	readonly user: CommentUser;
-	readonly labels: CommentsLabels;
 
 	constructor(
 		private edytor: Edytor,
@@ -96,7 +94,6 @@ export class CommentsController {
 	) {
 		this.client = options.client;
 		this.user = options.user;
-		this.labels = options.labels ?? englishLabels.comments;
 	}
 
 	/**
@@ -170,10 +167,10 @@ export class CommentsController {
 		return this.threads.find((thread) => thread.id === id);
 	}
 
-	/** A user as the sidebar shows them: their name, avatar and color. */
+	/** A user as the sidebar shows them: their name (else their id), avatar and color. */
 	userOf = (id: string): CommentUser => {
 		const known = id === this.user.id ? this.user : { id, ...this.options.users?.(id) };
-		const name = known.name ?? (id === this.user.id ? this.labels.you : id);
+		const name = known.name ?? id;
 		let hash = 0;
 		for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
 		const color = known.color ?? avatarColors[Math.abs(hash) % avatarColors.length]!;
@@ -204,8 +201,8 @@ export class CommentsController {
 		const detach = client.attach?.({
 			order: () => edytor.facade.order(),
 			contentItems: (id) => edytor.facade.contentItems(id),
-			unsetMark: (block, offset, length, mark) =>
-				edytor.facade.unsetMark(block, offset, length, mark),
+			formatRange: (block, offset, length, marks) =>
+				edytor.facade.formatRange(block, offset, length, marks),
 			// A store's removal is no step of this view's history.
 			transact: (fn) => (edytor.doc._transaction ? fn() : edytor.dispatcher.outside(() => fn()))
 		});
@@ -273,7 +270,9 @@ export class CommentsController {
 		const { edytor } = this;
 		if (!this.canComment) return false;
 		const { facade, selection } = edytor;
-		const { isCollapsed, startBlock } = selection.state;
+		const { startText } = selection.textRange();
+		const { isCollapsed } = selection.projection;
+		const startBlock = startText?.parent;
 		const spans = isCollapsed
 			? (startBlock?.content ?? []).flatMap((part) =>
 					part instanceof Text && part.length > 0
@@ -342,7 +341,7 @@ export class CommentsController {
 
 	/** The one write of a thread's anchor: its mark over `runs`, one command. */
 	#anchor = (thread: string, runs: CommentRun[]): CommandResult['status'] => {
-		const { facade, dispatcher, idToBlock } = this.edytor;
+		const { facade } = this.edytor;
 		if (runs.length === 0) return 'noop';
 		const mark = `${COMMENT_MARK}:${thread}`;
 		const prepare = (payload: { thread: string; runs: CommentRun[] }): Prepared =>
@@ -351,17 +350,8 @@ export class CommentsController {
 					facade.prepare.formatRange(block, offset, length, { [mark]: { id: payload.thread } })
 				)
 			);
-		const block = idToBlock.get(runs[0]!.block) ?? this.edytor.root!;
-		dispatcher.dispatch(
-			'addComment',
-			{ thread, runs },
-			{ block },
-			(payload, plan = prepare(payload)) => {
-				if ('writes' in plan) facade.apply(plan);
-			},
-			prepare
-		);
-		return dispatcher.last?.operation === 'addComment' ? dispatcher.last.status : 'refused';
+		const block = this.edytor.idToBlock.get(runs[0]!.block);
+		return this.edytor.dispatcher.plan('addComment', { thread, runs }, prepare, block).status;
 	};
 
 	// ── A thread's actions ───────────────────────────────────────────────
@@ -387,14 +377,7 @@ export class CommentsController {
 	focus = (thread: string | null) => {
 		this.active = thread;
 		const run = thread ? this.anchors.get(thread)?.[0] : undefined;
-		const block = run && this.edytor.idToBlock.get(run.block);
-		if (block) {
-			reveal(block);
-			block.textAtOffset(run!.offset)?.text.node?.scrollIntoView?.({
-				block: 'nearest',
-				inline: 'nearest'
-			});
-		}
+		if (run) showText(this.edytor, run.block, run.offset);
 		this.edytor.overlay.invalidate();
 	};
 
@@ -436,8 +419,7 @@ export class CommentsController {
 	});
 
 	#refocus = () => {
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 		this.edytor.overlay.invalidate();
 	};
 }

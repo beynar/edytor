@@ -2,10 +2,7 @@
 /** @jsxImportSource ./jsx */
 import { describe, expect, test } from 'vitest';
 
-import {
-	getSelectionReplacementState,
-	replaceSelectionWithCollapsedTarget
-} from '$lib/selection/replaceSelection.js';
+import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
 import { createOperationEdytor } from './test.utils.js';
 
 describe('selection replacement snapshots', () => {
@@ -17,11 +14,16 @@ describe('selection replacement snapshots', () => {
 				<paragraph>Charlie</paragraph>
 			</root>
 		);
-		const replacementState = getSelectionReplacementState(edytor);
+		// The range an attempt saved at its admission.
+		const replacementState = {
+			...edytor.selection.textRange(),
+			isCollapsed: edytor.selection.projection.isCollapsed
+		};
+
 		const originalStartText = replacementState.startText;
 		const driftTarget = edytor.root!.children[2]!.firstText;
 
-		await edytor.selection.setAtTextOffset(driftTarget, 3);
+		await edytor.selection.selectText(driftTarget, 3);
 		const target = replaceSelectionWithCollapsedTarget(edytor, replacementState);
 
 		expect(target).toEqual({ text: originalStartText, offset: 2 });

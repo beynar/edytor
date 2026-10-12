@@ -1,21 +1,30 @@
 <script lang="ts">
-	import HistoryPanel from '$lib/collaboration/history/HistoryPanel.svelte';
-	import type { HistoryClient, HistoryVersionItem } from '$lib/index.js';
+	import { untrack } from 'svelte';
+	import { VersionHistory, type HistoryClient } from '$lib/index.js';
 	import type { EdytorDocument } from '$lib/crdt/document.js';
 
-	/** The version history panel with its rows drawn by an `item` snippet (`history-panel-item.test.ts`). */
+	/**
+	 * A version list of the app's own markup over `VersionHistory`
+	 * (`history-panel-item.test.ts`): each row attaches `history.option(index)`,
+	 * the list takes `{@attach history.keys}`.
+	 */
 	let { client, document }: { client: HistoryClient; document: EdytorDocument } = $props();
+	const uid = $props.id();
+	const history = untrack(() => new VersionHistory({ client, document, id: uid }));
 </script>
 
-{#snippet item({ version, label, selected, option, run }: HistoryVersionItem)}
-	<button
-		type="button"
-		{...option}
-		data-testid="custom-version"
-		data-key={version.key}
-		data-current={selected}
-		onclick={run}>{label} · {version.editors.length}</button
-	>
-{/snippet}
-
-<HistoryPanel {client} {document} {item} defaultPlugins={false} />
+<ul role="listbox" aria-label="Versions" {@attach history.keys}>
+	{#each history.versions ?? [] as version, index (version.key)}
+		<li role="presentation">
+			<button
+				type="button"
+				{@attach history.option(index)}
+				data-testid="custom-version"
+				data-key={version.key}
+				data-current={version.key === history.selected}
+				onclick={() => void history.select(version.key)}
+				>{history.dateOf(version)} · {version.slot} · {version.editors.length}</button
+			>
+		</li>
+	{/each}
+</ul>

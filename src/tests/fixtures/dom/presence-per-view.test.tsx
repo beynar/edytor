@@ -23,6 +23,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { noSelection } from '$lib/session/selection.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 /** Red on the reference (expected-fail in the tests-first commit); green since T6. */
 const row = it;
@@ -42,7 +43,7 @@ const entries = (document: EdytorDocument): Entries =>
 
 /** A model caret in the first paragraph — `select()` publishes it. */
 const caret = (edytor: Edytor, offset: number) =>
-	edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, offset);
+	edytor.selection.selectText(edytor.root!.children[0]!.firstText!, offset);
 
 /** Two mounted views of one document, each with a published caret; returns their keys. */
 const siblings = async () => {
@@ -156,7 +157,7 @@ describe('T6 — one presence entry per view key, written by its view', () => {
 			't'
 		]);
 		const block = v1.edytor.root!.children[0]!;
-		v1.edytor.selection.selectBlocks(block);
+		selectBlocks(v1.edytor, block);
 		expect(entries(document)[k1]).toEqual({ blocks: [block.id], t: expect.any(Number) });
 
 		v1.edytor.selection.select(noSelection);

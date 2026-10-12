@@ -17,10 +17,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin, createCodePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { CODE_LANGUAGES, loadCodeLanguage } from '$lib/plugins/code/languages.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	code as createCodePlugin,
+	codePlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -246,7 +249,7 @@ describe('code.language.picker: the header picks the language', () => {
 
 	it('Alt+F10 at a caret in a code line focuses the language; an arrow opens the list', async () => {
 		const { edytor, editor } = await render(code(['x']));
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('l0')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('l0')!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(editor, { key: 'F10', code: 'F10', altKey: true });
 		expect(document.activeElement).toBe(picker(editor));

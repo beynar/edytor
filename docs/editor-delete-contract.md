@@ -463,8 +463,8 @@ gone (DR-behavior-3). Pins: `contracts-block-selection.test.tsx`,
 ### `del.blocks.promote` — only the selected blocks leave
 
 `deleteBlocks(ids)` (a block selection's Backspace/Delete/cut,
-`flow.slot`) and `deleteBlock(id)` (`Block.removeBlock()`, a node's
-`delete()`) mark every member with this writer's delete mark (and what it
+`flow.slot`) and `deleteBlock(id)` (the view's `edytor.deleteBlock(id)`,
+or the bare document's) mark every member with this writer's delete mark (and what it
 displays through merge claims). Each member's unselected children — with
 their own subtrees — take its slot in its parent, in order; a member under
 an unselected child of another member takes its own slot there. A deleted
@@ -586,7 +586,7 @@ items (Notion):
     item — and is refused where it would not fit (an image, a code block
     or a heading under an item: it would sit directly in the list; every path
     agrees — Shift+Tab over a range, the block handle's Alt+ArrowLeft and
-    `canMoveBlocks({direction: 'out'})` ask the outdent plan, DR-crdt-2):
+    `canMove({direction: 'out'})` ask the outdent plan, DR-crdt-2):
     in a layout (`columns > column > paragraph`, `layout.*`), Shift+Tab at
     a column's last or only paragraph does nothing (an outdent into the
     layout is refused): nothing but a column sits directly in a layout
@@ -793,11 +793,11 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
   its order against a peer's concurrent block follows the client ids.
   Both replicas converge and no text is lost. That covers:
   - a block inserted beside one (`insertBlocks`): Enter at the start or
-    end of a block (`insertBlockBefore`/`insertBlockAfter`; at the end of
+    end of a block (`insertBlocks` before or after it; at the end of
     a block with children and text, not a container header, Enter splits
     it, `liftContent`), a container header's new first child
-    (`addChildBlock`) or its text after the caret when Enter splits it
-    (`prepareSplitKeepingChildren`: an open toggle, a callout or quote
+    (`insertBlocks` at index 0) or its text after the caret when Enter splits it
+    (`splitKeepingChildren`: an open toggle, a callout or quote
     with children), Duplicate (`duplicateBlock`) and the handle's +
     button. Enter at the end of X and typing "foo" ‖ Enter after "hello"
     in X → "foo" can read before " world";
@@ -826,7 +826,7 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
     outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
     is `p|b|a|c|d|e|q` (DR-rest-2);
   - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
-    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (arrowMovePlugin), the
+    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (createArrowMovePlugin()), the
     block menu's Move up/down and Tab (`nestBlock` at the parent's end:
     Tab on `y` ‖ Enter at the end of the last child of the block above →
     the new line can read after `y`).
@@ -1078,7 +1078,7 @@ turned into a heading is `{checked: true, color: 'red', level: 'h1'}`, and
 turned back into a to-do `{checked: false, color: 'red', level: 'h1'}` (the
 preset's leaf is set). A peer's concurrent property write survives the
 retype (`retype-keeps-data.test.ts`). Replacing the whole data stays
-`setBlockData` (`block.setData`, a root patch); a flow's join (`redata`)
+`setBlockData` (a `patchData` at the root path); a flow's join (`redata`)
 writes the pasted line's data whole, as before.
 
 ### `data.atomic` — a declared path is one leaf (H8)
@@ -1605,7 +1605,7 @@ lines) or would sit inside an item (D2) or an island, and without a
 layout kind. A peer's edit in a wrapped block lands in its column. The
 view: the block menu's Turn into lists "N columns" over a block selection
 of N sibling blocks, and "2 columns" to "5 columns" over one block
-(`EditorCommand.turnsInto`); hooks see `wrapBlocks`; the blocks stay
+(`EditorCommand.turnsInto`); hooks see `wrapInLayout`; the blocks stay
 selected (one block: no caret moves into the empty columns).
 Pins: `layout.test.ts` (`layout.wrap`), `columns-turn-into.test.tsx`,
 `columns-parity.spec.ts`.
@@ -1743,6 +1743,9 @@ in `data.column`, and the header flags are `data.headerRow` and
 layouts, the role is data read from the document's roles (`roles.table`):
 no core code names `table`, `tableRow` or `tableCell`, and the read-time
 rules own the display (the index's layout pass, `crdt/text/index/layout.ts`).
+The write rows below are the table plugin's ops (`plugins/table/ops.ts`,
+each taking the document first), plans composed of the document's
+`patchData`, `insertBlocks`, `deleteBlocks` and `moveBlocks`.
 Pins: `src/tests/crdt/arch-v2/table.test.ts` (each row sequential,
 concurrent with display equality across replicas, and undone), the
 `table-shape` well-formed check (a displayed table holds displayed rows
@@ -1837,7 +1840,8 @@ every row the table displays, one plan: `insertTableColumn(T, 1)` gives
 
 The column (by id or position among the grid's) leaves `data.columns`
 (every stored entry naming it, by item id) and every displayed cell of it
-is deleted, one plan; deleting the last column deletes the table
+is deleted, one plan; deleting the last column deletes the table, with
+a container it leaves empty (`del.range.empty-container`)
 (`deleteTableColumn(T, 'c2')` gives `R1[A], R2[C]`; then `'c1'` gives `P, Z`).
 A column shown unlisted (`table.cell`) loses its cells; `moveTableColumn`
 refuses it.
@@ -2037,7 +2041,7 @@ A header's body shows when the block has children, is an open `<details>`
 callout); a closed `<details>` never, whatever it holds (`bodyShows`,
 `selection/visibility.ts`, the one rule Enter and `flow.header` read).
 Enter at the end of such a header creates a first child of the kind's
-default child kind and puts the caret there (`addChildBlock`, one step):
+default child kind and puts the caret there (`insertBlocks`, one step):
 `callout "note"` + Enter → `callout "note" > [""]`, caret in `""`; mid
 header, the text after the caret becomes that first child (`splitHeader`).
 A quote without children, or a closed toggle, keeps its sibling rule (a
@@ -2269,7 +2273,7 @@ rule of its own (the code block's is gone).
   follows the last column, or a later row, is below.
 - **What.** The caret goes to the trailing paragraph (`toTrailingParagraph`):
   an empty block of the root's default kind after the document's last
-  top-level block, inserted by one command (`insertBlockAfter`, its own
+  top-level block, inserted by one command (`insertBlocks`, its own
   undo step) and the command's result caret; the undo removes it and
   restores the caret before the key. An empty top-level paragraph there
   is a stop below, so the key reaches it as any line (nothing is written).
@@ -2486,7 +2490,7 @@ document's capture listener (`pressOutside`, `events/onFocus.ts`). Pins:
 
 ### `hist.dead-pop` — obsolete undo items
 
-`UndoManager.popStackItem` may consume a dead/obsolete stack item (entries
+The undo manager's replay (`crdt/doc/history.ts`) may consume a dead/obsolete stack item (entries
 neutralized by remote edits) without applying a change or growing the
 opposite stack. The legal oracle is **source stack shrank OR opposite
 grew** — not both. A dead command shows neither and still fails.
@@ -2544,53 +2548,40 @@ text a peer's undo may copy again. Before Phase 2 the room's live document
 collected it (its Step2 served the copy deleted) while the merged records
 still held it.
 
-### `room.store.v2` — snapshots in v2, compressed, tagged (P5)
+### `room.store.v2` — one update encoding, compressed snapshots
 
-A container's generation record carries its storage format (`storage`,
-absent = `'v1'`, the only format before 0.1.0-next.23). This build writes
-`'v2'`: snapshots in the v2 encoding (`encodeStateAsUpdateV2`), gzip-
-compressed where the platform has `CompressionStream` (a compressed
-snapshot starts with `1f 8b`, a v2 update with `00`); update and waiting
-records, and the IndexedDB store's update rows, stay v1, which is smaller
-for one edit (24 against 28 bytes for a keystroke, 13 against 24 for a
-one-character delete). The room compresses a snapshot in place after
-storing it raw (`compressLater`; the store-before-ack path is
-synchronous) and inflates it when it starts (`inflate`), keeping the raw
-bytes for a rebuild. A v1 container loads as it is, takes v1 update
-records, and is rewritten in v2 by its next compaction (`storage-v2`,
-`storage-v2.test.ts`). The IndexedDB store writes a snapshot as an
-object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
-(its row codec throws) instead of misreading. The wire stays v1.
+Every record a container holds — the room's snapshot, update and waiting
+records, the IndexedDB store's rows — is an update in the engine's one
+encoding, the columnar one upstream Yjs calls v2 (fork patch YP17: the v1
+encoding is gone from the fork). A snapshot is also gzip-compressed where
+the platform has `CompressionStream` (a compressed snapshot starts with
+`1f 8b`, an update with `00`, a generation record with `{`). The room
+compresses a snapshot in place after storing it raw (`compressLater`; the
+store-before-ack path is synchronous) and inflates it when it starts
+(`inflate`), keeping the raw bytes for a rebuild; one that does not inflate
+refuses the container (`snapshots.test.ts`, `tests/do/snapshots.test.ts`).
+The generation record names no format.
 
-### `room.generation.convert` — a generation-4 container converts through its JSON (Phase 4)
+### `room.generation` — another generation is refused, never converted (schema 6)
 
-Schema generation 5 (wire word `14005`) changes what a document stores
-(paired marks, shorter ranks): bytes of generation 4 are never integrated
-beside generation 5's. A room loading a container whose generation record
-is generation 4's reads its records into a scratch document (no admission,
-no write), takes its visible document as JSON
-(`crdt.generations.previousJSON`) and seeds it as generation 5's (the
-deterministic seed `onLoad`'s JSON gets), replacing the container in one
-storage transaction (rows, replicas, purge epochs, slot editors and the
-stored restore go; meta stays). A history version of generation 4 reads
-through the same JSON. A frame of generation 4 is refused before decode
-(`1008`, `refused: generation`); a container of any other generation is
-refused until `reset()`. A browser store of generation 4
-(`edytor-v14:<name>`) is left as it was beside the new one
-(`edytor-v14-g5:<name>`): a document stored only there converts into it
-(`convertPrevious`), one a room keeps takes the room's state
-(`generation-5-cutover.test.ts`, `tests/do/gen5-cutover.test.ts`).
+Schema generation 6 (wire word `14006`) changed the update encoding: bytes
+of another generation are never integrated. A frame of another generation
+is refused before decode (`1008`, `refused: generation`); a container of
+another generation refuses every socket (`1008`, `refused: container`)
+until `reset()` starts it again from `onLoad`; a history version of
+another generation does not read; a browser store of another generation
+(`edytor-v14-g5:<name>`, `edytor-v14:<name>`) is left as it was beside
+the new one (`edytor-v14-g6:<name>`), which starts empty
+(`arch-v2/generation.test.ts`).
 
-### `net.step2.v2` — a SyncStep2 is v2, an Update v1 (P5 wire)
+### `net.step2.v2` — a SyncStep2 and an Update carry one encoding
 
-A SyncStep2 carries a state and is written in the v2 encoding
-(`writeSyncStep2`), converted to v1 on receipt (`step2Update`) before the
-one inbound path; an Update carries one transaction and stays v1, which is
-smaller for most single edits. Measured (1,000-block document, 53-bit
-client id): a full Step 2 280,557 → 220,444 bytes (gzip 55,016 → 28,476);
-a keystroke 60 / 60, a one-character delete 13 / 24, a block move 62 / 84,
-a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
-114 / 53 (v1 / v2).
+A SyncStep2 carries a state (`writeSyncStep2`: `encodeStateAsUpdate`), an
+Update one transaction (the document's `update` event); both are applied
+as they are through the one inbound path (`applyRemote`). Measured
+against the v1 encoding (2,000 blocks, a typing session): a full state
+720,855 → 544,410 bytes (gzip 150,174 → 75,475); a keystroke 133 / 134,
+an Enter 472 / 388 (v1 / the one encoding).
 
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
@@ -2762,7 +2753,7 @@ content, parent }` from an index the room keeps from every change report.
 writes the inverse as its own transaction — the history undo of exactly
 that frame's transaction (a history on the room's facade whose tracked
 origin is the frame's socket, released after each frame by P6's rule,
-`facade.releaseHistory`, so it keeps no deleted content alive): its inserts
+`history.clear()`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
 restored (text by copy where no other writer's delete mark holds it,
 YP11; its block delete marks removed), its moves and attr writes reverted
@@ -3131,7 +3122,7 @@ engine collects the content everywhere (`crdt.doc.purge`):
 - a block merged away before the horizon (`room.purge.merged`, WU-16:
   live, shown by a block that claims it, every claim on it old and
   stored in a list) loses its attribution record (`b/<id>`: `createdBy`,
-  contributors, lineage ring); its registry node stays, as its stream
+  contributors); its registry node stays, as its stream
   shows in its claimer's text. The claimer unioned its contributors at
   the merge, and no history reaches a step below the horizon to split it
   out again. A merged-away block that shows again after the purge (a

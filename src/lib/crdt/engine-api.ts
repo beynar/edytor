@@ -2,15 +2,11 @@
  * Engine-facing types for the placement model.
  *
  * The vendored v14 engine is plain JSDoc-typed JS that is deliberately
- * excluded from `tsconfig.json` type-checking. Its emitted declarations
- * (`vendor/yjs/dts`) parameterize `YNode` on a delta-config generic that
- * collapses to `never` when instantiated with `any` — unusable as an
- * ergonomic call surface.
- *
- * So the model works against the STRUCTURAL interfaces below — the exact
- * subset of the v14 Node/Doc surface it uses — and receives the engine
- * module by injection (`bindModel(Y)`). Only `engine.js` (declared by
- * `engine.d.ts`) imports vendor `.js`, so `pnpm check` never traverses
+ * excluded from `tsconfig.json` type-checking. The model works against the
+ * STRUCTURAL interfaces below — the exact
+ * subset of the v14 Node/Doc surface it uses — and reads the engine
+ * through `engine.js` (its `Y`, declared by `engine.d.ts`), the only
+ * module that imports vendor `.js`, so `pnpm check` never traverses
  * vendored sources.
  */
 import type * as Y from './vendor/yjs/dts/index.js';
@@ -26,7 +22,8 @@ export type EngineApi = typeof Engine;
 
 export type YDoc = InstanceType<typeof Y.Doc>;
 export type YNode = InstanceType<typeof Y.Node>;
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+/** The document's undo manager (`doc/history.ts`). */
+export type YUndoManager = import('./doc/history.js').UndoManager;
 export type YTransaction = Y.Transaction;
 export type YItem = Y.Item;
 
@@ -56,20 +53,6 @@ export interface EngineTransaction {
 }
 
 /**
- * The deep-observer event surface (v14 `YEvent`, observed through
- * `observeDeep` on an ancestor — in our schema, the registry root). The
- * document index folds the event's `transaction.changed` at commit.
- */
-export interface EngineDeepEvent {
-	readonly target: unknown;
-	readonly currentTarget: unknown;
-	readonly keysChanged?: ReadonlySet<string>;
-	readonly delta?: { toJSON(): unknown };
-	readonly deltaDeep?: { toJSON(): unknown };
-	readonly transaction?: unknown;
-}
-
-/**
  * Structural minimum of the vendored `Y.Node` (v14) used by the placement
  * model. A real `YNode` satisfies this at runtime; typed consumers cast once
  * at the boundary (`doc as unknown as EngineDoc`).
@@ -90,21 +73,8 @@ export interface EngineNode {
 	forEachAttr(f: (value: unknown, key: string, node: EngineNode) => void): void;
 	attrKeys(): IterableIterator<string>;
 
-	insert(index: number, content: unknown, format?: Record<string, unknown>): void;
+	insert(index: number, content: unknown): void;
 	delete(index: number, length?: number): void;
-	format(index: number, length: number, formats: Record<string, unknown>): void;
-	get(index: number): unknown;
-	slice(start?: number, end?: number): unknown[];
-	toArray(): unknown[];
-
-	/** Maintained delta cache — `toJSON()` yields the serialized op list. */
-	readonly delta: { toJSON(): { children?: unknown[] } };
-	toDelta(opts?: { deep?: boolean }): { toJSON(): unknown };
-
-	/** Deep event channel — anchors/observers follow the node across moves. */
-	observeDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): unknown;
-	unobserveDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): void;
-	on(name: 'delta', f: (delta: unknown, origin: unknown) => void): void;
 }
 
 /** Structural minimum of the vendored `Y.Doc`. */
@@ -132,6 +102,13 @@ export interface EngineDoc {
 		name: 'update',
 		f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void
 	): void;
+	/**
+	 * Doc-level `commit` channel — fires once per
+	 * transaction, before `afterTransaction`, with the transaction: the
+	 * index folds it there.
+	 */
+	on(name: 'commit', f: (transaction: never) => void): void;
+	off(name: 'commit', f: (transaction: never) => void): void;
 	/** Doc destruction event — doc-scoped state must release on destroy. */
 	on(name: 'destroy', f: () => void): void;
 	off(name: 'destroy', f: () => void): void;

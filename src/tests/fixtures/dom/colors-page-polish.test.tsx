@@ -20,9 +20,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { serializeClipboardFragmentToHtml } from '$lib/clipboard/serializeClipboardFragment.js';
@@ -34,6 +31,12 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -292,12 +295,12 @@ describe('Opening a page block', () => {
 	it('Enter over the page block selected alone opens it; over several, nothing opens', async () => {
 		const open = vi.fn();
 		const view = await render([page('g', 'p-1'), p('z')], [createPagePlugin({ open })]);
-		view.edytor.selection.selectBlocks(get(view, 'g'));
+		selectBlocks(view.edytor, get(view, 'g'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(view.editor, { key: 'Enter' });
 		expect(open).toHaveBeenCalledWith('p-1', { newTab: false });
 		open.mockClear();
-		view.edytor.selection.selectBlocks(get(view, 'g'), get(view, 'z'));
+		selectBlocks(view.edytor, get(view, 'g'), get(view, 'z'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(view.editor, { key: 'Enter' });
 		expect(open).not.toHaveBeenCalled();

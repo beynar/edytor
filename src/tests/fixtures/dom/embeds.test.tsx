@@ -18,22 +18,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	EMBED_PROVIDERS,
 	EMBED_SANDBOX,
-	createEmbedPlugin,
-	embedPlugin,
 	embedSourceOf,
 	type EmbedProvider
 } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { createBookmarkPlugin, bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-import { videoPlugin, createVideoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
-import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { safeMediaSrc, safeWebUrl } from '$lib/plugins/media/media.js';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
-import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -41,6 +33,21 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import {
+	audioPlugin,
+	bookmark as createBookmarkPlugin,
+	bookmarkPlugin,
+	embed as createEmbedPlugin,
+	embedPlugin,
+	file as createFilePlugin,
+	richTextPlugin,
+	suggestionsPlugin,
+	suggestionBarPlugin,
+	video as createVideoPlugin,
+	videoPlugin,
+	mediaEmptyPlugin
+} from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -53,7 +60,7 @@ const mount = async (plugins: Plugin[], children: JSONBlock[], readonly = false)
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [...plugins, richTextPlugin], readonly, value: { children } }
+		{ plugins: [...plugins, mediaEmptyPlugin, richTextPlugin], readonly, value: { children } }
 	);
 
 /** Type `value` into the empty panel's link field and press Enter. */
@@ -288,7 +295,7 @@ describe('embed', () => {
 				url.host === 'docs.example' ? `https://docs.example/embed${url.pathname}` : null
 		};
 		const { edytor } = await mount(
-			[createEmbedPlugin({ providers: [only] }), suggestionsPlugin],
+			[createEmbedPlugin({ providers: [only] }), suggestionsPlugin, suggestionBarPlugin],
 			[{ id: 'p', type: 'paragraph', content: [] }]
 		);
 		edytor.suggestions.add({ after: 'p' }, [
@@ -370,7 +377,10 @@ describe('bookmark', () => {
 describe('file', () => {
 	it('an upload stores the URL, name and size; the block renders a download link', async () => {
 		const upload = vi.fn(async () => 'https://files.example/report.pdf');
-		const { edytor } = await mount([createFilePlugin({ upload })], [{ id: 'f', type: 'file' }]);
+		const { edytor } = await mount(
+			[createUploadsPlugin({ upload }), createFilePlugin()],
+			[{ id: 'f', type: 'file' }]
+		);
 		document.querySelector<HTMLButtonElement>('[data-edytor-media-add]')!.click();
 		await flushDomUpdates();
 		const input = document.querySelector<HTMLInputElement>(
@@ -402,7 +412,7 @@ describe('file', () => {
 		let finish!: (src: string) => void;
 		const upload = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
 		const { edytor } = await mount(
-			[createFilePlugin({ upload })],
+			[createUploadsPlugin({ upload }), createFilePlugin()],
 			[
 				{ id: 'f', type: 'file' },
 				{ id: 'g', type: 'file' }
@@ -419,7 +429,9 @@ describe('file', () => {
 		// A peer sets the source while the upload runs: theirs stays.
 		await pick(0);
 		edytor.facade.apply(
-			edytor.facade.prepare.setBlockData('f', { src: 'https://peer.example/theirs.pdf' })
+			edytor.facade.prepare.patchData('f', [
+				{ path: [], value: { src: 'https://peer.example/theirs.pdf' } }
+			])
 		);
 		finish('https://files.example/mine.pdf');
 		await flushDomUpdates();
@@ -469,7 +481,10 @@ describe('video and audio', () => {
 
 	it('a video upload embeds the uploaded URL', async () => {
 		const upload = vi.fn(async () => 'https://cdn.example/clip.webm');
-		const { edytor } = await mount([createVideoPlugin({ upload })], [{ id: 'v', type: 'video' }]);
+		const { edytor } = await mount(
+			[createUploadsPlugin({ upload }), createVideoPlugin()],
+			[{ id: 'v', type: 'video' }]
+		);
 		document.querySelector<HTMLButtonElement>('[data-edytor-media-add]')!.click();
 		await flushDomUpdates();
 		const input = document.querySelector<HTMLInputElement>('input[type=file]')!;

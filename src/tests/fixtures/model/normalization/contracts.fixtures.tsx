@@ -3,32 +3,43 @@ import { expect, vi } from 'vitest';
 
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
-import { createTestEdytor, expectBlockInvariantSnapshot, removeIds } from '../../../test.utils.js';
+import {
+	createTestEdytor,
+	expectBlockInvariantSnapshot,
+	insertParts,
+	removeIds
+} from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
+import { selectionState } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const serializeChildren = (children: JSONBlock[]) =>
 	removeIds(JSON.parse(JSON.stringify(children)) as JSONBlock[]);
 
 const snapshotChildren = (block: Block) => serializeChildren(block.edytor.value.children ?? []);
 
+/** Run `block`'s kind's normalizer, as the end of a command's transaction does. */
+const normalize = (block: Block, hook: 'normalizeContent' | 'normalizeChildren') =>
+	block.edytor.transact(() => block.edytor.dispatcher.request(block.id, hook));
+
 const expectSecondPassStable = (block: Block) => {
 	const firstPass = JSON.stringify(snapshotChildren(block));
-	block.normalizeContent();
-	block.normalizeChildren();
+	normalize(block, 'normalizeContent');
+	normalize(block, 'normalizeChildren');
 	expect(JSON.stringify(snapshotChildren(block))).toBe(firstPass);
 	expectBlockInvariantSnapshot(block.edytor);
 };
 
 /** Replace a block's content with JSON parts (R4: parts are specs, not wrappers). */
 const replaceContent = (block: Block, content: (JSONText[] | JSONInlineBlock)[]) => {
-	block.model!.deleteText(0, block.model!.length);
-	block.insertParts(0, content);
+	const { facade } = block.edytor;
+	facade.deleteText(block.id, 0, facade.displayLength(block.id));
+	insertParts(block, 0, content);
 };
 
 const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
@@ -50,11 +61,8 @@ const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
 									}
 
 									return () => {
-										lastText.insertText({
-											value: '!',
-											start: lastText.length,
-											end: lastText.length
-										});
+										const end = lastText.segStart + lastText.length;
+										block.edytor.insertText(block.id, end, '!');
 									};
 								}
 							: undefined,
@@ -66,13 +74,9 @@ const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
 									}
 
 									return () => {
-										block.addChildBlock({
-											index: 0,
-											block: {
-												type: 'paragraph',
-												content: [{ text: 'child' }]
-											}
-										});
+										block.edytor.insertBlocks({ parent: block.id, index: 0 }, [
+											{ type: 'paragraph', content: [{ text: 'child' }] }
+										]);
 									};
 								}
 							: undefined
@@ -96,7 +100,7 @@ export const fixtures = defineFixtures([
 			});
 			const block = edytor.root!.children[0];
 			replaceContent(block, [{ type: 'mention' }, { type: 'mention' }]);
-			block.normalizeContent();
+			normalize(block, 'normalizeContent');
 
 			expect(block.content[0]).toBeInstanceOf(Text);
 			expect(block.content.at(-1)).toBeInstanceOf(Text);
@@ -126,7 +130,7 @@ export const fixtures = defineFixtures([
 			});
 			const block = edytor.root!.children[0];
 			replaceContent(block, [[{ text: 'Hello' }], [{ text: ' world', marks: { bold: true } }]]);
-			block.normalizeContent();
+			normalize(block, 'normalizeContent');
 
 			expect(snapshotChildren(block)).toEqual([
 				{
@@ -149,8 +153,8 @@ export const fixtures = defineFixtures([
 				</root>
 			);
 
-			edytor.root!.deleteChildren(0, edytor.root!.children.length);
-			edytor.root!.normalizeChildren();
+			for (const id of edytor.facade.childrenIds(null))
+				edytor.facade.deleteBlock(id, { keepChildren: false });
 
 			// The document is empty (`doc.empty.virtual`); the view's root shows one
 			// paragraph that is not written.
@@ -169,7 +173,7 @@ export const fixtures = defineFixtures([
 			children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }]
 		},
 		run: ({ edytor }) => {
-			edytor.root!.children[0].normalizeContent();
+			normalize(edytor.root!.children[0], 'normalizeContent');
 		},
 		assert: ({ edytor }) => {
 			const block = edytor.root!.children[0];
@@ -191,7 +195,7 @@ export const fixtures = defineFixtures([
 			children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }]
 		},
 		run: ({ edytor }) => {
-			edytor.root!.children[0].normalizeChildren();
+			normalize(edytor.root!.children[0], 'normalizeChildren');
 		},
 		assert: ({ edytor }) => {
 			const block = edytor.root!.children[0];
@@ -225,11 +229,9 @@ export const fixtures = defineFixtures([
 						</root>
 					);
 					const block = edytor.root!.children[0];
-					block.setBlock({
-						value: {
-							type: 'paragraph',
-							content: [{ type: 'mention' }, { text: ' world', marks: { bold: true } }]
-						}
+					edytor.setBlock(block.id, {
+						type: 'paragraph',
+						content: [{ type: 'mention' }, { text: ' world', marks: { bold: true } }]
 					});
 					expectSecondPassStable(block);
 				},
@@ -240,13 +242,11 @@ export const fixtures = defineFixtures([
 						</root>
 					);
 					const block = edytor.root!.children[0];
-					const text = edytor.selection.state.startText!;
-					block.addInlineBlock({
-						index: edytor.selection.state.yStart,
-						block: { type: 'mention' },
-						text
+					const text = selectionState(edytor).startText!;
+					edytor.insertInline(block.id, text.segStart + selectionState(edytor).yStart, {
+						type: 'mention'
 					});
-					block.removeInlineBlock({ index: 1 });
+					edytor.removeInline(block.id, block.content[1]!.id);
 					expectSecondPassStable(block);
 				},
 				() => {
@@ -259,10 +259,9 @@ export const fixtures = defineFixtures([
 						</root>
 					);
 					const block = edytor.root!.children[0];
-					block.splitBlock({
-						index: edytor.selection.state.yStart,
-						text: edytor.selection.state.startText!
-					});
+					const text = selectionState(edytor).startText!;
+					const offset = text.segStart + selectionState(edytor).yStart;
+					edytor.splitBlock(block.id, offset, 'b-tail', { type: 'paragraph' });
 					expectSecondPassStable(edytor.root!.children[0]);
 					expectSecondPassStable(edytor.root!.children[1]);
 				},
@@ -276,7 +275,7 @@ export const fixtures = defineFixtures([
 							</paragraph>
 						</root>
 					);
-					edytor.root!.children[1].mergeBlockBackward();
+					edytor.mergeBackward(edytor.root!.children[1].id);
 					expectSecondPassStable(edytor.root!.children[0]);
 				},
 				() => {
@@ -325,7 +324,7 @@ export const fixtures = defineFixtures([
 
 				normalizeContent.mockClear();
 				warnSpy.mockClear();
-				block.normalizeContent();
+				normalize(block, 'normalizeContent');
 
 				// 50 re-requests + the initial pass (the dispatcher's pass limit).
 				expect(normalizeContent).toHaveBeenCalledTimes(51);
@@ -333,7 +332,7 @@ export const fixtures = defineFixtures([
 				// The limit is per command — the next one is not silently
 				// suppressed by a leaked counter.
 				normalizeContent.mockClear();
-				block.normalizeContent();
+				normalize(block, 'normalizeContent');
 				expect(normalizeContent).toHaveBeenCalledTimes(51);
 				expectBlockInvariantSnapshot(edytor);
 			} finally {
@@ -363,12 +362,12 @@ export const fixtures = defineFixtures([
 
 				normalizeChildren.mockClear();
 				warnSpy.mockClear();
-				block.normalizeChildren();
+				normalize(block, 'normalizeChildren');
 
 				expect(normalizeChildren).toHaveBeenCalledTimes(51);
 				expect(warnSpy).toHaveBeenCalled();
 				normalizeChildren.mockClear();
-				block.normalizeChildren();
+				normalize(block, 'normalizeChildren');
 				expect(normalizeChildren).toHaveBeenCalledTimes(51);
 				expectBlockInvariantSnapshot(edytor);
 			} finally {

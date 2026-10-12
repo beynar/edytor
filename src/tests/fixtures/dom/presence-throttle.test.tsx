@@ -34,7 +34,7 @@ const entries = (edytor: Edytor) =>
 const strip = ({ t: _t, ...entry }: Entry) => entry;
 
 const caret = (edytor: Edytor, block: number, offset: number) =>
-	edytor.selection.setAtTextOffset(edytor.root!.children[block]!.firstText!, offset);
+	edytor.selection.selectText(edytor.root!.children[block]!.firstText!, offset);
 
 /** A view; `throttle` set (the rows of other rules publish every change: `0`). */
 const mount = async (throttle?: number) => {
@@ -131,9 +131,9 @@ describe("presence share: 'block'", () => {
 		const { edytor } = await mount(0);
 		edytor.presence.share = 'block';
 		const [first, second] = edytor.root!.children;
-		edytor.selection.setAtRange(first!.firstText!, 2, second!.firstText!, 3);
+		edytor.selection.selectText(first!.firstText!, 2, second!.firstText!, 3);
 		expect(entries(edytor).map(strip)).toEqual([{ blocks: [second!.id] }]);
-		edytor.selection.setAtRange(first!.firstText!, 2, second!.firstText!, 3, { isReversed: true });
+		edytor.selection.selectText(first!.firstText!, 2, second!.firstText!, 3, true);
 		expect(entries(edytor).map(strip)).toEqual([{ blocks: [first!.id] }]);
 	});
 

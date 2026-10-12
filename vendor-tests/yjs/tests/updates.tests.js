@@ -3,12 +3,13 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import { init, compare } from './testHelper.js' // eslint-disable-line
 import { readBlockSet } from '../../../src/lib/crdt/vendor/yjs/src/utils/BlockSet.js'
 import { readIdSet, writeIdSet } from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
-import { UpdateDecoderV2 } from '../../../src/lib/crdt/vendor/yjs/src/utils/UpdateDecoder.js'
-import { UpdateEncoderV2 } from '../../../src/lib/crdt/vendor/yjs/src/utils/UpdateEncoder.js'
+import { UpdateDecoder } from '../../../src/lib/crdt/vendor/yjs/src/utils/UpdateDecoder.js'
+import { UpdateEncoder } from '../../../src/lib/crdt/vendor/yjs/src/utils/UpdateEncoder.js'
 import * as encoding from 'lib0-v14/encoding'
 import * as decoding from 'lib0-v14/decoding'
 import * as delta from 'lib0-v14/delta'
 import * as array from 'lib0-v14/array'
+import { toDelta, applyDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 /**
  * @typedef {Object} Enc
@@ -19,7 +20,7 @@ import * as array from 'lib0-v14/array'
  * @property {function(Uint8Array):{deletes:Y.IdSet,inserts:Y.IdSet}} Enc.readUpdateToContentIds
  * @property {function(Y.Doc):Uint8Array<ArrayBuffer>} Enc.encodeStateVector
  * @property {function(Uint8Array):Uint8Array<ArrayBuffer>} Enc.encodeStateVectorFromUpdate
- * @property {'update'|'updateV2'} Enc.updateEventName
+ * @property {'update'} Enc.updateEventName
  * @property {string} Enc.description
  * @property {function(Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>):Uint8Array<ArrayBuffer>} Enc.diffUpdate
  */
@@ -88,7 +89,7 @@ const noLog = () => {}
 /**
  * @type {Enc}
  */
-const encV1 = {
+const encUpdates = {
   mergeUpdates: Y.mergeUpdates,
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   applyUpdate: Y.applyUpdate,
@@ -97,24 +98,8 @@ const encV1 = {
   encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdate),
   encodeStateVector: Y.encodeStateVector,
   updateEventName: 'update',
-  description: 'V1',
-  diffUpdate: (update, sv) => Y.diffUpdateV2(update, sv, Y.UpdateDecoderV1, Y.UpdateEncoderV1)
-}
-
-/**
- * @type {Enc}
- */
-const encV2 = {
-  mergeUpdates: Y.mergeUpdatesV2,
-  encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
-  applyUpdate: Y.applyUpdateV2,
-  logUpdate: noLog,
-  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdateV2),
-  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdateV2),
-  encodeStateVector: Y.encodeStateVector,
-  updateEventName: 'updateV2',
-  description: 'V2',
-  diffUpdate: Y.diffUpdateV2
+  description: 'Updates',
+  diffUpdate: Y.diffUpdate
 }
 
 /**
@@ -124,17 +109,17 @@ const encDoc = {
   mergeUpdates: (updates) => {
     const ydoc = new Y.Doc({ gc: false })
     updates.forEach(update => {
-      Y.applyUpdateV2(ydoc, update)
+      Y.applyUpdate(ydoc, update)
     })
-    return Y.encodeStateAsUpdateV2(ydoc)
+    return Y.encodeStateAsUpdate(ydoc)
   },
-  encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
-  applyUpdate: Y.applyUpdateV2,
+  encodeStateAsUpdate: Y.encodeStateAsUpdate,
+  applyUpdate: Y.applyUpdate,
   logUpdate: noLog,
-  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdateV2),
-  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdateV2),
+  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdate),
+  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdate),
   encodeStateVector: Y.encodeStateVector,
-  updateEventName: 'updateV2',
+  updateEventName: 'update',
   description: 'Merge via Y.Doc',
   /**
    * @param {Uint8Array} update
@@ -142,12 +127,12 @@ const encDoc = {
    */
   diffUpdate: (update, sv) => {
     const ydoc = new Y.Doc({ gc: false })
-    Y.applyUpdateV2(ydoc, update)
-    return Y.encodeStateAsUpdateV2(ydoc, sv)
+    Y.applyUpdate(ydoc, update)
+    return Y.encodeStateAsUpdate(ydoc, sv)
   }
 }
 
-const encoders = [encV1, encV2, encDoc]
+const encoders = [encUpdates, encDoc]
 
 /**
  * @param {Array<Y.Doc>} users
@@ -184,14 +169,17 @@ export const testMergeUpdates = tc => {
 export const testKeyEncoding = tc => {
   const { users, text0, text1 } = init(tc, { users: 2 })
 
-  text0.insert(0, 'a', { italic: true })
+  // YP19: the engine's formats are paired marks (exclusive edges: an insert beside one stays out)
+  text0.insert(0, 'a')
+  text0.mark(0, 1, 'italic', true, 1, 0)
   text0.insert(0, 'b')
-  text0.insert(0, 'c', { italic: true })
+  text0.insert(0, 'c')
+  text0.mark(0, 1, 'italic', true, 1, 0)
 
-  const update = Y.encodeStateAsUpdateV2(users[0])
-  Y.applyUpdateV2(users[1], update)
+  const update = Y.encodeStateAsUpdate(users[0])
+  Y.applyUpdate(users[1], update)
 
-  const c = text1.toDelta()
+  const c = toDelta(text1)
   t.compare(
     c,
     delta.create()
@@ -263,14 +251,14 @@ const checkUpdateCases = (ydoc, updates, enc, hasDeletes) => {
           // because diffed contains the set of all deletes.
           // So we add all deletes from `diffed` to `partDeletes` and compare then
           const decoder = decoding.createDecoder(diffed)
-          const updateDecoder = new UpdateDecoderV2(decoder)
+          const updateDecoder = new UpdateDecoder(decoder)
           readBlockSet(updateDecoder)
           const ds = readIdSet(updateDecoder)
-          const updateEncoder = new UpdateEncoderV2()
+          const updateEncoder = new UpdateEncoder()
           encoding.writeVarUint(updateEncoder.restEncoder, 0) // 0 structs
           writeIdSet(updateEncoder, ds)
           const deletesUpdate = updateEncoder.toUint8Array()
-          const mergedDeletes = Y.mergeUpdatesV2([deletesUpdate, partMerged])
+          const mergedDeletes = Y.mergeUpdates([deletesUpdate, partMerged])
           if (!hasDeletes || enc !== encDoc) {
             // deletes will almost definitely lead to different encoders because of the mergeStruct feature that is present in encDoc
             t.compare(diffed, mergedDeletes)
@@ -368,11 +356,11 @@ export const testMergePendingUpdates = _tc => {
     serverUpdates.splice(serverUpdates.length, 0, update)
   })
   const yText = yDoc.get('textBlock')
-  yText.applyDelta(delta.create().insert('r').done())
-  yText.applyDelta(delta.create().insert('o').done())
-  yText.applyDelta(delta.create().insert('n').done())
-  yText.applyDelta(delta.create().insert('e').done())
-  yText.applyDelta(delta.create().insert('n').done())
+  applyDelta(yText, delta.create().insert('r').done())
+  applyDelta(yText, delta.create().insert('o').done())
+  applyDelta(yText, delta.create().insert('n').done())
+  applyDelta(yText, delta.create().insert('e').done())
+  applyDelta(yText, delta.create().insert('n').done())
 
   const yDoc1 = new Y.Doc()
   Y.applyUpdate(yDoc1, serverUpdates[0])

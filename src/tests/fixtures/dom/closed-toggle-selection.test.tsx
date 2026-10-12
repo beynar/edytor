@@ -9,10 +9,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
 	canonicalTree,
@@ -23,6 +19,13 @@ import {
 	setNativeSelection,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockHandlesPlugin,
+	blockMenuPlugin,
+	richTextPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -61,7 +64,7 @@ const click = async (element: Element) => {
 	await flushDomUpdates();
 };
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart } = edytor.selection.state;
+	const { startBlock, yStart } = selectionState(edytor);
 	return [startBlock?.id, yStart];
 };
 /** Blocks as `[type, text, children]`. */
@@ -126,7 +129,7 @@ describe('Turn into over a text range across a toggle (XW-13)', () => {
 	const doc = () => [p('a'), toggle('t', [p('body')]), p('z')];
 	const range = async ({ edytor }: View) => {
 		const [a, z] = [edytor.idToBlock.get('a')!, edytor.idToBlock.get('z')!];
-		edytor.selection.setAtRange(a.firstText!, 0, z.firstText!, 1);
+		edytor.selection.selectText(a.firstText!, 0, z.firstText!, 1);
 		await flushDomUpdates();
 	};
 	const heading = () =>
@@ -205,7 +208,7 @@ describe('the sweep: walkers beside a closed toggle', () => {
 		const { edytor } = view;
 		const [t, after] = [edytor.idToBlock.get('t')!, edytor.idToBlock.get('after')!];
 		await setNativeSelection(edytor, t.firstText, 0, after.firstText, 0);
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['t', 0, 't', 1]);
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		expect(canonicalTree(edytor).map(shape)).toEqual([
@@ -217,7 +220,7 @@ describe('the sweep: walkers beside a closed toggle', () => {
 	it('Backspace over a selected closed toggle keeps its body in its place and puts the caret there', async () => {
 		const view = await render([], [toggle('t', [p('body')]), p('z')]);
 		const { edytor } = view;
-		edytor.selection.selectBlocks(edytor.idToBlock.get('t')!);
+		selectBlocks(edytor, edytor.idToBlock.get('t')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Backspace' });
 		expect(canonicalTree(edytor).map(shape)).toEqual([
@@ -232,7 +235,7 @@ describe('the sweep: walkers beside a closed toggle', () => {
 		const view = await render([], [p('a'), toggle('t', [p('body')]), p('z')]);
 		const { edytor } = view;
 		const [t, z] = [edytor.idToBlock.get('t')!, edytor.idToBlock.get('z')!];
-		edytor.selection.setAtRange(t.firstText!, 0, z.firstText!, 1);
+		edytor.selection.selectText(t.firstText!, 0, z.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab' });
 		expect(canonicalTree(edytor).map(shape)).toEqual([
@@ -278,7 +281,7 @@ describe('the sweep: Turn into over a block selection holding a hidden body (SW7
 	it('Mod+Alt+1 after selecting every block converts the shown ones only', async () => {
 		const view = await render([], [p('a'), toggle('t', [p('body')]), p('z')]);
 		const { edytor } = view;
-		edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
+		selectBlocks(edytor, ...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: '1', code: 'Digit1', ctrlKey: true, altKey: true });
 		expect(canonicalTree(edytor).map(shape)).toEqual([
@@ -293,7 +296,7 @@ describe('the sweep: history on a readonly view (SW7-selection-4)', () => {
 	it('historyUndo() and historyRedo() are refused while the view is readonly', async () => {
 		const view = await render([], [p('a')]);
 		const { edytor, editor } = view;
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
 		expect(canonicalTree(edytor).map(shape)).toEqual([['paragraph', 'ax', []]]);

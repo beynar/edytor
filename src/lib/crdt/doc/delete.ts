@@ -146,3 +146,5 @@ export const deleteOps = (c: OpsContext) => {
 		deleteBlock
 	};
 };
+
+export type DeleteOps = ReturnType<typeof deleteOps>;

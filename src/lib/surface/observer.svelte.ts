@@ -34,26 +34,32 @@
  *   flip back. A kind's own markup around its slots is the kind's.
  */
 import { tick, untrack } from 'svelte';
-import type { DocAnchor, YTransaction } from '../crdt/index.js';
+import type { DocAnchor } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { diffText } from '../utils/diffText.js';
 import { jsonEquals } from '../utils/json.js';
-import { activeMarks } from '../session/editing/text.js';
+import { activeMarks, marksForInsertion } from '../session/editing/text.js';
 import { INTENTS } from '../session/attempt.js';
 import {
 	getCollapsedDomTextSelection,
 	handleNativeLineBreakTextValue,
 	readDomText
 } from '../events/onInput.js';
-import { diverges, heal, ownedOf, type Kind } from './attributes.js';
-import type { Cell, Patched, Replaced } from './cells.js';
+import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
+import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
+import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
 
-export type Verdict = 'adopt' | 'invert' | 'defer';
+/**
+ * What a text divergence asks for: adopted (`attempt`: claimed by the
+ * browser-owned attempt on its host), the cell restored, or compared again
+ * once a model-owned attempt's window closed.
+ */
+type Verdict = 'adopt' | 'attempt' | 'invert' | 'defer';
 /** Where an adopted edit lands: the block and offset its anchor resolves to now. */
-export type Place = { block: string; at: number; remove: number; insert: string };
-export type Finding = { block: string | null; verdict: Verdict; why: string; place?: Place };
-type Entry = { kind: Kind; block: string; name?: string };
+type Place = { block: string; at: number; remove: number; insert: string };
+/** A registered element; `owned`: the attributes its render owns (a block's, `Block.svelte`). */
+type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
 /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
 type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
 /** A record that removed registered elements: what it removed and added, and where. */
@@ -114,12 +120,8 @@ const caretIn = (nodes: Node[]) => {
 	if (!anchor) return undefined;
 	let offset = 0;
 	for (const node of nodes) {
-		if (node === anchor || node.contains(anchor)) {
-			const range = node.ownerDocument!.createRange();
-			range.selectNodeContents(node);
-			range.setEnd(anchor, selection!.anchorOffset);
-			return offset + range.toString().length;
-		}
+		if (node.contains(anchor))
+			return offset + getTextContentOffsetAtPoint(node, anchor, selection!.anchorOffset);
 		offset += node.textContent?.length ?? 0;
 	}
 	return undefined;
@@ -155,7 +157,8 @@ export class SurfaceObserver {
 	/** Of those, the ones a commit re-rendered (a remount discards its DOM: never snapshotted). */
 	#rerendered = new Set<string>();
 	#bases = new Map<string, Base>();
-	#snapshots = new Map<string, Finding>();
+	/** A snapshotted edit: where it lands, or the verdict an expectation gave it. */
+	#snapshots = new Map<string, Place | Verdict>();
 	/** Divergence a model-owned attempt's drift window may still repair: compared once it closed. */
 	#waiting = new Set<string>();
 	/** Divergence seen while read-only: inverted at the flip back. */
@@ -172,7 +175,6 @@ export class SurfaceObserver {
 
 	/** Observe `root` (the host): records name what to compare. */
 	attach = (root: HTMLElement) => {
-		if (typeof MutationObserver === 'undefined') return () => {};
 		const mo = (this.#mo = new MutationObserver((records) => {
 			records.forEach(this.#intake);
 			this.signal();
@@ -193,8 +195,8 @@ export class SurfaceObserver {
 	};
 
 	/** Register an element the core rendered (an attachment); returns its release. */
-	register = (node: Element, kind: Kind, block: string, name?: string) => {
-		this.#registry.set(node, { kind, block, name });
+	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
+		this.#registry.set(node, { kind, block, name, owned });
 		if (kind === 'block') this.#blocks.set(block, node);
 		else if (kind !== 'anchor' && kind !== 'preview') {
 			const set = this.#contents.get(block) ?? new Set();
@@ -243,12 +245,6 @@ export class SurfaceObserver {
 	pending = () => {
 		if (this.#take()) this.signal();
 		return this.#dirty.size > 0 || this.#removed.length > 0;
-	};
-
-	/** Before a transaction: pending records name their contents while the model equals the render. */
-	before = (transaction: YTransaction) => {
-		void transaction;
-		if (this.#take()) this.signal();
 	};
 
 	/**
@@ -431,20 +427,15 @@ export class SurfaceObserver {
 			const cell = this.edytor.cells?.get(id);
 			if (!dom || !cell || dom.text === base.text || dom.text === textOf(cell)) continue;
 			// An expectation claims the edit, or it is placed through the anchor minted at it.
-			const claimed = this.#divergence(id);
+			const verdict = this.#divergence(id);
 			// An edit the window defers is drift: the flush's render restores the cell.
-			if (claimed.verdict === 'defer') claimed.verdict = 'invert';
-			if (claimed.verdict !== 'adopt' || claimed.why === 'attempt') {
-				this.#snapshots.set(id, claimed);
+			if (verdict !== 'adopt') {
+				this.#snapshots.set(id, verdict === 'defer' ? 'invert' : verdict);
 				continue;
 			}
 			const change = diffText(base.text, dom.text)!;
-			this.#snapshots.set(id, {
-				block: id,
-				verdict: 'adopt',
-				why: 'snapshot',
-				place: { ...change, ...this.#place(id, base, dom.text, change.at, textOf(cell)) }
-			});
+			const place = this.#place(id, base, dom.text, change.at, textOf(cell));
+			this.#snapshots.set(id, { ...change, ...place });
 		}
 	};
 
@@ -505,14 +496,14 @@ export class SurfaceObserver {
 		}
 		if (this.#fresh) {
 			this.#fresh = false;
-			void settle(work).then(edytor.projector.recordsChanged);
+			void settle(work).then(edytor.projector.inputHandled);
 		}
 		return work;
 	};
 
 	/** A content differs from its cell (text, structure or a missing element). */
 	#diverges = (id: string | null) => {
-		if (id === null) return this.#root() !== null;
+		if (id === null) return this.#rootDiverges();
 		const cell = this.edytor.cells?.get(id);
 		const dom = cell && id !== this.#host && this.#read(id);
 		return Boolean(dom && (dom.broken || dom.text !== textOf(cell!) || this.#shape(id)));
@@ -534,8 +525,8 @@ export class SurfaceObserver {
 		if (snapshot) {
 			// Compared again at the next pass, once the edit is resolved.
 			this.#dirty.add(id);
-			if (snapshot.verdict === 'adopt' && snapshot.place) return [this.#adoptAt(snapshot.place)];
-			if (snapshot.verdict === 'invert') this.#invert(id);
+			if (typeof snapshot === 'object') return [this.#adoptAt(snapshot)];
+			if (snapshot === 'invert') this.#invert(id);
 			return [];
 		}
 		const want = textOf(cell);
@@ -548,10 +539,10 @@ export class SurfaceObserver {
 			if (this.#shape(id)) this.#invert(id);
 			return [];
 		}
-		const { verdict } = this.#divergence(id);
+		const verdict = this.#divergence(id);
 		if (verdict === 'defer') this.#waiting.add(id);
 		if (verdict === 'invert') this.#invert(id);
-		if (verdict !== 'adopt') return [];
+		if (verdict === 'defer' || verdict === 'invert') return [];
 		return this.#adoptContent(id);
 	};
 
@@ -560,20 +551,19 @@ export class SurfaceObserver {
 	 * tail, a pending structural key and a model-owned drift invert; a
 	 * browser-owned attempt adopts); otherwise text inside a content is adopted.
 	 */
-	#divergence = (id: string): Finding => {
+	#divergence = (id: string): Verdict => {
 		const { attempts, composition } = this.edytor;
-		if (composition.tail()?.parent.id === id) return { block: id, verdict: 'invert', why: 'tail' };
-		// A composition with no target writes nothing: what its IME wrote is drift.
-		if (composition.targetless) return { block: id, verdict: 'invert', why: 'tail' };
-		// A structural key waiting for its `beforeinput` or deadline owns the drift it causes.
-		if (attempts.key) return { block: id, verdict: 'invert', why: 'key' };
+		// The composition's tail; a composition with no target writes nothing: what its
+		// IME wrote is drift; a structural key waiting for its `beforeinput` or
+		// deadline owns the drift it causes.
+		if (composition.tail()?.parent.id === id || composition.targetless || attempts.key)
+			return 'invert';
 		for (const text of this.#texts(id)) {
-			if (attempts.on(text)) return { block: id, verdict: 'adopt', why: 'attempt' };
-			if (attempts.drifting(text)) return { block: id, verdict: 'invert', why: 'drift' };
+			if (attempts.on(text)) return 'attempt';
+			if (attempts.drifting(text)) return 'invert';
 		}
 		// A model-owned attempt's window is open: its drift may land around its host (a merge target).
-		if (attempts.busy) return { block: id, verdict: 'defer', why: 'window' };
-		return { block: id, verdict: 'adopt', why: 'location' };
+		return attempts.busy ? 'defer' : 'adopt';
 	};
 
 	/**
@@ -704,10 +694,7 @@ export class SurfaceObserver {
 				const node = nodes[i];
 				const chain = delta.marks
 					.map(([name]) => name)
-					.filter((name) => {
-						const mark = this.edytor.marks.get(name);
-						return mark?.snippet || mark?.tag;
-					});
+					.filter((name) => rendersMark(this.edytor.marks, name));
 				if (!chain.length) {
 					if (node.nodeType !== Node.TEXT_NODE) return 'foreign-child';
 					continue;
@@ -724,23 +711,21 @@ export class SurfaceObserver {
 		return null;
 	};
 
-	/** The root's children: registered block elements in cell order, the anchor, Svelte's anchors. */
-	#root = (): Finding | null => {
+	/** The root's children differ from its registered block elements in cell order, the anchor, Svelte's anchors. */
+	#rootDiverges = () => {
 		const { node, cells } = this.edytor;
-		if (!node || !cells) return null;
+		if (!node || !cells) return false;
 		const shown: string[] = [];
 		for (const child of node.childNodes) {
 			if (isAnchor(child)) continue;
 			const entry = child instanceof Element ? this.#registry.get(child) : undefined;
 			if (entry?.kind === 'block') shown.push(entry.block);
-			else if (entry?.kind !== 'anchor' && entry?.kind !== 'preview')
-				return { block: null, verdict: 'invert', why: 'root-child' };
+			else if (entry?.kind !== 'anchor' && entry?.kind !== 'preview') return true;
 		}
-		const missing = cells.rootIds.some((id) => this.#blocks.get(id)?.parentNode !== node);
-		if (missing) return { block: null, verdict: 'invert', why: 'missing' };
-		return shown.join() === cells.rootIds.join()
-			? null
-			: { block: null, verdict: 'invert', why: 'root-order' };
+		return (
+			cells.rootIds.some((id) => this.#blocks.get(id)?.parentNode !== node) ||
+			shown.join() !== cells.rootIds.join()
+		);
 	};
 
 	/**
@@ -908,7 +893,7 @@ const shownMarks = (text: Text, at: number) => {
 /** The rendered marks the model gives the character at `at` of `text`. */
 const modelMarks = (edytor: Edytor, text: Text, at: number) =>
 	Object.keys(activeMarks(text.getMarksAtRange(at, at + 1)[0]?.marks))
-		.filter((name) => edytor.marks.get(name)?.tag || edytor.marks.get(name)?.snippet)
+		.filter((name) => rendersMark(edytor.marks, name))
 		.sort()
 		.join();
 
@@ -939,7 +924,7 @@ export const adopt = async (
 	const value = drifted ? after : dom;
 	const caret = drifted ? undefined : domCaret;
 	if (attempt) edytor.selection.select(attempt.target);
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
 	const grow = value.length - text.length;
 	const back = attempt?.isCollapsed && INTENTS[attempt.inputType]?.dir === 'back';
 	const change = diffText(
@@ -958,14 +943,14 @@ export const adopt = async (
 	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
 	const shown = insert && shownMarks(text, at);
 	const kind = attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : null;
-	edytor.dispatcher.run(kind ?? 'foreignChange', () =>
-		insert
-			? text.insertText({ value: insert, start: at, end: at + remove })
-			: text.parent.deleteContentAtRange({
-					start: [text.index, at],
-					end: [text.index, at + remove]
-				})
-	);
+	edytor.dispatcher.run(kind ?? 'foreignChange', () => {
+		const [id, from] = [text.parent.id, text.segStart + at];
+		// A replaced range's common marks; else the view's insertion rule.
+		const replaced = remove ? text.getMarksAtRange(at, at + remove) : undefined;
+		const marks = replaced && marksForInsertion(text, at, { replaced });
+		if (remove) edytor.deleteText(id, from, remove);
+		if (insert) edytor.insertText(id, from, insert, marks);
+	});
 	const adopted = text.isInDocument && text.stringContent === value;
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;
@@ -981,10 +966,14 @@ export const adopt = async (
 	await tick();
 	if (edytor.intentSerial !== serial) return true;
 	const end = caret ?? (attempt ? at + insert.length : undefined);
-	if (adopted && end !== undefined)
-		edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
+	if (adopted && end !== undefined) edytor.selection.selectText(text, Math.min(end, text.length));
 	// A deletion of uniformly marked text keeps its marks pending at the caret.
-	if (adopted && same && Object.keys(marks).length > 0 && edytor.selection.state.startText === text)
+	if (
+		adopted &&
+		same &&
+		Object.keys(marks).length > 0 &&
+		edytor.selection.textRange().startText === text
+	)
 		edytor.selection.stage(marks);
 	return true;
 };

@@ -27,8 +27,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { attemptOf } from '$lib/session/attempt.js';
-import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import {
 	canonicalTree,
@@ -39,6 +37,15 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import {
+	image as createImagePlugin,
+	imagePlugin,
+	richTextPlugin,
+	mediaEmptyPlugin,
+	imageToolbarPlugin
+} from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -63,7 +70,14 @@ const mount = (upload?: (file: File) => Promise<string>) =>
 			<paragraph>hello|</paragraph>
 			<paragraph>after</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, createImagePlugin({ upload })] }
+		{
+			plugins: [
+				...(upload ? [createUploadsPlugin({ upload })] : []),
+				richTextPlugin,
+				createImagePlugin(),
+				mediaEmptyPlugin
+			]
+		}
 	);
 
 const shape = (edytor: Edytor) =>
@@ -205,7 +219,7 @@ describe('a pasted image file goes through `upload` (WU-21)', () => {
 		const id = edytor.value.children![1]!.id!;
 		expect(edytor.facade.blockDataOf(id)).toEqual({ src: 'https://example.com/a.png' });
 		// Its source removed, the block is a plain empty image again: no stale error.
-		edytor.idToBlock.get(id)!.setData({});
+		edytor.patchData(id, [{ path: [], value: {} }]);
 		await flushDomUpdates();
 		expect(editor.querySelector('[data-edytor-image-error]')).toBeNull();
 		expect(editor.querySelector('[data-edytor-image-form]')).toBeNull();
@@ -285,7 +299,7 @@ describe('a pasted image file goes through `upload` (WU-21)', () => {
 			<root>
 				<paragraph>hello|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin] }
 		);
 		const was = plain.edytor.value;
 		await pasteFiles(plain.editor, [png()]);
@@ -348,7 +362,7 @@ describe('a dropped image file goes through `upload` (WU-21)', () => {
 		const { upload } = deferred();
 		const { edytor } = await mount(upload);
 		const [hello, after] = edytor.root!.children;
-		edytor.selection.selectBlocks(hello!);
+		selectBlocks(edytor, hello!);
 		await flushDomUpdates();
 		// Dropped inside `after`, after `af`.
 		const element = after!.firstText!.node!;
@@ -390,7 +404,7 @@ describe('HTML import reads a bare <img> (WU-21, flow.html.void)', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin] }
 		);
 		return edytor;
 	};
@@ -466,7 +480,7 @@ describe('HTML import reads a bare <img> (WU-21, flow.html.void)', () => {
 			<root>
 				<paragraph>hello|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin] }
 		);
 		await dispatchClipboardPaste(editor, { 'text/html': `<img src="${src}" alt="A">` });
 		expect(canonicalTree(edytor).map((block) => block.type)).toEqual([
@@ -486,7 +500,7 @@ describe('alt, width and alignment (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin],
 				value: {
 					children: [
 						{ id: 'img', type: 'image', data: { src, ...data }, content: [{ text: 'cap' }] },
@@ -499,7 +513,7 @@ describe('alt, width and alignment (WU-21)', () => {
 	it('renders data.alt as the image alt, and no alt as an empty one', async () => {
 		const { editor, edytor } = await withImage({ alt: 'A red barn' });
 		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('A red barn');
-		edytor.idToBlock.get('img')!.setData({ src });
+		edytor.patchData('img', [{ path: [], value: { src } }]);
 		await flushDomUpdates();
 		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('');
 	});
@@ -509,7 +523,7 @@ describe('alt, width and alignment (WU-21)', () => {
 		const wrapper = editor.querySelector<HTMLElement>('[data-edytor-image]')!;
 		expect(wrapper.getAttribute('data-align')).toBe('right');
 		expect(wrapper.querySelector('img')!.style.width).toBe('240px');
-		edytor.idToBlock.get('img')!.setData({ src, align: 'sideways', width: -3 });
+		edytor.patchData('img', [{ path: [], value: { src, align: 'sideways', width: -3 } }]);
 		await flushDomUpdates();
 		expect(wrapper.getAttribute('data-align')).toBe('center');
 		expect(wrapper.querySelector('img')!.style.width).toBe('');
@@ -532,7 +546,7 @@ describe('alt, width and alignment (WU-21)', () => {
 
 	it('a copied image carries its alt in the HTML flavour', async () => {
 		const { edytor } = await withImage({ alt: 'Barn' });
-		edytor.selection.selectBlocks(edytor.idToBlock.get('img')!);
+		selectBlocks(edytor, edytor.idToBlock.get('img')!);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(edytor.node!);
 		expect(clipboardData['text/html']).toContain('alt="Barn"');
@@ -547,7 +561,7 @@ describe('the image chrome in the overlay (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin],
 				readonly,
 				value: {
 					children: [
@@ -618,7 +632,7 @@ describe('the image chrome in the overlay (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin, imageToolbarPlugin],
 				value: {
 					children: [
 						{ id: 'a', type: 'image', data: { src }, content: [{ text: '' }] },
@@ -679,12 +693,12 @@ describe('the image chrome in the overlay (WU-21)', () => {
 	it('a selected image shows its toolbar without the pointer (keyboard)', async () => {
 		const { edytor } = await twoImages();
 		expect(chrome()).toBeNull();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('b')!);
 		await settle();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		await flushDomUpdates();
 		expect(pressedAlign()).toEqual(['left']);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('p')!);
+		selectBlocks(edytor, edytor.idToBlock.get('p')!);
 		await settle();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		await flushDomUpdates();

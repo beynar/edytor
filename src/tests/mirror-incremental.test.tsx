@@ -4,9 +4,8 @@ import { Y } from '$lib/crdt/engine.js';
 import { createOperationEdytor } from './test.utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { contentParts } from '$lib/session/handles.js';
-import { deltaToJson, runsToDeltas } from '$lib/text/deltas.js';
 import type { ProjectedBlock } from '$lib/crdt/index.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
 /**
@@ -19,7 +18,15 @@ const projectedToValue = (node: ProjectedBlock): JSONBlock => {
 	const children = node.children.map(projectedToValue);
 	const content = contentParts(node.content).flatMap((part) => {
 		if (part.kind === 'text') {
-			return deltaToJson(runsToDeltas(part.items)[0]);
+			// A segment's runs: empty ones dropped, neighbours with the same marks joined.
+			const runs: JSONText[] = [];
+			for (const { text, marks = {} } of part.items) {
+				const last = runs.at(-1);
+				if (!text) continue;
+				if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += text;
+				else runs.push(Object.keys(marks).length ? { text, marks: { ...marks } } : { text });
+			}
+			return runs;
 		}
 		return [{ id: part.item.id, type: part.item.type, data: part.item.data ?? {} }];
 	});
@@ -83,28 +90,29 @@ describe('handle tree = the document after every commit', () => {
 		expectConverged(edytor);
 
 		// content-only commit
-		root.children[0].firstText.insertText({ value: '!', start: 5, end: 5 });
+		edytor.insertText(root.children[0].id, 5, '!');
 		expectConverged(edytor);
 
 		// meta commit
-		root.children[0].setBlock({ value: { type: 'heading', data: { level: 2 } } });
+		edytor.setBlock(root.children[0].id, { type: 'heading', data: { level: 2 } });
 		expectConverged(edytor);
 
 		// structural: move last paragraph to the top
-		root.children[3].moveBlock({ path: [0] });
+		edytor.moveBlocks([root.children[3].id], { parent: null, index: 0 });
 		expectConverged(edytor);
 
 		// structural: nest then unnest
-		const nested = root.children[3].nestBlock();
+		const nested = root.children[3];
+		edytor.nestBlock(nested.id, root.children[2].id);
 		expectConverged(edytor);
-		nested?.unNestBlock();
+		edytor.unNestBlock(nested.id);
 		expectConverged(edytor);
 
 		// delete a nested parent, keeping its children (moved-out subtree)
 		const list = root.children.find((b) => b.type === 'ordered-list')!;
 		const parentItem = list.children[1];
 		const kept = [...parentItem.children];
-		parentItem.removeBlock({ keepChildren: true });
+		edytor.deleteBlock(parentItem.id, { keepChildren: true });
 		expectConverged(edytor);
 		for (const child of kept) {
 			// claimed children keep their handle
@@ -113,21 +121,19 @@ describe('handle tree = the document after every commit', () => {
 		}
 
 		// delete a subtree outright
-		list.removeBlock();
+		edytor.deleteBlock(list.id);
 		expectConverged(edytor);
 
 		// split + merge churn
-		const splitText = root.children[1].firstText;
-		const split = root.children[1].splitBlock({ index: 2, text: splitText });
+		edytor.splitBlock(root.children[1].id, 2, 'split');
 		expectConverged(edytor);
-		split?.mergeBlockBackward();
+		edytor.mergeBackward('split');
 		expectConverged(edytor);
 
-		// add a fresh child block (a JSON spec: the handle resolves at once)
-		root.children[0].addChildBlock({
-			block: { type: 'paragraph', content: [{ text: 'fresh' }] },
-			index: -1
-		});
+		// add a fresh child block (a JSON spec)
+		edytor.insertBlocks({ parent: root.children[0].id, index: 0 }, [
+			{ type: 'paragraph', content: [{ text: 'fresh' }] }
+		]);
 		expectConverged(edytor);
 	});
 
@@ -160,23 +166,22 @@ describe('handle tree = the document after every commit', () => {
 		expectConverged(second.edytor);
 
 		// remote content edit — lands on second as a non-local DocChange
-		first.edytor.root!.children[0].firstText.insertText({ value: '?', start: 5, end: 5 });
+		first.edytor.insertText(first.edytor.root!.children[0].id, 5, '?');
 		expectConverged(second.edytor);
 		expectConverged(first.edytor);
 
 		// remote structural edit — same incremental path on the peer
-		first.edytor.root!.children[1].children[0].removeBlock();
+		first.edytor.deleteBlock(first.edytor.root!.children[1].children[0].id);
 		expectConverged(second.edytor);
 
 		// remote keepChildren move-out
 		const remoteList = first.edytor.root!.children[1];
 		const remoteParent = remoteList.children[0];
 		const remoteKept = [...remoteParent.children];
-		remoteParent.addChildBlock({
-			block: { type: 'list-item', content: [{ text: 'nested' }] },
-			index: -1
-		});
-		first.edytor.root!.children[1].children[0].removeBlock({ keepChildren: true });
+		first.edytor.insertBlocks({ parent: remoteParent.id, index: 0 }, [
+			{ type: 'list-item', content: [{ text: 'nested' }] }
+		]);
+		first.edytor.deleteBlock(first.edytor.root!.children[1].children[0].id, { keepChildren: true });
 		expectConverged(second.edytor);
 		expectConverged(first.edytor);
 		void remoteKept;
@@ -193,7 +198,7 @@ describe('lazy value export', () => {
 			) as any
 		);
 		(edytor as any)._valueCache = null;
-		edytor.root!.children[0].firstText.insertText({ value: '!', start: 5, end: 5 });
+		edytor.insertText(edytor.root!.children[0].id, 5, '!');
 		expect((edytor as any)._valueCache).toBeNull();
 	});
 
@@ -207,7 +212,7 @@ describe('lazy value export', () => {
 		);
 		const v1 = edytor.value;
 		expect(edytor.value).toBe(v1); // same object — no recompute
-		edytor.root!.children[0].firstText.insertText({ value: '!', start: 5, end: 5 });
+		edytor.insertText(edytor.root!.children[0].id, 5, '!');
 		const v2 = edytor.value;
 		expect(v2).not.toBe(v1);
 		// U2: the export is the plain run projection — the inserted '!' has

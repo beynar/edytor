@@ -1,16 +1,18 @@
-import type { Action } from 'svelte/action';
-import type { BlockOperations } from '$lib/block/block.utils.js';
+import { untrack } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
+import type { Commands } from '$lib/plugins.js';
 import type { DocAnchor } from '$lib/crdt/index.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
-import { reveal } from '$lib/selection/replaceSelection.js';
+import { showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
-import { englishLabels, type FindLabels } from '$lib/labels.js';
+import { listen } from '$lib/utils/listen.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
-export type ReplaceMatches = BlockOperations['replaceMatches'];
+export type ReplaceMatches = Commands['replaceMatches'];
 
 /**
  * The find bar's state and actions (`plugins/find`): the query, the matches
@@ -34,11 +36,7 @@ export class FindController {
 	#off: (() => void) | null = null;
 	#field: HTMLInputElement | null = null;
 
-	constructor(
-		private edytor: Edytor,
-		/** The words the bar shows (the plugin's `labels`): read them in a custom `bar`. */
-		readonly labels: FindLabels = englishLabels.find
-	) {}
+	constructor(private edytor: Edytor) {}
 
 	/** What the bar searches for; setting it shows the current match. */
 	get query() {
@@ -92,7 +90,7 @@ export class FindController {
 	 */
 	open = (query?: string) => {
 		if (!this.isOpen || query !== undefined) {
-			const { startText, yStart } = this.edytor.selection.state;
+			const { startText, yStart } = this.edytor.selection.textRange();
 			this.#at = startText?.isInDocument
 				? this.edytor.facade.anchorAt(startText.blockId, startText.segStart + yStart, 'right')
 				: null;
@@ -121,9 +119,8 @@ export class FindController {
 		const start = block?.textAtOffset(match!.offset);
 		const end = block?.textAtOffset(match!.offset + match!.length);
 		if (start && end)
-			this.edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset);
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+			this.edytor.selection.selectText(start.text, start.offset, end.text, end.offset);
+		takeKeys(this.edytor);
 	};
 
 	/** The next match becomes the current one (after the last, the first). */
@@ -151,39 +148,38 @@ export class FindController {
 	/** Replace every match: one command, one undo step. Answers its status. */
 	replaceAll = (): CommandResult['status'] => this.#replace(this.matches);
 
-	/** The query field (`use:find.field`): focused on each Mod+F; Enter, Shift+Enter, Escape, Mod+F. */
-	field: Action<HTMLInputElement> = (node) => {
-		this.#field = node;
-		this.#focus();
+	/** The query field (`{@attach find.field}`): focused on each Mod+F; Enter, Shift+Enter, Escape, Mod+F. */
+	field: Attachment<HTMLInputElement> = (node) =>
+		untrack(() => {
+			this.#field = node;
+			this.#focus();
+			const off = this.#keys(node, true);
+			return () => {
+				off();
+				if (this.#field === node) this.#field = null;
+			};
+		});
+
+	/** The replacement field (`{@attach find.replaceField}`): Enter replaces, Escape closes. */
+	replaceField: Attachment<HTMLInputElement> = (node) => this.#keys(node, false);
+
+	/**
+	 * A field's keys: Enter goes to the next match (Shift+Enter the previous
+	 * one) in the query field and replaces in the replacement field, Escape
+	 * closes, Mod+F selects the query.
+	 */
+	#keys = (node: HTMLInputElement, query: boolean) => {
 		const keydown = (event: KeyboardEvent) => {
 			if (event.isComposing) return;
 			const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
-			if (event.key === 'Enter') (event.shiftKey ? this.previous : this.next)();
+			if (event.key === 'Enter')
+				(query ? (event.shiftKey ? this.previous : this.next) : this.replace)();
 			else if (event.key === 'Escape') this.close();
-			else if (mod && event.key.toLowerCase() === 'f') node.select();
+			else if (query && mod && event.key.toLowerCase() === 'f') node.select();
 			else return;
 			event.preventDefault();
 		};
-		node.addEventListener('keydown', keydown);
-		return {
-			destroy: () => {
-				node.removeEventListener('keydown', keydown);
-				if (this.#field === node) this.#field = null;
-			}
-		};
-	};
-
-	/** The replacement field (`use:find.replaceField`): Enter replaces, Escape closes. */
-	replaceField: Action<HTMLInputElement> = (node) => {
-		const keydown = (event: KeyboardEvent) => {
-			if (event.isComposing) return;
-			if (event.key === 'Enter') this.replace();
-			else if (event.key === 'Escape') this.close();
-			else return;
-			event.preventDefault();
-		};
-		node.addEventListener('keydown', keydown);
-		return { destroy: () => node.removeEventListener('keydown', keydown) };
+		return listen(node, 'keydown', keydown);
 	};
 
 	/** Stop following the document (the editor is going away). */
@@ -204,14 +200,7 @@ export class FindController {
 	 */
 	#show = () => {
 		const match = this.matches[this.current];
-		const block = match && this.edytor.idToBlock.get(match.block);
-		if (block) {
-			reveal(block);
-			block.textAtOffset(match!.offset)?.text.node?.scrollIntoView?.({
-				block: 'nearest',
-				inline: 'nearest'
-			});
-		}
+		if (match) showText(this.edytor, match.block, match.offset);
 		this.edytor.overlay.invalidate();
 	};
 
@@ -223,13 +212,13 @@ export class FindController {
 
 	/**
 	 * The one write (`replaceMatches`): admission, hooks (the command, then
-	 * each `deleteContentAtRange` and `insertText` step), one transaction,
+	 * each `deleteText` and `insertText` step), one transaction,
 	 * one undo step. Each replacement takes the marks its match had in
 	 * common, as typing over a selection does (`marksForInsertion`).
 	 */
 	#replace = (matches: FindMatch[]): CommandResult['status'] => {
 		const { edytor } = this;
-		const { facade, dispatcher, idToBlock } = edytor;
+		const { facade, idToBlock } = edytor;
 		if (!matches.length) return 'noop';
 		const prepare = ({ matches, replacement }: ReplaceMatches): Prepared =>
 			// Last first: a step's offsets never depend on an earlier step's writes.
@@ -248,16 +237,7 @@ export class FindController {
 				})
 			);
 		const payload: ReplaceMatches = { matches, replacement: this.replacement };
-		const block = idToBlock.get(matches[0]!.block) ?? edytor.root!;
-		dispatcher.dispatch(
-			'replaceMatches',
-			payload,
-			{ block },
-			(payload, plan = prepare(payload)) => {
-				if ('writes' in plan) facade.apply(plan);
-			},
-			prepare
-		);
-		return dispatcher.last?.operation === 'replaceMatches' ? dispatcher.last.status : 'refused';
+		const block = edytor.idToBlock.get(matches[0]!.block);
+		return edytor.dispatcher.plan('replaceMatches', payload, prepare, block).status;
 	};
 }

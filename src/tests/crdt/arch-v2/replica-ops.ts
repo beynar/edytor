@@ -201,7 +201,7 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 		case 'deleteRange':
 			return ed.deleteRange({ block: a[0], offset: a[1] }, { block: a[2], offset: a[3] });
 		case 'format':
-			return ed.setMark(a[0], a[1], a[2], a[3], a[4]);
+			return ed.formatRange(a[0], a[1], a[2], { [a[3]]: a[4] });
 		case 'split':
 			return ed.splitBlock(a[0], a[1], a[2]);
 		case 'mergeBackward':
@@ -211,7 +211,7 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 		case 'unnest':
 			return ed.unNestBlock(a[0]);
 		case 'move':
-			return ed.moveBlock(a[0], { parent: a[1], index: a[2] });
+			return ed.moveBlocks([a[0]], { parent: a[1], index: a[2] });
 		case 'nest':
 			return ed.nestBlock(a[0], a[1]);
 		case 'deleteBlocks':
@@ -219,7 +219,7 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 		case 'deleteKeep':
 			return ed.deleteBlock(a[0], { keepChildren: true });
 		case 'create':
-			return ed.insertBlock(a[0], { id: a[1], type: 'paragraph', content: text(a[2]) });
+			return ed.insertBlocks(a[0], [{ id: a[1], type: 'paragraph', content: text(a[2]) }]);
 		case 'paste':
 			return ed.insertFlow(
 				{ block: a[0], offset: a[1] },

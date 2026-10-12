@@ -126,7 +126,7 @@ Each version is one value in the store:
 | | |
 | --- | --- |
 | Key | `history/<room id>/<YYYY-MM-DD>-am` or `-pm`, the room id percent-encoded, the date local. |
-| Value | The document's state, as the room's compaction stores it (the compact v2 encoding, gzip-compressed). |
+| Value | The document's state, as the room's compaction stores it (gzip-compressed). |
 | Metadata | `{ bytes, blocks, editors, at }`: its size, its visible blocks, the slot's editors, when it was written. Kept under 1,024 bytes (KV's metadata limit, for every store): past it, the last editors are left out and counted in `more`. |
 | Expiry | `expiresAt`, the retention (30 days) after it was written: KV's `expirationTtl`, R2's custom metadata, a column of the room's table. |
 
@@ -153,7 +153,7 @@ await room.undoRestore(); // the last restore, once
 
 A room without history throws from `listHistory`, `readHistory` and `restoreHistory`.
 
-In the browser, [`HistoryPanel`](/docs/server/history-panel) is the UI over these: the versions with their editors, a read-only preview of one with the blocks added, removed and changed since highlighted, and Restore and Undo restore, through `createHistoryClient` (the requests below) or a client of your own.
+In the browser, [`VersionHistory`](/docs/server/history-panel) is the controller of a UI over these: the versions with their editors, a read-only preview of one with the blocks added, removed and changed since highlighted, and Restore and Undo restore, through `createHistoryClient` (the requests below) or a client of your own.
 
 ### Over HTTP
 
@@ -233,7 +233,7 @@ What is purged, once deleted that long ago:
 - **Deleted text.** The record of who deleted which characters (what lets an undo bring them back) is removed, and the deleted characters are collected.
 - **Undone creations.** A block whose creation was undone, and that holds nothing, is removed.
 - **Old placements.** A moved block keeps only the placement it shows at.
-- **Merged blocks' attribution.** A block merged into the one before it (Backspace at its start) keeps its structure, as its text now shows in that block, but its own attribution record (who created it, its contributors, its lineage) is removed once the merge is that old: the block it merged into took its contributors at the merge, and no undo can split it out again. In documents 50 people edited, the purge then gives back 12 to 17 % of the stored size instead of 5 %.
+- **Merged blocks' attribution.** A block merged into the one before it (Backspace at its start) keeps its structure, as its text now shows in that block, but its own attribution record (who created it, its contributors) is removed once the merge is that old: the block it merged into took its contributors at the merge, and no undo can split it out again. In documents 50 people edited, the purge then gives back 12 to 17 % of the stored size instead of 5 %.
 
 The purge is the room's own edit: one transaction, stored and sent to every client, which apply it and collect the content too; a client that loads the document later never receives it. A purged block leaves its id behind as a tombstone (a few bytes): deleting 1,000 of 1,001 blocks and purging them leaves 5.3 KB of stored state for 366 bytes of visible content, from 28.9 KB before the purge. A line split from a paragraph that is still there (Enter makes most lines so) shares that paragraph's text, so a deleted one keeps its bare structure (about 25 bytes stored) while its text and properties go. On a long editing trace (`automerge-paper`, 259,778 edits), purging its 77,463 text deletes takes the stored state from 224 KB to 85 KB, and a woken room loads it in a tenth of the time.
 

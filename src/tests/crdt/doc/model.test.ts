@@ -144,11 +144,11 @@ describe('structural operations', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
 		const idBefore = ed.crdtId('b1');
-		expect(ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status).toBe(
-			'applied'
-		);
+		expect(
+			ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]).status
+		).toBe('applied');
 		expect(topIds(ed)).toEqual(['b1', 'x', 'b2', 'b3']);
-		expect(ed.moveBlock('x', { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['x'], { parent: null, index: 0 }).status).toBe('applied');
 		expect(topIds(ed)).toEqual(['x', 'b1', 'b2', 'b3']);
 		expect(ed.nestBlock('x', 'b2').status).toBe('applied');
 		expect(ed.positionOf('x')).toEqual({ parent: 'b2', index: 0 });
@@ -274,7 +274,7 @@ describe('structural operations', () => {
 		const ed = seed(E.create(doc));
 		const idBefore = ed.crdtId('b1');
 		expect(ed.setBlockType('b1', 'heading').status).toBe('applied');
-		expect(ed.setBlockData('b1', { level: 2 }).status).toBe('applied');
+		expect(ed.patchData('b1', [{ path: [], value: { level: 2 } }]).status).toBe('applied');
 		expect(ed.blockTypeOf('b1')).toBe('heading');
 		expect(ed.blockDataOf('b1')).toEqual({ level: 2 });
 		expect(ed.crdtId('b1')).toBe(idBefore);
@@ -303,18 +303,17 @@ describe('structural operations', () => {
 	it('insertBlock refuses an already-used id (whole spec atomic)', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'x' }).status).toBe(
+		expect(ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'x' }]).status).toBe(
 			'refused'
 		);
 		expect(
-			ed.insertBlock(
-				{ parent: null, index: 0 },
+			ed.insertBlocks({ parent: null, index: 0 }, [
 				{
 					id: 'ok',
 					type: 'x',
 					children: [{ id: 'b2', type: 'x' }]
 				}
-			).status
+			]).status
 		).toBe('refused');
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3']);
 	});
@@ -330,8 +329,8 @@ describe('content operations', () => {
 		expect(ed.blockText('b1')).toBe('XXhello world');
 		expect(ed.deleteText('b1', 0, 2).status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('hello world');
-		expect(ed.setMark('b1', 0, 5, 'italic', true).status).toBe('applied');
-		expect(ed.unsetMark('b1', 0, 5, 'italic').status).toBe('applied');
+		expect(ed.formatRange('b1', 0, 5, { italic: true }).status).toBe('applied');
+		expect(ed.formatRange('b1', 0, 5, { italic: null }).status).toBe('applied');
 		expect(ed.formatRange('b1', 0, 5, { italic: true, link: 'x' }).status).toBe('applied');
 		expect(ed.clearMarks('b1', 0, 5).status).toBe('applied');
 		expect(ed.project().children[0].content).toEqual([{ kind: 'text', text: 'hello world' }]);
@@ -349,7 +348,9 @@ describe('content operations', () => {
 			type: 'mention',
 			data: { u: 'x' }
 		});
-		expect(ed.setInlineData('b1', 'm1', { u: 'y' }).status).toBe('applied');
+		expect(
+			ed.patchData({ block: 'b1', atom: 'm1' }, [{ path: [], value: { u: 'y' } }]).status
+		).toBe('applied');
 		expect(ed.project().children[0].content[1].data).toEqual({ u: 'y' });
 		expect(ed.removeInline('b1', 'm1').status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('hello world');
@@ -406,10 +407,10 @@ describe('island/void enforcement', () => {
 	it('void blocks reject children, splits and merges — but allow content edits', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc, { roleOf }));
-		expect(ed.insertBlock({ parent: 'v1', index: 0 }, { id: 'n', type: 'paragraph' }).status).toBe(
-			'refused'
-		);
-		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 }).status).toBe('refused');
+		expect(
+			ed.insertBlocks({ parent: 'v1', index: 0 }, [{ id: 'n', type: 'paragraph' }]).status
+		).toBe('refused');
+		expect(ed.moveBlocks(['p1'], { parent: 'v1', index: 0 }).status).toBe('refused');
 		expect(ed.nestBlock('p1', 'v1').status).toBe('refused');
 		expect(ed.splitBlock('v1', 2, 'v-tail').status).toBe('refused');
 		expect(ed.mergeBlocks('v1', 'p1').status).toBe('refused');
@@ -424,18 +425,18 @@ describe('island/void enforcement', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc, { roleOf }));
 		// inside → out
-		expect(ed.moveBlock('ic', { parent: null, index: 0 }).status).toBe('refused');
+		expect(ed.moveBlocks(['ic'], { parent: null, index: 0 }).status).toBe('refused');
 		expect(ed.unNestBlock('ic').status).toBe('refused');
 		// outside → in
-		expect(ed.moveBlock('p1', { parent: 'isl', index: 1 }).status).toBe('refused');
-		expect(ed.moveBlock('p1', { parent: 'ic', index: 0 }).status).toBe('refused');
+		expect(ed.moveBlocks(['p1'], { parent: 'isl', index: 1 }).status).toBe('refused');
+		expect(ed.moveBlocks(['p1'], { parent: 'ic', index: 0 }).status).toBe('refused');
 		// merges across the boundary refused, interior merge allowed
 		expect(ed.mergeBlocks('p1', 'ic').status).toBe('refused');
 		expect(ed.mergeBlocks('ic', 'isl').status).toBe('applied'); // child merges into its island
 		expect(ed.blockText('isl')).toBe('islandinner');
 		// ...but building the interior via insertBlock is allowed
 		expect(
-			ed.insertBlock({ parent: 'isl', index: 0 }, { id: 'ic2', type: 'paragraph' }).status
+			ed.insertBlocks({ parent: 'isl', index: 0 }, [{ id: 'ic2', type: 'paragraph' }]).status
 		).toBe('applied');
 		expect(kidIds(ed, 'isl')).toEqual(['ic2']);
 	});
@@ -455,8 +456,8 @@ describe('island/void enforcement', () => {
 	it('no roles configured → pure engine behavior (moves into any block allowed)', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc)); // no roleOf
-		expect(ed.moveBlock('ic', { parent: null, index: 0 }).status).toBe('applied');
-		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['ic'], { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['p1'], { parent: 'v1', index: 0 }).status).toBe('applied');
 	});
 });
 

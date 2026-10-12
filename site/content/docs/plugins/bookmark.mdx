@@ -4,11 +4,11 @@ description: The bookmark plugin adds Notion's web bookmark, a card linking to a
 icon: bookmark
 ---
 
-`bookmarkPlugin` adds Notion's web bookmark: an "Add a web bookmark" panel until the block has a link, then a card that opens the page in a new tab, with an editable caption. The card shows the page's title, description, icon and cover image when your `unfurl` function answers them, the URL alone otherwise. It is not a default plugin: list it.
+`createBookmarkPlugin()` adds Notion's web bookmark: an "Add a web bookmark" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a link, then a card that opens the page in a new tab, with an editable caption. The card shows the page's title, description, icon and cover image when your `unfurl` function answers them, the URL alone otherwise. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createBookmarkPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createBookmarkPlugin } from 'edytor';
 
 	// A browser cannot read most pages: ask your server for their metadata.
 	const bookmark = createBookmarkPlugin({
@@ -19,10 +19,10 @@ icon: bookmark
 	});
 </script>
 
-<Edytor plugins={[bookmark, slashMenuPlugin]} />
+<Edytor plugins={[bookmark]} />
 ```
 
-The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)` link on an empty line offers to make it a bookmark ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)). `bookmarkPlugin` is the plugin without `unfurl`.
+A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`, and pasting an `http(s)` link on an empty line offers to make it a bookmark ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)). `createBookmarkPlugin()` is the plugin without `unfurl`.
 
 ## Options
 
@@ -34,21 +34,13 @@ The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)`
       type: "(url: string) => Promise<BookmarkPreview | null | undefined>",
       description: "Read a page's title, description, cover image and icon. Called when a link is set from the panel or the paste menu. Without it, the card shows the URL.",
     },
-    labels: {
-      type: "PartialLabels<'media'>",
-      description: "The empty panel's and the paste menu's words (bookmark, pasteAs, pasteLink), over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.bookmark); they replace the command's own.",
-    },
     menu: {
       type: "Snippet<[UrlPasteController]>",
-      description: "Replaces the menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
+      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {@attach controller.option(index)}. See Menus and handles.",
     },
-    empty: {
-      type: "Snippet<[MediaEmptyController]>",
-      description: "Replaces an empty block's markup (its button and link panel, a readonly view's placeholder). See Menus and handles.",
+    card: {
+      type: "Snippet<[BookmarkCardPayload]>",
+      description: "The card of a bookmark with a link, replacing Notion's (see [Your card](#your-card)). The first bookmark plugin listed in a view gives it.",
     },
   }}
 />
@@ -57,10 +49,32 @@ The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)`
 
 Your server endpoint fetches untrusted pages: restrict it to `http(s)` URLs on public hosts (no private or loopback addresses), cap the response size and time, and read only the metadata (`<title>`, `og:title`, `og:description`, `og:image`, the icon link).
 
+### Your card
+
+The card is drawn inside the block's void wrapper (`[data-edytor-bookmark]`), above the caption. `card` replaces it with your markup; it receives a `BookmarkCardPayload`: `block` (`undefined` in a suggestion's preview), `url`, the unfurled `title`, `description`, `image` and `icon` (each `undefined` until `unfurl` answers it, every URL already an `http(s)` one), and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"` and `draggable="false"`. Render its `href={page.url}` yourself, so a server-rendered readonly view links too.
+
+```svelte title="Bookmarks.svelte" check
+<script lang="ts">
+	import { Edytor, createBookmarkPlugin, type BookmarkCardPayload } from 'edytor';
+
+	const bookmarks = createBookmarkPlugin({ card });
+</script>
+
+{#snippet card(page: BookmarkCardPayload)}
+	<a class="card" href={page.url} {@attach page.link}>
+		{#if page.icon}<img src={page.icon} alt="" />{/if}
+		<strong>{page.title ?? page.url}</strong>
+		{#if page.description}<span>{page.description}</span>{/if}
+	</a>
+{/snippet}
+
+<Edytor plugins={[bookmarks]} />
+```
+
 ## Security
 
 - The block stores and renders only an absolute `http:`/`https:` link with a host, read by the link sanitizer's rules (`safeWebUrl`): a `javascript:` or `data:` link a collaborator stores renders no card.
-- The card is an `a` with `target="_blank"` and `rel="noopener noreferrer nofollow"`.
+- The card is an `a` with `target="_blank"` and `rel="noopener noreferrer nofollow"` (your `card`'s too, through `link`).
 - An unfurled `image` or `icon` is kept only when it is an `http(s)` URL; the title (300 characters) and description (1,000) are capped, and rendered as text.
 
 ## The kind
@@ -87,4 +101,4 @@ The block is void like the [image](/docs/plugins/image): it takes no children an
 | `[data-edytor-bookmark-url]`          | The icon and URL line                   |
 | `[data-edytor-bookmark-cover]`        | The cover image                         |
 
-The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).
+The card's look (its border, the cover beside the text, the clamped description, the hover) is the [Notion theme](/docs/customization/styling#notion-theme)'s: without it the card is its unstyled link. The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

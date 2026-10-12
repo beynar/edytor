@@ -1,6 +1,8 @@
+import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
-import { viewLabels, type PartialLabels } from '$lib/labels.js';
+import type { Attachment } from 'svelte/attachments';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The page plugin's options: how your app opens, names, links and creates pages. */
 export type PagePluginOptions = {
@@ -27,14 +29,43 @@ export type PagePluginOptions = {
 	 * it. Without it there is no such command; insert page blocks yourself.
 	 */
 	create?: () => string | { pageId: string; title?: string } | null | undefined;
-	/** The words the block and its command show, over the English ones. */
-	labels?: PartialLabels<'page'>;
-	/** The slash menu's keywords of the "Page" command (`page.new`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
+	/**
+	 * The block's link to its page (default: Notion's row, a page icon and
+	 * the title). Give an `a` (`href={link.href}`) when `link.href` is set,
+	 * else a `button`, `{@attach link.control}`: a click opens the page
+	 * (`open`), a modified or middle click in a new tab. The first page plugin listed in a view
+	 * gives it.
+	 */
+	link?: Snippet<[PageBlockLinkPayload]>;
 };
 
-/** Each view's page labels: the first page plugin listed claims them, as its kind. */
-export const pageLabels = viewLabels('page');
+/** What a page block's `link` snippet receives: the page it links to. */
+export type PageBlockLinkPayload = {
+	/** The page block; `undefined` in a suggestion's preview (it opens nothing). */
+	block: Block | undefined;
+	/** The page's id (`null`: the block names none). */
+	pageId: string | null;
+	/** Its title: your `title` lookup's answer, else the one the block stores. */
+	title: string | undefined;
+	/** What it reads: its title, else the view's `page.untitled`. */
+	label: string;
+	/** The page's URL (`href`), if any: draw an `a`. */
+	href: string | undefined;
+	/** A click may open it: it names a page and the plugin has `open`. */
+	openable: boolean;
+	/** Open the page (`open`), in a new tab when `newTab`. */
+	open: (newTab?: boolean) => void;
+	/**
+	 * The link's attachment (`{@attach link.control}`): its marker
+	 * (`data-edytor-page-link`), the click and middle click that open it; on
+	 * an `a`, `draggable="false"`; on a `button`, `disabled` when it cannot
+	 * open and a press that keeps the editor's selection.
+	 */
+	control: Attachment<HTMLElement>;
+};
+
+/** Each view's page options (the first page plugin listed sets them). */
+export const pageOptions = new WeakMap<object, PagePluginOptions>();
 
 /** A stored page id: a non-empty string of at most 256 characters (a room id's bounds), else `null`. */
 export const pageIdOf = (value: unknown): string | null =>
@@ -65,12 +96,6 @@ export const storePageTitle = (block: Block, pageId: string, title: string) => {
 		TITLE_ORIGIN
 	);
 };
-
-const escapeHtml = (value: string) =>
-	value.replace(
-		/[&<>"']/g,
-		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
-	);
 
 /** `options.href`'s URL for `pageId`, through the link sanitizer (no script URL), else `undefined`. */
 export const pageHref = (options: PagePluginOptions, pageId: string | null) =>

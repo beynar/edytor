@@ -35,6 +35,7 @@ import type {
 	ProjectedBlock,
 	ProjectedDoc
 } from './crdt-ops.js';
+import { toDelta } from '../delta.js';
 
 const ROOT_KEY = 'content';
 const CONTENT_ATTR = 'content';
@@ -79,7 +80,39 @@ const indexInParent = (node: YNode): number => {
 	return arr.findIndex((c: unknown) => c === node);
 };
 
-/** Build an integrable block subtree from a spec (detached). Exported for seeding. */
+/**
+ * One paired mark operation over `[at, at + len)` (the engine's only marks,
+ * fork patch YP19; neither edge grows).
+ */
+const markRange = (content: unknown, at: number, len: number, name: string, value: unknown) =>
+	(
+		content as { mark(i: number, n: number, m: string, v: unknown, s: number, e: number): void }
+	).mark(at, len, name, value, 0, 0);
+
+/**
+ * The marks a built (detached) content holds, written once it integrates:
+ * a mark is an operation on integrated text (fork patch YP19).
+ */
+const pendingMarks = new WeakMap<YNode, [number, number, Record<string, unknown>][]>();
+
+/** Write the pending marks of `node`'s subtree (it is integrated now). */
+const writePendingMarks = (node: unknown): void => {
+	if (!(node instanceof Y.Node)) return;
+	for (const [at, len, marks] of pendingMarks.get(node) ?? [])
+		for (const [name, value] of Object.entries(marks)) markRange(node, at, len, name, value);
+	pendingMarks.delete(node);
+	node.forEachAttr((v: unknown) => writePendingMarks(v));
+	node.forEach((c: unknown) => writePendingMarks(c));
+};
+
+/** Insert the block subtree `spec` into `container` at `at`, its marks included. */
+export const insertBuilt = (container: YNode, at: number, spec: BlockSpec): void => {
+	const block = buildBlock(spec);
+	container.insert(at, [block]);
+	writePendingMarks(block);
+};
+
+/** Build an integrable block subtree from a spec (detached; its marks pend: {@link insertBuilt}). */
 export const buildBlock = (spec: BlockSpec): YNode => {
 	const block = new Y.Node(BLOCK_NODE);
 	block.setAttr('id', spec.id);
@@ -95,7 +128,11 @@ export const buildBlock = (spec: BlockSpec): YNode => {
 	let clen = 0;
 	for (const item of spec.content ?? []) {
 		if (item.kind === 'text') {
-			content.insert(clen, item.text, item.marks);
+			content.insert(clen, item.text);
+			if (item.marks && Object.keys(item.marks).length > 0) {
+				const pending = pendingMarks.get(content) ?? [];
+				pendingMarks.set(content, [...pending, [clen, item.text.length, item.marks]]);
+			}
 			clen += item.text.length;
 		} else {
 			content.insert(clen, [buildInline(item)]);
@@ -139,7 +176,7 @@ const specOf = (block: YNode): BlockSpec => {
 /** Serialize one content node's sequence into {@link ContentItem} runs. */
 const contentSpecOf = (content: YNode): ContentItem[] => {
 	const items: ContentItem[] = [];
-	for (const op of content.delta.toJSON().children ?? []) {
+	for (const op of toDelta(content, { deep: true }).toJSON().children ?? []) {
 		if (op.type !== 'insert') continue;
 		if (typeof op.insert === 'string') {
 			items.push({ kind: 'text', text: op.insert, marks: op.format });
@@ -162,12 +199,12 @@ const contentSpecOf = (content: YNode): ContentItem[] => {
 /**
  * Slice the formatted content items of `content` from `offset` to the end.
  * Text runs straddling the offset are cut; inline atoms count as 1 position.
- * Operates on the delta view so mark fidelity is preserved in the copy.
+ * Operates on the delta read so mark fidelity is preserved in the copy.
  */
 const contentTail = (content: YNode, offset: number): ContentItem[] => {
 	const items: ContentItem[] = [];
 	let pos = 0;
-	for (const op of content.delta.toJSON().children ?? []) {
+	for (const op of toDelta(content, { deep: true }).toJSON().children ?? []) {
 		if (op.type !== 'insert') continue;
 		if (typeof op.insert === 'string') {
 			const start = pos;
@@ -210,7 +247,7 @@ export const createRawNodeOps = (): CrdtOps => {
 				const container = childrenContainer(peer, dest.parent);
 				if (!container) throw new Error(`insertBlock: unknown parent ${dest.parent}`);
 				const at = Math.max(0, Math.min(dest.index, container.length));
-				container.insert(at, [buildBlock(spec)]);
+				insertBuilt(container, at, spec);
 				return true;
 			});
 		},
@@ -241,7 +278,7 @@ export const createRawNodeOps = (): CrdtOps => {
 				// Final-index semantics: `dest.index` counts the destination's
 				// children AFTER the moved block was removed from it.
 				const at = Math.min(Math.max(dest.index, 0), container.length);
-				container.insert(at, [buildBlock(spec)]);
+				insertBuilt(container, at, spec);
 				return true;
 			});
 		},
@@ -295,20 +332,20 @@ export const createRawNodeOps = (): CrdtOps => {
 					if (c instanceof Y.Node) childSpecs.push(specOf(c));
 				});
 				while (children.length > 0) children.delete(0, 1);
-				const sibling = buildBlock({
+				const sibling = {
 					id: newId,
 					type: block.getAttr('type'),
 					data: block.getAttr('data'),
 					content: tailItems,
 					children: childSpecs
-				});
+				};
 				// Insert next to THIS block instance inside its actual
 				// container — never re-resolve the destination by logical id:
 				// under duplicate placement (concurrent copy-moves) the logical
 				// parent id can resolve to a different physical copy whose
 				// length does not match `pos.index` → 'Exceeded content range'.
 				const container = block.parent as YNode;
-				container.insert(indexInParent(block) + 1, [sibling]);
+				insertBuilt(container, indexInParent(block) + 1, sibling);
 				return true;
 			});
 		},
@@ -335,7 +372,7 @@ export const createRawNodeOps = (): CrdtOps => {
 					if (c instanceof Y.Node) specs.push(specOf(c));
 				});
 				for (const spec of specs) {
-					intoChildren.insert(intoChildren.length, [buildBlock(spec)]);
+					insertBuilt(intoChildren, intoChildren.length, spec);
 				}
 				const parent = from.parent as YNode;
 				parent.delete(indexInParent(from), 1);
@@ -375,7 +412,7 @@ export const createRawNodeOps = (): CrdtOps => {
 				const at = Math.max(0, Math.min(offset, content.length));
 				const len = Math.min(length, content.length - at);
 				if (len <= 0) return false;
-				content.format(at, len, { [name]: value });
+				markRange(content, at, len, name, value);
 				return true;
 			});
 		},
@@ -388,7 +425,7 @@ export const createRawNodeOps = (): CrdtOps => {
 				const at = Math.max(0, Math.min(offset, content.length));
 				const len = Math.min(length, content.length - at);
 				if (len <= 0) return false;
-				content.format(at, len, { [name]: null });
+				markRange(content, at, len, name, null);
 				return true;
 			});
 		},

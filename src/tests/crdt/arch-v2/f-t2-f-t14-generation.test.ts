@@ -24,7 +24,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import * as encoding from 'lib0-v14/encoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
@@ -96,11 +96,7 @@ const containerDoc = async (name) => {
 		db.close();
 	}
 	const doc = new Y.Doc();
-	for (const row of rows) {
-		const update = await readRow(row);
-		if (update instanceof Uint8Array) Y.applyUpdate(doc, update);
-		else Y.applyUpdateV2(doc, update.v2);
-	}
+	for (const row of rows) Y.applyUpdate(doc, await readRow(row));
 	return doc;
 };
 

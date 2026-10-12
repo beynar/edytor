@@ -6,10 +6,14 @@
  * is refused. The editable view keeps the panel.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	image as createImagePlugin,
+	mediaEmptyPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -22,7 +26,13 @@ const mount = async (readonly: boolean) => {
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [richTextPlugin, mentionPlugin, createImagePlugin({ upload })],
+			plugins: [
+				createUploadsPlugin({ upload }),
+				richTextPlugin,
+				mentionPlugin,
+				createImagePlugin(),
+				mediaEmptyPlugin
+			],
 			readonly,
 			value: { children: [{ type: 'image', content: [{ text: '' }] }] }
 		}

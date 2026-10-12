@@ -33,7 +33,7 @@ import { indexChecks } from '../../../lib/crdt/text/runs.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { prepareApply, rng } from './prepared-oracle.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (no `prepare.deleteRange`); green since D6. */
 const row = test;
@@ -382,13 +382,9 @@ describe('F-D1 — nesting in nesting: the island seal refuses the merge', () =>
 			}
 		});
 		const edytor = new Edytor({ document, plugins: [richTextPlugin, boxPlugin] });
-		const A = edytor.idToBlock.get('A')!.firstText!;
-		const Y = edytor.idToBlock.get('Y')!.firstText!;
-		edytor.deleteContentWithinSelection({
-			selection: { startText: A, yStart: 1, endText: Y, yEnd: 1 }
-		});
+		edytor.deleteRange({ block: 'A', offset: 1 }, { block: 'Y', offset: 1 });
 		expect(tree(document.facade)).toEqual([['box', 'box', '', [['A', 'line', 'a']]], P('Y', 'y')]);
-		expect(edytor.idToBlock.get('A')!.mergeBlockForward()).toBe(null);
+		expect(edytor.mergeForward('A').status).toBe('refused');
 	});
 });
 
@@ -426,11 +422,7 @@ describe('F-D12 — nested, empty container', () => {
 			}
 		});
 		const edytor = new Edytor({ document, plugins: [richTextPlugin] });
-		const i1 = edytor.idToBlock.get('i1')!.firstText!;
-		const p = edytor.idToBlock.get('P')!.firstText!;
-		edytor.deleteContentWithinSelection({
-			selection: { startText: i1, yStart: 0, endText: p, yEnd: 2 }
-		});
+		edytor.deleteRange({ block: 'i1', offset: 0 }, { block: 'P', offset: 2 });
 		expect(tree(document.facade)).toEqual([P('P', 'ree')]);
 	});
 

@@ -5,6 +5,9 @@
  * `instanceof` holds whichever entry point a consumer imported it from.
  */
 import { Y } from '../engine.js';
-import { bindProviders, type ProviderStack } from './index.js';
+import { bindProviders, prefetchWith, type PrefetchOptions, type ProviderStack } from './index.js';
 
 export const providers: ProviderStack = bindProviders(Y);
+
+/** {@link prefetchWith} over the one stack. */
+export const prefetch = (options: PrefetchOptions) => prefetchWith(Y, providers, options);

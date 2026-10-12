@@ -11,6 +11,7 @@
  * Run:  node --expose-gc bench/lib/memory-probe.mjs
  */
 import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
+import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -78,7 +79,7 @@ const postLoop = heap();
 // ── phase 2: the lifecycle, held (what the lane measures) ─────────────────
 const hold = snap(flatDoc(1000)).restore();
 const built = heap();
-hold.um = new Y14.UndoManager(hold.doc.get('blocks'), { captureTimeout: 0 });
+hold.um = new UndoManager(hold.doc.get('blocks'), { captureTimeout: 0 });
 for (let k = 0; k < 200; k++) {
 	hold.ed.insertText('b500', 10, 'q');
 	if (k % 2) hold.um.undo();
@@ -98,7 +99,7 @@ const settle = heap(); //  a second measurement after returning from the churn f
 
 // ── phase 4: a SECOND full lifecycle — per-cycle growth = real leak ───────
 const c2 = snap(flatDoc(1000)).restore();
-c2.um = new Y14.UndoManager(c2.doc.get('blocks'), { captureTimeout: 0 });
+c2.um = new UndoManager(c2.doc.get('blocks'), { captureTimeout: 0 });
 for (let k = 0; k < 200; k++) {
 	c2.ed.insertText('b500', 10, 'q');
 	if (k % 2) c2.um.undo();

@@ -16,9 +16,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createEmbedPlugin, embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { bookmarkPlugin, createBookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -27,6 +24,14 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import {
+	bookmark as createBookmarkPlugin,
+	bookmarkPlugin,
+	embed as createEmbedPlugin,
+	embedPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -80,7 +85,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 			['embed', 'false'],
 			['bookmark', 'false']
 		]);
-		const { state } = view.edytor.selection;
+		const state = selectionState(view.edytor);
 		expect([state.isCollapsed, state.yStart]).toEqual([true, YOUTUBE.length]);
 	});
 
@@ -143,7 +148,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 		const view = await render([createBookmarkPlugin({ unfurl })], [empty()]);
 		await pasteAt(view, 'p', 0, { 'text/plain': PAGE });
 		await choose('bookmark');
-		view.edytor.idToBlock.get('p')!.firstText!.insertText({ value: 'Read', start: 0 });
+		view.edytor.insertText('p', 0, 'Read');
 		await flushDomUpdates();
 		answer({ title: 'Docs' });
 		await vi.waitFor(() => expect(view.edytor.facade.blockDataOf('p')?.title).toBe('Docs'));
@@ -183,7 +188,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 		const again = await render([embedPlugin, bookmarkPlugin], [empty('q')]);
 		await pasteAt(again, 'q', 0, { 'text/plain': PAGE });
 		expect(menu()).not.toBeNull();
-		again.edytor.idToBlock.get('q')!.firstText!.insertText({ value: ' ', start: PAGE.length });
+		again.edytor.insertText('q', PAGE.length, ' ');
 		await flushDomUpdates();
 		expect(menu()).toBeNull();
 	});

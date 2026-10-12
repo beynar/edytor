@@ -4,17 +4,27 @@ description: The slash menu plugin opens a filtered command menu when you type a
 icon: square-slash
 ---
 
-`slashMenuPlugin` opens a command menu at the caret when you type `/`. Typing after the slash filters it; <kbd>Enter</kbd> runs the highlighted command and removes the `/query` text.
+`createSlashMenuPlugin({ menu })` opens a command menu at the caret when you type `/`. Typing after the slash filters it; <kbd>Enter</kbd> runs the highlighted command and removes the `/query` text. The menu is your `menu` snippet: the plugin ships the behavior and no markup (see [Markup](#markup)).
 
 ```svelte title="Slash.svelte" check
 <script lang="ts">
-	import { Edytor, slashMenuPlugin } from 'edytor';
+	import { Edytor, createSlashMenuPlugin, type SlashMenuController } from 'edytor';
+
+	const plugins = [createSlashMenuPlugin({ menu })];
 </script>
 
-<Edytor plugins={[slashMenuPlugin]} />
+{#snippet menu(slash: SlashMenuController)}
+	<ul {@attach slash.popup}>
+		{#each slash.commands as command, index (command.id)}
+			<li {@attach slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<Edytor {plugins} />
 ```
 
-`slashMenuPlugin` is the menu with its built-in markup. The `/` is a trigger, as a plugin's `triggers` are ([Input rules and triggers](/docs/plugins/input-rules#triggers)): the same rules open and close it, track its query and replace it. `createSlashMenuPlugin(options)` builds one that renders your markup (see [Custom markup](#custom-markup)).
+The `/` is a trigger, as a plugin's `triggers` are ([Input rules and triggers](/docs/plugins/input-rules#triggers)): the same rules open and close it, track its query and replace it. Without a `menu`, nothing shows and the keys still work: `/divider` and <kbd>Enter</kbd> insert a divider.
 
 ## What it lists
 
@@ -25,7 +35,7 @@ The menu lists `edytor.commands`:
 
 A command with `searchOnly` is listed only once a query names it: the [block menu](/docs/plugins/block-menu#block-colors)'s colours (`/red`: "Red text", "Red background", under `Color`) stay out of the bare `/` list. A command whose `isEnabled(edytor)` answers `false` is hidden (except in the menu the block handle's `+` opens, below). Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them. A kind picked in a list's item takes the item out of the list ([Containers](/docs/concepts/blocks#containers)).
 
-Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`), and a command without a `group` is listed without a heading. With the [columns plugin](/docs/plugins/columns), "2 columns" to "5 columns" are under `Layout` (`/col3`, `/columns3` and `/column 3` find them too), except in a column, where no layout goes. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
+Commands come grouped by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear; a group is a key, which your markup shows in its words. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`); a command without a `group` has none. With the [columns plugin](/docs/plugins/columns), "2 columns" to "5 columns" are under `Layout` (`/col3`, `/columns3` and `/column 3` find them too), except in a column, where no layout goes. A command's `hint` is its shortcut to show on its row; kind commands use their first markdown prefix, such as `##` for Heading 2.
 
 The query matches, case-insensitively, the start of a word in a command's label or keywords (hyphens are ignored, so `/todo` finds "To-do list"). `/h2`, `/head` and `/subtitle` all find "Heading 2"; `/eading` finds nothing. A query of several words keeps the menu open while each word, in order, starts a word of the same label or keyword, or continues the word the one before it started: `/bullet list` finds "Bulleted list", `/to do` finds "To-do list", and `/list bullet` finds nothing. A command's keywords carry the orders it is found in: the columns plugin's "3 columns" has `col3`, `columns3` and `column 3`, so `/col 3`, `/columns 3` and `/column 3` find it as `/3 col` does (Notion). The command id (`block.heading2`) is not searched. The [block menu](/docs/plugins/block-menu)'s search matches with the same rule.
 
@@ -54,89 +64,41 @@ While the menu is open:
 
 ## From the block handle
 
-The block handle's `+` opens the menu too, without typing anything ([Block handles](/docs/plugins/block-handles)). The menu opens below the `+` and shows a search field, focused, instead of reading a `/query` from the text. Picking a command adds an empty block of the default kind below the block (above with <kbd>Alt</kbd>) and runs the command in it, as one undo step. `controller.addition` is set while it is open this way.
+The block handle's `+` opens the menu too, without typing anything ([Block handles](/docs/plugins/block-handles)). The menu opens below the `+` and holds the keyboard on the element your markup gives `keys` (a search field, focused), instead of reading a `/query` from the text. Picking a command adds an empty block of the default kind below the block (above with <kbd>Alt</kbd>) and runs the command in it, as one undo step. `controller.addition` is set while it is open this way.
 
 - **Keys.** <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work in the field as above (not while an IME composes: the <kbd>Enter</kbd> or <kbd>Escape</kbd> that ends a composition is the IME's); a query that matches nothing shows "No results" and keeps the menu open.
-- **One keyboard owner.** The field is the menu's one keyboard owner: the rows and the footer are not <kbd>Tab</kbd> stops, and a row that takes focus anyway (a screen reader) becomes the highlighted row and hands the focus back to the field, so <kbd>Enter</kbd> always runs the highlighted row.
-- **Which commands are listed.** The commands that can run in the block being added: each command's `isEnabled(edytor)` is asked of a view whose `selection.state` is a caret at the start of that block, an empty block of the parent's default kind in its place. It does not exist yet, so `startBlock` is a stand-in with that `type`, the real `parent`, no content and no `node` (when the `+` reuses an empty block of that kind, it is that block). A command that applies only in its own context, such as one enabled on a to-do only, is not listed beside a to-do, since the block added there is a paragraph ([Writing plugins](/docs/plugins/writing-plugins#commands)).
+- **One keyboard owner.** The field is the menu's one keyboard owner: make the rows no <kbd>Tab</kbd> stops (`option(index)` gives them `tabindex="-1"`); a row that takes focus anyway (a screen reader) becomes the highlighted row and hands the focus back to the field, so <kbd>Enter</kbd> always runs the highlighted row.
+- **Which commands are listed.** The commands that can run in the block being added: each command's `isEnabled(edytor)` is asked of a view whose `selection.caret` is at the start of that block, an empty block of the parent's default kind in its place. It does not exist yet, so the caret's `block` is a stand-in with that `type`, the real `parent`, no content and no `node` (when the `+` reuses an empty block of that kind, it is that block). A command that applies only in its own context, such as one enabled on a to-do only, is not listed beside a to-do, since the block added there is a paragraph ([Writing plugins](/docs/plugins/writing-plugins#commands)).
 - **Where the kind lands.** Where it fits, as the slash menu places it on an empty line: beside a list's item, a heading splits the list after the item, and a list's own kind adds an item to it; a divider leaves the caret on an empty line after it. When the block beside the `+` is already an empty block of the default kind, the command runs in it instead.
 
 | Edge case | What happens |
 | --- | --- |
 | The command's `isEnabled` answers `false` once the block exists, or the document or an extension refuses the command before it changes anything | The addition and the command are one transaction: the block is taken back inside it, the document, its undo and redo steps and the selection are as they were, and `edytor.dispatcher.last` reads `refused`. |
-| <kbd>Escape</kbd>, the footer, a press outside, focus moving to an element outside the menu, or the editor turning readonly | The menu closes with nothing added and no undo step, and gives the selection back as it was. <kbd>Escape</kbd> and the footer also give the editor its focus back. |
+| <kbd>Escape</kbd>, `controller.dismiss()`, a press outside, focus moving to an element outside the menu, or the editor turning readonly | The menu closes with nothing added and no undo step, and gives the selection back as it was. <kbd>Escape</kbd> and `dismiss()` also give the editor its focus back. |
 | A block's grip is activated, or the block beside the `+` is deleted (a collaborator's, say) | The same: the menu closes and gives the selection back. |
 | The `+` was clicked while the selection was still the block selection a grip click made | The selection given back is the one from before the grip was clicked, never the grip's block selection. |
 
-## Placement and styling
+## Placement
 
-The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-slash-menu-host` and `z-index: 50`. It opens below the caret, or above it when there is no room, and stays inside the viewport while you scroll.
+Your menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-slash-menu-host` and `z-index: 50`. The plugin opens it below the caret (below the `+` it was opened from), or above when there is no room, and keeps it inside the viewport while you scroll. Its look is yours: the demo's Notion-style menu (sections with a heading, 28px rows with a line icon, the `hint` on the right, a "Close menu · esc" footer) is `SlashMenu.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome).
 
-The menu's markup and styles are built in, after Notion's: sections with a heading, 28px rows with a line icon for the built-in kinds (a command's text `icon` otherwise), the `hint` on the right, "No results" for a bare `/` when no command is enabled, and a "Close menu · esc" footer that closes it on click. It fades and scales in over 140ms, and the highlighted row scrolls into view. The typed query is not shown: it stays in a visually hidden element with `data-testid="slash-menu-query"` for screen readers and tests. Each item carries `data-command-id`, `data-selected` and `data-hint`.
+The rows are a `listbox` of `option`s (`popup` and `option(index)`; a section may be a `group` named by its heading). While the menu is open the element holding the keyboard names the list (`aria-controls`) and the highlighted row (`aria-activedescendant`): the editor's root for a typed `/`, your search field (a `combobox`) for a `+`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
 
-The rows are a `listbox` of `option`s, each section a `group` named by its heading. While the menu is open the element holding the keyboard names the list (`aria-controls`) and the highlighted row (`aria-activedescendant`): the editor's root for a typed `/`, the search field (a `combobox`) for a `+`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
+## Markup
 
-## Custom markup
-
-`createSlashMenuPlugin` takes snippets that replace the menu's markup. The plugin keeps everything else: opening on `/`, the query, the filtering, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd>, and the placement.
+`createSlashMenuPlugin` takes the menu's markup as a snippet. The plugin keeps everything else: opening on `/`, the query, the filtering, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd>, and the placement.
 
 <TypeTable
   type={{
-    item: {
-      type: "Snippet<[SlashMenuItem]>",
-      description: "Replaces each row of the built-in menu. The sections, headings, empty state and footer stay.",
-    },
     menu: {
       type: "Snippet<[SlashMenuController]>",
-      description: "Replaces the whole menu. Rendered while controller.isOpen. Wins over item.",
-    },
-    labels: {
-      type: "PartialLabels<'slashMenu'>",
-      description: "The menu's words: its field, list name, empty state, footer, and the section headings by group key (groups), over the English ones. See Localization.",
+      description: "The menu, rendered while controller.isOpen. Without it, nothing shows (the keys still run commands).",
     },
   }}
 />
 
-An `item` snippet receives a `SlashMenuItem`, the row shape every menu shares:
+A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.index` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text. Its attachments give your markup the keyboard and the ARIA: `{@attach controller.popup}` on your list (its id, `listbox` role and name, presses that keep the caret, the root naming it and its highlighted row) and `{@attach controller.option(index)}` on each row (its id, `role="option"`, `aria-selected`, and the scroll into view of the keyboard's row; draw its highlight from `controller.index === index`).
 
-<TypeTable
-  type={{
-    item: { type: "EditorCommand", description: "The command: id, label, icon, hint, group, keywords." },
-    command: { type: "EditorCommand", description: "The command again (the same as item)." },
-    id: { type: "string", description: "The row's element id: set it (id={item.id}), or spread option, so the keyboard's owner names the highlighted row (aria-activedescendant)." },
-    label: { type: "string", description: "The command's label." },
-    selected: { type: "boolean", description: "It is the keyboard's row." },
-    icon: { type: "string | undefined", description: "The built-in line icon as a CSS mask-image value, for the commands that have one." },
-    run: { type: "() => void", description: "Run the command; the /query text is removed in the same step." },
-    select: { type: "() => void", description: "Make it the keyboard's row, for hover." },
-    option: { type: "OptionAttributes", description: "The row's attributes: spread them on its element ({...option}) for its id, role=option, aria-selected, data-selected, and the scroll into view of the keyboard's row." },
-  }}
-/>
+When the block handle's `+` opens the menu (`controller.addition` is set), the menu holds the keyboard. Put `{@attach controller.keys}` on your search field: it is focused, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, and it names the list and its highlighted row; call `controller.search(query)` from its `input`. On an element that is not a field (the menu itself, with `tabindex="-1"`), `keys` takes the typed characters and <kbd>Backspace</kbd> into `controller.query`, so nothing typed reaches the document. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
 
-A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.selectedIndex` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text. Its attachments keep the built-in keyboard and ARIA: `{@attach controller.popup}` on your list (its id, `listbox` role and name, presses that keep the caret, the root naming it and its highlighted row) and `{...controller.option(index)}` on each row.
-
-When the block handle's `+` opens the menu (`controller.addition` is set), the menu holds the keyboard. Put `{@attach controller.keys}` on your search field: it is focused, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, and it names the list and its highlighted row; call `controller.search(query)` from its `input`. The plugin also renders your `menu` inside a focused wrapper with the same keys, where typed characters and <kbd>Backspace</kbd> edit `controller.query` when your snippet has no field of its own, so nothing typed reaches the document. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
-
-```svelte title="Editor.svelte" check
-<script lang="ts">
-	import { Edytor, createSlashMenuPlugin, type SlashMenuItem } from 'edytor';
-
-	const plugins = [createSlashMenuPlugin({ item })];
-</script>
-
-{#snippet item({ label, option, run, select }: SlashMenuItem)}
-	<button
-		{...option}
-		class="row"
-		onmousedown={(event) => event.preventDefault()}
-		onmousemove={select}
-		onclick={run}
-	>
-		{label}
-	</button>
-{/snippet}
-
-<Edytor {plugins} />
-```
-
-Keep `preventDefault` on `mousedown`, so a click does not move the caret out of the query. Your markup renders in the same fixed host, so the built-in styles no longer apply. A complete `menu`, with its field for the `+`, is on [Menus and handles](/docs/customization/menus#slash-menu), with every other menu.
+Keep a press on the menu from moving the caret out of the query: `popup` cancels the `mousedown` of every press in its element but on a field; cancel it on anything else of yours. A complete `menu`, with its field for the `+`, is on [Menus and handles](/docs/customization/menus#slash-menu), with every other menu.

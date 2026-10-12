@@ -144,10 +144,7 @@ export const bindProviders = (Y: EngineApi) => {
 	const ws = bindWebsocketProvider(Y);
 
 	// Local hydration always ends in `synced` or `failed`: no bound.
-	const localSync = (
-		name: string,
-		options: { disableBc?: boolean; convertPrevious?: boolean } = {}
-	): EdytorSync =>
+	const localSync = (name: string, options: { disableBc?: boolean } = {}): EdytorSync =>
 		Object.assign(
 			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
 				const provider = new idb.IndexeddbPersistence(name, doc, { awareness, ...options });
@@ -158,9 +155,8 @@ export const bindProviders = (Y: EngineApi) => {
 			{ bound: Infinity, target: `indexeddb:${name}` }
 		);
 
-	/** A document stored only here: a generation-4 store of `name` converts into it (the cutover). */
-	const createIndexeddbSync = (name: string): EdytorSync =>
-		localSync(name, { convertPrevious: true });
+	/** A document stored only here. */
+	const createIndexeddbSync = (name: string): EdytorSync => localSync(name);
 
 	/**
 	 * The socket, and by default a local store beside it. The store is its
@@ -259,131 +255,7 @@ export const bindProviders = (Y: EngineApi) => {
 		return Object.assign(sync, { bound: Infinity, target: `websocket:${room}`, persistName });
 	};
 
-	/**
-	 * `[serverUrl (no trailing slash), room]` of a target, the room id checked.
-	 * The target is `{ server, room }`; the names before them are refused, in
-	 * a message that names the `caller` it was passed to.
-	 */
-	const targetOf = (caller: string, options: WebsocketTarget): [string, string] => {
-		const { server, room } = options;
-		if (typeof server !== 'string' || typeof room !== 'string')
-			throw new TypeError(
-				`${caller}: the target is \`server\` and \`room\` (\`serverUrl\` and \`roomName\` are gone)`
-			);
-		assertRoomId(room);
-		return [server.replace(/\/+$/, ''), room];
-	};
-
-	/**
-	 * Keep a document fresh without opening it: load its local store
-	 * (the one `createWebsocketSync` keeps, `edytor:<server>/<room>` unless
-	 * `persistName` names another), dial the room once, take what it lacks
-	 * and hand it what the store holds that the room lacks, wait until the
-	 * room stored it, then close. Resolves with whether the room sent
-	 * anything new; rejects with the room's refusal (`SyncRefusedError`),
-	 * after `timeout`, or where there is no IndexedDB.
-	 */
-	const prefetch = (options: PrefetchOptions): Promise<PrefetchResult> => {
-		const [serverUrl, room] = targetOf('prefetch', options);
-		if (typeof indexedDB === 'undefined') {
-			return Promise.reject(new TypeError('prefetch needs IndexedDB to keep the document'));
-		}
-		const doc = keepingReplaced(new Y.Doc());
-		const local = new idb.IndexeddbPersistence(
-			options.persistName ?? `edytor:${serverUrl}/${room}`,
-			doc,
-			{ disableBc: true }
-		);
-		let socket: InstanceType<typeof ws.WebsocketProvider> | null = null;
-		/** Prefetch's one timer: its deadline (`timeout`), cleared when it closes. */
-		let deadline: ReturnType<typeof setTimeout> | undefined;
-		const close = async () => {
-			clearTimeout(deadline);
-			socket?.destroy();
-			await local.destroy();
-			doc.destroy();
-		};
-		return new Promise<PrefetchResult>((resolve, reject) => {
-			const fail = (error: unknown) => void close().then(() => reject(error));
-			deadline = setTimeout(
-				() => fail(new Error(`prefetch of ${room} timed out`)),
-				options.timeout ?? 30_000
-			);
-			local.whenSynced.then(() => {
-				const before = Y.encodeStateVector(doc);
-				const provider = (socket = new ws.WebsocketProvider(serverUrl, room, doc, {
-					params: options.params,
-					WebSocketPolyfill: options.WebSocketPolyfill,
-					maxBackoffTime: options.maxBackoffTime,
-					connectTimeout: options.connectTimeout,
-					maxFrameBytes: options.maxFrameBytes,
-					disableBc: true
-				}));
-				// A prefetch is nobody's presence.
-				provider.awareness.setLocalState(null);
-				const done = () => {
-					if (!provider.synced || !provider.saved) return;
-					const after = Y.encodeStateVector(doc);
-					const updated = after.length !== before.length || after.some((b, i) => b !== before[i]);
-					void close().then(() => resolve({ updated }));
-				};
-				provider.on('synced', done);
-				provider.on('saved', done);
-				provider.on('refused', (refusal: SyncRefusedError) => fail(refusal));
-				done();
-			}, fail);
-		});
-	};
-
-	/**
-	 * When the room last stored a change (ms since the epoch), or `null`:
-	 * one authorized HTTP `GET <server>/<room>?lastUpdated`, which
-	 * `routeDocumentSocket` answers without opening the document. Compare
-	 * it with when a document was last fetched to decide whether to
-	 * `prefetch` it. Throws on an HTTP error (`403` refused, `401` expired).
-	 */
-	const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
-		const [serverUrl, room] = targetOf('lastUpdated', options);
-		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
-		for (const [key, value] of Object.entries(options.params ?? {}))
-			url.searchParams.set(key, value);
-		url.searchParams.set('lastUpdated', '1');
-		const response = await (options.fetch ?? fetch)(url.toString());
-		if (!response.ok) {
-			throw new Error(`lastUpdated of ${room}: ${response.status} ${await response.text()}`);
-		}
-		const { lastUpdated: at } = (await response.json()) as { lastUpdated: number | null };
-		return typeof at === 'number' ? at : null;
-	};
-
-	/**
-	 * The room's document as JSON, or `null` when it stores nothing yet:
-	 * one authorized HTTP `GET <server>/<room>?snapshot`, which
-	 * `routeDocumentSocket` answers from the room's live document. Show it
-	 * while a view's own copy hydrates: `<Edytor snapshot>`. Throws on an
-	 * HTTP error (`403` refused, `401` expired).
-	 */
-	const documentSnapshot = async (options: LastUpdatedOptions): Promise<JSONDoc | null> => {
-		const [serverUrl, room] = targetOf('documentSnapshot', options);
-		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
-		for (const [key, value] of Object.entries(options.params ?? {}))
-			url.searchParams.set(key, value);
-		url.searchParams.set('snapshot', '1');
-		const response = await (options.fetch ?? fetch)(url.toString());
-		if (!response.ok) {
-			throw new Error(`snapshot of ${room}: ${response.status} ${await response.text()}`);
-		}
-		const { lastUpdated: at, document } = (await response.json()) as {
-			lastUpdated: number | null;
-			document: JSONDoc;
-		};
-		return typeof at === 'number' ? document : null;
-	};
-
 	return {
-		prefetch,
-		lastUpdated,
-		documentSnapshot,
 		IndexeddbPersistence: idb.IndexeddbPersistence,
 		WebsocketProvider: ws.WebsocketProvider,
 		watchComments: ws.watchComments,
@@ -396,3 +268,122 @@ export const bindProviders = (Y: EngineApi) => {
 };
 
 export type { IndexeddbProvider };
+
+/**
+ * `[serverUrl (no trailing slash), room]` of a target, the room id checked.
+ * The target is `{ server, room }`; the names before them are refused, in
+ * a message that names the `caller` it was passed to.
+ */
+export const targetOf = (caller: string, options: WebsocketTarget): [string, string] => {
+	const { server, room } = options;
+	if (typeof server !== 'string' || typeof room !== 'string')
+		throw new TypeError(`${caller}: the target is \`server\` and \`room\``);
+	assertRoomId(room);
+	return [server.replace(/\/+$/, ''), room];
+};
+
+/**
+ * Keep a document fresh without opening it: load its local store
+ * (the one `createWebsocketSync` keeps, `edytor:<server>/<room>` unless
+ * `persistName` names another), dial the room once, take what it lacks
+ * and hand it what the store holds that the room lacks, wait until the
+ * room stored it, then close. Resolves with whether the room sent
+ * anything new; rejects with the room's refusal (`SyncRefusedError`),
+ * after `timeout`, or where there is no IndexedDB. Over the provider
+ * classes of `stack` (bound to `Y`).
+ */
+export const prefetchWith = (
+	Y: EngineApi,
+	stack: ProviderStack,
+	options: PrefetchOptions
+): Promise<PrefetchResult> => {
+	const [serverUrl, room] = targetOf('prefetch', options);
+	if (typeof indexedDB === 'undefined') {
+		return Promise.reject(new TypeError('prefetch needs IndexedDB to keep the document'));
+	}
+	const doc = keepingReplaced(new Y.Doc());
+	const local = new stack.IndexeddbPersistence(
+		options.persistName ?? `edytor:${serverUrl}/${room}`,
+		doc,
+		{ disableBc: true }
+	);
+	let socket: InstanceType<ProviderStack['WebsocketProvider']> | null = null;
+	/** Prefetch's one timer: its deadline (`timeout`), cleared when it closes. */
+	let deadline: ReturnType<typeof setTimeout> | undefined;
+	const close = async () => {
+		clearTimeout(deadline);
+		socket?.destroy();
+		await local.destroy();
+		doc.destroy();
+	};
+	return new Promise<PrefetchResult>((resolve, reject) => {
+		const fail = (error: unknown) => void close().then(() => reject(error));
+		deadline = setTimeout(
+			() => fail(new Error(`prefetch of ${room} timed out`)),
+			options.timeout ?? 30_000
+		);
+		local.whenSynced.then(() => {
+			const before = Y.encodeStateVector(doc);
+			const provider = (socket = new stack.WebsocketProvider(serverUrl, room, doc, {
+				params: options.params,
+				WebSocketPolyfill: options.WebSocketPolyfill,
+				maxBackoffTime: options.maxBackoffTime,
+				connectTimeout: options.connectTimeout,
+				maxFrameBytes: options.maxFrameBytes,
+				disableBc: true
+			}));
+			// A prefetch is nobody's presence.
+			provider.awareness.setLocalState(null);
+			const done = () => {
+				if (!provider.synced || !provider.saved) return;
+				const after = Y.encodeStateVector(doc);
+				const updated = after.length !== before.length || after.some((b, i) => b !== before[i]);
+				void close().then(() => resolve({ updated }));
+			};
+			provider.on('synced', done);
+			provider.on('saved', done);
+			provider.on('refused', (refusal: SyncRefusedError) => fail(refusal));
+			done();
+		}, fail);
+	});
+};
+
+/**
+ * One authorized HTTP `GET <server>/<room>?<key>` (`lastUpdated`,
+ * `snapshot`), which `routeDocumentSocket` answers without a socket: its
+ * JSON. Throws on an HTTP error (`403` refused, `401` expired).
+ */
+const query = async (caller: string, key: string, options: LastUpdatedOptions) => {
+	const [serverUrl, room] = targetOf(caller, options);
+	const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
+	for (const [name, value] of Object.entries(options.params ?? {}))
+		url.searchParams.set(name, value);
+	url.searchParams.set(key, '1');
+	const response = await (options.fetch ?? fetch)(url.toString());
+	if (!response.ok) {
+		throw new Error(`${key} of ${room}: ${response.status} ${await response.text()}`);
+	}
+	return (await response.json()) as { lastUpdated: number | null; document?: JSONDoc };
+};
+
+/**
+ * When the room last stored a change (ms since the epoch), or `null`:
+ * `?lastUpdated`, answered without opening the document. Compare it with
+ * when a document was last fetched to decide whether to `prefetch` it.
+ * Throws on an HTTP error (`403` refused, `401` expired).
+ */
+export const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
+	const { lastUpdated: at } = await query('lastUpdated', 'lastUpdated', options);
+	return typeof at === 'number' ? at : null;
+};
+
+/**
+ * The room's document as JSON, or `null` when it stores nothing yet:
+ * `?snapshot`, answered from the room's live document. Show it while a
+ * view's own copy hydrates: `<Edytor snapshot>`. Throws on an HTTP error
+ * (`403` refused, `401` expired).
+ */
+export const documentSnapshot = async (options: LastUpdatedOptions): Promise<JSONDoc | null> => {
+	const { lastUpdated: at, document } = await query('documentSnapshot', 'snapshot', options);
+	return typeof at === 'number' ? document! : null;
+};

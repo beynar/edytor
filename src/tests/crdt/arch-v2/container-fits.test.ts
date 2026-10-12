@@ -141,7 +141,7 @@ describe('ZW-01: nothing but an item lands directly in a list', () => {
 				([a]) => {
 					expect(a.ed.canPlace(['Q'], 'U')).toBe(false);
 					expect(a.ed.moveBlocks(['Q'], { parent: 'U', index: 1 }).status).toBe('refused');
-					expect(a.ed.moveBlock('Q', { parent: 'U', index: 2 }).status).toBe('refused');
+					expect(a.ed.moveBlocks(['Q'], { parent: 'U', index: 2 }).status).toBe('refused');
 					// Items, and a list of items, still move in.
 					expect(a.ed.canPlace(['I2'], 'U')).toBe(true);
 					expect(a.ed.canPlace(['Q'], 'I1')).toBe(true);

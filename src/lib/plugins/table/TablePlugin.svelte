@@ -4,9 +4,12 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tableKinds } from '$lib/crdt/semantics.js';
-	import { tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
+	import { listedColumns, tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
-	import { keywordsOf, labelsWith, viewLabels } from '$lib/labels.js';
+	import { all } from '$lib/utils/listen.js';
+	import type { HotKey } from '$lib/session/keymap.js';
+	import { tableEnglish, keywordsOf, labelsOf, type TableLabels } from '$lib/labels.js';
+	import { hoverChrome } from '../bands.svelte.js';
 	import TableChromeLayer from './TableChrome.svelte';
 	import { TableChrome } from './chrome.svelte.js';
 	import {
@@ -17,6 +20,7 @@
 		gridOf,
 		insertColumn,
 		insertRow,
+		kebab,
 		positionOf,
 		tableOf,
 		tabFrom,
@@ -28,21 +32,8 @@
 
 	export type { TablePluginOptions };
 
-	const tablePlugins = new WeakSet<Plugin>();
 	/** Each view's chrome (the first table plugin listed in it claims the view). */
 	const chromes = new WeakMap<Edytor, TableChrome>();
-	const labelsOf = viewLabels('table');
-
-	/** Recognize any table plugin instance. */
-	export const isTablePlugin = (plugin: Plugin) => tablePlugins.has(plugin);
-
-	/** The ids of a row's cell, its row and its table, from the handle (stable while it shows). */
-	const parentsOf = (edytor: Edytor, id: string | undefined) => {
-		const cell = id ? edytor.idToBlock.get(id) : undefined;
-		const row = cell?.parent;
-		const table = row?.parent;
-		return { cell, row, table };
-	};
 
 	/**
 	 * The column ids `table`'s rows show, read from the cells (reactive), as
@@ -52,14 +43,9 @@
 	 */
 	const columnsOfTable = (edytor: Edytor, table: string): string[] => {
 		const cell = edytor.cells?.get(table);
-		const listed = cell?.data?.columns;
-		if (Array.isArray(listed)) {
-			const ids = new Set(
-				listed.flatMap((c) => {
-					const id = (c as { id?: unknown } | null)?.id;
-					return typeof id === 'string' ? [id] : [];
-				})
-			);
+		const listed = listedColumns(cell?.data);
+		if (listed !== null) {
+			const ids = new Set(listed);
 			const unlisted = (cell?.childIds ?? []).flatMap((row) =>
 				(edytor.cells?.get(row)?.childIds ?? []).flatMap((id) => {
 					const column = edytor.cells?.get(id)?.data?.column;
@@ -84,15 +70,10 @@
 	 * listed ones.
 	 */
 	const columnIndex = (edytor: Edytor, table: string, row: string, id: string): number => {
-		const listed = edytor.cells?.get(table)?.data?.columns;
-		if (!Array.isArray(listed)) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
+		const ids = listedColumns(edytor.cells?.get(table)?.data);
+		if (ids === null) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
 		const column = edytor.cells?.get(id)?.data?.column;
 		if (typeof column !== 'string') return -1;
-		const ids: string[] = [];
-		for (const c of listed) {
-			const at = (c as { id?: unknown } | null)?.id;
-			if (typeof at === 'string' && !ids.includes(at)) ids.push(at);
-		}
 		const index = ids.indexOf(column);
 		return index !== -1 ? index : columnsOfTable(edytor, table).indexOf(column);
 	};
@@ -118,23 +99,20 @@
 		const minColumnWidth = options.minColumnWidth ?? 48;
 		const fresh = tableBlock({ rows: options.rows ?? 3, columns: options.columns ?? 3 });
 		const plugin: Plugin = (edytor) => {
-			const labels = labelsWith('table', options.labels);
-			labelsOf.claim(edytor, labels);
-			const chrome =
-				chromes.get(edytor) ?? new TableChrome(edytor, labels, columnWidth, minColumnWidth);
+			const labels = labelsOf(edytor, 'table', tableEnglish);
+			const chrome = chromes.get(edytor) ?? new TableChrome(edytor, columnWidth, minColumnWidth);
 			chromes.set(edytor, chrome);
 			/** A cell's element: its role, its column, and whether a header row or column holds it. */
-			const cellElement = (data: Record<string, unknown>, id?: string) => {
-				const { row, table } = parentsOf(edytor, id);
-				const tableId = table?.id;
-				if (!id || !row?.id || !tableId)
+			const cellElement = (_: unknown, id?: string) => {
+				// The ids of its row and its table, from the handle (stable while it shows).
+				const row = id ? edytor.idToBlock.get(id)?.parent : undefined;
+				const table = row?.parent?.id;
+				if (!id || !row?.id || !table)
 					return { tag: 'div', attributes: { 'data-edytor-table-cell': '' } };
-				const tableData = edytor.cells?.get(tableId)?.data;
-				const rowIndex = edytor.cells?.get(tableId)?.childIds.indexOf(row.id) ?? -1;
-				const column = columnIndex(edytor, tableId, row.id, id);
-				const headerRow = tableData?.headerRow === true && rowIndex === 0;
-				const headerColumn = tableData?.headerColumn === true && column === 0;
-				void data;
+				const cell = edytor.cells?.get(table);
+				const column = columnIndex(edytor, table, row.id, id);
+				const headerRow = cell?.data?.headerRow === true && cell.childIds.indexOf(row.id) === 0;
+				const headerColumn = cell?.data?.headerColumn === true && column === 0;
 				return {
 					tag: 'div',
 					attributes: {
@@ -148,55 +126,55 @@
 			/**
 			 * The block menu's row and column actions on `table`: at the row and
 			 * column of the cell the caret was last in (`chrome.cell`), else the
-			 * last row and column. An insert puts the caret in the new cells.
+			 * last row and column (an insert puts the caret in the new cells);
+			 * then its Header row and Header column switches.
 			 */
-			const rowsOf = (table: Block): KindMenuAction[] => {
+			const menuOf = (table: Block): KindMenuAction[] => {
+				const action = (key: keyof TableLabels, icon: string, run: () => unknown) => ({
+					id: `table.${kebab(key)}`,
+					label: labels[key] as string,
+					icon,
+					run
+				});
+				const switches = (['headerRow', 'headerColumn'] as const).map((flag) => ({
+					...action(flag, `table.${kebab(flag)}`, () => toggleHeader(table, flag)),
+					checked: table.data[flag] === true
+				}));
 				const grid = gridOf(table);
-				if (!grid || grid.rows.length === 0) return [];
+				if (!grid || grid.rows.length === 0) return switches;
 				const cell = chrome.cell ? edytor.idToBlock.get(chrome.cell) : undefined;
 				const at = cell && tableOf(cell)?.id === table.id ? positionOf(cell) : null;
 				const row = at?.row ?? grid.rows.length - 1;
 				const column = at?.column ?? grid.columns.length - 1;
 				const rowBlock = edytor.idToBlock.get(grid.rows[row]!.id);
 				return [
-					{
-						id: 'table.insert-row-above',
-						label: labels.insertRowAbove,
-						icon: 'action.up',
-						run: () => insertRow(table, row, true)
-					},
-					{
-						id: 'table.insert-row-below',
-						label: labels.insertRowBelow,
-						icon: 'action.down',
-						run: () => insertRow(table, row + 1, true)
-					},
-					{
-						id: 'table.insert-column-left',
-						label: labels.insertColumnLeft,
-						icon: 'table.left',
-						run: () => insertColumn(table, column, undefined, row)
-					},
-					{
-						id: 'table.insert-column-right',
-						label: labels.insertColumnRight,
-						icon: 'table.right',
-						run: () => insertColumn(table, column + 1, undefined, row)
-					},
-					{
-						id: 'table.delete-row',
-						label: labels.deleteRow,
-						icon: 'action.delete',
-						run: () => rowBlock && deleteRows(table, [rowBlock])
-					},
-					{
-						id: 'table.delete-column',
-						label: labels.deleteColumn,
-						icon: 'action.delete',
-						run: () => deleteColumn(table, column)
-					}
+					action('insertRowAbove', 'action.up', () => insertRow(table, row, true)),
+					action('insertRowBelow', 'action.down', () => insertRow(table, row + 1, true)),
+					action('insertColumnLeft', 'table.left', () =>
+						insertColumn(table, column, undefined, row)
+					),
+					action('insertColumnRight', 'table.right', () =>
+						insertColumn(table, column + 1, undefined, row)
+					),
+					action('deleteRow', 'action.delete', () => rowBlock && deleteRows(table, [rowBlock])),
+					action('deleteColumn', 'action.delete', () => deleteColumn(table, column)),
+					...switches
 				];
 			};
+			/** Tab and Shift+Tab (`step`) walk the cells, unless blocks are selected. */
+			const tab =
+				(step: 1 | -1): HotKey =>
+				({ prevent }) => {
+					const cell = caretCell(edytor);
+					if (cell && !edytor.selection.selectedBlocks.size) prevent(() => tabFrom(cell, step));
+				};
+			/** ArrowUp and ArrowDown (`step`) go to the cell above and below. */
+			const vertical =
+				(step: 1 | -1): HotKey =>
+				({ prevent }) => {
+					const cell = caretCell(edytor);
+					if (cell && verticalFrom(cell, step)) prevent();
+				};
 			return {
 				onSelectionChange: () => {
 					if (chromes.get(edytor) === chrome) chrome.track();
@@ -220,31 +198,17 @@
 							{
 								label: labels.table,
 								data: fresh.data,
-								keywords: keywordsOf(
-									'block.table',
-									['table', 'grid', 'simple table', 'rows', 'columns'],
-									options.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.table', [
+									'table',
+									'grid',
+									'simple table',
+									'rows',
+									'columns'
+								]),
 								group: 'Advanced blocks'
 							}
 						],
-						menu: (block) => [
-							...rowsOf(block),
-							{
-								id: 'table.header-row',
-								label: labels.headerRow,
-								icon: 'table.header-row',
-								checked: block.data.headerRow === true,
-								run: () => toggleHeader(block, 'headerRow')
-							},
-							{
-								id: 'table.header-column',
-								label: labels.headerColumn,
-								icon: 'table.header-column',
-								checked: block.data.headerColumn === true,
-								run: () => toggleHeader(block, 'headerColumn')
-							}
-						],
+						menu: menuOf,
 						html: (block, _, children) => tableHtml(block.data ?? {}, children),
 						plain: (_, __, children) => children,
 						parse: (element) => (element.localName === 'table' ? parseTable(element) : undefined)
@@ -267,78 +231,52 @@
 					}
 				},
 				hotkeys: {
-					tab: ({ prevent }) => {
-						const cell = caretCell(edytor);
-						if (cell && !edytor.selection.selectedBlocks.size) prevent(() => tabFrom(cell, 1));
-					},
-					'shift+tab': ({ prevent }) => {
-						const cell = caretCell(edytor);
-						if (cell && !edytor.selection.selectedBlocks.size) prevent(() => tabFrom(cell, -1));
-					},
-					arrowup: ({ prevent }) => {
-						const cell = caretCell(edytor);
-						if (cell && verticalFrom(cell, -1)) prevent();
-					},
-					arrowdown: ({ prevent }) => {
-						const cell = caretCell(edytor);
-						if (cell && verticalFrom(cell, 1)) prevent();
-					}
+					tab: tab(1),
+					'shift+tab': tab(-1),
+					arrowup: vertical(-1),
+					arrowdown: vertical(1)
 				},
 				onEdytorAttached: ({ node }) => {
 					if (chromes.get(edytor) !== chrome) return;
-					const over = (event: PointerEvent) => chrome.hover(event.target);
-					const leave = (event: PointerEvent) => chrome.leave(event.relatedTarget);
 					const layer = edytor.overlay.layer;
-					const document = node.ownerDocument;
-					// Another drag (a block's) hides the chrome; a grip's own drag keeps it (`table.drag`).
-					const drag = (event: Event) =>
-						(chrome.dragging =
-							event.type === 'dragstart' &&
-							!(event.target instanceof Node && layer?.contains(event.target)));
-					node.addEventListener('pointerover', over);
-					node.addEventListener('pointerleave', leave);
-					layer?.addEventListener('pointerleave', leave);
-					document.addEventListener('dragstart', drag, true);
-					document.addEventListener('dragend', drag, true);
-					document.addEventListener('drop', drag, true);
-					// A press outside an open grip menu closes it.
-					const outside = onPress(
-						edytor,
-						document,
-						(event) => {
-							const target = event.target as Node | null;
-							if (!chrome.menu || (target && layer?.contains(target))) return;
-							chrome.menu = null;
-							edytor.overlay.invalidate();
-						},
-						true
+					const off = all(
+						hoverChrome(
+							edytor,
+							node,
+							chrome.hover,
+							chrome.leave,
+							// Another drag (a block's) hides the chrome; a grip's own drag keeps it (`table.drag`).
+							(event) =>
+								(chrome.dragging =
+									event.type === 'dragstart' &&
+									!(event.target instanceof Node && layer?.contains(event.target)))
+						),
+						// A press outside an open grip menu closes it.
+						onPress(
+							edytor,
+							node.ownerDocument,
+							(event) => {
+								const target = event.target as Node | null;
+								if (!chrome.menu || (target && layer?.contains(target))) return;
+								chrome.menu = null;
+								edytor.overlay.invalidate();
+							},
+							true
+						),
+						edytor.overlay.mount(
+							TableChromeLayer,
+							{ chrome, grip: options.grip, menu: options.menu, add: options.add },
+							'edytor-table-chrome',
+							6,
+							chrome.measure
+						)
 					);
-					const unmount = edytor.overlay.mount(
-						TableChromeLayer,
-						{ chrome, grip: options.grip, menu: options.menu, add: options.add },
-						'edytor-table-chrome',
-						6,
-						chrome.measure
-					);
-					return () => {
-						node.removeEventListener('pointerover', over);
-						node.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerleave', leave);
-						document.removeEventListener('dragstart', drag, true);
-						document.removeEventListener('dragend', drag, true);
-						document.removeEventListener('drop', drag, true);
-						outside();
-						unmount();
-					};
+					return off;
 				}
 			};
 		};
-		tablePlugins.add(plugin);
 		return plugin;
 	};
-
-	/** The table with the default options. */
-	export const tablePlugin = createTablePlugin();
 
 	/** `table`'s grid template: each column's width (the resize preview while a band drags it). */
 	const templateOf = (view: BlockView) => {
@@ -440,7 +378,7 @@
 
 <!-- A row: its cells, then a placeholder in each column it shows none of (`table.pad`). -->
 {#snippet row({ block, children }: BlockSnippetPayload)}
-	{@const labels = labelsOf.of(block.handle?.edytor)}
+	{@const labels = labelsOf(block.handle?.edytor, 'table', tableEnglish)}
 	<div data-edytor-children data-edytor-table-cells>
 		{@render children?.()}<!--
 		-->{#each padsOf(block) as column (column)}

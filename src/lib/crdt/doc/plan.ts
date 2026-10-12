@@ -15,6 +15,8 @@ export type Refusal = null | string;
 export const NOOP: OpResult = Object.freeze({ status: 'noop', ids: EMPTY_IDS });
 export const refused = (reason: Refusal): OpResult =>
 	Object.freeze({ status: 'refused', ids: EMPTY_IDS, ...(reason !== null && { reason }) });
+/** A refusal that names no reason (one shared value). */
+export const REFUSED = refused(null);
 
 /** Each prepared op, applied: the op itself. */
 export type Applied<P> = {

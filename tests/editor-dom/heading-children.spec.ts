@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from './editorTest';
-import { readJsonByTestId, trackPageIssues, waitForEditorReady } from './helpers';
+import { readJsonByTestId, trackPageIssues, waitForEditorReady, notionTheme } from './helpers';
 
 /**
  * SW19 — a heading's nested blocks render outside its `h1`–`h3` (the block
@@ -32,14 +31,6 @@ const children = [
 const open = async (page: Page) => {
 	await page.goto(`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify({ children }))}`);
 	await waitForEditorReady(page, { requireRuntime: true });
-};
-
-/** The Notion theme, its class on the editor itself (the theme's documented alternative). */
-const notionTheme = async (page: Page) => {
-	await page.addStyleTag({
-		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
-	});
-	await page.locator('[data-edytor]').evaluate((node) => node.classList.add('edytor-notion'));
 };
 
 const styleOf = (page: Page, selector: string) =>

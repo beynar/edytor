@@ -15,10 +15,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { EDYTOR_FRAGMENT_MIME } from '$lib/clipboard/types.js';
 import { encodeClipboardJson } from '$lib/clipboard/serializeClipboardFragment.js';
 import {
@@ -30,6 +27,8 @@ import {
 } from '../../dom/test.utils.js';
 import { expectNoHiddenContent } from './invariants.js';
 import { hidden } from '$lib/selection/visibility.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -43,7 +42,7 @@ const outline = (block: JSONBlock): Outline => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	const text = (startText?.parent.value.content ?? []).map((p) => ('text' in p ? p.text : '@'));
 	return `${text.join('')}@${yStart}${isCollapsed ? '' : ' (range)'}`;
 };
@@ -322,14 +321,6 @@ describe("SW18: a paste into a closed toggle's empty header keeps the toggle", (
 		expect(hiddenPasted(edytor)).toEqual([]);
 		expect(caret(edytor)).toBe('b@1');
 	});
-
-	// DR-crdt-2: any closed `<details>` hides its body, the legacy `details` kind too.
-	it('DR-crdt-2: a closed `details` block keeps its kind; its body stays hidden', async () => {
-		const edytor = await closed(true, { 'text/html': '<h2>H</h2>' }, { type: 'details' });
-		expect(doc(edytor)).toEqual([['details "H"', ['paragraph "body"']], 'paragraph "after"']);
-		expect(hiddenPasted(edytor)).toEqual([]);
-		expect(caret(edytor)).toBe('H@1');
-	});
 });
 
 describe('HX-10: a closed toggle keeps its hidden body; the paste goes after it', () => {
@@ -404,7 +395,7 @@ describe('HX-09: the clipboard page, probed', () => {
 	it('an image into an empty line: the line stays after it for the caret', async () => {
 		const edytor = await paragraph('', 0, image);
 		expect(doc(edytor)).toEqual(['paragraph "before"', 'image "cap"', 'paragraph']);
-		expect(edytor.selection.state.startText?.parent.id).toBe('host');
+		expect(selectionState(edytor).startText?.parent.id).toBe('host');
 		expect(caret(edytor)).toBe('@0');
 	});
 });

@@ -1,2 +1,2 @@
-import { codePlugin } from 'edytor';
-console.log(codePlugin);
+import { createCodePlugin } from 'edytor';
+console.log(createCodePlugin());

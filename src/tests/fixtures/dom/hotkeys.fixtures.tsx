@@ -3,11 +3,11 @@ import { expect, vi } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import { dispatchDomKeyDown } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
 	Object.defineProperty(edytor.keymap, 'isMac', {
@@ -227,7 +227,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Third</paragraph>
 			</root>
 		),
-		plugins: [richTextPlugin, mentionPlugin, arrowMovePlugin],
+		plugins: [richTextPlugin, mentionPlugin, createArrowMovePlugin()],
 		run: async () => {
 			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
 			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });

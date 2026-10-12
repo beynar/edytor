@@ -261,10 +261,7 @@ export class Notes extends DurableObject<Env> {
 
   appendNote(text: string) {
     return this.document.transact((doc) =>
-      doc.insertBlock(
-        { parent: null, index: doc.childrenIds(null).length },
-        toBlockSpec({ type: 'paragraph', content: [{ text }] })
-      )
+      doc.insertBlocks({ parent: null, index: doc.childrenIds(null).length }, [toBlockSpec({ type: 'paragraph', content: [{ text }] })])
     );
   }
 }
@@ -362,7 +359,7 @@ export class LockedRoom extends DocumentRoom<Env> {
 }
 ```
 
-With `attachRoom`, pass `locks: { key: 'lockedBy' }`. Locks are checked before your own `validate`, and both must accept a frame. To lock a block, a client writes its own user into the block's data (`block.data.lockedBy = userId`, or `facade.setBlockData`); to unlock it, the owner removes the key. A view does not know about locks: an edit to a locked block shows locally, then the room's inverse removes it. Read the key in your kind's rendering to show the lock and make the block read-only for others (`contenteditable` on its content, or a readonly view).
+With `attachRoom`, pass `locks: { key: 'lockedBy' }`. Locks are checked before your own `validate`, and both must accept a frame. To lock a block, a client writes its own user into the block's data (`edytor.patchData(id, [{ path: ['lockedBy'], value: userId }])`, or the document's `patchData`); to unlock it, the owner removes the key. A view does not know about locks: an edit to a locked block shows locally, then the room's inverse removes it. Read the key in your kind's rendering to show the lock and make the block read-only for others (`contenteditable` on its content, or a readonly view).
 
 The room also enforces one rule itself: a block's per-writer marks (`del.<n>` for a delete, `wd.<n>` for an undone creation) are written and deleted only by client `n`. A frame writing another client's mark has that client's new content stripped, as content under [another user's client id](/docs/server/authorization#replicas) is, and a delete of another user's mark is dropped (unless its block goes with it), both logged as a `mark` entry; the rest of the frame applies.
 

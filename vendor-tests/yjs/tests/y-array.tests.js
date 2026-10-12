@@ -5,6 +5,7 @@ import * as prng from 'lib0-v14/prng'
 import * as math from 'lib0-v14/math'
 import * as env from 'lib0-v14/environment'
 import * as delta from 'lib0-v14/delta'
+import { toDelta, eventDelta, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 const isDevMode = env.getVariable('node_env') === 'development'
 
@@ -63,7 +64,7 @@ export const testSlice = _tc => {
 export const testArrayFrom = _tc => {
   const doc1 = new Y.Doc()
   const db1 = doc1.get('root')
-  const nestedArray1 = Y.Node.from(delta.create().insert([0, 1, 2]))
+  const nestedArray1 = fromDelta(delta.create().insert([0, 1, 2]))
   db1.setAttr('array', nestedArray1)
   t.compare(nestedArray1.toArray(), [0, 1, 2])
 }
@@ -162,9 +163,9 @@ export const testDeleteInsert = tc => {
 export const testInsertThreeElementsTryRegetProperty = tc => {
   const { testConnector, users, array0, array1 } = init(tc, { users: 2 })
   array0.insert(0, [1, true, false])
-  t.compare(array0.toDelta(), delta.create().insert([1, true, false]).done(), 'content works')
+  t.compare(toDelta(array0), delta.create().insert([1, true, false]).done(), 'content works')
   testConnector.flushAllMessages()
-  t.compare(array1.toDelta(), delta.create().insert([1, true, false]).done(), 'comparison works after sync')
+  t.compare(toDelta(array1), delta.create().insert([1, true, false]).done(), 'comparison works after sync')
   compare(users)
 }
 
@@ -259,139 +260,6 @@ export const testInsertThenMergeDeleteOnSync = tc => {
 /**
  * @param {t.TestCase} tc
  */
-export const testInsertAndDeleteEvents = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  /**
-   * @type {Object<string,any>?}
-   */
-  let event = null
-  array0.observe(e => {
-    event = e
-  })
-  array0.insert(0, [0, 1, 2])
-  t.assert(event !== null)
-  event = null
-  array0.delete(0)
-  t.assert(event !== null)
-  event = null
-  array0.delete(0, 2)
-  t.assert(event !== null)
-  event = null
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testNestedObserverEvents = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  /**
-   * @type {Array<number>}
-   */
-  const vals = []
-  array0.observe(() => {
-    if (array0.length === 1) {
-      // inserting, will call this observer again
-      // we expect that this observer is called after this event handler finishedn
-      array0.insert(1, [1])
-      vals.push(0)
-    } else {
-      // this should be called the second time an element is inserted (above case)
-      vals.push(1)
-    }
-  })
-  array0.insert(0, [0])
-  t.compareArrays(vals, [0, 1])
-  t.compareArrays(array0.toArray(), [0, 1])
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testInsertAndDeleteEventsForTypes = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  /**
-   * @type {Object<string,any>|null}
-   */
-  let event = null
-  array0.observe(e => {
-    event = e
-  })
-  array0.insert(0, [new Y.Node()])
-  t.assert(event !== null)
-  event = null
-  array0.delete(0)
-  t.assert(event !== null)
-  event = null
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testChangeEvent = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  /**
-   * @type {delta.Delta<any>}
-   */
-  let d = delta.create()
-  array0.observe(e => {
-    d = e.delta
-  })
-  const newArr = new Y.Node()
-  array0.insert(0, [newArr, 4, 'dtrn'])
-  t.assert(d !== null && d.children.len === 1)
-  t.compare(d, delta.create().insert([newArr, 4, 'dtrn']).done())
-  array0.delete(0, 2)
-  t.assert(d !== null && d.children.len === 1)
-  t.compare(d.toJSON().children, [{ delete: 2 }])
-  array0.insert(1, [0.1])
-  t.assert(d !== null && d.children.len === 2)
-  t.compare(d, delta.create().retain(1).insert([0.1]).done())
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testInsertAndDeleteEventsForTypes2 = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  /**
-   * @type {Array<Object<string,any>>}
-   */
-  const events = []
-  array0.observe(e => {
-    events.push(e)
-  })
-  array0.insert(0, ['hi', new Y.Node()])
-  t.assert(events.length === 1, 'Event is triggered exactly once for insertion of two elements')
-  array0.delete(1)
-  t.assert(events.length === 2, 'Event is triggered exactly once for deletion')
-  compare(users)
-}
-
-/**
- * This issue has been reported here https://github.com/yjs/yjs/issues/155
- * @param {t.TestCase} tc
- */
-export const testNewChildDoesNotEmitEventInTransaction = tc => {
-  const { array0, users } = init(tc, { users: 2 })
-  let fired = false
-  users[0].transact(() => {
-    const newMap = new Y.Node()
-    newMap.observe(() => {
-      fired = true
-    })
-    array0.insert(0, [newMap])
-    newMap.setAttr('tst', 42)
-  })
-  t.assert(!fired, 'Event does not trigger')
-}
-
-/**
- * @param {t.TestCase} tc
- */
 export const testGarbageCollector = tc => {
   const { testConnector, users, array0 } = init(tc, { users: 3 })
   array0.insert(0, ['x', 'y', 'z'])
@@ -400,41 +268,6 @@ export const testGarbageCollector = tc => {
   array0.delete(0, 3)
   users[0].connect()
   testConnector.flushAllMessages()
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testEventTargetIsSetCorrectlyOnLocal = tc => {
-  const { array0, users } = init(tc, { users: 3 })
-  /**
-   * @type {any}
-   */
-  let event
-  array0.observe(e => {
-    event = e
-  })
-  array0.insert(0, ['stuff'])
-  t.assert(event.target === array0, '"target" property is set correctly')
-  compare(users)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testEventTargetIsSetCorrectlyOnRemote = tc => {
-  const { testConnector, array0, array1, users } = init(tc, { users: 3 })
-  /**
-   * @type {any}
-   */
-  let event
-  array0.observe(e => {
-    event = e
-  })
-  array1.insert(0, ['stuff'])
-  testConnector.flushAllMessages()
-  t.assert(event.target === array0, '"target" property is set correctly')
   compare(users)
 }
 

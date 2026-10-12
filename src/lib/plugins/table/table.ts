@@ -1,6 +1,6 @@
 /**
- * The table plugin's commands and reads over the document's table ops
- * (`table.*` in the delete contract): each command is one dispatched plan
+ * The table plugin's commands and reads over its table ops (`ops.ts`,
+ * `table.*` in the delete contract): each command is one dispatched plan
  * (hooks see it by its name: `insertTableRow`, `deleteTableRows`,
  * `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`,
  * `moveTableRows`, `fillTableCell`), its own undo step, refused in a
@@ -9,11 +9,11 @@
  */
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan, type BlockOperations } from '$lib/block/block.utils.js';
 import type { TableAddPayload, TableChrome, TableGripPayload } from './chrome.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Commands } from '$lib/plugins.js';
 import type { Prepared } from '$lib/crdt/index.js';
-import type { PartialLabels } from '$lib/labels.js';
+import * as ops from './ops.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { caretBox, sameLine } from '$lib/surface/lines.js';
 
@@ -26,25 +26,25 @@ export type TablePluginOptions = {
 	columnWidth?: number;
 	/** The narrowest a column may be resized to, in pixels (default 48). */
 	minColumnWidth?: number;
-	/** The words the table's command and controls say, over the English ones. */
-	labels?: PartialLabels<'table'>;
-	/** The slash menu's keywords of the table command (`block.table`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace a row's or a column's grip: it renders centered where the
-	 * grip stands (left of the hovered row, above the hovered column). Put
+	 * A row's or a column's grip: it renders centered where the grip stands
+	 * (left of the hovered row, above the hovered column; without it, no
+	 * grip). Put
 	 * `{@attach payload.grip}` on its element: the drag, the click that
 	 * opens its menu, its keys and its ARIA.
 	 */
 	grip?: Snippet<[TableGripPayload]>;
 	/**
-	 * Replace a grip's menu: it renders under its grip while
-	 * `chrome.menu` is set. Put `{@attach chrome.popup}` and
-	 * `{@attach chrome.keys}` on its element and spread `item.option` (or
-	 * `chrome.option(index)`) on each row of `chrome.items`.
+	 * A grip's menu: it renders under its grip while `chrome.menu` is set
+	 * (without it, nothing shows). Put `{@attach chrome.popup}` and
+	 * `{@attach chrome.keys}` on its element and `{@attach item.option}` on
+	 * each row of `chrome.items` (its highlight from `item.selected`).
 	 */
 	menu?: Snippet<[TableChrome]>;
-	/** Replace the `+` under the table (a row) and beside it (a column): it renders along that edge. */
+	/**
+	 * The `+` under the table (a row) and beside it (a column): it renders
+	 * along that edge (without it, no `+`).
+	 */
 	add?: Snippet<[TableAddPayload]>;
 };
 
@@ -99,23 +99,26 @@ export const cellAt = (table: Block, grid: TableGrid, row: number, column: numbe
 
 /** The cell holding the caret (or the selection's start), if it is a table's cell. */
 export const caretCell = (edytor: Edytor): Block | null => {
-	const block = edytor.selection.state.startBlock;
+	const block = edytor.selection.textRange().startText?.parent;
 	return block?.id && edytor.facade.isTableCell(block.id) ? block : null;
 };
 
-/** `prepare` dispatched as `operation` on `table`: one plan, its own undo step; the plan or `null`. */
+/** `prepare` dispatched as `operation` on `table`: one plan, its own undo step; the plan's ids, or `null` when refused. */
 const run = <O extends TableOperation>(
 	table: Block,
 	operation: O,
-	payload: BlockOperations[O],
-	prepare: (payload: BlockOperations[O]) => Prepared
-) => dispatchPlan(table, operation, payload, prepare, []);
+	payload: Commands[O],
+	prepare: (payload: Commands[O]) => Prepared
+) => {
+	const result = table.edytor.dispatcher.plan(operation, payload, prepare, table);
+	return result.status === 'refused' ? null : result;
+};
 
 /** Insert a row at `index` (`table.insert-row`); the caret goes to its first cell when `caret`. */
 export const insertRow = (table: Block, index: number, caret = false): Block | null => {
 	const { edytor } = table;
 	const plan = run(table, 'insertTableRow', { index }, (p) =>
-		edytor.facade.prepare.insertTableRow(table.id, p.index)
+		ops.insertTableRow(edytor.facade, table.id, p.index)
 	);
 	const row = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
 	if (row && caret) edytor.dispatcher.caret(row.children[0]?.firstText, 0);
@@ -125,7 +128,10 @@ export const insertRow = (table: Block, index: number, caret = false): Block | n
 /** Delete `rows` with their cells (`table.delete-row`). */
 export const deleteRows = (table: Block, rows: readonly Block[]) =>
 	run(table, 'deleteTableRows', { rows: [...rows] }, (p) =>
-		table.edytor.facade.prepare.deleteTableRows(p.rows.map((row) => row.id))
+		ops.deleteTableRows(
+			table.edytor.facade,
+			p.rows.map((row) => row.id)
+		)
 	) !== null;
 
 /**
@@ -135,7 +141,7 @@ export const deleteRows = (table: Block, rows: readonly Block[]) =>
 export const insertColumn = (table: Block, index: number, width?: number, caret?: number) => {
 	const applied =
 		run(table, 'insertTableColumn', { index, width }, (p) =>
-			table.edytor.facade.prepare.insertTableColumn(table.id, p.index, p.width)
+			ops.insertTableColumn(table.edytor.facade, table.id, p.index, p.width)
 		) !== null;
 	const grid = applied && caret !== undefined ? gridOf(table) : null;
 	if (grid) {
@@ -149,19 +155,20 @@ export const insertColumn = (table: Block, index: number, width?: number, caret?
 /** Delete a column, by id or position (`table.delete-column`). */
 export const deleteColumn = (table: Block, column: string | number) =>
 	run(table, 'deleteTableColumn', { column }, (p) =>
-		table.edytor.facade.prepare.deleteTableColumn(table.id, p.column)
+		ops.deleteTableColumn(table.edytor.facade, table.id, p.column)
 	) !== null;
 
 /** Move a column to position `to` (`table.move-column`). */
 export const moveColumn = (table: Block, column: string | number, to: number) =>
 	run(table, 'moveTableColumn', { column, to }, (p) =>
-		table.edytor.facade.prepare.moveTableColumn(table.id, p.column, p.to)
+		ops.moveTableColumn(table.edytor.facade, table.id, p.column, p.to)
 	) !== null;
 
 /** Move rows to position `to` among their table's rows (`table.move-row`). */
 export const moveRows = (table: Block, rows: readonly Block[], to: number) =>
 	run(table, 'moveTableRows', { rows: [...rows], to }, (p) =>
-		table.edytor.facade.prepare.moveTableRows(
+		ops.moveTableRows(
+			table.edytor.facade,
 			p.rows.map((row) => row.id),
 			p.to
 		)
@@ -174,7 +181,7 @@ export const moveRows = (table: Block, rows: readonly Block[], to: number) =>
 export const fillCell = (table: Block, row: string, column: string | number): Block | null => {
 	const { edytor } = table;
 	const plan = run(table, 'fillTableCell', { row, column }, (p) =>
-		edytor.facade.prepare.fillTableCell(p.row, p.column)
+		ops.fillTableCell(edytor.facade, p.row, p.column)
 	);
 	const cell = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
 	if (cell) edytor.dispatcher.caret(cell.firstText, 0);
@@ -183,8 +190,11 @@ export const fillCell = (table: Block, row: string, column: string | number): Bl
 
 /** Toggle `flag` (`headerRow` or `headerColumn`) of `table`'s data (`table.header`). */
 export const toggleHeader = (table: Block, flag: 'headerRow' | 'headerColumn') => {
-	(table.data as Record<string, unknown>)[flag] = table.data[flag] !== true;
+	table.edytor.patchData(table.id, [{ path: [flag], value: table.data[flag] !== true }]);
 };
+
+/** A label key as a row id: `insertRowAbove` → `insert-row-above`. */
+export const kebab = (key: string) => key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /** A cell's width as set, else `fallback`: `data.columns[i].width`. */
 export const widthOf = (column: unknown, fallback: number): number => {
@@ -213,7 +223,7 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 		const next = cellAt(table, grid, Math.floor(i / width), i % width);
 		const text = next?.lastText;
 		if (text) {
-			edytor.selection.setAtTextOffset(text, text.length);
+			edytor.selection.selectText(text, text.length);
 			return true;
 		}
 	}
@@ -234,7 +244,8 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 	const at = positionOf(cell);
 	const { edytor } = cell;
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
+	const { isCollapsed } = edytor.selection.projection;
 	if (!at || !isCollapsed || !startText) return false;
 	if (step < 0 ? startText !== cell.firstText : startText !== cell.lastText) return false;
 	const value = startText.stringContent;
@@ -251,10 +262,7 @@ export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 			// line, at its x on the other line, as the browser moves it from there.
 			const other = caretBox(startText, yStart, step > 0);
 			if (!other || !sameLine(other, edge)) return false;
-			edytor.selection.setAtTextOffset(
-				startText,
-				landing(startText, -step as 1 | -1, caret, column)
-			);
+			edytor.selection.selectText(startText, landing(startText, -step as 1 | -1, caret, column));
 			return true;
 		}
 	} else if (step < 0 ? value.lastIndexOf('\n', yStart - 1) >= 0 : value.indexOf('\n', yStart) >= 0)
@@ -263,7 +271,7 @@ export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 		const target = cellAt(at.table, at.grid, row, at.column);
 		const text = step < 0 ? target?.lastText : target?.firstText;
 		if (!text) continue;
-		edytor.selection.setAtTextOffset(text, landing(text, step, caret, column));
+		edytor.selection.selectText(text, landing(text, step, caret, column));
 		return true;
 	}
 	return false;

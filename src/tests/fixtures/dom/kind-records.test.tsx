@@ -28,13 +28,8 @@ import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { bannerPlugin } from '../../dom/S6BannerKind.svelte';
 import {
 	canonicalTree,
@@ -44,6 +39,14 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	codePlugin,
+	imagePlugin,
+	richTextPlugin,
+	slashMenuPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S6. */
 const row = it;
@@ -75,7 +78,7 @@ const items = () =>
 /** Copy every top-level block as a block selection; the written flavours. */
 const copyAll = async (edytor: Edytor, editor: HTMLElement) => {
 	// Every block, nested ones included (select-all; a block selection is exactly its members).
-	edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
+	selectBlocks(edytor, ...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 	const { clipboardData } = await dispatchCopy(editor);
 	const html = clipboardData['text/html'] ?? '';
@@ -96,10 +99,10 @@ describe('extension cost: a new kind and a new mark are one record each (§10 (a
 	});
 
 	row('markdown: the kind prefix converts, with the preset data', async () => {
-		const { edytor, editor } = await render([markdownShortcutsPlugin, bannerPlugin]);
+		const { edytor, editor } = await render([createMarkdownShortcutsPlugin(), bannerPlugin]);
 		await type(editor, '!! ');
 		expect(canonicalTree(edytor)).toEqual([{ type: 'banner', data: { tone: 'info' } }]);
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('catalogue: block menus read the kind row from edytor.kinds', async () => {
@@ -190,7 +193,7 @@ describe('slash menu: generated from kind records', () => {
 		expect(items()).toEqual(['block.code </> Code']);
 		await enter();
 		expect(canonicalTree(edytor)).toEqual([{ type: 'code', children: [{ type: 'codeLine' }] }]);
-		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+		expect(selectionState(edytor).startBlock?.type).toBe('codeLine');
 	});
 
 	pin('a preset converts with its data (callout icon, todo checked)', async () => {
@@ -220,7 +223,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 		['> ', { type: 'toggle' }],
 		['```', { type: 'code', children: [{ type: 'codeLine' }] }]
 	])('"%s" converts to %o', async (typed, expected) => {
-		const { edytor, editor } = await render([codePlugin, markdownShortcutsPlugin]);
+		const { edytor, editor } = await render([codePlugin, createMarkdownShortcutsPlugin()]);
 		await type(editor, typed);
 		expect(canonicalTree(edytor)).toEqual([expected]);
 	});
@@ -228,7 +231,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 	// A divider renders no content: the caret moves to a fresh paragraph after
 	// it (Notion), and typing lands there — never in the divider.
 	row.each([
-		['"---"', [markdownShortcutsPlugin], '---'],
+		['"---"', [createMarkdownShortcutsPlugin()], '---'],
 		['"/divider" + Enter', [slashMenuPlugin], '/divider']
 	] as [string, Plugin[], string][])(
 		'%s converts to a divider with the caret in a paragraph after it',
@@ -237,7 +240,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 			await type(editor, typed);
 			if (typed.startsWith('/')) await enter();
 			expect(canonicalTree(edytor)).toEqual([{ type: 'divider' }, { type: 'paragraph' }]);
-			expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+			expect(selectionState(edytor).startBlock?.type).toBe('paragraph');
 			await type(editor, 'x');
 			expect(canonicalTree(edytor)).toEqual([
 				{ type: 'divider' },
@@ -270,7 +273,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 				children && { children }
 			);
 			if (children) {
-				edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+				edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
 				await flushDomUpdates();
 			}
 			await type(editor, typed);
@@ -280,7 +283,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 					? [{ type: 'divider' }, { type: 'paragraph' }]
 					: [{ type: 'code', children: [{ type: 'codeLine' }] }];
 			expect(canonicalTree(edytor)).toEqual([block, ...inserted]);
-			const caret = edytor.selection.state.startBlock!;
+			const caret = selectionState(edytor).startBlock!;
 			expect(caret.type).toBe(kind === 'divider' ? 'paragraph' : 'codeLine');
 			expect(caret.parent?.isRoot ? caret.index : caret.parent?.index).toBe(
 				1 + Number(kind === 'divider')
@@ -296,7 +299,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 	pin(
 		'an unregistered kind has no shortcut: "```" without the code extension types text',
 		async () => {
-			const { edytor, editor } = await render([markdownShortcutsPlugin]);
+			const { edytor, editor } = await render([createMarkdownShortcutsPlugin()]);
 			await type(editor, '```');
 			expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: '```' }] }]);
 		}
@@ -334,7 +337,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				type: 'paragraph',
 				content: [{ text: 'hi ' }, { type: 'mention', data: {} }, { text: '' }]
 			},
-			{ type: 'horizontalRule' },
 			{ type: 'image', content: [{ text: 'cap' }] },
 			{ type: 'unordered-list', children: [{ type: 'list-item', content: [{ text: 'u1' }] }] },
 			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'open' }] }
@@ -363,7 +365,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'<p></p><pre><code>let x</code></pre>',
 				'<ol><li>li</li></ol>',
 				'<p>hi <span data-edytor-inline-block="mention"></span></p>',
-				'<hr>',
 				'<figure><figcaption>cap</figcaption></figure>',
 				'<ul><li>u1</li></ul>',
 				'<li data-edytor-todo-item="true"><input type="checkbox">open</li>'
@@ -379,7 +380,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'let x',
 				'li',
 				'hi @mention',
-				'---',
 				'cap',
 				'u1',
 				'[ ] open'

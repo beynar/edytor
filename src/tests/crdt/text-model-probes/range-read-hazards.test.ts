@@ -29,6 +29,7 @@ import { bindModel } from '../../oracles/model-ops.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
+import { toDelta } from '../harness/delta.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
@@ -52,7 +53,7 @@ const FORMAT_SEED = modelSpecSeed([
 const oracle = (text, i0, i1) => {
 	const items = [];
 	let pos = 0;
-	for (const op of text.toDelta().toJSON()?.children ?? []) {
+	for (const op of toDelta(text).toJSON()?.children ?? []) {
 		if (op.type === 'retain') {
 			pos += typeof op.retain === 'number' ? op.retain : 0;
 			continue;

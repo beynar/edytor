@@ -12,37 +12,43 @@ const root = doc.get('content');
 assert.ok(root instanceof Y.Node);
 root.setAttr('type', 'root');
 
-// sequence + format + maintained delta
+// sequence + mark: a range read folds the marks
 const para = new Y.Node('paragraph');
 root.insert(0, [para]);
 para.insert(0, 'hello world');
-para.format(6, 5, { bold: true });
-assert.deepEqual(para.delta.toJSON().children, [
-	{ type: 'insert', insert: 'hello ' },
-	{ type: 'insert', insert: 'world', format: { bold: true } }
-]);
+para.mark(6, 5, 'bold', true, 0, 0);
+assert.deepEqual(
+	new Y.RangeCursor(para)
+		.read(0, 11)
+		.map((p) => [p.content.str.slice(p.offset, p.offset + p.len), p.formats]),
+	[
+		['hello ', undefined],
+		['world', { bold: true }]
+	]
+);
 
 // update round-trip between two docs
 const doc2 = new Y.Doc();
 Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
-assert.equal(doc2.get('content').get(0).toString(), '<paragraph>hello world</paragraph>');
-
-// relative positions
-const rpos = Y.createRelativePositionFromTypeIndex(para, 3);
-const abs = Y.createAbsolutePositionFromRelativePosition(
-	Y.createRelativePositionFromJSON(Y.relativePositionToJSON(rpos)),
-	doc
+const para2 = new Y.RangeCursor(doc2.get('content')).read(0, 1)[0].content.type;
+assert.equal(para2.name, 'paragraph');
+assert.equal(
+	new Y.RangeCursor(para2)
+		.read(0, 11)
+		.map((p) => p.content.str.slice(p.offset, p.offset + p.len))
+		.join(''),
+	'hello world'
 );
+
+// positions as ids
+const at = Y.idAtIndex(para, 3);
+const abs = Y.indexOfId(doc, at);
 assert.equal(abs.index, 3);
 assert.equal(abs.type, para);
 
-// UndoManager
-const um = new Y.UndoManager(doc);
-doc.transact(() => para.insert(11, '!'));
-um.undo();
-assert.equal(para.toString(), '<paragraph>hello world</paragraph>');
-um.redo();
-assert.equal(para.toString(), '<paragraph>hello world!</paragraph>');
+// The engine ships no undo manager: a document's history is edytor's
+// (`createUndoManager`, `document.history`).
+assert.equal('UndoManager' in Y, false);
 
 // ── package boundary: node-safe subpaths vs the component root ───────────
 //
@@ -60,12 +66,12 @@ await assert.rejects(
 
 // `edytor/crdt/edytor` — the bindings subpath (the engine path `edytor/crdt`
 // stays the raw vendored module). This is THE public surface for
-// node/SSR-side CRDT work: Doc, facade, awareness, providers, migration.
+// node/SSR-side CRDT work: Doc, facade, awareness, providers.
 const bindings = await import('edytor/crdt/edytor');
 assert.equal(typeof bindings.bindCrdt, 'function');
 assert.equal(typeof bindings.Awareness, 'function');
 // D-15 (C1): the `bind*` building blocks are internal — `bindCrdt(Y)` is the
-// one composition entry (`.doc`, `.providers`, `.migration`, `.sync`, …).
+// one composition entry (`.doc`, `.providers`, `.sync`, …).
 for (const retired of [
 	'bindEdytorDoc',
 	'bindMigration',
@@ -117,8 +123,7 @@ assert.equal(awareness.getLocalState(), null);
 // Providers construct through the bound stack (no engine import inside).
 assert.equal(typeof crdt.providers.IndexeddbPersistence, 'function');
 assert.equal(typeof crdt.providers.WebsocketProvider, 'function');
-assert.equal(typeof crdt.migration.migrate, 'function');
-assert.equal(typeof crdt.sync.readSyncMessage, 'function');
+assert.equal(typeof crdt.sync.applyRemote, 'function');
 
 // The README-documented sync factories ship on the package root for Svelte
 // consumers (`import { Edytor, createIndexeddbSync } from 'edytor'` — checked
@@ -148,7 +153,7 @@ edA.init(); // deterministic bootstrap — one canonical empty block
 const boot = edA.childrenIds(null)[0];
 assert.equal(typeof boot, 'string');
 edA.insertText(boot, 0, 'Hello, ');
-assert.ok(edA.insertBlock({ parent: null, index: 1 }, { id: 'b-world', type: 'paragraph' }));
+assert.ok(edA.insertBlocks({ parent: null, index: 1 }, [{ id: 'b-world', type: 'paragraph' }]));
 edA.insertText('b-world', 0, 'world');
 edA.formatRange('b-world', 0, 5, { bold: true });
 assert.equal(edA.blockText('b-world'), 'world');

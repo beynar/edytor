@@ -81,13 +81,13 @@ describe('H10 · a subtree lock holds what shows under the locked block', () => 
 		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(1));
 		// Bob adds a child under the locked parent.
 		bob.document.transact(() =>
-			bob.document.facade.insertBlock({ parent: 'p', index: 1 }, { id: 'n', type: 'paragraph' })
+			bob.document.facade.insertBlocks({ parent: 'p', index: 1 }, [{ id: 'n', type: 'paragraph' }])
 		);
 		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(2));
 		// Bob moves his free block into the locked subtree, and the child out of it.
-		bob.document.transact(() => bob.document.facade.moveBlock('q', { parent: 'p', index: 0 }));
+		bob.document.transact(() => bob.document.facade.moveBlocks(['q'], { parent: 'p', index: 0 }));
 		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(3));
-		bob.document.transact(() => bob.document.facade.moveBlock('c', { parent: null, index: 2 }));
+		bob.document.transact(() => bob.document.facade.moveBlocks(['c'], { parent: null, index: 2 }));
 		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(4));
 		const json = await converged(room, ada.document, bob.document);
 		expect(json).toEqual({
@@ -140,7 +140,7 @@ describe('H10 · bypass and the EDYTOR_LOCKS var', () => {
 		});
 		const admin = await join(room, 'admin');
 		admin.document.transact(() => admin.document.facade.insertText('p', 0, 'note: '));
-		admin.document.transact(() => admin.document.facade.setBlockData('p', {}));
+		admin.document.transact(() => admin.document.facade.patchData('p', [{ path: [], value: {} }]));
 		await vi.waitFor(async () =>
 			expect((await roomJSON(room)).children[0]).toMatchObject({
 				data: {},

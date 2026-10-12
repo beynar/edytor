@@ -5,10 +5,20 @@
  */
 import { randOf } from '../rand.js';
 import { TYPE } from '../schema.js';
-import { sanitizeSpec, sanitizeWireJson } from '../../utils/json.js';
+import {
+	asBlockSpec,
+	asContentItem,
+	sanitizeSpec,
+	sanitizeWireJson,
+	type JSONBlock,
+	type JSONInlineBlock,
+	type JSONText
+} from '../../utils/json.js';
 import { patchWrites, leafKey, isObject, type DataPatch } from '../data.js';
 import {
+	collides,
 	promotedRank,
+	ranksAt,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem
@@ -21,7 +31,6 @@ import type { OpsContext } from './steps.js';
 export const metaOps = (c: OpsContext) => {
 	const {
 		doc,
-		M,
 		roles,
 		roleOf,
 		dataNode,
@@ -42,7 +51,8 @@ export const metaOps = (c: OpsContext) => {
 		leavingIsland,
 		settle,
 		remove,
-		atomOf
+		atomOf,
+		writeContent
 	} = c;
 
 	/**
@@ -90,12 +100,10 @@ export const metaOps = (c: OpsContext) => {
 	 */
 	const leafSets = (data: unknown, current: unknown): DataPatch[] => {
 		const out: DataPatch[] = [];
-		const plainObject = (v: unknown): v is Record<string, unknown> =>
-			v !== null && typeof v === 'object' && !Array.isArray(v);
 		const walk = (v: unknown, at: unknown, path: string[]): void => {
-			if (plainObject(v) && Object.keys(v).length > 0 && (path.length === 0 || plainObject(at)))
+			if (isObject(v) && Object.keys(v).length > 0 && (path.length === 0 || isObject(at)))
 				for (const [k, x] of Object.entries(v))
-					walk(x, plainObject(at) ? at[k] : undefined, [...path, k]);
+					walk(x, isObject(at) ? at[k] : undefined, [...path, k]);
 			else if (path.length > 0) out.push({ path, value: v });
 		};
 		walk(sanitizeWireJson(data), current, []);
@@ -210,18 +218,18 @@ export const metaOps = (c: OpsContext) => {
 		value: {
 			type?: string;
 			data?: Record<string, unknown>;
-			content?: ContentItem[];
-			children?: BlockSpec[];
+			content?: (ContentItem | JSONText | JSONInlineBlock)[];
+			children?: (BlockSpec | JSONBlock)[];
 		}
 	): Prepared => {
 		id = ref(id);
-		const content = value.content?.map(sanitizeItem);
-		const children = value.children?.map(sanitizeSpec);
+		const content = value.content?.map((item) => sanitizeItem(asContentItem(item)));
+		const children = value.children?.map((child) => sanitizeSpec(asBlockSpec(child)));
 		if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
 		const type = value.type === undefined ? undefined : ref(value.type);
 		const toVoid = type === undefined ? isVoid(id) : roles.childless(type);
 		if (children?.length && toVoid) return REFUSED;
-		if (children !== undefined && M.collides(doc, children)) return refused('id-collision');
+		if (children !== undefined && collides(doc, children)) return refused('id-collision');
 		const data =
 			value.data === undefined ? [] : dataSteps(id, leafSets(value.data, blockDataOf(id)));
 		if (data === null) return REFUSED;
@@ -236,20 +244,12 @@ export const metaOps = (c: OpsContext) => {
 		if (content !== undefined) {
 			const length = displayLength(id);
 			if (length > 0) writes.push({ op: 'deleteText', id, offset: 0, length });
-			let at = 0;
-			for (const item of content) {
-				if (item.kind === 'inline')
-					writes.push({ op: 'insertInline', id, offset: at++, atom: item });
-				else if (item.text !== '') {
-					writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
-					at += item.text.length;
-				}
-			}
+			writeContent(writes, id, 0, content);
 		}
 		if (children !== undefined) {
 			for (const kid of childrenIds(id)) writes.push(remove(kid));
 			// Every current child is deleted, so the new ones rank from an empty list.
-			const ranks = M.ranksAt([], 0, children.length, doc.clientID, randOf(doc));
+			const ranks = ranksAt([], 0, children.length, doc.clientID, randOf(doc));
 			if (children.length > 0)
 				writes.push({ op: 'insertBlocks', parent: id, index: 0, specs: children, ranks });
 		}
@@ -259,10 +259,10 @@ export const metaOps = (c: OpsContext) => {
 	return {
 		dataSteps,
 		replaceData,
-		leafSets,
-		retypeSteps,
 		setBlockType,
 		patchData,
 		setBlock
 	};
 };
+
+export type MetaOps = ReturnType<typeof metaOps>;

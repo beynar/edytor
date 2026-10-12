@@ -1,18 +1,10 @@
-import * as error from 'lib0-v14/error'
-import * as map from 'lib0-v14/map'
 import * as math from 'lib0-v14/math'
-import * as logging from 'lib0-v14/logging'
 import { callAll } from 'lib0-v14/function'
 
-import { ContentFormat } from '../structs/Item.js'
-import { getStateVector } from './StructStore.js'
-import { callEventHandlerListeners } from './EventHandler.js'
-import { createIdSet, iterateStructsByIdSet } from './ids.js'
-import { GC } from '../structs/GC.js'
-import { YEvent } from './YEvent.js'
+import { createIdSet } from './ids.js'
 import { writeUpdateMessageFromTransaction } from './encoding-helpers.js'
-import { UpdateEncoderV1, UpdateEncoderV2 } from './UpdateEncoder.js'
-import { findIndexSS, updateCurrentFormats, cleanupFormattingGap, tryGcDeleteSet, tryMerge, tryToMergeWithLefts, cleanupContextlessFormattingGap } from './transaction-helpers.js'
+import { UpdateEncoder } from './UpdateEncoder.js'
+import { findIndexSS, tryGcDeleteSet, tryMerge, tryToMergeWithLefts } from './transaction-helpers.js'
 import * as random from 'lib0-v14/random'
 
 export const generateNewClientId = random.uint53
@@ -20,25 +12,10 @@ export const generateNewClientId = random.uint53
 /**
  * A transaction is created for every change on the Yjs model. It is possible
  * to bundle changes on the Yjs model in a single transaction to
- * minimize the number on messages sent and the number of observer calls.
- * If possible the user of this library should bundle as many changes as
- * possible. Here is an example to illustrate the advantages of bundling:
+ * minimize the number of messages sent.
  *
- * @example
- * const ydoc = new Y.Doc()
- * const map = ydoc.get('map')
- * // Log content when change is triggered
- * map.observe(() => {
- *   console.log('change triggered')
- * })
- * // Each change on the map type triggers a log message:
- * map.setAttr('a', 0) // => "change triggered"
- * map.setAttr('b', 0) // => "change triggered"
- * // When put in a transaction, it will trigger the log after the transaction:
- * ydoc.transact(() => {
- *   map.setAttr('a', 1)
- *   map.setAttr('b', 1)
- * }) // => "change triggered"
+ * YP19: a commit is told through the document's events (`commit`, then
+ * `afterTransaction`); nodes have no observers.
  *
  * @public
  */
@@ -59,24 +36,9 @@ export class Transaction {
      */
     this.deleteSet = createIdSet()
     /**
-     * Describes the set of items that are cleaned up / deleted by ids. It is a subset of
-     * this.deleteSet
-     */
-    this.cleanUps = createIdSet()
-    /**
      * Describes the set of inserted items by ids
      */
     this.insertSet = createIdSet()
-    /**
-     * Holds the state before the transaction started.
-     * @type {Map<Number,Number>?}
-     */
-    this._beforeState = null
-    /**
-     * Holds the state after the transaction.
-     * @type {Map<Number,Number>?}
-     */
-    this._afterState = null
     /**
      * All types that were directly modified (property added or child
      * inserted/deleted). New types are not included in this Set.
@@ -84,12 +46,6 @@ export class Transaction {
      * @type {Map<YNode,Set<String|null>>}
      */
     this.changed = new Map()
-    /**
-     * Stores the events for the types that observe also child elements.
-     * It is mainly used by `observeDeep`.
-     * @type {Map<YNode,Array<YEvent<any>>>}
-     */
-    this.changedParentTypes = new Map()
     /**
      * @type {Array<AbstractStruct>}
      */
@@ -99,109 +55,11 @@ export class Transaction {
      */
     this.origin = origin
     /**
-     * Stores meta information on the transaction
-     * @type {Map<any,any>}
-     */
-    this.meta = new Map()
-    /**
      * Whether this change originates from this doc.
      * @type {boolean}
      */
     this.local = local
-    /**
-     * @type {Set<Doc>}
-     */
-    this.subdocsAdded = new Set()
-    /**
-     * @type {Set<Doc>}
-     */
-    this.subdocsRemoved = new Set()
-    /**
-     * @type {Set<Doc>}
-     */
-    this.subdocsLoaded = new Set()
-    /**
-     * @type {boolean}
-     */
-    this._needFormattingCleanup = false
-    this._done = false
   }
-
-  /**
-   * Holds the state before the transaction started.
-   *
-   * @deprecated
-   * @type {Map<Number,Number>}
-   */
-  get beforeState () {
-    if (this._beforeState == null) {
-      const sv = getStateVector(this.doc.store)
-      this.insertSet.clients.forEach((ranges, client) => {
-        sv.set(client, ranges.getIds()[0].clock)
-      })
-      this._beforeState = sv
-    }
-    return this._beforeState
-  }
-
-  /**
-   * Holds the state after the transaction.
-   *
-   * @deprecated
-   * @type {Map<Number,Number>}
-   */
-  get afterState () {
-    if (!this._done) error.unexpectedCase()
-    if (this._afterState == null) {
-      const sv = getStateVector(this.doc.store)
-      this.insertSet.clients.forEach((_ranges, client) => {
-        const ranges = _ranges.getIds()
-        const d = ranges[ranges.length - 1]
-        sv.set(client, d.clock + d.len)
-      })
-      this._afterState = sv
-    }
-    return this._afterState
-  }
-}
-
-/**
- * This function is experimental and subject to change / be removed.
- *
- * Ideally, we don't need this function at all. Formats should be cleaned up
- * automatically after each change. This function iterates twice over the complete YText type
- * and removes unnecessary formats. This is also helpful for testing.
- *
- * This function won't be exported anymore as soon as there is confidence that the YText type works as intended.
- *
- * @param {YNode} type
- * @return {number} How many formats have been cleaned up.
- */
-export const cleanupYTextFormatting = type => {
-  if (!type.doc?.cleanupFormatting) return 0
-  let res = 0
-  transact(/** @type {Doc} */ (type.doc), transaction => {
-    let start = /** @type {Item} */ (type._start)
-    let end = type._start
-    let startFormats = map.create()
-    const currentFormats = map.copy(startFormats)
-    while (end) {
-      if (end.deleted === false) {
-        switch (end.content.constructor) {
-          case ContentFormat:
-            updateCurrentFormats(currentFormats, /** @type {ContentFormat} */ (end.content))
-            break
-          default:
-            res += cleanupFormattingGap(transaction, start, end, startFormats, currentFormats)
-            startFormats = map.copy(currentFormats)
-            start = end
-            break
-        }
-      }
-      end = end.right
-    }
-  })
-  return res
 }
 
 /**
@@ -211,68 +69,23 @@ export const cleanupYTextFormatting = type => {
 const cleanupTransactions = (transactionCleanups, i) => {
   if (i < transactionCleanups.length) {
     const transaction = transactionCleanups[i]
-    transaction._done = true
     const doc = transaction.doc
     const store = doc.store
     const ds = transaction.deleteSet
     const mergeStructs = transaction._mergeStructs
     // insertIntoIdSet(store.ds, ds)
     try {
-      doc.emit('beforeObserverCalls', [transaction, doc])
-      /**
-       * An array of event callbacks.
-       *
-       * Each callback is called even if the other ones throw errors.
-       *
-       * @type {Array<function():void>}
-       */
-      const fs = []
-      // observe events on changed types. Deleted types are included: `callTypeObservers` tracks
-      // the event in `changedParentTypes` unconditionally (so changes inside a deleted type — e.g.
-      // a suggestion-deleted tombstone that a custom renderer still renders — bubble to live
-      // ancestors) and decides itself whether the type's own observers fire.
-      transaction.changed.forEach((subs, itemtype) =>
-        fs.push(() => {
-          itemtype._callObserver(transaction, subs)
+      // A remote change may have moved what a search marker counted: drop them.
+      if (!transaction.local) {
+        transaction.changed.forEach((_subs, type) => {
+          if (type._searchMarker) type._searchMarker.length = 0
         })
-      )
-      fs.push(() => {
-        // deep observe events + the RDT `'delta'` channel. `changedParentTypes` holds the changed
-        // type AND all of its ancestors, so both `observeDeep` and `'delta'` bubble identically.
-        transaction.changedParentTypes.forEach((events, type) => {
-          // We need to think about the possibility that the user transforms the
-          // Y.Doc in the event.
-          // Deleted types are tracked (so changes inside them bubble to live ancestors) but fire
-          // only while something still renders them — i.e. they have a renderer attached.
-          if (type._item !== null && type._item.deleted && type._renderer === null) return
-          const hasDeep = type._dEH.l.length > 0
-          const hasDeltaListeners = (type._observers.get('delta')?.size ?? 0) > 0
-          const maintaining = type._delta !== null
-          if (!hasDeep && !hasDeltaListeners && !maintaining) return
-          /**
-           * @type {YEvent<any>}
-           */
-          const deepEventHandler = events.find(event => event.target === type) || new YEvent(type, transaction, new Set(null))
-          if (hasDeep) {
-            callEventHandlerListeners(type._dEH, deepEventHandler, transaction)
-          }
-          if (hasDeltaListeners || maintaining) {
-            // the type-rooted deep delta of this transaction (a nested `modify` chain for ancestors)
-            const change = /** @type {any} */ (deepEventHandler.getDelta({ renderer: type._renderer, deep: true }).done())
-            // a base-renderer type doesn't render deleted content, so a change that happened
-            // entirely inside a deleted subtree renders to an empty delta — don't emit those no-ops
-            if (!change.isEmpty()) {
-              type._delta?.apply(change) // keep the cache current (incl. ancestors and diff-renderer attributions) — builder API only, see the YNode._delta fingerprint-memo invariant
-              if (hasDeltaListeners) type.emit('delta', [change, transaction.origin])
-            }
-          }
-        })
-      })
-      fs.push(() => doc.emit('afterTransaction', [transaction, doc]))
-      callAll(fs, [])
-      if (transaction._needFormattingCleanup && doc.cleanupFormatting) {
-        cleanupYTextAfterTransaction(transaction)
       }
+      // Each listener runs even if another throws (the first error is rethrown).
+      callAll([
+        () => doc.emit('commit', [transaction, doc]),
+        () => doc.emit('afterTransaction', [transaction, doc])
+      ], [])
     } finally {
       // Replace deleted items with ItemDeleted / GC.
       // This is where content is actually remove from the Yjs Doc.
@@ -308,37 +121,15 @@ const cleanupTransactions = (transactionCleanups, i) => {
         }
       }
       if (!transaction.local && transaction.insertSet.clients.has(doc.clientID)) {
-        logging.print(logging.ORANGE, logging.BOLD, '[yjs] ', logging.UNBOLD, logging.RED, 'Changed the client-id because another client seems to be using it.')
+        console.log('[yjs] Changed the client-id because another client seems to be using it.') // YP15
         doc.clientID = generateNewClientId()
       }
-      // @todo Merge all the transactions into one and provide send the data as a single update message
-      doc.emit('afterTransactionCleanup', [transaction, doc])
       if (doc._observers.has('update')) {
-        const encoder = new UpdateEncoderV1()
+        const encoder = new UpdateEncoder()
         const hasContent = writeUpdateMessageFromTransaction(encoder, transaction)
         if (hasContent) {
           doc.emit('update', [encoder.toUint8Array(), transaction.origin, doc, transaction])
         }
-      }
-      if (doc._observers.has('updateV2')) {
-        const encoder = new UpdateEncoderV2()
-        const hasContent = writeUpdateMessageFromTransaction(encoder, transaction)
-        if (hasContent) {
-          doc.emit('updateV2', [encoder.toUint8Array(), transaction.origin, doc, transaction])
-        }
-      }
-      const { subdocsAdded, subdocsLoaded, subdocsRemoved } = transaction
-      if (subdocsAdded.size > 0 || subdocsRemoved.size > 0 || subdocsLoaded.size > 0) {
-        subdocsAdded.forEach(subdoc => {
-          subdoc.clientID = doc.clientID
-          if (subdoc.collectionid == null) {
-            subdoc.collectionid = doc.collectionid
-          }
-          doc.subdocs.add(subdoc)
-        })
-        subdocsRemoved.forEach(subdoc => doc.subdocs.delete(subdoc))
-        doc.emit('subdocs', [{ loaded: subdocsLoaded, added: subdocsAdded, removed: subdocsRemoved }, doc, transaction])
-        subdocsRemoved.forEach(subdoc => subdoc.destroy())
       }
 
       if (transactionCleanups.length <= i + 1) {
@@ -349,62 +140,6 @@ const cleanupTransactions = (transactionCleanups, i) => {
       }
     }
   }
-}
-
-// YP10 begin
-/**
- * Origin of the formatting cleanup that follows a remote transaction. The
- * cleanup is a write this document makes on its own (it deletes format items
- * a remote change made redundant): providers must still broadcast it, like
- * any local write, but no UndoManager tracks it — an origin nobody tracks
- * instead of `null`, the untyped-local origin every default undo manager
- * captures.
- */
-const formattingCleanupOrigin = Symbol('yjs.formatting-cleanup')
-// YP10 end
-
-/**
- * This will be called by the transaction once the event handlers are called to potentially cleanup
- * formats.
- *
- * @param {Transaction} transaction
- */
-export const cleanupYTextAfterTransaction = transaction => {
-  /**
-   * @type {Set<YNode>}
-   */
-  const needFullCleanup = new Set()
-  // check if another formatting item was inserted
-  const doc = transaction.doc
-  iterateStructsByIdSet(transaction, transaction.insertSet, (item) => {
-    if (
-      !item.deleted && /** @type {Item} */ (item).content.constructor === ContentFormat && item.constructor !== GC
-    ) {
-      needFullCleanup.add(/** @type {any} */ (item).parent)
-    }
-  })
-  // cleanup in a new transaction
-  transact(doc, (t) => {
-    iterateStructsByIdSet(transaction, transaction.deleteSet, item => {
-      if (item instanceof GC || !(/** @type {YNode} */ (item.parent)._hasFormatting) || needFullCleanup.has(/** @type {YNode} */ (item.parent))) {
-        return
-      }
-      const parent = /** @type {YNode} */ (item.parent)
-      if (item.content.constructor === ContentFormat) {
-        needFullCleanup.add(parent)
-      } else {
-        // If no format was inserted or deleted, we can make due with contextless
-        // formatting cleanups.
-        // Contextless: it is not necessary to compute currentFormats for the affected position.
-        cleanupContextlessFormattingGap(t, item)
-      }
-    })
-    // If a formatting item was inserted, we simply clean the whole type.
-    // We need to compute currentFormats for the current position anyway.
-    for (const yText of needFullCleanup) {
-      cleanupYTextFormatting(yText)
-    }
-  }, formattingCleanupOrigin) // YP10
 }
 
 /**

@@ -182,7 +182,10 @@ test.describe('the drag ghost', () => {
 		await open(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(edytor.idToBlock.get('b'));
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [edytor.idToBlock.get('b')].map((block) => block.id)
+			});
 		});
 		const { image } = await dragGrip(page, 'b');
 		expect(image).toMatchObject({ count: '1', badge: null, types: ['paragraph'], text: 'beta' });
@@ -207,7 +210,7 @@ test.describe('the drag ghost', () => {
 		await open(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(...['c', 'b'].map((id) => edytor.idToBlock.get(id)));
+			edytor.selection.select({ kind: 'blocks', ids: ['c', 'b'] });
 		});
 		const { image } = await dragGrip(page, 'b');
 		expect(image).toMatchObject({

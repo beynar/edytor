@@ -1,43 +1,11 @@
-import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONContentPart } from './types.js';
 import type { EdytorClipboardFragment } from './types.js';
-import { sliceTextValue } from '$lib/block/contentRange.js';
-import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
+import { sliceContent } from '$lib/block/contentRange.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import { rangeCovers, selectedMembers } from '$lib/selection/visibility.js';
 import { liftLayouts } from '$lib/selection/replaceSelection.js';
-
-const extractContentRange = (
-	block: Block,
-	startText: Text,
-	startOffset: number,
-	endText: Text,
-	endOffset: number
-) => {
-	const content: JSONContentPart[] = [];
-	const startIndex = block.content.indexOf(startText);
-	const endIndex = block.content.indexOf(endText);
-
-	for (const [index, part] of block.content.entries()) {
-		if (index < startIndex || index > endIndex) {
-			continue;
-		}
-
-		if (part instanceof InlineBlock) {
-			// An atom's `value.data` is a shallow copy of the index's: clone it.
-			content.push(cloneJson(part.value));
-			continue;
-		}
-
-		const start = part === startText ? startOffset : 0;
-		const end = part === endText ? endOffset : part.length;
-		content.push(...sliceTextValue(part.value, start, end));
-	}
-
-	return content;
-};
 
 /**
  * Block values nested as in the document, members only: a child that is not
@@ -56,37 +24,6 @@ const nestMembers = (blocks: Block[], valueOf: (block: Block) => JSONBlock): JSO
 		else out.push(value);
 	}
 	return out;
-};
-
-const extractBlockRange = (edytor: Edytor) => {
-	const { blocks, startBlock, endBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
-	if (!startBlock || !endBlock || !startText || !endText || blocks.length === 0) {
-		return null;
-	}
-	// A hidden block (a closed toggle's body) is copied exactly when the range's
-	// delete removes it, so a cut, or a copy then Backspace, never loses or
-	// duplicates it (`del.range.hidden-body`).
-	const copied = blocks.filter(rangeCovers(edytor));
-	// `block.value` is the document's serializer output: fresh JSON, no clone.
-	return nestMembers(copied, (block) => {
-		const value = block.value;
-		if (block === startBlock) {
-			value.content = extractContentRange(
-				block,
-				startText,
-				yStart,
-				block.lastText!,
-				block.lastText!.length
-			);
-		}
-		if (block === endBlock) {
-			value.content = extractContentRange(block, block.firstText!, 0, endText, yEnd);
-		}
-		if (startBlock === endBlock) {
-			value.content = extractContentRange(block, startText, yStart, endText, yEnd);
-		}
-		return value;
-	});
 };
 
 /**
@@ -122,8 +59,9 @@ export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFr
 	withoutUncopied(edytor, fragmentOf(edytor));
 
 const fragmentOf = (edytor: Edytor): EdytorClipboardFragment | null => {
+	const { selection, idToBlock } = edytor;
 	// A layout the block selection covers whole is copied as the layout.
-	const selectedBlocks = selectedMembers(edytor, liftLayouts(edytor.selection.selectedBlocks));
+	const selectedBlocks = selectedMembers(edytor, liftLayouts(selection.selectedBlocks));
 	if (selectedBlocks.length > 0) {
 		return {
 			version: 1,
@@ -136,29 +74,32 @@ const fragmentOf = (edytor: Edytor): EdytorClipboardFragment | null => {
 		};
 	}
 
-	const { startBlock, startText, endText, yStart, yEnd, isCollapsed, isBlockSpanning } =
-		edytor.selection.state;
-	if (!startBlock || !startText || !endText || isCollapsed) {
-		return null;
+	// The range in block offsets: `block.value` is the document's serializer output (fresh JSON).
+	const { start, end, isCollapsed, isBlockSpanning, blocks } = selection.projection;
+	const startBlock = start && idToBlock.get(start.block);
+	if (!start || !end || !startBlock || isCollapsed) return null;
+	if (!isBlockSpanning) {
+		const content = sliceContent(startBlock.value.content, start.offset, end.offset);
+		return { version: 1, source: 'edytor', kind: 'content', blockType: startBlock.type, content };
 	}
-
-	if (isBlockSpanning) {
-		const blocks = extractBlockRange(edytor);
-		return blocks
-			? {
-					version: 1,
-					source: 'edytor',
-					kind: 'blocks',
-					blocks
-				}
-			: null;
-	}
-
+	// A hidden block (a closed toggle's body) is copied exactly when the range's
+	// delete removes it, so a cut, or a copy then Backspace, never loses or
+	// duplicates it (`del.range.hidden-body`).
+	const copied = blocks.flatMap((id) => idToBlock.get(id) ?? []).filter(rangeCovers(edytor));
 	return {
 		version: 1,
 		source: 'edytor',
-		kind: 'content',
-		blockType: startBlock.type,
-		content: extractContentRange(startBlock, startText, yStart, endText, yEnd)
+		kind: 'blocks',
+		blocks: nestMembers(copied, (block) => {
+			const value = block.value;
+			const [first, last] = [block.id === start.block, block.id === end.block];
+			if (first || last)
+				value.content = sliceContent(
+					value.content,
+					first ? start.offset : 0,
+					last ? end.offset : Infinity
+				);
+			return value;
+		})
 	};
 };

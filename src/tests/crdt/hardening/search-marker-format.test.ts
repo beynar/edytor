@@ -47,6 +47,8 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { toDelta, applyDelta } from '../harness/delta.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 100_000;
@@ -67,7 +69,7 @@ const boldRanges = (runs: readonly unknown[]): [number, number][] => {
 	return out;
 };
 
-/** Same coverage computed off a raw `YNode.toDelta().toJSON()` children list. */
+/** Same coverage computed off a raw `toDelta(YNode).toJSON()` children list. */
 const boldRangesOfDelta = (djson: {
 	children?: { insert?: unknown; format?: Record<string, unknown> }[];
 }): [number, number][] => {
@@ -106,7 +108,7 @@ describe('R1 — P4 marker corruption (facade)', () => {
 		ed.init({
 			content: [{ id: 'p', type: 'paragraph', content: [{ kind: 'text', text: 'x'.repeat(300) }] }]
 		});
-		ed.setMark('p', 100, 100, 'b', true);
+		ed.formatRange('p', 100, 100, { b: true });
 		ed.insertText('p', 150, 'P', { b: true });
 		ed.insertText('p', 50, 'Z', { b: true });
 		ed.insertText('p', 152, 'Q', { b: true });
@@ -135,11 +137,11 @@ describe('R1 — P4 marker corruption (raw engine applyDelta)', () => {
 		const doc = new Y.Doc();
 		doc.clientID = cid++;
 		const t = doc.get('t');
-		doc.transact(() => t.applyDelta(delta.create().insert('x'.repeat(300))));
+		doc.transact(() => applyDelta(t, delta.create().insert('x'.repeat(300))));
 		for (const op of RAW_OPS) {
-			doc.transact(() => t.applyDelta(op(delta.create())));
+			doc.transact(() => applyDelta(t, op(delta.create())));
 		}
-		const djson = t.toDelta().toJSON();
+		const djson = toDelta(t).toJSON();
 		const text = (djson.children ?? [])
 			.map((o: { insert?: unknown }) => (typeof o.insert === 'string' ? o.insert : ''))
 			.join('');
@@ -179,28 +181,28 @@ const randFormats = (r: () => number): Record<string, unknown> | undefined => {
 	return fmt;
 };
 
-type Side = { doc: InstanceType<typeof Y.Doc>; t: any; um: InstanceType<typeof Y.UndoManager> };
+type Side = { doc: InstanceType<typeof Y.Doc>; t: any; um: UndoManager };
 
 /** Fixture: one long run — sparse formatting (markers must travel far). */
 const buildSparse = (t: any, doc: any) => {
-	t.applyDelta(delta.create().insert('x'.repeat(400)));
-	t.applyDelta(delta.create().retain(120).retain(160, { b: true }));
+	applyDelta(t, delta.create().insert('x'.repeat(400)));
+	applyDelta(t, delta.create().retain(120).retain(160, { b: true }));
 };
 
 /** Fixture: dense alternating single-char formats — format markers every 2 items. */
 const buildDense = (t: any, doc: any) => {
 	const d = delta.create();
 	for (let i = 0; i < 140; i++) d.insert('x', i % 2 === 0 ? { b: true } : { i: true });
-	t.applyDelta(d);
+	applyDelta(t, d);
 };
 
 /** Fixture: disjoint spans + a cleared hole — intervening same-key boundaries. */
 const buildHoled = (t: any, doc: any) => {
-	t.applyDelta(delta.create().insert('x'.repeat(300)));
-	t.applyDelta(delta.create().retain(60).retain(60, { i: true }));
-	t.applyDelta(delta.create().retain(100).retain(100, { b: true }));
-	t.applyDelta(delta.create().retain(130).retain(40, { b: null })); // hole [130,170)
-	t.applyDelta(delta.create().retain(240).retain(40, { u: 2 }));
+	applyDelta(t, delta.create().insert('x'.repeat(300)));
+	applyDelta(t, delta.create().retain(60).retain(60, { i: true }));
+	applyDelta(t, delta.create().retain(100).retain(100, { b: true }));
+	applyDelta(t, delta.create().retain(130).retain(40, { b: null })); // hole [130,170)
+	applyDelta(t, delta.create().retain(240).retain(40, { u: 2 }));
 };
 
 const markerCount = (t: any) => t._searchMarker?.length ?? 0;
@@ -215,8 +217,8 @@ const formatItemCount = (t: any) => {
 };
 
 const assertSameState = (x: Side, y: Side, label: string) => {
-	expect(JSON.stringify(x.t.toDelta().toJSON()), `delta diverged ${label}`).toBe(
-		JSON.stringify(y.t.toDelta().toJSON())
+	expect(JSON.stringify(toDelta(x.t).toJSON()), `delta diverged ${label}`).toBe(
+		JSON.stringify(toDelta(y.t).toJSON())
 	);
 	expect(x.t.length, `length diverged ${label}`).toBe(y.t.length);
 	expect(
@@ -241,7 +243,7 @@ const replayChecked = (
 		const t = doc.get('t');
 		doc.transact(() => build(t, doc));
 		if (!withMarkers) t._searchMarker = null;
-		const um = new Y.UndoManager(t, { captureTimeout: 0 });
+		const um = new UndoManager(t, { captureTimeout: 0 });
 		return { doc, t, um };
 	};
 	const a = mk(true);
@@ -276,18 +278,18 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 		// inside [160,300) must keep {b:true} through the 'Z' insert+negation.
 		const ops = [
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(80).retain(140, { b: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(200).insert('P'))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(80).retain(140, { b: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(200).insert('P'))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(30).insert('Z', { b: true }))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(30).insert('Z', { b: true }))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(202).insert('Q', { b: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(250).insert('R')))
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(202).insert('Q', { b: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(250).insert('R')))
 		];
 		const { a } = replayChecked(buildSparse, ops);
 		// plain inserts inside the bold span become unbolded islands (the facade
 		// inserts an explicit b:null pair) — [81,201) ∪ [202,250) ∪ [251,284)
-		expect(boldRangesOfDelta(a.t.toDelta().toJSON())).toEqual([
+		expect(boldRangesOfDelta(toDelta(a.t).toJSON())).toEqual([
 			[30, 31],
 			[81, 201],
 			[202, 250],
@@ -300,16 +302,16 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 		// hole carries no `b`. A distant same-key insert before the hole must not
 		// resurrect `b` inside it, and a seeded op at the hole must stay unbold.
 		const ops = [
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(150).insert('P'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(150).insert('P'))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(50).insert('Z', { b: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(152).insert('Q'))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(50).insert('Z', { b: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(152).insert('Q'))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(175).insert('W', { b: true })))
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(175).insert('W', { b: true })))
 		];
 		const { a } = replayChecked(buildHoled, ops);
 		// bold = Z@50 ∪ span minus the [131,173) hole; W@175 lands in the bold tail
-		expect(boldRangesOfDelta(a.t.toDelta().toJSON())).toEqual([
+		expect(boldRangesOfDelta(toDelta(a.t).toJSON())).toEqual([
 			[50, 51],
 			[101, 131],
 			[173, 204]
@@ -320,59 +322,60 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 		// 'i' fold must cross the b-span boundary (different key — not a
 		// boundary) and stop only at the next 'i' item (the i-span opener).
 		const ops = [
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(70).insert('M'))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(260).insert('N'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(70).insert('M'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(260).insert('N'))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(30).insert('Z', { i: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(31).insert('Q'))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(262).insert('S')))
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(30).insert('Z', { i: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(31).insert('Q'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(262).insert('S')))
 		];
 		replayChecked(buildHoled, ops);
 	});
 
 	test('zero-width boundaries: format ops at/around a marker index', () => {
 		const ops = [
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(120).insert('P'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(120).insert('P'))),
 			// zero-length format retain at the marker's own index
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(121).retain(0, { q: true }))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(121).retain(0, { q: true }))),
 			// format range STARTING exactly at the marker index
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(121).retain(10, { q: 3 }))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(121).retain(10, { q: 3 }))),
 			// format range ENDING exactly at a later marker index
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(200).insert('K'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(200).insert('K'))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(190).retain(11, { b: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(201).insert('T')))
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(190).retain(11, { b: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(201).insert('T')))
 		];
 		replayChecked(buildHoled, ops);
 	});
 
 	test('deletion through formatted spans (incl. format tombstones + cleanup)', () => {
 		const ops = [
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(150).insert('P'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(150).insert('P'))),
 			// delete across the b-span's opening marker AND the hole
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(90).delete(70))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(90).delete(70))),
 			// seeded op right where the span used to be
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(95).insert('Q', { u: true }))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(95).insert('Q', { u: true }))),
 			// delete covering the rest of the b-span tail
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(60).delete(60))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(40).insert('Z')))
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(60).delete(60))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(40).insert('Z')))
 		];
 		replayChecked(buildHoled, ops);
 	});
 
 	test('item split + merge cycles through seeded positions', () => {
 		const ops = [
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(140).insert('SPLIT'))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(140).delete(3))),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(138).retain(20, { hl: 1 }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(143).insert('X'))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(140).insert('SPLIT'))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(140).delete(3))),
+			(s: Side) =>
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(138).retain(20, { hl: 1 }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(143).insert('X'))),
 			// delete the inserted region again → items may coalesce on cleanup
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(138).delete(10))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(200).insert('end')))
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(138).delete(10))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(200).insert('end')))
 		];
 		const r = replayChecked(buildHoled, ops);
 		// extra GC pass merges tombstones identically on both sides
@@ -386,10 +389,12 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 			buildHoled,
 			[
 				(s: Side) =>
-					s.doc.transact(() => s.t.applyDelta(delta.create().retain(110).retain(30, { hl: true }))),
+					s.doc.transact(() =>
+						applyDelta(s.t, delta.create().retain(110).retain(30, { hl: true }))
+					),
 				(s: Side) =>
-					s.doc.transact(() => s.t.applyDelta(delta.create().retain(50).insert('R', { b: true }))),
-				(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(160).insert('T')))
+					s.doc.transact(() => applyDelta(s.t, delta.create().retain(50).insert('R', { b: true }))),
+				(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(160).insert('T')))
 			],
 			{ remote: true }
 		);
@@ -398,15 +403,15 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 	test('undo/redo through UndoManager across format + marker ops', () => {
 		const ops = [
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(120).insert('P', { u: true }))),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(60).delete(25))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(120).insert('P', { u: true }))),
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(60).delete(25))),
 			(s: Side) => s.um.undo(),
 			(s: Side) => s.um.undo(),
 			(s: Side) => s.um.redo(),
 			(s: Side) =>
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(110).insert('after-undo'))),
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(110).insert('after-undo'))),
 			(s: Side) => s.um.undo(),
-			(s: Side) => s.doc.transact(() => s.t.applyDelta(delta.create().retain(70).insert('tail')))
+			(s: Side) => s.doc.transact(() => applyDelta(s.t, delta.create().retain(70).insert('tail')))
 		];
 		replayChecked(buildHoled, ops);
 	});
@@ -422,7 +427,7 @@ describe('R1 — bounded randomized replay: patched vs disabled after EVERY op',
 			const t = doc.get('t');
 			doc.transact(() => build(t, doc));
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);
@@ -443,7 +448,8 @@ describe('R1 — bounded randomized replay: patched vs disabled after EVERY op',
 				const str = 'y'.repeat(1 + Math.floor(draw() * 6));
 				const fmt = randFormats(draw);
 				s.doc.transact(() =>
-					s.t.applyDelta(
+					applyDelta(
+						s.t,
 						fmt === undefined
 							? delta.create().retain(pos).insert(str)
 							: delta.create().retain(pos).insert(str, fmt)
@@ -453,13 +459,13 @@ describe('R1 — bounded randomized replay: patched vs disabled after EVERY op',
 				// delete
 				const pos = Math.floor(draw() * len);
 				const n = 1 + Math.floor(draw() * Math.min(14, len - pos));
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(pos).delete(n)));
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(pos).delete(n)));
 			} else if (roll < 0.9 && len > 0) {
 				// format range (incl. clears via null and occasional zero-width)
 				const pos = Math.floor(draw() * (len + 1));
 				const n = draw() < 0.12 ? 0 : Math.floor(draw() * Math.min(20, len - pos + 1));
 				const fmt = randFormats(draw) ?? { b: true };
-				s.doc.transact(() => s.t.applyDelta(delta.create().retain(pos).retain(n, fmt)));
+				s.doc.transact(() => applyDelta(s.t, delta.create().retain(pos).retain(n, fmt)));
 			} else if (roll < 0.95) {
 				if (s.um.undoStack.length > 0) s.um.undo();
 			} else {
@@ -529,17 +535,17 @@ describe('R1 — differential oracle: patched engine vs markers disabled', () =>
 			doc.clientID = 4242; // same clientID → identical item ids → byte-comparable stores
 			const t = doc.get('t');
 			if (!withMarkers) t._searchMarker = null;
-			doc.transact(() => t.applyDelta(delta.create().insert('x'.repeat(300))));
+			doc.transact(() => applyDelta(t, delta.create().insert('x'.repeat(300))));
 			return { doc, t };
 		};
 		const a = mk(true); // patched: P4 format-aware markers active
 		const b = mk(false); // disabled = upstream semantics
 		const dj = (t: { toDelta: () => { toJSON: () => unknown } }) =>
-			JSON.stringify(t.toDelta().toJSON());
+			JSON.stringify(toDelta(t).toJSON());
 		expect(dj(a.t)).toBe(dj(b.t)); // seed state identical
 		for (let i = 0; i < RAW_OPS.length; i++) {
-			a.doc.transact(() => a.t.applyDelta(RAW_OPS[i](delta.create())));
-			b.doc.transact(() => b.t.applyDelta(RAW_OPS[i](delta.create())));
+			a.doc.transact(() => applyDelta(a.t, RAW_OPS[i](delta.create())));
+			b.doc.transact(() => applyDelta(b.t, RAW_OPS[i](delta.create())));
 			// OBSERVED: steps 0–2 identical; step 3 (insert 'Q' at 152) diverges —
 			// the seeded cursor used a stale snapshot and dropped `b` from the
 			// last 50 bold chars.
@@ -564,21 +570,26 @@ describe('R1 — differential oracle: patched engine vs markers disabled', () =>
 				const doc = new Y_.Doc();
 				doc.clientID = 4242;
 				const t = doc.get('t');
-				doc.transact(() => t.applyDelta(delta.create().insert('x'.repeat(300))));
+				doc.transact(() => applyDelta(t, delta.create().insert('x'.repeat(300))));
 				return { doc, t };
 			};
 			const patched = mk(Y);
 			const base = mk(YB as unknown as typeof Y);
 			const dj = (t: { toDelta: () => { toJSON: () => unknown } }) =>
-				JSON.stringify(t.toDelta().toJSON());
+				JSON.stringify(toDelta(t).toJSON());
 			expect(dj(patched.t)).toBe(dj(base.t));
 			for (let i = 0; i < RAW_OPS.length; i++) {
-				patched.doc.transact(() => patched.t.applyDelta(RAW_OPS[i](delta.create())));
-				base.doc.transact(() => base.t.applyDelta(RAW_OPS[i](delta.create())));
+				patched.doc.transact(() => applyDelta(patched.t, RAW_OPS[i](delta.create())));
+				base.doc.transact(() => applyDelta(base.t, RAW_OPS[i](delta.create())));
 				expect(dj(patched.t), `delta diverged from baseline at op ${i}`).toBe(dj(base.t));
 				expect(
 					Buffer.from(Y.encodeStateAsUpdate(patched.doc)).equals(
-						Buffer.from((YB as unknown as typeof Y).encodeStateAsUpdate(base.doc))
+						// The fork's one encoding is upstream's v2 (YP17).
+						Buffer.from(
+							(
+								YB as unknown as { encodeStateAsUpdateV2: typeof Y.encodeStateAsUpdate }
+							).encodeStateAsUpdateV2(base.doc)
+						)
 					),
 					`encoded state diverged from baseline at op ${i}`
 				).toBe(true);

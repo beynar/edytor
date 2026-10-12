@@ -4,26 +4,39 @@ description: The toolbar plugin shows Notion's floating toolbar over text select
 icon: bold
 ---
 
-`toolbarPlugin` shows Notion's formatting toolbar above a text selection: `[Kind ⌄] | Link | B I U S </> | A ⌄`. The mark buttons come from the mark definitions: every mark with a `toolbar` entry gets one.
+`createToolbarPlugin({ toolbar })` shows a formatting toolbar above a text selection, Notion's `[Kind ⌄] | Link | B I U S </> | A ⌄` in the demo. The bar is your `toolbar` snippet: the plugin ships when it shows, its placement, its keys and every action, and no markup (see [Markup](#markup)). The mark buttons come from the mark definitions: every mark with a `toolbar` entry is in `controller.marks`.
 
 ```svelte title="Toolbar.svelte" check
 <script lang="ts">
-	import { Edytor, toolbarPlugin } from 'edytor';
+	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
+
+	const plugins = [createToolbarPlugin({ toolbar })];
 </script>
 
-<Edytor plugins={[toolbarPlugin]} />
+{#snippet toolbar(controller: ToolbarController)}
+	<div class="bar" {@attach controller.popup} {@attach controller.keys}>
+		{#each controller.marks as { mark, label, icon } (mark)}
+			<button aria-label={label} aria-pressed={controller.isActive(mark)} onclick={() => controller.toggleMark(mark)}
+				>{icon}</button
+			>
+		{/each}
+		<button onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
 ```
 
-`createToolbarPlugin({ toolbar })` builds one that renders your markup (see [Custom markup](#custom-markup)). It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so it relies on the rich text plugin (on by default), or on your own plugin that defines the `link`, `color` and `highlight` marks if you want the link and color panels to work.
+It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so it relies on the rich text plugin (on by default), or on your own plugin that defines the `link`, `color` and `highlight` marks if you want the link and color panels to work.
 
-## What it shows
+## What it offers
 
-From left to right:
+What the controller offers, as the demo's bar shows it, from left to right:
 
 1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…): the preset sharing the most data with the block, or drawn with the same tag (a stored `h5` heading, drawn as an `h3`, is "Heading 3"). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts every block the selection touches, nested ones included, as one undo step, and keeps the selection; a list's items leave the list ([Containers](/docs/concepts/blocks#containers)). A closed toggle's hidden body is not touched, as in Notion; an open toggle's children are.
 2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. The field takes the focus when the panel opens. <kbd>Enter</kbd> in the field applies and closes the panel; <kbd>Escape</kbd> closes it. Both give the editor its focus back with the text still selected. Applying an empty field removes the link.
 3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection, and shows pressed (`aria-pressed="true"`, in blue) when the mark covers the whole selection.
-4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark. The palette is exported as `TOOLBAR_COLORS` (`{ name, text, background }`).
+4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark: `controller.setColor('color' | 'highlight', value)` takes any CSS colour, so the palette is your markup's (the demo's is Notion's, `palette.ts`).
 
 One panel is open at a time; clicking its button again closes it. Panels drop below the bar, over the text.
 
@@ -69,46 +82,35 @@ It follows the selection as it changes, and repositions on scroll, resize and ed
 
 ## Link card
 
-Hovering a link shows a card just below it (`link.card`, Notion), in the overlay with `data-edytor-link-card-host` (`z-index: 61`): the link's URL, then three buttons.
+With a `card` snippet, hovering a link shows a card just below it (`link.card`, Notion), in the overlay with `data-edytor-link-card-host` (`z-index: 61`): in the demo, the link's URL, then three buttons.
 
-| Button | `data-testid`      | Action                                                                                         |
+| Button | Calls              | Action                                                                                         |
 | ------ | ------------------ | ---------------------------------------------------------------------------------------------- |
-| Open   | `link-card-open`   | Opens the link in a new tab (`noopener`, `noreferrer`), as <kbd>Mod</kbd>+click does           |
-| Edit   | `link-card-edit`   | Selects the whole link and opens the link panel on it, its field focused                       |
-| Remove | `link-card-remove` | Removes the link from the whole link (the characters around it linked to the same URL), one undo step; the selection stays |
+| Open   | `openHovered()`    | Opens the link in a new tab (`noopener`, `noreferrer`), as <kbd>Mod</kbd>+click does           |
+| Edit   | `editHovered()`    | Selects the whole link and opens the link panel on it, its field focused                       |
+| Remove | `removeHovered()`  | Removes the link from the whole link (the characters around it linked to the same URL), one undo step; the selection stays |
 
-The card stays while the pointer moves from the link onto it, and goes when the pointer leaves both. A press on it never takes the editor's focus. A readonly view shows no card. The card is `data-testid="link-card"`; pass `linkCard: false` to `createToolbarPlugin` to show none.
+The card stays while the pointer moves from the link onto it, and goes when the pointer leaves both. A press on it never takes the editor's focus. A readonly view shows no card. Without a `card`, no card shows.
 
 A URL typed in the link panel goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored. Colors go through `setMarkValueAtRange` and `removeMarkAtRange` (see [Formatting from code](/docs/plugins/rich-text#formatting-from-code)).
 
-## Placement and styling
+## Placement
 
-The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport.
+The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport. Its look is yours: the demo's Notion-style bar is `Toolbar.svelte` (and the card `LinkCard.svelte`) in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome).
 
-Its markup and styles are built in, after Notion's. The bar has `data-edytor-toolbar-bar` and `data-testid="selection-toolbar"`, the Link button `toolbar-link`, the link panel's buttons `toolbar-link-apply` and `toolbar-link-remove`, and each mark button the class `mark-<name>` and a `data-testid` of `toolbar-<name>`.
+## Markup
 
-## Custom markup
-
-`createToolbarPlugin` takes a `toolbar` snippet that replaces the whole bar. The plugin keeps deciding when it shows (the rules above), follows the selection and places it.
+`createToolbarPlugin` takes a `toolbar` snippet, the whole bar (without it, nothing shows; <kbd>Mod</kbd>+<kbd>K</kbd> still opens the controller's link panel state). The plugin keeps deciding when it shows (the rules above), follows the selection and places it.
 
 <TypeTable
   type={{
     toolbar: {
       type: "Snippet<[ToolbarController]>",
-      description: "Replaces the toolbar. Rendered while controller.isVisible, centered above the selection.",
-    },
-    linkCard: {
-      type: "boolean",
-      description: "Show the link card over a hovered link (Open, Edit, Remove).",
-      default: "true",
+      description: "The toolbar. Rendered while controller.isVisible, centered above the selection.",
     },
     card: {
       type: "Snippet<[ToolbarController]>",
-      description: "Replaces the link card. Rendered while controller.card, just below the hovered link (controller.hoveredHref; openHovered, editHovered, removeHovered).",
-    },
-    labels: {
-      type: "PartialLabels<'toolbar'>",
-      description: "The toolbar's and the link card's words (the color names through colors), over the English ones. See Localization.",
+      description: "The link card. Rendered while controller.card, just below the hovered link (controller.hoveredHref; openHovered, editHovered, removeHovered). Without it, no card.",
     },
   }}
 />
@@ -141,25 +143,5 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
   }}
 />
 
-```svelte title="Editor.svelte" check
-<script lang="ts">
-	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
 
-	const plugins = [createToolbarPlugin({ toolbar })];
-</script>
-
-{#snippet toolbar(controller: ToolbarController)}
-	<div class="bar" {@attach controller.popup} {@attach controller.keys}>
-		{#each controller.marks as { mark, label, icon } (mark)}
-			<button aria-label={label} aria-pressed={controller.isActive(mark)} onclick={() => controller.toggleMark(mark)}
-				>{icon}</button
-			>
-		{/each}
-		<button onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
-	</div>
-{/snippet}
-
-<Edytor {plugins} />
-```
-
-The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (`popup` marks your bar; else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.
+The example at the top of this page uses `popup` and `keys`. The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (`popup` marks your bar; else your snippet's first element), so a panel that opens below the bar does not push the bar up. See [Menus and handles](/docs/customization/menus) for the other menus.

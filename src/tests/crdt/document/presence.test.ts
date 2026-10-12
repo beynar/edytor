@@ -30,8 +30,8 @@ import {
 } from '../../../lib/collaboration/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { noSelection } from '../../../lib/session/selection.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -54,7 +54,7 @@ const freshestOffset = (document: EdytorDocument, view: Edytor) => {
 
 /** Write the view's caret: `select()` publishes it. */
 const publishSelection = (view: Edytor, offset = 0) => {
-	view.selection.setAtTextOffset(view.root!.children[0]!.firstText!, offset);
+	view.selection.selectText(view.root!.children[0]!.firstText!, offset);
 };
 
 describe('shared awareness identity', () => {

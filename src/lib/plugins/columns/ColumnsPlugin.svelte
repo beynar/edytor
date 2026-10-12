@@ -11,7 +11,9 @@
 	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
-	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { hoverChrome } from '../bands.svelte.js';
+	import { all, listen } from '$lib/utils/listen.js';
+	import { columnsEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 
 	export type ColumnsPluginOptions = {
 		/**
@@ -19,19 +21,7 @@
 		 * width (default `0.1`). View-only: the document stores weights.
 		 */
 		minWidth?: number;
-		/** The words the layout commands and the resize bands say, over the English ones. */
-		labels?: PartialLabels<'columns'>;
-		/**
-		 * The slash menu's keywords of a layout command, by id (`columns.2` to
-		 * `columns.5`), which replace its own.
-		 */
-		keywords?: Partial<Record<string, string[]>>;
 	};
-
-	const columnsPlugins = new WeakSet<Plugin>();
-
-	/** Recognize any columns plugin instance (the component's default yields to yours). */
-	export const isColumnsPlugin = (plugin: Plugin) => columnsPlugins.has(plugin);
 
 	/** A weight read back from HTML (`data-width`), when it is one. */
 	const parsedWidth = (element: HTMLElement): Record<string, number> => {
@@ -51,19 +41,22 @@
 	};
 
 	/** The kind row of a layout of `n` columns, each holding one empty block of the column's default kind. */
-	const layoutRow = (edytor: Edytor, n: number, options: ColumnsPluginOptions): KindRow => {
+	const layoutRow = (edytor: Edytor, n: number): KindRow => {
 		const kid = edytor.document.defaultChild('column');
 		const id = `columns.${n}`;
 		return {
 			id,
-			label: labelsWith('columns', options.labels).columns(n),
+			label: labelsOf(edytor, 'columns', columnsEnglish).columns(n),
 			group: 'Layout',
 			// Notion's `/col3`, `/columns3` and `/column 3` too (query words match in order).
-			keywords: keywordsOf(
-				id,
-				['columns', 'layout', 'side by side', `col${n}`, `columns${n}`, `column ${n}`],
-				options.keywords
-			),
+			keywords: keywordsOf(edytor, id, [
+				'columns',
+				'layout',
+				'side by side',
+				`col${n}`,
+				`columns${n}`,
+				`column ${n}`
+			]),
 			value: {
 				type: 'columns',
 				data: {},
@@ -88,12 +81,8 @@
 	 * block column 1 of `n`, each other column holding an empty paragraph
 	 * (`wrapBlocks`, `layout.wrap`, Notion); the blocks stay selected.
 	 */
-	const layoutCommand = (
-		edytor: Edytor,
-		n: number,
-		options: ColumnsPluginOptions
-	): EditorCommand => {
-		const { id, label, group, keywords } = layoutRow(edytor, n, options);
+	const layoutCommand = (edytor: Edytor, n: number): EditorCommand => {
+		const { id, label, group, keywords } = layoutRow(edytor, n);
 		return {
 			id,
 			label,
@@ -101,7 +90,7 @@
 			keywords,
 			// Asked of the view given (a `+`'s menu asks it of the block it adds).
 			isEnabled: (view = edytor) => {
-				const block = view.selection.state.startBlock;
+				const block = view.selection.textRange().startText?.parent;
 				return Boolean(block?.convertible) && !inColumn(block);
 			},
 			// Turn into: one block, or `n` sibling blocks, in `n` columns (`layout.wrap`, Notion).
@@ -114,12 +103,12 @@
 					(selected.length === 1 || selected.length === n)
 				)
 					return wrapBlocks(edytor, selected, 'columns', n);
-				const block = edytor.selection.state.startBlock;
+				const block = edytor.selection.textRange().startText?.parent;
 				if (inColumn(block)) {
 					edytor.dispatcher.record({ operation: 'setBlock', status: 'refused' });
 					return false;
 				}
-				return convertToKind(edytor, block, layoutRow(edytor, n, options));
+				return convertToKind(edytor, block, layoutRow(edytor, n));
 			}
 		};
 	};
@@ -148,57 +137,40 @@
 	 */
 	export const createColumnsPlugin = (options: ColumnsPluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
-			const resize = new ColumnResize(
-				edytor,
-				options.minWidth ?? 0.1,
-				labelsWith('columns', options.labels)
-			);
+			const resize = new ColumnResize(edytor, options.minWidth ?? 0.1);
 			return {
-				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n, options)),
+				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n)),
 				// The layout holding the caret shows its bands (the keyboard's way to them).
 				onSelectionChange: () => edytor.overlay.invalidate(),
 				// The resize bands: in the overlay, for the layout under the pointer.
 				onEdytorAttached: ({ node }) => {
-					const over = (event: PointerEvent) => resize.hover(event.target);
-					const leave = (event: PointerEvent) => !resize.drag && resize.leave(event.relatedTarget);
-					// The overlay (a band, a handle in a gap) keeps the bands while the pointer is on it.
-					const layer = edytor.overlay.layer;
-					// A block drag owns the pointer: no strip takes it meanwhile.
-					const drag = (event: Event) => (resize.dragging = event.type === 'dragstart');
-					const document = node.ownerDocument;
-					node.addEventListener('pointerover', over);
-					node.addEventListener('pointerleave', leave);
-					layer?.addEventListener('pointerleave', leave);
-					// A column block's handle in a gap stands for its block (the bands show over its layout).
-					const overHandle = (event: PointerEvent) => {
-						const handle = (event.target as Element | null)?.closest?.<HTMLElement>(
-							'[data-edytor-block-handle-host][data-block-id]'
-						);
-						const id = handle?.dataset.blockId;
-						if (id) resize.hover(edytor.idToBlock.get(id)?.node ?? null);
-					};
-					layer?.addEventListener('pointerover', overHandle);
-					document.addEventListener('dragstart', drag, true);
-					document.addEventListener('dragend', drag, true);
-					document.addEventListener('drop', drag, true);
-					const unmount = edytor.overlay.mount(
-						ColumnResizeStrips,
-						{ resize },
-						'edytor-column-resizers',
-						// Above the block handles (5): the band is the gap's left part at every height.
-						6,
-						resize.measure
+					const off = all(
+						// The overlay (a band, a handle in a gap) keeps the bands while the pointer is on
+						// it; a block drag owns the pointer: no strip takes it meanwhile.
+						hoverChrome(
+							edytor,
+							node,
+							resize.hover,
+							resize.leave,
+							(event) => (resize.dragging = event.type === 'dragstart')
+						),
+						// A column block's handle in a gap stands for its block (the bands show over its layout).
+						listen(edytor.overlay.layer, 'pointerover', (event) => {
+							const id = (event.target as Element | null)?.closest?.<HTMLElement>(
+								'[data-edytor-block-handle-host][data-block-id]'
+							)?.dataset.blockId;
+							if (id) resize.hover(edytor.idToBlock.get(id)?.node ?? null);
+						}),
+						edytor.overlay.mount(
+							ColumnResizeStrips,
+							{ resize },
+							'edytor-column-resizers',
+							// Above the block handles (5): the band is the gap's left part at every height.
+							6,
+							resize.measure
+						)
 					);
-					return () => {
-						node.removeEventListener('pointerover', over);
-						node.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerover', overHandle);
-						document.removeEventListener('dragstart', drag, true);
-						document.removeEventListener('dragend', drag, true);
-						document.removeEventListener('drop', drag, true);
-						unmount();
-					};
+					return off;
 				},
 				blocks: {
 					columns: {
@@ -229,12 +201,8 @@
 				}
 			};
 		};
-		columnsPlugins.add(plugin);
 		return plugin;
 	};
-
-	/** Columns with the default options. */
-	export const columnsPlugin = createColumnsPlugin();
 </script>
 
 <!--

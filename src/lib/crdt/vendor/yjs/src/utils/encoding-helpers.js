@@ -8,7 +8,7 @@ import { createID } from './ID.js'
 import { writeIdSet } from './ids.js'
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {Array<GC|Item|Skip>} structs All structs by `client`
  * @param {number} client
  * @param {Array<IdRange>} idranges
@@ -65,7 +65,7 @@ export const writeStructs = (encoder, structs, client, idranges) => {
 }
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {StructStore} store
  * @param {IdSet} idset
  *
@@ -87,7 +87,7 @@ export const writeStructsFromIdSet = (encoder, store, idset) => {
 }
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {Transaction} transaction
  *
  * @private
@@ -96,7 +96,7 @@ export const writeStructsFromIdSet = (encoder, store, idset) => {
 export const writeStructsFromTransaction = (encoder, transaction) => writeStructsFromIdSet(encoder, transaction.doc.store, transaction.insertSet)
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {Transaction} transaction
  * @return {boolean} Whether data was written.
  */

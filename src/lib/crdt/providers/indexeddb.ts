@@ -5,8 +5,8 @@
  *
  * Semantics preserved from the v13 provider:
  *
- * - `updates` object store (auto-increment keys) holds raw V1 update rows
- *   wrapped in a fresh ArrayBuffer (`container.ts`); `custom` holds the
+ * - `updates` object store (auto-increment keys) holds update rows, each
+ *   in a fresh ArrayBuffer (`container.ts`); `custom` holds the
  *   generation record.
  * - `PREFERRED_TRIM_SIZE = 500`: past it, a debounced `storeState` appends a
  *   compacted `encodeStateAsUpdate` snapshot and deletes prior rows. Every
@@ -21,8 +21,8 @@
  *
  * The generation gate (see `protocols/envelope.ts`):
  *
- * - STORAGE: the database name is `edytor-v14-g5:<name>` (`edytor-v14:<name>` up to schema generation 4); legacy v13
- *   databases (`<name>`) are never opened here. A `generation` record
+ * - STORAGE: the database name is `edytor-v14-g<schema>:<name>`; another
+ *   generation's database is never opened here. A `generation` record
  *   (engine, protocol, schema) in `custom` is written on creation and
  *   verified before any row is applied — a container of another
  *   generation fails the load; nothing inside a row is inspected.
@@ -34,34 +34,28 @@
  * The engine module is injected (`bindIndexeddbProvider(Y)`) — `src/lib`
  * never runtime-imports the vendored `.js`.
  */
-import * as idb from 'lib0-v14/indexeddb';
 import * as promise from 'lib0-v14/promise';
-import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import { Awareness } from '../protocols/awareness.js';
 import { IsolatedObservable } from '../protocols/observable.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
-import {
-	GENERATION_KEY,
-	generationDbName,
-	PREVIOUS_GENERATION_PREFIX,
-	STORED_GENERATION_RECORD
-} from '../protocols/envelope.js';
-import { bindGenerations } from '../migration/generation.js';
+import { generationDbName } from '../protocols/envelope.js';
 import {
 	CUSTOM as customStoreName,
 	encodeRow,
+	lastKey,
 	openContainer,
-	openIfExists,
 	readRow,
+	rtop,
 	snapshotRow,
-	type SnapshotRow,
+	storesOf,
 	UPDATES as updatesStoreName,
 	verifyOrStamp
 } from './container.js';
 import {
 	beginDestroy,
 	bindRoomProtocol,
+	tabs,
 	emitFailed,
 	initLifecycle,
 	markSynced,
@@ -90,16 +84,6 @@ export type IndexeddbPersistenceOptions = {
 	awareness?: Awareness;
 	/** Stay off the BroadcastChannel room (no cross-tab sync): storage only. */
 	disableBc?: boolean;
-	/**
-	 * Convert the generation-4 store of the same name (`edytor-v14:<name>`)
-	 * into this one when this one is empty (the generation cutover): its
-	 * visible document is read as JSON and seeded as this generation's.
-	 * For a document stored only here; a document a room keeps takes its
-	 * state from the room instead (two replicas seeding different
-	 * conversions of one document would collide). Default `false`;
-	 * `createIndexeddbSync` sets it.
-	 */
-	convertPrevious?: boolean;
 };
 
 export type IndexeddbProvider = ReturnType<typeof bindIndexeddbProvider>;
@@ -112,46 +96,6 @@ export type IndexeddbPersistenceApi = InstanceType<IndexeddbProvider['IndexeddbP
  */
 export const bindIndexeddbProvider = (Y: EngineApi) => {
 	const syncProtocol: SyncProtocol = bindSync(Y);
-	const generations = bindGenerations(Y);
-
-	/**
-	 * The generation cutover of a local store (`IndexeddbPersistenceOptions.convertPrevious`):
-	 * when `db` is empty and the generation-4 store of `name` exists, its
-	 * visible document is read as JSON and this generation's seed of it is
-	 * written as `db`'s first row, with the generation record, in one
-	 * transaction. The generation-4 store is left as it was.
-	 */
-	const convertPrevious = async (name: string, db: IDBDatabase): Promise<void> => {
-		const [updates, custom] = idb.transact(db, [updatesStoreName, customStoreName], 'readonly');
-		// Both requests before either settles: one transaction.
-		const reads = [idb.get(custom, GENERATION_KEY), idb.count(updates)] as const;
-		const found = await reads[0];
-		if (found !== undefined || (await reads[1]) > 0) return;
-		const old = await openIfExists(PREVIOUS_GENERATION_PREFIX + name);
-		if (old === null) return;
-		try {
-			if (!old.objectStoreNames.contains(customStoreName)) return;
-			const [oldUpdates, oldCustom] = idb.transact(
-				old,
-				[updatesStoreName, customStoreName],
-				'readonly'
-			);
-			const reads = [idb.get(oldCustom, GENERATION_KEY), idb.getAll(oldUpdates)] as const;
-			const record = await reads[0];
-			const stored = await reads[1];
-			if (!generations.isPreviousGenerationRecord(record)) return;
-			const rows = await promise.all(stored.map(readRow));
-			if (rows.length === 0) return;
-			const seed = generations.seedOf(generations.previousJSONWith(rows));
-			const [newUpdates, newCustom] = idb.transact(db, [updatesStoreName, customStoreName]);
-			await promise.all([
-				idb.rtop(newCustom.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY)),
-				idb.addAutoKey(newUpdates, encodeRow(seed))
-			]);
-		} finally {
-			old.close();
-		}
-	};
 
 	/**
 	 * The shared room protocol — dispatch, the join rule, awareness
@@ -178,31 +122,26 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		afterApplyUpdatesCallback: () => void = () => {}
 	): Promise<void> => {
 		const db = idbPersistence.db as IDBDatabase;
-		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
+		const [updatesStore, customStore] = storesOf(db, [updatesStoreName, customStoreName]);
 		return verifyOrStamp(idbPersistence.name, updatesStore, customStore)
-			.then(() =>
-				idb.getAll(updatesStore, idb.createIDBKeyRangeLowerBound(idbPersistence._dbref, false))
-			)
+			.then(() => rtop(updatesStore.getAll(IDBKeyRange.lowerBound(idbPersistence._dbref, false))))
 			.then((rows) => {
 				// The pre-hydration state row is written before the last key is read.
 				if (!idbPersistence._destroyed) beforeApplyUpdatesCallback(updatesStore);
-				return promise
-					.all([idb.getLastKey(updatesStore), idb.count(updatesStore)])
-					.then(([lastKey, cnt]) => {
-						idbPersistence._dbref = (lastKey as number) + 1;
+				return Promise.all([lastKey(updatesStore), rtop(updatesStore.count())]).then(
+					([last, cnt]) => {
+						idbPersistence._dbref = Number(last) + 1;
 						idbPersistence._dbsize = cnt;
 						return promise.all(rows.map(readRow));
-					});
+					}
+				);
 			})
 			.then((updates) => {
 				if (idbPersistence._destroyed) return;
 				Y.transact(
 					idbPersistence.doc,
 					() => {
-						for (const update of updates) {
-							if (update instanceof Uint8Array) Y.applyUpdate(idbPersistence.doc, update);
-							else Y.applyUpdateV2(idbPersistence.doc, update.v2);
-						}
+						for (const update of updates) Y.applyUpdate(idbPersistence.doc, update);
 					},
 					idbPersistence,
 					false
@@ -211,10 +150,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			});
 	};
 
-	/** One transaction: the snapshot row, the rows below `below` deleted, the record stamped `'v2'`. */
-	const writeSnapshot = (idbPersistence: IdbPersistenceLike, row: SnapshotRow, below: number) => {
+	/** One transaction: the snapshot row, the rows below `below` deleted. */
+	const writeSnapshot = (idbPersistence: IdbPersistenceLike, row: ArrayBuffer, below: number) => {
 		const db = idbPersistence.db as IDBDatabase;
-		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
+		const [updatesStore] = storesOf(db, [updatesStoreName]);
 		// Track transaction commit: listeners attach while it is still active.
 		const tx = updatesStore.transaction;
 		const transactionDone = promise.create((resolve, reject) => {
@@ -225,13 +164,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		});
 		return promise
 			.all([
-				idb
-					// A structured-clone object row (lib0 types rows as binary).
-					.addAutoKey(updatesStore, row as unknown as ArrayBuffer)
-					.then(() => idb.del(updatesStore, idb.createIDBKeyRangeUpperBound(below, true)))
-					.then(() => idb.rtop(customStore.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY)))
+				rtop(updatesStore.add(row))
+					.then(() => rtop(updatesStore.delete(IDBKeyRange.upperBound(below, true))))
 					.then(() =>
-						idb.count(updatesStore).then((cnt) => {
+						rtop(updatesStore.count()).then((cnt) => {
 							idbPersistence._dbsize = cnt;
 						})
 					),
@@ -243,9 +179,8 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	/**
 	 * Persist the current state: fetch pending rows, then (when `forceStore`
 	 * or past `PREFERRED_TRIM_SIZE`) append a compacted snapshot and delete
-	 * the rows it subsumes. The snapshot is v2, gzip-compressed where the
-	 * platform can, and the container's generation record is stamped
-	 * with its storage format in the same transaction.
+	 * the rows it subsumes. The snapshot is gzip-compressed where the
+	 * platform can and that makes it smaller.
 	 *
 	 * Every applied row is represented in the snapshot, so deleting
 	 * `key < _dbref` (read before the snapshot is compressed: rows stored
@@ -270,16 +205,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					return undefined;
 				}
 				const below = idbPersistence._dbref;
-				return snapshotRow(Y.encodeStateAsUpdateV2(idbPersistence.doc)).then((row) =>
+				return snapshotRow(Y.encodeStateAsUpdate(idbPersistence.doc)).then((row) =>
 					idbPersistence._destroyed ? undefined : writeSnapshot(idbPersistence, row, below)
 				);
 			});
 
 	/**
-	 * Delete a v14 generation database by LOGICAL name (the `edytor-v14-g5:`
-	 * prefix is applied here; a generation-4 store, `edytor-v14:`, is left). Never touches the legacy v13 database.
+	 * Delete this generation's database by LOGICAL name (the generation
+	 * prefix is applied here; another generation's store is left).
 	 */
-	const clearDocument = (name: string) => idb.deleteDB(generationDbName(name));
+	const clearDocument = (name: string): Promise<void> =>
+		rtop(indexedDB.deleteDatabase(generationDbName(name))).then(() => undefined);
 
 	/**
 	 * Each provider's doc-`destroy` listener: it ends the provider (it never
@@ -335,7 +271,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		bcconnected = false;
 		disableBc: boolean;
 		_ownsAwareness: boolean;
-		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+		_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
 			origin: unknown
@@ -353,17 +289,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this._ownsAwareness = !options.awareness;
 			this.disableBc = options.disableBc === true;
 
-			this._db = openContainer(this.dbName).then((db) =>
-				options.convertPrevious === true
-					? convertPrevious(name, db).then(
-							() => db,
-							(error) => {
-								db.close();
-								throw error;
-							}
-						)
-					: db
-			);
+			this._db = openContainer(this.dbName);
 
 			this.destroy = this.destroy.bind(this);
 			initLifecycle(this, this.destroy, () => room.depart(this));
@@ -390,9 +316,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
-							idb
-								.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)))
-								.catch((error) => this.emit('message-error', [error, this]));
+							rtop(updatesStore.add(encodeRow(Y.encodeStateAsUpdate(doc)))).catch((error) =>
+								this.emit('message-error', [error, this])
+							);
 						}
 					};
 					// Hydrated: join the room and claim `synced` (lifetime).
@@ -424,10 +350,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				if (origin === this || quarantined(doc)) return;
 				if (this.db) {
 					try {
-						const [updatesStore] = idb.transact(this.db, [updatesStoreName]);
+						const [updatesStore] = storesOf(this.db, [updatesStoreName]);
 						// Storage failures must surface — never an unobserved
 						// rejection (the error channel observes every failure mode).
-						idb.addAutoKey(updatesStore, encodeRow(update)).catch((error) => {
+						rtop(updatesStore.add(encodeRow(update))).catch((error) => {
 							this.emit('message-error', [error, this]);
 						});
 						if (++this._dbsize >= PREFERRED_TRIM_SIZE) {
@@ -481,7 +407,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 		broadcastMessage(buf: Uint8Array) {
 			if (this.bcconnected) {
-				bc.publish(this.dbName, buf, this);
+				tabs.publish(this.dbName, buf, this);
 			}
 		}
 

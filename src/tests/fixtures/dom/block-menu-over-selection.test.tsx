@@ -18,11 +18,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
 	dispatchClipboardPaste,
@@ -30,6 +26,13 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenu as createBlockMenuPlugin,
+	codePlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -86,7 +89,7 @@ const block = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!;
 const shape = (edytor: Edytor) => {
 	const { value } = edytor.selection;
 	if (value.kind === 'blocks') return `blocks:${value.ids.join(',')}`;
-	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+	const { startText, endText, yStart, yEnd, isCollapsed } = selectionState(edytor);
 	const start = `${startText?.parent.id}@${yStart}`;
 	return isCollapsed ? start : `${start}…${endText?.parent.id}@${yEnd}`;
 };
@@ -94,7 +97,7 @@ const shape = (edytor: Edytor) => {
 /** A handle click: the block is selected, then the menu opens beside it. */
 const grip = async (edytor: Edytor, editor: HTMLElement, id: string) => {
 	const target = block(edytor, id);
-	edytor.selection.selectBlocks(target);
+	selectBlocks(edytor, target);
 	editor.dispatchEvent(
 		new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block: target, anchor: target.node } })
 	);
@@ -153,7 +156,7 @@ describe('HX-01: the block menu over a grip-selected list or code block', () => 
 			expect(kinds).toEqual(['paragraph "a"', kind, kind, 'paragraph "b"']);
 			expect(edytor.selection.value.kind).toBe('text');
 			const copy = edytor.value.children![2]!;
-			expect(edytor.selection.state.startBlock?.id).toBe(copy.children![0]!.id);
+			expect(selectionState(edytor).startBlock?.id).toBe(copy.children![0]!.id);
 		});
 
 		it(`${name}: Delete removes it with its ${name === 'list' ? 'items' : 'lines'}`, async () => {
@@ -207,7 +210,7 @@ describe('HX-01: the block menu over a grip-selected list or code block', () => 
 
 	it('several selected blocks stay several: Escape keeps them selected', async () => {
 		const { edytor, editor } = await render([p('a'), list([li('one'), li('two')]), p('b')]);
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 'L'));
 		const target = block(edytor, 'a');
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block: target, anchor: target.node } })
@@ -222,17 +225,17 @@ describe('HX-01: the block menu over a grip-selected list or code block', () => 
 describe('HX-02: the documented block-selection snippets', () => {
 	it('commands.mdx: deleteBlocks over selection.selectedMembers removes a selected list whole', async () => {
 		const { edytor } = await render([p('a'), list([li('one'), li('two')]), p('b')]);
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		await flushDomUpdates();
 		expect(edytor.selection.selectedMembers.map((b) => b.id)).toEqual(['L', 'one', 'two']);
-		edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers });
+		edytor.deleteBlocks(edytor.selection.selectedMembers.map((b) => b.id));
 		await flushDomUpdates();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 	});
 
 	it('block-handles.mdx: the custom menu Turn into converts a selected list items', async () => {
 		const { edytor } = await render([p('a'), list([li('one'), li('two')]), p('b')]);
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		await flushDomUpdates();
 		expect(await edytor.runCommand('block.heading2')).toBe(true);
 		await flushDomUpdates();
@@ -245,41 +248,12 @@ describe('HX-02: the documented block-selection snippets', () => {
 	});
 });
 
-describe('HX-08: leaving a block selection with a divider at the document edge', () => {
-	it('[x, divider]: the range spans x, the last divider left out', async () => {
-		const { edytor } = await render([p('x'), { id: 'd', type: 'divider' }]);
-		edytor.selection.selectBlocks(block(edytor, 'x'), block(edytor, 'd'));
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		expect(shape(edytor)).toBe('x@0…x@1');
-	});
-
-	it('[divider, after]: the range spans after, the first divider left out', async () => {
-		const { edytor } = await render([{ id: 'd', type: 'divider' }, p('after')]);
-		edytor.selection.selectBlocks(block(edytor, 'd'), block(edytor, 'after'));
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		expect(shape(edytor)).toBe('after@0…after@5');
-	});
-});
-
 describe('HX-13: a list with nested items shows its last line last', () => {
 	const nested = () => render([p('a'), list([li('one', [li('deep')])]), p('b')]);
 
-	it('leaving its block selection ends at the nested item', async () => {
+	it('selectLines spans the nested item', async () => {
 		const { edytor } = await nested();
-		edytor.selection.selectBlocks(block(edytor, 'L'));
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		expect(shape(edytor)).toBe('one@0…deep@4');
-	});
-
-	it('setAtBlockRange spans the nested item', async () => {
-		const { edytor } = await nested();
-		edytor.selection.setAtBlockRange(block(edytor, 'L'));
+		edytor.selection.selectLines(block(edytor, 'L'));
 		await flushDomUpdates();
 		expect(shape(edytor)).toBe('one@0…deep@4');
 	});
@@ -337,8 +311,8 @@ describe('the + adds nothing until a row is picked', () => {
 		expect(kinds(edytor)).toEqual(['paragraph "a"', 'heading', 'paragraph "b"']);
 		expect(document.querySelector('[data-testid="slash-menu"]')).toBeNull();
 		expect(document.activeElement).toBe(editor);
-		expect(edytor.selection.state.startBlock?.type).toBe('heading');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startBlock?.type).toBe('heading');
+		expect(selectionState(edytor).yStart).toBe(0);
 		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
 		edytor.historyUndo();
 		await flushDomUpdates();
@@ -404,7 +378,7 @@ describe('the + adds nothing until a row is picked', () => {
 describe('a paste over a block selection with a collapsed DOM caret (onPaste)', () => {
 	const pasteWithDomCaretIn = async (id: string) => {
 		const { edytor, editor } = await render([p('one'), p('two')]);
-		edytor.selection.selectBlocks(block(edytor, 'one'));
+		selectBlocks(edytor, block(edytor, 'one'));
 		await flushDomUpdates();
 		// The user's press moved the browser's caret before the editor saw a
 		// selectionchange (jsdom resolves no point under the pointer).
@@ -426,7 +400,7 @@ describe('a paste over a block selection with a collapsed DOM caret (onPaste)', 
 
 	it('a caret no press put there (the browser’s own, at the editable’s start) replaces them', async () => {
 		const { edytor, editor } = await render([p('one'), p('two'), p('three')]);
-		edytor.selection.selectBlocks(block(edytor, 'two'));
+		selectBlocks(edytor, block(edytor, 'two'));
 		await flushDomUpdates();
 		const node = block(edytor, 'one').firstText!.node!;
 		const leaf = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode()!;

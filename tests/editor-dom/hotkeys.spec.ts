@@ -1421,7 +1421,7 @@ test.describe('browser hotkey behavior', () => {
 			}
 
 			edytor.node.focus();
-			edytor.selection.selectBlocks(nestedBlock);
+			edytor.selection.select({ kind: 'blocks', ids: [nestedBlock].map((block) => block.id) });
 		});
 		await expectSelection(page, {
 			selectedBlockPaths: [[0, 0]]
@@ -1469,7 +1469,7 @@ test.describe('browser hotkey behavior', () => {
 			}
 
 			edytor.node.focus();
-			edytor.selection.selectBlocks(...nestedBlocks);
+			edytor.selection.select({ kind: 'blocks', ids: [...nestedBlocks].map((block) => block.id) });
 		});
 		await expectSelection(page, {
 			selectedBlockPaths: [
@@ -1630,7 +1630,7 @@ test.describe('browser hotkey behavior', () => {
 			.poll(async () =>
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-					const codeLine = edytor?.selection?.state?.startBlock;
+					const codeLine = edytor?.selection?.textRange()?.startText?.parent;
 					if (!edytor || !codeLine) {
 						return false;
 					}
@@ -1684,7 +1684,7 @@ test.describe('browser hotkey behavior', () => {
 			.poll(async () =>
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-					const codeLine = edytor?.selection?.state?.startBlock;
+					const codeLine = edytor?.selection?.textRange()?.startText?.parent;
 					if (!edytor || !codeLine) {
 						return false;
 					}

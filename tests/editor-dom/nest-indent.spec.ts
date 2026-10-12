@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from './editorTest';
-import { trackPageIssues, waitForEditorReady } from './helpers';
+import { trackPageIssues, waitForEditorReady, notionTheme } from './helpers';
 
 /**
  * One nesting step under any kind (Notion): a paragraph nested under a
@@ -33,13 +32,6 @@ const children = [
 const open = async (page: Page) => {
 	await page.goto(`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify({ children }))}`);
 	await waitForEditorReady(page, { requireRuntime: true });
-};
-
-const notionTheme = async (page: Page) => {
-	await page.addStyleTag({
-		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
-	});
-	await page.locator('[data-edytor]').evaluate((node) => node.classList.add('edytor-notion'));
 };
 
 /** How far right of each parent's own text its nested paragraph's text starts. */

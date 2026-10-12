@@ -10,10 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { convertToKind } from '$lib/kinds.js';
@@ -23,6 +20,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { blockMenuPlugin, richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -82,7 +81,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 	 */
 	const converted = ['heading "a"', 'heading "b"', 'heading "c"'];
 	const selectAll = async (view: View) => {
-		view.edytor.selection.selectBlocks(...['a', 'u', 'b', 'c'].map((id) => get(view, id)));
+		selectBlocks(view.edytor, ...['a', 'u', 'b', 'c'].map((id) => get(view, id)));
 		await flushDomUpdates();
 	};
 	const pick = async (menu: string, label: string) => {
@@ -101,7 +100,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 
 	it('a text range over the rows converts the items, not the container', async () => {
 		const view = await render([], seed());
-		view.edytor.selection.setAtRange(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await heading2();
 		expect(shape(view)).toEqual(converted);
@@ -131,7 +130,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 
 	it('the toolbar Turn into over the rows gives the same result', async () => {
 		const view = await render([toolbarPlugin], seed());
-		view.edytor.selection.setAtRange(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await click(document.querySelector('.toolbar-type')!);
 		await pick('Turn into', 'Heading 2');
@@ -143,7 +142,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 	it('the list selected alone: its grip menu Turn into converts its items (GX-02)', async () => {
 		const view = await render([blockMenuPlugin], seed());
 		expect(get(view, 'u').convertible).toBe(false);
-		view.edytor.selection.selectBlocks(get(view, 'u'));
+		selectBlocks(view.edytor, get(view, 'u'));
 		await grip(view, 'u');
 		await click(document.querySelector('[data-testid="block-menu-turn"]')!);
 		await pick('Turn into', 'Heading 2');
@@ -154,9 +153,9 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 
 	it('Mod+Alt+2 over the list selected alone converts its items (GX-02)', async () => {
 		const view = await render([], seed());
-		view.edytor.selection.setAtTextOffset(get(view, 'b').firstText!, 0);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 0);
 		await flushDomUpdates();
-		view.edytor.selection.selectBlocks(get(view, 'u'));
+		selectBlocks(view.edytor, get(view, 'u'));
 		await flushDomUpdates();
 		await heading2();
 		expect(shape(view)).toEqual(['paragraph "a"', 'heading "b"', 'heading "c"']);
@@ -172,7 +171,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 
 	it('a middle item turned into a heading splits the list, as Shift+Tab does; the caret stays', async () => {
 		const view = await render([], [ul('u', [li('b'), li('c'), li('d')])]);
-		view.edytor.selection.setAtTextOffset(get(view, 'c').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await heading2();
 		expect(shape(view)).toEqual([
@@ -180,13 +179,13 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 			'heading "c"',
 			['unordered-list ""', ['list-item "d"']]
 		]);
-		const { startBlock, yStart } = view.edytor.selection.state;
+		const { startBlock, yStart } = selectionState(view.edytor);
 		expect([startBlock?.id, yStart]).toEqual(['c', 1]);
 	});
 
 	it('a markdown shortcut in an item makes the kind outside the list', async () => {
-		const view = await render([markdownShortcutsPlugin], [ul('u', [li('b'), li('c')])]);
-		view.edytor.selection.setAtTextOffset(get(view, 'b').firstText!, 0);
+		const view = await render([createMarkdownShortcutsPlugin()], [ul('u', [li('b'), li('c')])]);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 0);
 		await flushDomUpdates();
 		for (const data of '# ')
 			await dispatchDomBeforeInput(view.editor, { inputType: 'insertText', data });
@@ -197,7 +196,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 describe('`dispatcher.last` of a Tab over several sibling groups (ZW-07)', () => {
 	it('Tab over two groups where one nests reports applied', async () => {
 		const view = await render([], [p('a'), p('b'), p('c', [p('d')])]);
-		view.edytor.selection.selectBlocks(get(view, 'b'), get(view, 'd'));
+		selectBlocks(view.edytor, get(view, 'b'), get(view, 'd'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab' });
 		expect(shape(view)).toEqual([
@@ -209,7 +208,7 @@ describe('`dispatcher.last` of a Tab over several sibling groups (ZW-07)', () =>
 
 	it('Shift+Tab over a contiguous range spanning two levels reports applied', async () => {
 		const view = await render([], [p('a', [p('x')]), p('y')]);
-		view.edytor.selection.setAtRange(get(view, 'x').firstText!, 0, get(view, 'y').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'x').firstText!, 0, get(view, 'y').firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab', shiftKey: true });
 		expect(shape(view)).toEqual(['paragraph "a"', 'paragraph "x"', 'paragraph "y"']);
@@ -218,7 +217,7 @@ describe('`dispatcher.last` of a Tab over several sibling groups (ZW-07)', () =>
 
 	it('a Tab where no group moves still reports refused', async () => {
 		const view = await render([], [p('a'), p('b')]);
-		view.edytor.selection.selectBlocks(get(view, 'a'));
+		selectBlocks(view.edytor, get(view, 'a'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab' });
 		expect(view.edytor.dispatcher.last?.status).toBe('refused');
@@ -227,7 +226,7 @@ describe('`dispatcher.last` of a Tab over several sibling groups (ZW-07)', () =>
 
 describe('Delete at the end of a closed toggle header above a list (ZW-08)', () => {
 	const caretAtHeaderEnd = async (view: View) => {
-		view.edytor.selection.setAtTextOffset(get(view, 't').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 't').firstText!, 1);
 		await flushDomUpdates();
 	};
 
@@ -240,12 +239,12 @@ describe('Delete at the end of a closed toggle header above a list (ZW-08)', () 
 		await caretAtHeaderEnd(key);
 		await dispatchDomBeforeInput(key.editor, { inputType: 'deleteContentForward' });
 		expect(shape(key)).toEqual(expected);
-		const { startBlock, yStart } = key.edytor.selection.state;
+		const { startBlock, yStart } = selectionState(key.edytor);
 		expect([startBlock?.id, yStart]).toEqual(['t', 1]);
 		document.body.innerHTML = '';
 
 		const range = await render([], [toggle('t', [p('body')]), ul('u', [li('a'), li('b')])]);
-		range.edytor.selection.setAtRange(get(range, 't').firstText!, 1, get(range, 'a').firstText!, 0);
+		range.edytor.selection.selectText(get(range, 't').firstText!, 1, get(range, 'a').firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(range.editor, { inputType: 'deleteContentBackward' });
 		expect(shape(range)).toEqual(expected);
@@ -260,7 +259,7 @@ describe('Delete at the end of a closed toggle header above a list (ZW-08)', () 
 
 	it('Backspace at the list’s first item below it lifts the item out (YW-02), then joins the header', async () => {
 		const view = await render([], [toggle('t', [p('body')]), ul('u', [li('a'), li('b')])]);
-		view.edytor.selection.setAtTextOffset(get(view, 'a').firstText!, 0);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		expect(shape(view)).toEqual([
@@ -282,7 +281,7 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 	it('nestBlock into a closed toggle opens it', async () => {
 		const view = await render([], [toggle('t', [p('body')]), p('x')]);
 		expect(open(view, 't')).toBe(false);
-		expect(get(view, 'x').nestBlock()).toBe(get(view, 'x'));
+		expect(view.edytor.nestBlock('x', 't').status).toBe('applied');
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([['toggle "t"', ['paragraph "body"', 'paragraph "x"']]]);
 		expect(open(view, 't')).toBe(true);
@@ -292,7 +291,7 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 	it('unNestBlock of a closed toggle that adopts the siblings after it opens it', async () => {
 		const view = await render([], [p('a', [toggle('x', [p('xb')]), p('y')])]);
 		expect(open(view, 'x')).toBe(false);
-		get(view, 'x').unNestBlock();
+		view.edytor.unNestBlock('x');
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			'paragraph "a"',
@@ -302,27 +301,26 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 		expect(hidden(get(view, 'y'))).toBe(false);
 	});
 
-	it('moveBlock and moveBlocks into a closed toggle open it', async () => {
+	it('moveBlocks into a closed toggle opens it', async () => {
 		const view = await render([], [toggle('t', [p('body')]), p('x'), p('y')]);
-		get(view, 'x').moveBlock({ path: [0, 1] });
+		view.edytor.moveBlocks(['x'], { parent: 't', index: 1 });
 		await flushDomUpdates();
 		expect(open(view, 't')).toBe(true);
 		(get(view, 't').node as HTMLDetailsElement).open = false;
-		const y = get(view, 'y');
-		y.moveBlocks({ blocks: [y], path: [0, 2] });
+		view.edytor.moveBlocks(['y'], { parent: 't', index: 2 });
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			['toggle "t"', ['paragraph "body"', 'paragraph "x"', 'paragraph "y"']]
 		]);
 		expect(open(view, 't')).toBe(true);
-		expect(hidden(y)).toBe(false);
+		expect(hidden(get(view, 'y'))).toBe(false);
 	});
 });
 
 describe('Enter in an empty list item ends the list (SW9-lists-1)', () => {
 	const empty = (id: string): JSONBlock => ({ id, type: 'list-item', content: text('') });
 	const enter = async (view: View, id: string) => {
-		view.edytor.selection.setAtTextOffset(get(view, id).firstText!, 0);
+		view.edytor.selection.selectText(get(view, id).firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
 	};
@@ -331,7 +329,7 @@ describe('Enter in an empty list item ends the list (SW9-lists-1)', () => {
 		const view = await render([], [ul('u', [li('b'), empty('e')])]);
 		await enter(view, 'e');
 		expect(shape(view)).toEqual([['unordered-list ""', ['list-item "b"']], 'paragraph ""']);
-		const { startBlock, yStart } = view.edytor.selection.state;
+		const { startBlock, yStart } = selectionState(view.edytor);
 		expect([startBlock?.id, yStart]).toEqual(['e', 0]);
 	});
 
@@ -351,7 +349,7 @@ describe('Enter in an empty list item ends the list (SW9-lists-1)', () => {
 
 	it('an item with text still adds an item after it', async () => {
 		const view = await render([], [ul('u', [li('b')])]);
-		view.edytor.selection.setAtTextOffset(get(view, 'b').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
 		expect(shape(view)).toEqual([['unordered-list ""', ['list-item "b"', 'list-item ""']]]);

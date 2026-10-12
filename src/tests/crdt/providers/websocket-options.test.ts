@@ -5,9 +5,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { bindProviders } from '../../../lib/crdt/providers/index.js';
+import { bindProviders, prefetchWith } from '../../../lib/crdt/providers/index.js';
 
-const { createWebsocketSync, prefetch } = bindProviders(Y);
+const stack = bindProviders(Y);
+const { createWebsocketSync } = stack;
+const prefetch = (options: never) => prefetchWith(Y, stack, options);
 
 describe('createWebsocketSync options', () => {
 	it('{ server, room } names the room on the server and the local store', () => {

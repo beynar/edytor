@@ -1,17 +1,17 @@
 /** @jsxImportSource ../../jsx */
 import { expect } from 'vitest';
 
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
+import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const blockHandlePlugins = [richTextPlugin, mentionPlugin, blockHandlesPlugin];
 const preventMovePlugin: Plugin = () => ({
 	onBeforeOperation: ({ operation, prevent }) => {
-		if (operation === 'moveBlock') {
+		if (operation === 'moveBlocks') {
 			prevent();
 		}
 	}
@@ -113,7 +113,7 @@ export const fixtures = defineFixtures([
 		// U10 regression — chromium `block-handles.spec.ts` "drags multiple
 		// selected sibling blocks together" lost BOTH dragged blocks: the
 		// pre-v14 path cloned JSON, deleted the sources, then re-inserted the
-		// same ids, which `facade.insertBlock` refuses (registry entries are
+		// same ids, which `facade.insertBlocks` refuses (registry entries are
 		// retained after delete). The grouped drag now goes through one
 		// `facade.moveBlocks` transaction — identity preserved, one undo step.
 		description: 'drags multiple selected sibling blocks together (identity preserved)',
@@ -129,8 +129,8 @@ export const fixtures = defineFixtures([
 			const [lead, note, tail] = edytor.root!.children;
 			const leadCrdtId = edytor.facade!.crdtId(lead.id);
 			const noteCrdtId = edytor.facade!.crdtId(note.id);
-			edytor.selection.selectBlocks(lead, note);
-			const moved = edytor.moveBlocks({ blocks: [lead, note], target: tail, position: 'after' });
+			selectBlocks(edytor, lead, note);
+			const moved = edytor.move({ blocks: [lead, note], target: tail, position: 'after' });
 			await flushDomUpdates();
 			return { moved, lead, note, leadCrdtId, noteCrdtId };
 		},
@@ -167,8 +167,8 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor }) => {
 			const [parent, lead, note] = edytor.root!.children;
-			edytor.selection.selectBlocks(lead, note);
-			edytor.moveBlocks({ blocks: [lead, note], target: parent, position: 'inside' });
+			selectBlocks(edytor, lead, note);
+			edytor.move({ blocks: [lead, note], target: parent, position: 'inside' });
 			await flushDomUpdates();
 		},
 		output: (

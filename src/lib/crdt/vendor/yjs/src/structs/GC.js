@@ -40,7 +40,7 @@ export class GC extends AbstractStruct {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */

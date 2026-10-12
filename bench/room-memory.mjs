@@ -7,7 +7,7 @@
  *
  * The room's document quota (`maxDocumentBytes`) measures what its records
  * hold, uncompressed: after a compaction, the v2 snapshot of the live
- * document (`encodeStateAsUpdateV2`). What the isolate holds is the live
+ * document (`encodeStateAsUpdate`). What the isolate holds is the live
  * engine doc that snapshot loads into, plus, once a server edit, a history,
  * a validation or a read needs it, the facade's index. This script builds
  * documents of several shapes with `createDocument`, stores them the way a
@@ -100,7 +100,7 @@ const stored = (shape, n) => {
 	const spec = SHAPES[shape](n);
 	if (spec.value) {
 		const document = E.createDocument({ value: spec.value, semantics: E.defaultSemantics });
-		const bytes = Y.encodeStateAsUpdateV2(document.doc);
+		const bytes = Y.encodeStateAsUpdate(document.doc);
 		document.destroy();
 		return bytes;
 	}
@@ -123,7 +123,7 @@ const stored = (shape, n) => {
 			id = next;
 		}
 	}
-	const bytes = Y.encodeStateAsUpdateV2(document.doc);
+	const bytes = Y.encodeStateAsUpdate(document.doc);
 	document.destroy();
 	return bytes;
 };
@@ -135,7 +135,7 @@ const retained = (bytes, facade) => {
 	for (let i = 0; i < 3; i++) {
 		const doc = crdt.createDoc();
 		crdt.doc.keepCopies(doc);
-		Y.applyUpdateV2(doc, bytes);
+		Y.applyUpdate(doc, bytes);
 		const f = facade ? crdt.doc.create(doc, lookups) : null;
 		if (f) f.toJSON();
 		held.push({ doc, f });

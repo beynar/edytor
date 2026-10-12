@@ -28,11 +28,10 @@ import {
 	Edytor, // the component
 	useEdytor, // the editor instance from inside the component tree
 	Block, Text, InlineBlock, // handle classes
-	richTextPlugin, imagePlugin, arrowMovePlugin, suggestionsPlugin, // the default plugins
+	createRichTextPlugin, createImagePlugin, createArrowMovePlugin, createSuggestionsPlugin, // the default plugins
 	textToBlocks, // a string or markdown as blocks (suggestions)
-	codePlugin, markdownShortcutsPlugin, createImagePlugin,
-	slashMenuPlugin, createSlashMenuPlugin, toolbarPlugin, createToolbarPlugin,
-	blockMenuPlugin, createBlockMenuPlugin, blockHandlesPlugin, createBlockHandlesPlugin,
+	createCodePlugin, createMarkdownShortcutsPlugin,
+	createSlashMenuPlugin, createToolbarPlugin, createBlockMenuPlugin, createBlockHandlesPlugin,
 	richTextOperations, richTextPlaceholder, convertToKind,
 	createDocument, loadDocument, attachDocument, // the document API
 	createIndexeddbSync, createWebsocketSync, clearDocument // sync factories
@@ -69,7 +68,7 @@ It exports:
 - `createDocument`, `loadDocument`, `attachDocument` and the `EdytorDocument` class. See [the document reference](/docs/reference/document-api).
 - The JSON and document types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `DocPosition`, `RangeView`, `FlowView`, `EdytorDoc`, and `toBlockSpec`.
 - The block roles: `defaultSemantics`, `semanticsOf` and the bundled kinds' tables.
-- `Awareness`, the sync types (`EdytorSync`, `WebsocketSyncOptions`, …), the errors a load or a sync refuses with, attribution types and the v13 migration types.
+- `Awareness`, the sync types (`EdytorSync`, `WebsocketSyncOptions`, …), the errors a load or a sync refuses with, and attribution types.
 - `bindCrdt(Y)`, which binds the providers, migration and sync protocol to an engine you pass in.
 
 The ready-made sync factories (`createIndexeddbSync`, `createWebsocketSync`) are exported from the root, the provider classes from `edytor/protocol`. Outside Svelte, reach the providers through `bindCrdt`:
@@ -107,7 +106,7 @@ See [the protocol](/docs/server/protocol) for the contract.
 
 ## `edytor/crdt`
 
-The raw engine: Edytor's own fork of Yjs v14, pruned to what Edytor uses (documents, nodes, transactions, `UndoManager`, update encoding and merging, state vectors, relative positions).
+The raw engine: Edytor's own fork of Yjs v14, pruned to what Edytor uses (documents, nodes, transactions, the update encoding and merging, state vectors, relative positions).
 
 ```ts title="src/lib/merge.ts" check
 import * as Y from 'edytor/crdt';
@@ -135,7 +134,7 @@ It imports `cloudflare:workers`, so it loads only inside a Worker. It is built o
 
 ## Bundle size and tree-shaking
 
-- **Import what you render.** Every JavaScript module in the package is free of side effects (`sideEffects` lists only CSS), so a bundler drops the plugins you never import. The code plugin, with TanStack Highlight and its stylesheet, ships only in apps that import `codePlugin`.
+- **Import what you render.** Every JavaScript module in the package is free of side effects (`sideEffects` lists only CSS), so a bundler drops the plugins you never import. The code plugin, with TanStack Highlight and its stylesheet, ships only in apps that import `createCodePlugin`.
 - **The engine is pruned.** `edytor/crdt` is Edytor's fork of Yjs v14, cut down to what Edytor runs on. The document API reaches the engine through one fixed object of the symbols it calls, so an app that never imports `edytor/crdt` itself bundles only what those symbols reach. `bindCrdt(Y)` with the whole namespace (`import * as Y from 'edytor/crdt'`) keeps the whole pruned engine.
 - **Headless code stays small.** `edytor/crdt/edytor` has no Svelte and no view code: a server route or Worker that reads and edits documents does not pull in the editor.
 - **One engine.** Never add the `yjs` package next to Edytor: it is a second, incompatible engine.

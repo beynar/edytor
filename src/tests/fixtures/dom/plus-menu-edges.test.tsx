@@ -11,11 +11,14 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { noSelection } from '$lib/session/selection.js';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -52,7 +55,7 @@ const key = async (key: string, target: Element = field()) => {
 	await flushDomUpdates();
 };
 const caretAt = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 
@@ -66,7 +69,7 @@ describe('a refused + pick leaves the history as it was (low 1)', () => {
 		const { edytor, editor } = await render([p('a'), p('b')], [veto]);
 		await caretAt(edytor, 'a', 1);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
-		edytor.history.undo();
+		edytor.historyUndo();
 		await flushDomUpdates();
 		const [undo, redo] = [edytor.undoManager.undoStack.length, edytor.undoManager.redoStack.length];
 		expect(redo).toBe(1);
@@ -78,7 +81,7 @@ describe('a refused + pick leaves the history as it was (low 1)', () => {
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		expect(edytor.undoManager.undoStack.length).toBe(undo);
 		expect(edytor.undoManager.redoStack.length).toBe(redo);
-		edytor.history.redo();
+		edytor.historyRedo();
 		expect(texts(edytor)).toEqual(['paragraph ax', 'paragraph b']);
 	});
 });
@@ -97,7 +100,7 @@ describe('Escape in a + menu opened over a grip menu (low 2)', () => {
 
 		expect(menu()).toBeNull();
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, isCollapsed]).toEqual(['a', 1, true]);
 	});
 });
@@ -117,7 +120,7 @@ describe('Escape in a + menu while the grip block selection still stands', () =>
 		await key('Escape');
 		// Never a block selection the next key would replace.
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = selectionState(edytor);
 		expect([startText?.parent.id, yStart]).toEqual(['a', 1]);
 	});
 });
@@ -178,13 +181,13 @@ describe('a + menu lists what can run in the block being added (low 4)', () => {
 			{
 				id: 'callout.only',
 				label: 'Callout only',
-				isEnabled: (edytor) => edytor.selection.state.startBlock?.parent?.type === 'callout',
+				isEnabled: (edytor) => selectionState(edytor).startBlock?.parent?.type === 'callout',
 				run: () => true
 			},
 			{
 				id: 'todo.only',
 				label: 'To-do only',
-				isEnabled: (edytor) => edytor.selection.state.startBlock?.type === 'todo-item',
+				isEnabled: (edytor) => selectionState(edytor).startBlock?.type === 'todo-item',
 				run: () => true
 			}
 		]
@@ -196,7 +199,7 @@ describe('a + menu lists what can run in the block being added (low 4)', () => {
 				{
 					id: 'reads.node',
 					label: 'Reads node',
-					isEnabled: (edytor) => edytor.selection.state.startBlock!.node!.isConnected,
+					isEnabled: (edytor) => selectionState(edytor).startBlock!.node!.isConnected,
 					run: () => true
 				}
 			]

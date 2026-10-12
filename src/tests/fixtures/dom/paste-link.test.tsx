@@ -13,14 +13,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	flushDomUpdates,
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -69,7 +69,7 @@ describe('pasting a URL over selected text links it (Notion)', () => {
 			{ text: 'docs', marks: { link: { href: URL } } },
 			{ text: ' now' }
 		]);
-		const { state } = view.edytor.selection;
+		const state = selectionState(view.edytor);
 		expect([state.isCollapsed, state.yStart, state.yEnd]).toEqual([false, 9, 13]);
 	});
 

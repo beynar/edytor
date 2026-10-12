@@ -11,8 +11,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { insertEdytorClipboardFragment } from '$lib/clipboard/insertClipboardFragment.js';
 import {
 	dispatchClipboardPaste,
@@ -23,6 +21,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -64,7 +64,7 @@ describe('Code-line Tab over several lines skips a vetoed line only (CW-02)', ()
 	});
 	const code = (lines: JSONBlock[]): JSONBlock[] => [{ id: 'code', type: 'code', children: lines }];
 	const selectAll = async (view: View) => {
-		view.edytor.selection.setAtRange(get(view, 'l1').firstText!, 1, get(view, 'l3').firstText!, 2);
+		view.edytor.selection.selectText(get(view, 'l1').firstText!, 1, get(view, 'l3').firstText!, 2);
 		await flushDomUpdates();
 	};
 	const lines = (view: View) =>
@@ -80,7 +80,7 @@ describe('Code-line Tab over several lines skips a vetoed line only (CW-02)', ()
 		expect(lines(view)).toEqual(['\tone', 'two', '\tthree']);
 		expect(status(view)).toBe('applied');
 		// The selection keeps its characters on the lines that moved.
-		const { yStart, yEnd } = view.edytor.selection.state;
+		const { yStart, yEnd } = selectionState(view.edytor);
 		expect([yStart, yEnd]).toEqual([2, 3]);
 	});
 
@@ -113,7 +113,7 @@ describe('Every gesture that removes a block selection runs onDeleteSelectedBloc
 	const seed = () => [p('a'), p('b'), p('c')];
 	const unchanged = ['paragraph "a"', 'paragraph "b"', 'paragraph "c"'];
 	const selectAB = async (view: View) => {
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'b'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'b'));
 		await flushDomUpdates();
 	};
 
@@ -202,7 +202,7 @@ describe('Every gesture that removes a block selection runs onDeleteSelectedBloc
 			}
 		});
 		const view = await render([watching], [p('a'), { id: 'd', type: 'divider' }, p('c')]);
-		view.edytor.selection.selectBlocks(get(view, 'd'));
+		selectBlocks(view.edytor, get(view, 'd'));
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
 		expect(seen).toEqual([]);
@@ -263,7 +263,7 @@ describe('Sweep: Backspace after a trailing soft break is a command hooks see (S
 	it('Backspace after a trailing soft break is a command a plugin can veto', async () => {
 		seen.length = 0;
 		const view = await render([vetoAll], soft());
-		view.edytor.selection.setAtTextOffset(get(view, 'a').firstText!, 3);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 3);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		expect(get(view, 'a').firstText?.stringContent).toBe('ab\n');
@@ -273,11 +273,11 @@ describe('Sweep: Backspace after a trailing soft break is a command hooks see (S
 
 	it('without a veto it deletes the break, as one undo step', async () => {
 		const view = await render([], soft());
-		view.edytor.selection.setAtTextOffset(get(view, 'a').firstText!, 3);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 3);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		expect(get(view, 'a').firstText?.stringContent).toBe('ab');
-		expect(view.edytor.selection.state.yStart).toBe(2);
+		expect(selectionState(view.edytor).yStart).toBe(2);
 		view.edytor.historyUndo();
 		await flushDomUpdates();
 		expect(get(view, 'a').firstText?.stringContent).toBe('ab\n');
@@ -289,7 +289,7 @@ describe('Word and line deletes over a block selection delete the blocks (DR-res
 	const seed = () => [p('a'), p('b'), p('c')];
 	const unchanged = ['paragraph "a"', 'paragraph "b"', 'paragraph "c"'];
 	const selectAB = async (view: View) => {
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'b'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'b'));
 		await flushDomUpdates();
 	};
 	const parentKid = (): JSONBlock[] => [
@@ -341,7 +341,7 @@ describe('Word and line deletes over a block selection delete the blocks (DR-res
 	it('a selected parent alone: Alt+Backspace removes it and promotes its child, as Backspace does', async () => {
 		for (const chord of [{ key: 'Backspace' }, { key: 'Backspace', altKey: true }]) {
 			const view = await render([], parentKid());
-			view.edytor.selection.selectBlocks(get(view, 'P'));
+			selectBlocks(view.edytor, get(view, 'P'));
 			await flushDomUpdates();
 			await dispatchDomKeyDown(document, chord);
 			expect(shape(view)).toEqual(['paragraph "K"', 'paragraph "c"']);
@@ -351,7 +351,7 @@ describe('Word and line deletes over a block selection delete the blocks (DR-res
 
 	it('a selected parent alone: a deleteSoftLineBackward beforeinput promotes its child', async () => {
 		const view = await render([], parentKid());
-		view.edytor.selection.selectBlocks(get(view, 'P'));
+		selectBlocks(view.edytor, get(view, 'P'));
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteSoftLineBackward' });
 		expect(shape(view)).toEqual(['paragraph "K"', 'paragraph "c"']);
@@ -376,7 +376,7 @@ describe('Word and line deletes over a block selection delete the blocks (DR-res
 
 	it('without a block selection Alt+Backspace stays the browser word delete', async () => {
 		const view = await render([keeping], seed());
-		view.edytor.selection.setAtTextOffset(get(view, 'a').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 1);
 		await flushDomUpdates();
 		const { defaultPrevented } = await dispatchDomKeyDown(document, {
 			key: 'Backspace',

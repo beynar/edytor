@@ -8,17 +8,20 @@
  * converts in place. Escape, a press outside, a blur or readonly insert
  * nothing. Expected states are hand-authored from Notion.
  */
+import { keyedMenu, seen } from '../../dom/KeyedMenu.svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRawSnippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createSlashMenuPlugin, slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import type { SlashMenuController } from '$lib/plugins/slashMenu/SlashMenuController.svelte.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import {
+	codePlugin,
+	richTextPlugin,
+	slashMenu as createSlashMenuPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -49,7 +52,7 @@ const outline = (b: JSONBlock): Outline => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return isCollapsed ? `${startText?.parent.type}@${yStart}` : 'range';
 };
 
@@ -149,7 +152,7 @@ describe('the + opens the insert menu and changes nothing', () => {
 		await plus('e');
 		await pick('Text');
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph']);
-		expect(edytor.selection.state.startText?.parent.id).toBe('e');
+		expect(selectionState(edytor).startText?.parent.id).toBe('e');
 		expect(edytor.dispatcher.last?.status).not.toBe('refused');
 	});
 
@@ -165,7 +168,7 @@ describe('the + opens the insert menu and changes nothing', () => {
 
 	it('Escape: nothing inserted, no undo step, focus and caret back where they were', async () => {
 		const { edytor, editor } = await withMenu([p('a'), p('b')]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		const steps = edytor.undoManager.undoStack.length;
 		await plus('b');
@@ -176,19 +179,19 @@ describe('the + opens the insert menu and changes nothing', () => {
 		expect(edytor.undoManager.undoStack.length).toBe(steps);
 		expect(document.activeElement).toBe(editor);
 		expect(caret(edytor)).toBe('paragraph@1');
-		expect(edytor.selection.state.startText?.parent.id).toBe('a');
+		expect(selectionState(edytor).startText?.parent.id).toBe('a');
 	});
 
 	it('a press outside closes it: nothing inserted, the caret as it was', async () => {
 		const { edytor } = await withMenu([p('a'), p('b')]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		await plus('b');
 		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		await flushDomUpdates();
 		expect(menu()).toBeNull();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
-		expect(edytor.selection.state.startText?.parent.id).toBe('a');
+		expect(selectionState(edytor).startText?.parent.id).toBe('a');
 	});
 
 	it('focus leaving the menu (Tab away) closes it with nothing inserted', async () => {
@@ -273,7 +276,7 @@ describe('the + places the picked kind where it fits', () => {
 		await pick('Divider');
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'divider', 'paragraph', 'paragraph "b"']);
 		expect(caret(edytor)).toBe('paragraph@0');
-		expect(edytor.selection.state.startText?.parent.index).toBe(2);
+		expect(selectionState(edytor).startText?.parent.index).toBe(2);
 		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
 	});
 
@@ -295,10 +298,10 @@ describe('a veto on the + insert', () => {
 			}
 		});
 
-	for (const operation of ['insertBlockAfter', 'setBlock']) {
+	for (const operation of ['insertBlocks', 'setBlock']) {
 		it(`a vetoed ${operation} inserts nothing and reports refused`, async () => {
 			const { edytor } = await withMenu([p('a'), p('b')], [veto(operation)]);
-			edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+			edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 			await flushDomUpdates();
 			const steps = edytor.undoManager.undoStack.length;
 			await plus('a');
@@ -307,7 +310,7 @@ describe('a veto on the + insert', () => {
 			expect(edytor.undoManager.undoStack.length).toBe(steps);
 			expect(edytor.undoManager.redoStack.length).toBe(0);
 			expect(edytor.dispatcher.last?.status).toBe('refused');
-			expect(edytor.selection.state.startText?.parent.id).toBe('a');
+			expect(selectionState(edytor).startText?.parent.id).toBe('a');
 		});
 	}
 });
@@ -320,19 +323,12 @@ describe('without the slash menu, or with a custom menu', () => {
 		expect(caret(edytor)).toBe('paragraph@0');
 	});
 
-	it('a custom `menu` snippet: typing goes to the menu query, never the document', async () => {
-		let controller: SlashMenuController | undefined;
-		const custom = createRawSnippet((get: () => SlashMenuController) => ({
-			render: () => '<div data-testid="custom-menu"></div>',
-			setup: () => {
-				controller = get();
-			}
-		}));
+	it('a custom `menu` snippet holding the keys (`keys` on itself): typing goes to the menu query, never the document', async () => {
 		const { edytor, editor } = await render(
 			[p('a'), p('b')],
-			[createSlashMenuPlugin({ menu: custom })]
+			[createSlashMenuPlugin({ menu: keyedMenu })]
 		);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		await plus('a');
 		expect(document.querySelector('[data-testid="custom-menu"]')).not.toBeNull();
@@ -340,9 +336,9 @@ describe('without the slash menu, or with a custom menu', () => {
 		expect(editor.contains(document.activeElement)).toBe(false);
 		const typing = document.activeElement!;
 		for (const letter of 'head') await key(letter, typing);
-		expect(controller!.query).toBe('head');
+		expect(seen.controller!.query).toBe('head');
 		await key('Backspace', typing);
-		expect(controller!.query).toBe('hea');
+		expect(seen.controller!.query).toBe('hea');
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 		await key('Enter', typing);
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'heading', 'paragraph "b"']);

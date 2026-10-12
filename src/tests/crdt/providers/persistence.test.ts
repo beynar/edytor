@@ -22,7 +22,7 @@ import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import {
 	generationDbName,
 	GENERATION_KEY,
-	STORED_GENERATION_RECORD
+	GENERATION_RECORD
 } from '../../../lib/crdt/protocols/envelope.js';
 import * as idb from 'lib0-v14/indexeddb';
 
@@ -138,8 +138,7 @@ describe('SY03: storage generation boundary', () => {
 		await p.destroy();
 
 		// The generation record was written to `custom`.
-		// Stamped with this generation and its storage format (v2 snapshots, P5).
-		expect(await readCustom(name, GENERATION_KEY)).toEqual(STORED_GENERATION_RECORD);
+		expect(await readCustom(name, GENERATION_KEY)).toEqual(GENERATION_RECORD);
 		// The legacy-named DB must not have been created by the provider.
 		const legacy = await new Promise((res) => {
 			const req = indexedDB.open(name);

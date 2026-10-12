@@ -49,7 +49,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     },
     contentElement: {
       type: "string | { tag, attributes? } | ((data, id) => …)",
-      description: "The element the core wraps around the block's own text, where the snippet renders content(): a tag, a tag with attributes, or a function of the block's data and id. Children stay outside it. The rich text heading's h1–h3 and the quote's blockquote are declared this way, so a snippet override keeps them. HTML import finds the kind by this tag when it has no html form and its element is a div.",
+      description: "The element the core wraps around the block's own text, where the snippet renders content(): a tag, a tag with attributes, or a function of the block's data and id. Children stay outside it. The rich text heading's h1–h3 and the quote's blockquote are declared this way, so a plugin that restyles them with its own snippet keeps them. HTML import finds the kind by this tag when it has no html form and its element is a div.",
     },
     viewState: {
       type: "string[]",
@@ -199,17 +199,17 @@ A block snippet receives `{ block, content, children }`:
   type={{
     "block.id": { type: "string", description: "The block's id." },
     "block.type": { type: "string", description: "The kind name." },
-    "block.data": { type: "object", description: "The block's data, a live proxy: reads are reactive, and an assignment (block.data.done = true, bind:value={block.data.title}) is a patchData command. See Properties." },
+    "block.data": { type: "object", description: "The block's data, read-only and reactive; write it with patchData. See Properties." },
     "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
     "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
-    "block.handle": { type: "Block | undefined", description: "The block's handle, for commands and document reads. Not reactive. undefined in a suggestion's preview, which is no block of the document." },
+    "block.handle": { type: "Block | undefined", description: "The block's read-only handle, for its reads and its edytor (handle.edytor). Not reactive. undefined in a suggestion's preview, which is no block of the document." },
     "block.void": { type: "action", description: "use:block.void marks an element as non-editable chrome." },
     content: { type: "Snippet", description: "Renders the block's inline content: text, marks and inline atoms." },
     children: { type: "Snippet | null", description: "Renders the nested blocks, or null when there are none." },
   }}
 />
 
-Read values from `block` in the template, they update on every change. Run commands through `block.handle`, for example `block.handle?.setBlock(...)`; its getters read the document at call time and do not trigger re-renders. A [suggestion](/docs/editor/suggestions)'s preview renders your snippet with no handle: guard what reads or writes through it.
+Read values from `block` in the template, they update on every change. Write through the view, `block.handle?.edytor`, with the block's id, for example `block.handle?.edytor.setBlock(block.id, { type: 'quote' })`; the handle's getters read the document at call time and do not trigger re-renders. A [suggestion](/docs/editor/suggestions)'s preview renders your snippet with no handle: guard what reads or writes through it.
 
 Render `content()` once, unless the kind declares `rendersContent: false`. Render `children()` in its own element, so nested blocks start on a new row:
 
@@ -230,7 +230,7 @@ Anything a snippet renders besides `content()` and `children()` is chrome: icons
 {#snippet section({ block, content, children }: BlockSnippetPayload)}
 	<header use:block.void>
 		<span>Section</span>
-		<button type="button" onclick={() => block.handle?.removeBlock()}>Remove</button>
+		<button type="button" onclick={() => block.handle?.edytor.deleteBlock(block.id)}>Remove</button>
 	</header>
 	<div>{@render content()}</div>
 	{@render children?.()}
@@ -265,7 +265,7 @@ Convert a block from code with `convertToKind`, or run the row's command:
 import { convertToKind } from 'edytor';
 
 const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');
-const block = edytor.selection.state.startBlock;
+const block = edytor.selection.caret?.block;
 if (row && convertToKind(edytor, block, row)) {
 	// converted
 }
@@ -313,31 +313,33 @@ Set `container: true` on a kind whose text is a header over its children, as the
 
 ## Normalization
 
-`normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs after operations that rewrite a block's content (`setBlock`, Turn into from any menu, key or markdown shortcut, adding or removing an inline atom, `deleteContentAtRange`, a soft line break); plain typing does not trigger it. `normalizeChildren` runs on the parents whose children changed.
+`normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs on every block whose content, kind or data an operation wrote (typing included, and a block it inserted); `normalizeChildren` runs on the parents whose children changed (an insertion, a move, a deletion, a split or a merge). Keep both cheap: they run on every keystroke in the block.
 
 Write directly, or return a function: it runs in the same transaction, and the normalizer runs again on the block until it returns nothing (at most 50 more passes). The work is part of the same undo step, and peers never see the unnormalized state.
 
 ## Override a snippet
 
-To change only how an existing kind renders, pass a snippet prop named `<type>Block` to `<Edytor>`. The kind keeps every other option, its `element` and `contentElement` included: below, `content()` still renders the quote's text inside its `blockquote`.
+To change only how an existing kind renders, list a plugin before the one that defines it, naming only its `snippet`. Definitions are first-wins field by field, so the kind keeps every other option, its `element` and `contentElement` included: below, `content()` still renders the quote's text inside its `blockquote`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
-	import type { BlockSnippetPayload } from 'edytor';
+	import type { BlockSnippetPayload, Plugin } from 'edytor';
+
+	const myQuote: Plugin = () => ({ blocks: { quote: { snippet: quote } } });
 </script>
 
-<Edytor>
-	{#snippet quoteBlock({ content, children }: BlockSnippetPayload)}
-		<div class="my-quote">{@render content()}</div>
-		{@render children?.()}
-	{/snippet}
-</Edytor>
+{#snippet quote({ content, children }: BlockSnippetPayload)}
+	<div class="my-quote">{@render content()}</div>
+	{@render children?.()}
+{/snippet}
+
+<Edytor plugins={[myQuote]} />
 ```
 
-The same works for marks (`<name>Mark`) and inline atoms (`<type>InlineBlock`). A kind name that is not a valid identifier, such as `todo-item`, can be passed with a spread: `<Edytor {...{ 'todo-itemBlock': todoItem }} />`, where `todoItem` is a snippet declared at the top level of your component.
+The same works for marks (`marks`) and inline atoms (`inlineBlocks`), and for any kind name (`'todo-item'`).
 
-To replace a kind completely, define a kind with the same name in a plugin listed before the one that defines it.
+To replace a kind completely, define every field it needs in a plugin listed before the one that defines it.
 
 ## Complete example: a task kind
 
@@ -349,7 +351,8 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 	import type { BlockSnippetPayload } from 'edytor';
 
 	// One property written: a collaborator's concurrent edit of another is kept.
-	const toggle = (task: Block) => (task.data.done = !task.data.done);
+	const toggle = (task: Block) =>
+		task.edytor.patchData(task.id, [{ path: ['done'], value: !task.data.done }]);
 
 	export const taskPlugin: Plugin = () => ({
 		blocks: {
@@ -372,8 +375,7 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 					const text = block.firstText;
 					const at = text?.stringContent.indexOf('\n') ?? -1;
 					if (text && at !== -1)
-						return () =>
-							block.deleteContentAtRange({ start: [text.index, at], end: [text.index, at + 1] });
+						return () => block.edytor.deleteText(block.id, text.segStart + at, 1);
 				}
 			}
 		}

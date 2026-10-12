@@ -6,7 +6,7 @@
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
 import type { YDoc } from '../../crdt/index.js';
-import { asEngineDoc, keepFromCollection } from '../../crdt/structs.js';
+import { asEngineDoc, keepFromCollection, structAt as storeStructAt } from '../../crdt/structs.js';
 import { ROOM_ORIGIN } from './shared.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
@@ -43,15 +43,18 @@ export const storedStruct = (doc: YDoc, client: number, clock: number) => {
 };
 
 /** The struct of `run` (one client's, in clock order) at `clock`, or `undefined`. */
-export const structAt = (run: Struct[], clock: number): Struct | undefined => {
-	for (let lo = 0, hi = run.length - 1; lo <= hi; ) {
-		const mid = (lo + hi) >> 1;
-		const { id, length } = run[mid];
-		if (clock < id.clock) hi = mid - 1;
-		else if (clock >= id.clock + length) lo = mid + 1;
-		else return run[mid];
+export const structAt = (run: Struct[], clock: number): Struct | undefined =>
+	(storeStructAt(Y, run as never[], clock) as Struct | null) ?? undefined;
+
+/** A frame's structs by client, each run in clock order. */
+export const runsOf = (structs: Struct[]): Map<number, Struct[]> => {
+	const runs = new Map<number, Struct[]>();
+	for (const struct of structs) {
+		const run = runs.get(struct.id.client) ?? [];
+		run.push(struct);
+		runs.set(struct.id.client, run);
 	}
-	return undefined;
+	return runs;
 };
 
 /**
@@ -65,12 +68,7 @@ export const structAt = (run: Struct[], clock: number): Struct | undefined => {
  * or the frame holds collected, may be an entry.
  */
 export const replacedEntries = (doc: YDoc, structs: Struct[], pick: (item: Item) => boolean) => {
-	const frame = new Map<number, Struct[]>();
-	for (const struct of structs) {
-		const run = frame.get(struct.id.client) ?? [];
-		run.push(struct);
-		frame.set(struct.id.client, run);
-	}
+	const frame = runsOf(structs);
 	const known = new Map<Struct, boolean>();
 	const isEntry = (id: { client: number; clock: number }): boolean => {
 		const chain = new Set<Struct>();
@@ -138,8 +136,8 @@ export const withoutClients = (
 		run.push(struct);
 		kept.set(client, run);
 	}
-	// The v1 layout: #clients, then per client #structs, client, first clock, structs.
-	const encoder = new Y.UpdateEncoderV1();
+	// The update layout: #clients, then per client #structs, client, first clock, structs.
+	const encoder = new Y.UpdateEncoder();
 	encoding.writeVarUint(encoder.restEncoder, kept.size);
 	for (const [client, run] of kept) {
 		encoding.writeVarUint(encoder.restEncoder, run.length);
@@ -238,7 +236,7 @@ export const releasedWaiting = (
 
 /** The deletes `doc`'s engine holds pending: of items it does not hold yet. */
 export const pendingDeletes = (doc: YDoc): Decoded['ds'] =>
-	doc.store.pendingDs ? Y.decodeUpdateV2(doc.store.pendingDs).ds : Y.createIdSet();
+	doc.store.pendingDs ? Y.decodeUpdate(doc.store.pendingDs).ds : Y.createIdSet();
 
 /** `into` with the ranges of `from` added — of the clients `keep` selects. */
 export const addIds = (
@@ -257,9 +255,9 @@ export const addIds = (
 export const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
 	a.length === b.length && a.every((byte, i) => byte === b[i]);
 
-/** A V1 update carrying only `deletes`. */
+/** An update carrying only `deletes`. */
 export const deletesUpdate = (deletes: Decoded['ds']): Uint8Array => {
-	const encoder = new Y.UpdateEncoderV1();
+	const encoder = new Y.UpdateEncoder();
 	encoding.writeVarUint(encoder.restEncoder, 0); // no structs
 	Y.writeIdSet(encoder, deletes);
 	return encoder.toUint8Array();
@@ -329,7 +327,7 @@ export const withoutPending = <T>(doc: YDoc, read: () => T): T => {
  * holds exactly what the stored records hold, collected.
  */
 export const liveState = (doc: YDoc): Uint8Array =>
-	withoutPending(doc, () => Y.encodeStateAsUpdateV2(doc));
+	withoutPending(doc, () => Y.encodeStateAsUpdate(doc));
 
 /**
  * A room document's collection rules, before any update applies: it keeps
@@ -353,7 +351,7 @@ export const roomDoc = (keep: () => Decoded['ds'] | null): YDoc => {
 
 /** Admit stored or loaded updates into a room document (`prepareRoomDoc`'s collection rules). */
 export const admit = (
-	updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>,
+	updates: Uint8Array | Uint8Array[],
 	name: string,
 	keep: () => Decoded['ds'] | null
 ): YDoc =>

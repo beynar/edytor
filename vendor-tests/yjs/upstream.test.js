@@ -30,15 +30,11 @@ import * as yText from './tests/y-text.tests.js'
 import * as yXml from './tests/y-xml.tests.js'
 import * as encoding from './tests/encoding.tests.js'
 import * as undoredo from './tests/undo-redo.tests.js'
-import * as compatibility from './tests/compatibility.tests.js'
 import * as doc from './tests/doc.tests.js'
 import * as updates from './tests/updates.tests.js'
-import * as relativePositions from './tests/relativePositions.tests.js'
 import * as idset from './tests/IdSet.tests.js'
-import * as idmap from './tests/IdMap.tests.js'
 import * as attribution from './tests/attribution.tests.js'
 import * as delta from './tests/delta.tests.js'
-import * as schema from './tests/schema.tests.js'
 
 // Upstream `tests/index.js` execution order.
 const modules = {
@@ -49,14 +45,10 @@ const modules = {
 	'y-xml': yXml,
 	encoding,
 	'undo-redo': undoredo,
-	compatibility,
 	updates,
-	relativePositions,
 	IdSet: idset,
-	IdMap: idmap,
 	attribution,
-	delta,
-	schema
+	delta
 }
 
 const seedEnv = process.env.YJS_TEST_SEED

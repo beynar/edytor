@@ -7,8 +7,17 @@
  */
 import { randOf } from '../rand.js';
 import { TYPE } from '../schema.js';
-import { promotedRank, sourceRank, SOURCE_SIDE, type BlockId } from '../placement/model.js';
-import { refused, effectOf } from './plan.js';
+import {
+	blockNodeOf,
+	positionInView,
+	promotedRank,
+	ranksAt,
+	SOURCE_SIDE,
+	sourceRank,
+	type BlockId,
+	type ContentItem
+} from '../placement/model.js';
+import { REFUSED, effectOf } from './plan.js';
 import type { Plan, PlanStep } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 import type { DocCapability } from './capability.js';
@@ -20,7 +29,6 @@ export type StepsContext = DocBase & DocReads & DocCapability;
 export const planSteps = (c: StepsContext) => {
 	const {
 		doc,
-		M,
 		runsView,
 		roles,
 		rendersContentOf,
@@ -51,7 +59,6 @@ export const planSteps = (c: StepsContext) => {
 	// Each prepare normalizes its inputs once, here at ingress: ids
 	// and strings as the wire would deliver them, payloads cloned.
 
-	const REFUSED = refused(null);
 	/** `exitRanks` parts, in their order at one block. */
 	const [HEAD, KEPT, WITH, SELF, AFTER] = [0, 1, 2, 3, 5];
 	const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({
@@ -80,7 +87,7 @@ export const planSteps = (c: StepsContext) => {
 		const all = v.kids.get(parent) ?? [];
 		// The moving blocks' own slots left out: index → the list's index past them.
 		const gone = exclude
-			.map((id) => M.positionInView(v, id))
+			.map((id) => positionInView(v, id))
 			.filter((p) => p !== null && p.parent === parent)
 			.map((p) => p!.index)
 			.sort((a, b) => a - b);
@@ -90,7 +97,7 @@ export const planSteps = (c: StepsContext) => {
 		};
 		const at = Math.max(0, Math.min(index, all.length - gone.length));
 		const pair = [at > 0 ? all[raw(at - 1)] : undefined, all[raw(at)]];
-		return M.ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc), run);
+		return ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc), run);
 	};
 	/**
 	 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).
@@ -211,7 +218,7 @@ export const planSteps = (c: StepsContext) => {
 	 * an outdent settles back to a paragraph is written back.
 	 */
 	const attr = (id: BlockId, key: typeof TYPE, value: string): PlanStep[] => {
-		const same = M.blockNodeOf(doc, id)!.getAttr(key) === value;
+		const same = blockNodeOf(doc, id)!.getAttr(key) === value;
 		if (same && (runsView.displayType(id) ?? value) === value) return [];
 		return [{ op: 'setBlockType', id, type: value }];
 	};
@@ -428,6 +435,22 @@ export const planSteps = (c: StepsContext) => {
 	/** Text items overlapping `[at, end)` of `id` (inline atoms carry no marks). */
 	const textIn = (id: BlockId, at: number, end: number) =>
 		spans(id).flatMap((s) => (s.item.kind === 'text' && s.at < end && s.end > at ? [s.item] : []));
+	/** Push the steps writing `items` into `id` from `at` (text runs and atoms in order); the end offset. */
+	const writeContent = (
+		writes: PlanStep[],
+		id: BlockId,
+		at: number,
+		items: readonly ContentItem[] = []
+	): number => {
+		for (const item of items) {
+			if (item.kind === 'inline') writes.push({ op: 'insertInline', id, offset: at++, atom: item });
+			else if (item.text !== '') {
+				writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
+				at += item.text.length;
+			}
+		}
+		return at;
+	};
 
 	/** `writes`, then every container the `leaving` blocks leave with no child removed. */
 	const emptied = (
@@ -469,9 +492,9 @@ export const planSteps = (c: StepsContext) => {
 		remove,
 		merge,
 		clamp,
-		spans,
 		atomOf,
-		textIn
+		textIn,
+		writeContent
 	};
 };
 

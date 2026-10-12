@@ -1,45 +1,154 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { PluginOperations } from '$lib/plugins.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import type { Attachment } from 'svelte/attachments';
+import { attach } from '../chrome.js';
+import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
+import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
-import { fileUploads, type Uploader } from '../uploads.svelte.js';
-import { viewLabels, type PartialLabels } from '$lib/labels.js';
-import type { MediaEmptyController } from './empty.svelte.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+import { keywordsOf, labelsOf, mediaEnglish } from '$lib/labels.js';
+import { MEDIA_ICONS, type EmptyView } from './empty.svelte.js';
 
-/** The media kinds a view shows the labels of. */
+/** The media kinds. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
 
-/**
- * Each view's media labels, by kind: the first plugin of a kind listed in a
- * view claims them, as its kind record (first wins).
- */
-export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<'media'>>> = {
-	embed: viewLabels('media'),
-	bookmark: viewLabels('media'),
-	file: viewLabels('media'),
-	video: viewLabels('media'),
-	audio: viewLabels('media')
-};
-
-const empties = new WeakMap<
-	Edytor,
-	Partial<Record<MediaKind, { snippet?: Snippet<[MediaEmptyController]> }>>
->();
+export { MEDIA_ICONS };
 
 /**
- * Each view's `empty` snippet, by kind: the first plugin of a kind listed in
- * a view claims it (with none, the built-in markup), as its kind record.
+ * A media kind in a view: the first plugin of the kind listed in it claims
+ * it, as its kind record (first wins): how a block of it stores a source,
+ * the embed's allowlist, and the app's markup for the kind's own control
+ * (the bookmark's `card`, the file's `row`, the embed's `fallback`).
  */
-export const mediaEmpty = {
-	claim(edytor: Edytor | undefined, kind: MediaKind, snippet?: Snippet<[MediaEmptyController]>) {
-		if (!edytor) return;
-		const own = empties.get(edytor) ?? {};
-		own[kind] ??= { snippet };
-		empties.set(edytor, own);
-	},
-	of: (edytor: Edytor | undefined, kind: MediaKind) =>
-		edytor ? empties.get(edytor)?.[kind]?.snippet : undefined
+export type MediaView = EmptyView & {
+	providers?: readonly EmbedProvider[];
+	card?: Snippet<[BookmarkCardPayload]>;
+	row?: Snippet<[FileRowPayload]>;
+	fallback?: Snippet<[EmbedFallbackPayload]>;
 };
+
+/** What a bookmark's `card` snippet receives: the page it links to, as `unfurl` described it. */
+export type BookmarkCardPayload = {
+	/** The bookmark; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The page's URL (`http(s)`). */
+	url: string;
+	/** Its title, description, cover image and icon, when `unfurl` answered them. */
+	title: string | undefined;
+	description: string | undefined;
+	image: string | undefined;
+	icon: string | undefined;
+	/**
+	 * The card's link (`<a href={card.url} {@attach card.link}>`): a new tab
+	 * without the opener, never dragged out of the editor.
+	 */
+	link: Attachment<HTMLElement>;
+};
+
+/** What a file block's `row` snippet receives: the file it links to. */
+export type FileRowPayload = {
+	/** The file block; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The file's URL. */
+	src: string;
+	/** Its name: the uploaded file's, else its URL's last segment. */
+	name: string;
+	/** Its size in bytes, when it was uploaded. */
+	size: number | undefined;
+	/** That size in the view's words (`media.fileSize`), `''` without one. */
+	sizeLabel: string;
+	/**
+	 * The row's link (`<a href={row.src} {@attach row.link}>`): it downloads
+	 * the file under its name, in a new tab without the opener, never dragged
+	 * out of the editor.
+	 */
+	link: Attachment<HTMLElement>;
+};
+
+/** What an embed's `fallback` snippet receives: a link no allowed provider plays. */
+export type EmbedFallbackPayload = {
+	/** The embed; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The link (`http(s)`), shown as a link, never in a frame. */
+	url: string;
+	/** Its link (`<a href={fallback.url} {@attach fallback.link}>`): a new tab without the opener. */
+	link: Attachment<HTMLElement>;
+};
+
+/** A media block's link opens a new tab without the opener (and tells the target nothing). */
+export const LINK_REL = 'noopener noreferrer nofollow';
+
+/**
+ * A media block's link's attachment: a new tab without the opener
+ * (`target`, `rel`), and `own` (`draggable="false"`: no drag of its own; a
+ * file's `download` name). The default markup writes the same, so a server
+ * render's link is safe too; its `href` is the markup's.
+ */
+export const mediaLink = (own: { draggable?: 'false'; download?: string } = {}) =>
+	attach({ target: '_blank', rel: LINK_REL, ...own });
+
+/** The app's markup for a media kind's own control in `view`, if any. */
+export const mediaControl =
+	<K extends 'card' | 'row' | 'fallback'>(kind: MediaKind, control: K) =>
+	(view: Edytor | undefined) =>
+		mediaView(view, kind)?.[control];
+
+const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
+
+/** The view's media kind, when a plugin of it is listed there. */
+export const mediaView = (edytor: Edytor | undefined, kind: MediaKind): MediaView | undefined =>
+	edytor && views.get(edytor)?.[kind];
+
+/**
+ * A media kind's plugin (Notion's): a void `figure` with an editable
+ * caption, its preset (its icon, `keywords`, its name in the view's
+ * `media` labels), and its view
+ * (`MediaView`), which the first plugin of the kind listed claims. `own`
+ * answers the kind's own parts: how it stores a source, its hooks and its
+ * record (its snippet, its export and import); `claims` says whether this
+ * plugin claimed the kind in `edytor`.
+ */
+export const mediaPlugin =
+	(
+		kind: MediaKind,
+		keywords: string[],
+		own: (
+			edytor: Edytor,
+			claims: boolean
+		) => Pick<MediaView, 'store' | 'providers' | 'card' | 'row' | 'fallback'> & {
+			hooks?: PluginOperations & PluginDefinitions;
+			record: Partial<BlockDefinition>;
+		}
+	): Plugin =>
+	(edytor) => {
+		const kinds = edytor && (views.get(edytor) ?? {});
+		const claims = !!kinds && !kinds[kind];
+		const { hooks, record, ...view } = own(edytor, claims);
+		if (claims)
+			views.set(edytor, {
+				...kinds,
+				[kind]: view
+			});
+		return {
+			...hooks,
+			blocks: {
+				[kind]: {
+					...mediaKinds[kind],
+					element: 'figure',
+					presets: [
+						{
+							label: labelsOf(edytor, 'media', mediaEnglish)[kind],
+							icon: MEDIA_ICONS[kind],
+							keywords: keywordsOf(edytor, `block.${kind}`, keywords),
+							group: 'Media'
+						}
+					],
+					...record
+				}
+			}
+		};
+	};
 
 /**
  * A web page's URL a media block may store or render: the link sanitizer's
@@ -70,28 +179,6 @@ export const safeMediaSrc = (value: unknown): string | null => {
 	return origin ? `blob:${origin}` : safeWebUrl(value);
 };
 
-/** The file, video and audio plugins' options. */
-export type MediaPluginOptions = {
-	/**
-	 * Upload a file and answer its URL: the empty block's Upload button, and
-	 * the pasted and dropped files the kind takes (`media.files`), each shown
-	 * uploading with the progress it reports. Without it only links are
-	 * embedded.
-	 */
-	upload?: Uploader;
-	/** The words the block shows (its empty panel, its menu row), over the English ones. */
-	labels?: PartialLabels<'media'>;
-	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
-	/**
-	 * Replace an empty block's markup (its "Add …" button and link panel, its
-	 * upload's progress, or a readonly view's placeholder): it receives the
-	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
-	 * `embed`, `upload`, `readonly`).
-	 */
-	empty?: Snippet<[MediaEmptyController]>;
-};
-
 /** One allowlisted embed provider: which links it plays, and its player. */
 export type EmbedProvider = {
 	/** The provider's name: the frame's `title`. */
@@ -118,20 +205,11 @@ export const EMBED_SANDBOX =
 export const EMBED_ALLOW = 'fullscreen; picture-in-picture; encrypted-media; clipboard-write';
 
 const ID = /^[\w-]{1,128}$/;
-const hostIs =
-	(...hosts: string[]) =>
-	(url: URL) =>
-		hosts.includes(url.hostname.toLowerCase());
-/** `segments` of `url`'s path, empty ones dropped. */
-const path = (url: URL) => url.pathname.split('/').filter(Boolean);
+const HASH = /^[\da-f]{1,32}$/i;
+/** `url`'s path segments (empty ones dropped) when its host is one of `hosts`, else none. */
+const on = (url: URL, ...hosts: string[]) =>
+	hosts.includes(url.hostname.toLowerCase()) ? url.pathname.split('/').filter(Boolean) : [];
 
-const youtubeHost = hostIs(
-	'youtube.com',
-	'www.youtube.com',
-	'm.youtube.com',
-	'music.youtube.com',
-	'www.youtube-nocookie.com'
-);
 /** A YouTube start time (`t=42`, `t=42s`, `start=42`) in seconds. */
 const youtubeStart = (url: URL) => {
 	const t = url.searchParams.get('t') ?? url.searchParams.get('start');
@@ -140,17 +218,23 @@ const youtubeStart = (url: URL) => {
 const youtube: EmbedProvider = {
 	name: 'YouTube',
 	embed: (url) => {
-		const [first, second] = path(url);
+		const [first, second] = on(
+			url,
+			'youtu.be',
+			'youtube.com',
+			'www.youtube.com',
+			'm.youtube.com',
+			'music.youtube.com',
+			'www.youtube-nocookie.com'
+		);
 		const id =
 			url.hostname.toLowerCase() === 'youtu.be'
 				? first
-				: !youtubeHost(url)
-					? undefined
-					: first === 'watch'
-						? url.searchParams.get('v')
-						: first && ['shorts', 'embed', 'live'].includes(first)
-							? second
-							: undefined;
+				: first === 'watch'
+					? url.searchParams.get('v')
+					: first && ['shorts', 'embed', 'live'].includes(first)
+						? second
+						: undefined;
 		return id && /^[\w-]{11}$/.test(id)
 			? `https://www.youtube-nocookie.com/embed/${id}${youtubeStart(url)}`
 			: null;
@@ -160,26 +244,19 @@ const youtube: EmbedProvider = {
 const vimeo: EmbedProvider = {
 	name: 'Vimeo',
 	embed: (url) => {
-		const parts = path(url);
-		const [id, hash] = hostIs('vimeo.com', 'www.vimeo.com')(url)
-			? parts
-			: hostIs('player.vimeo.com')(url) && parts[0] === 'video'
-				? parts.slice(1)
-				: [];
+		const [player, ...video] = on(url, 'player.vimeo.com');
+		const [id, hash] = player === 'video' ? video : on(url, 'vimeo.com', 'www.vimeo.com');
 		if (!id || !/^\d{1,12}$/.test(id)) return null;
-		const h = hash && /^[\da-f]{1,32}$/i.test(hash) ? hash : url.searchParams.get('h');
-		return `https://player.vimeo.com/video/${id}${h && /^[\da-f]{1,32}$/i.test(h) ? `?h=${h}` : ''}`;
+		const h = hash && HASH.test(hash) ? hash : url.searchParams.get('h');
+		return `https://player.vimeo.com/video/${id}${h && HASH.test(h) ? `?h=${h}` : ''}`;
 	}
 };
 
 const loom: EmbedProvider = {
 	name: 'Loom',
 	embed: (url) => {
-		const [kind, id] = path(url);
-		return hostIs('loom.com', 'www.loom.com')(url) &&
-			(kind === 'share' || kind === 'embed') &&
-			id &&
-			/^[\da-f]{32}$/i.test(id)
+		const [kind, id] = on(url, 'loom.com', 'www.loom.com');
+		return (kind === 'share' || kind === 'embed') && id && /^[\da-f]{32}$/i.test(id)
 			? `https://www.loom.com/embed/${id}`
 			: null;
 	}
@@ -188,23 +265,20 @@ const loom: EmbedProvider = {
 const figma: EmbedProvider = {
 	name: 'Figma',
 	embed: (url) => {
-		const [kind, key] = path(url);
-		if (!hostIs('figma.com', 'www.figma.com')(url) || !key || !ID.test(key)) return null;
-		if (!['file', 'design', 'proto', 'board', 'slides', 'deck'].includes(kind!)) return null;
-		return `https://www.figma.com/embed?embed_host=edytor&url=${encodeURIComponent(url.href)}`;
+		const [kind, key] = on(url, 'figma.com', 'www.figma.com');
+		return key &&
+			ID.test(key) &&
+			['file', 'design', 'proto', 'board', 'slides', 'deck'].includes(kind!)
+			? `https://www.figma.com/embed?embed_host=edytor&url=${encodeURIComponent(url.href)}`
+			: null;
 	}
 };
 
 const codepen: EmbedProvider = {
 	name: 'CodePen',
 	embed: (url) => {
-		const [user, kind, id] = path(url);
-		return hostIs('codepen.io')(url) &&
-			user &&
-			ID.test(user) &&
-			(kind === 'pen' || kind === 'embed') &&
-			id &&
-			ID.test(id)
+		const [user, kind, id] = on(url, 'codepen.io');
+		return user && ID.test(user) && (kind === 'pen' || kind === 'embed') && id && ID.test(id)
 			? `https://codepen.io/${user}/embed/${id}?default-tab=result`
 			: null;
 	},
@@ -214,8 +288,7 @@ const codepen: EmbedProvider = {
 const spotify: EmbedProvider = {
 	name: 'Spotify',
 	embed: (url) => {
-		let parts = path(url);
-		if (!hostIs('open.spotify.com')(url)) return null;
+		let parts = on(url, 'open.spotify.com');
 		if (parts[0] === 'embed' || /^intl-[a-z-]+$/i.test(parts[0] ?? '')) parts = parts.slice(1);
 		const [kind, id] = parts;
 		return ['track', 'album', 'playlist', 'episode', 'show', 'artist'].includes(kind!) &&
@@ -313,43 +386,4 @@ export const mediaSourceOf = (element: HTMLElement | undefined) =>
 		element?.getAttribute('src') ?? element?.querySelector('source[src]')?.getAttribute('src')
 	);
 
-/** HTML-escape `value` for an attribute or text of an export. */
-export const escapeHtml = (value: string) =>
-	value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-/** The files each media kind takes: a video, an audio track, any other file. */
-const ACCEPTS: Record<'video' | 'audio' | 'file', (file: File) => boolean> = {
-	video: (file) => /^video\//i.test(file.type),
-	audio: (file) => /^audio\//i.test(file.type),
-	file: () => true
-};
-
-/**
- * Register `type`'s uploads on the view's (`media.files`): with an
- * `upload`, the files it takes (the file kind: any no other kind takes)
- * become its blocks. Answers the paste hook to list, or `undefined`
- * without an `upload` or a view.
- */
-export const mediaUploads = (
-	edytor: Edytor | undefined,
-	type: 'video' | 'audio' | 'file',
-	upload: Uploader | undefined
-): PluginOperations['onPaste'] => {
-	const uploads = upload ? fileUploads(edytor) : undefined;
-	if (!uploads || !upload) return undefined;
-	uploads.register({
-		type,
-		accepts: ACCEPTS[type],
-		fallback: type === 'file',
-		upload,
-		data: (file, answer) => {
-			const src = safeMediaSrc(answer);
-			if (!src) return null;
-			return type === 'file'
-				? { src, name: file.name || fileNameOf(src), size: file.size }
-				: { src };
-		},
-		filled: (data) => safeMediaSrc(data.src) !== null
-	});
-	return uploads.paste;
-};
+export { escapeHtml };

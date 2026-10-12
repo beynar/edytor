@@ -29,7 +29,7 @@ export class AbstractStruct {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder The encoder to write data to.
+   * @param {UpdateEncoder} _encoder The encoder to write data to.
    * @param {number} _offset
    * @param {number} _encodingRef
    */

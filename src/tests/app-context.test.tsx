@@ -20,7 +20,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createTestEdytor } from './test.utils.js';
 import { Y } from '$lib/crdt/engine.js';
-import { Awareness } from '$lib/crdt/index.js';
+import { Awareness, bindCrdt } from '$lib/crdt/index.js';
+
+/** A peer's own facade binding (a remote replica's, not the view's document). */
+const peer = bindCrdt(Y).doc;
 
 const REMOTE_ORIGIN = { remote: true };
 
@@ -60,12 +63,9 @@ describe('gate3: cloneJson boundary loss', () => {
 			const date = new Date('2024-01-01T00:00:00Z');
 			const map = new Map([['k', 'v']]);
 
-			block.setData({
-				when: date,
-				lookup: map,
-				undef: undefined,
-				fn: () => 1
-			});
+			edytor.patchData(block.id, [
+				{ path: [], value: { when: date, lookup: map, undef: undefined, fn: () => 1 } }
+			]);
 
 			const persisted = edytor.facade.toJSON().children[0].data;
 			expect(persisted.when).toBe('2024-01-01T00:00:00.000Z'); // Date → string
@@ -96,7 +96,7 @@ describe('gate3: cloneJson boundary loss', () => {
 			const block = edytor.root.children[0];
 			const text = block.content[0];
 			const date = new Date('2024-06-01T00:00:00Z');
-			text.insertText({ value: 'X', start: 0, end: 0, marks: { link: { at: date } } });
+			edytor.insertText(block.id, 0, 'X', { link: { at: date } });
 			const stored = edytor.facade.toJSON().children[0].content[0];
 			expect(stored.marks.link.at).toBe('2024-06-01T00:00:00.000Z');
 
@@ -121,10 +121,10 @@ describe('gate3: undo in app context', () => {
 		prime(edytor, B);
 
 		const text = edytor.root.children[0].content[0];
-		text.insertText({ value: 'AAA ', start: 0, end: 0 }); // local undoable
+		edytor.insertText(edytor.root.children[0].id, 0, 'AAA '); // local undoable
 
 		// Peer B edits through its own facade binding.
-		const facadeB = edytor.crdt.doc.create(B, { defaultType: 'paragraph' });
+		const facadeB = peer.create(B, { defaultType: 'paragraph' });
 		const bId = facadeB.childrenIds(null)[0];
 		facadeB.insertText(bId, 4 + 4, ' BBB'); // after 'AAA base'
 
@@ -147,8 +147,8 @@ describe('gate3: undo in app context', () => {
 		prime(edytor, B);
 
 		const text = edytor.root.children[0].content[0];
-		text.insertText({ value: 'X', start: 0, end: 0 });
-		const facadeB = edytor.crdt.doc.create(B, { defaultType: 'paragraph' });
+		edytor.insertText(edytor.root.children[0].id, 0, 'X');
+		const facadeB = peer.create(B, { defaultType: 'paragraph' });
 		facadeB.insertText(facadeB.childrenIds(null)[0], 5, ' R');
 
 		edytor.undoManager.undo();
@@ -177,7 +177,7 @@ describe('gate3: selection anchors under remote structural edits', () => {
 		expect(anchor).not.toBeNull();
 
 		// Remote peer merges block[1] into block[0].
-		const facadeB = edytor.crdt.doc.create(B, { defaultType: 'paragraph' });
+		const facadeB = peer.create(B, { defaultType: 'paragraph' });
 		const [b0, b1] = facadeB.childrenIds(null);
 		facadeB.mergeBlocks(b1, b0);
 		await Promise.resolve();
@@ -201,7 +201,7 @@ describe('gate3: selection anchors under remote structural edits', () => {
 
 		const text = edytor.root.children[0].content[0];
 		const anchor = edytor.selection.createTextAnchor(text, 5, 'left');
-		const facadeB = edytor.crdt.doc.create(B, { defaultType: 'paragraph' });
+		const facadeB = peer.create(B, { defaultType: 'paragraph' });
 		const bId = facadeB.childrenIds(null)[0];
 		facadeB.splitBlock(bId, 3, 'b-remote-split');
 		await Promise.resolve();

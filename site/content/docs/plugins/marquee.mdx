@@ -4,17 +4,17 @@ description: The marquee plugin selects blocks with a rectangle, as in Notion. P
 icon: mouse-pointer-2
 ---
 
-`marqueePlugin` selects blocks with a rectangle, Notion's rubber band. Press in an empty area beside or below the blocks and drag: a rectangle follows the pointer and the blocks it touches are selected while you drag. Release, and the blocks stay selected with the keyboard on them: <kbd>Delete</kbd>, <kbd>Mod</kbd> + <kbd>C</kbd>, <kbd>Mod</kbd> + <kbd>X</kbd>, <kbd>Tab</kbd>, the arrow keys and the [block menu](/docs/plugins/block-menu) act on them as on any block selection.
+`createMarqueePlugin()` selects blocks with a rectangle, Notion's rubber band. Press in an empty area beside or below the blocks and drag: the blocks a rectangle following the pointer touches are selected while you drag. Release, and the blocks stay selected with the keyboard on them: <kbd>Delete</kbd>, <kbd>Mod</kbd> + <kbd>C</kbd>, <kbd>Mod</kbd> + <kbd>X</kbd>, <kbd>Tab</kbd>, the arrow keys and the [block menu](/docs/plugins/block-menu) act on them as on any block selection.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, marqueePlugin } from 'edytor';
+	import { Edytor, createMarqueePlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[marqueePlugin]} />
+<Edytor plugins={[createMarqueePlugin()]} />
 ```
 
-It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It adds no dependency: the gesture is the editor's own, about 8 KB minified (3 KB gzipped).
+`createMarqueePlugin()` draws no rectangle: the blocks are selected and the rectangle is your `box` snippet, `createMarqueePlugin({ box })` ([Markup](#markup)). It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It adds no dependency: the gesture is the editor's own, about 8 KB minified (3 KB gzipped).
 
 ## Where a rectangle starts
 
@@ -76,7 +76,7 @@ A click anywhere outside the editor and its menus ends the block selection, as i
 
 ## Styling
 
-The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-marquee-host` and `z-index: 6`, placed and sized to the rectangle; it takes no pointer. The default rectangle is `[data-edytor-marquee]`, with `data-adding` while <kbd>Shift</kbd> or <kbd>Mod</kbd> adds. Its look comes from three CSS variables, set on an element around the editor (the overlay is the root's sibling, so variables set on the root do not reach it); the [Notion theme](/docs/customization/styling#notion-theme) sets the first two:
+The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-marquee-host` and `z-index: 6`, placed and sized to the rectangle; it takes no pointer. The rectangle is your `box` snippet ([Markup](#markup)): without one, the blocks are selected and no rectangle shows. The demo's rectangle reads three CSS variables, set on an element around the editor (the overlay is the root's sibling, so variables set on the root do not reach it); the [Notion theme](/docs/customization/styling#notion-theme) sets the first two:
 
 | Variable | Default |
 | --- | --- |
@@ -91,9 +91,9 @@ The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-o
 }
 ```
 
-## Custom markup
+## Markup
 
-`createMarqueePlugin` takes a `box` snippet that replaces the rectangle's markup. It renders in the placed host, so fill it (`width: 100%; height: 100%`). It receives a `MarqueeBoxPayload`:
+`createMarqueePlugin` takes a `box` snippet, the rectangle's markup. It renders in the placed host, so fill it (`width: 100%; height: 100%`). It receives a `MarqueeBoxPayload`:
 
 | Field | Description |
 | --- | --- |
@@ -131,4 +131,4 @@ The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-o
 | --- | --- |
 | `container` | The element around the editor whose empty area starts a rectangle too: a selector matched with `closest()` from the editor, or a function of the editor's element |
 | `threshold` | How far the pointer moves, in px, before the rectangle starts; a shorter press is a click. Default `4` |
-| `box` | A snippet that replaces the rectangle's markup (see [Custom markup](#custom-markup)) |
+| `box` | The rectangle's markup; without it, no rectangle shows (see [Markup](#markup)) |

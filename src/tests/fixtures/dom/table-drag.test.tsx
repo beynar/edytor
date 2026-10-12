@@ -15,9 +15,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin, tablePlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -290,14 +290,14 @@ const drag = async (
 	await flushDomUpdates();
 	// Set by the data transfer's `setDragImage`, which the drag library calls.
 	const recorded = dragImage as HTMLElement | null;
-	const ghost = recorded?.querySelector('[data-edytor-table-drag-preview]')?.textContent ?? null;
+	const ghost = recorded?.querySelector('[data-edytor-drag-preview]')?.textContent ?? null;
 	return { indicator, ghost };
 };
 
 describe('table.drag — rows and columns drag by their grips', () => {
 	it('a row dropped below the last row moves there; the caret stays in its cell; one undo', async () => {
 		const { edytor } = await render();
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('A')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('A')!.firstText!, 1);
 		await flushDomUpdates();
 		// The lower half of the last row: the line under it.
 		const { indicator, ghost } = await drag(edytor, 'row', 'A', 'D', {
@@ -311,7 +311,7 @@ describe('table.drag — rows and columns drag by their grips', () => {
 			['c', 'd'],
 			['a', 'b']
 		]);
-		const { startBlock, yStart } = edytor.selection.state;
+		const { startBlock, yStart } = selectionState(edytor);
 		expect([startBlock?.id, yStart]).toEqual(['A', 1]);
 		expect(layer().querySelector('[data-edytor-table-drop]')).toBeNull();
 		edytor.historyUndo();

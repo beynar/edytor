@@ -134,7 +134,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		// Raw Yjs writes are outside the facade's sanitizeWireJson boundary —
 		// peers, migration tools, or raw consumers can ship them. Attr
 		// payloads encode via lib0 writeAny (BigInt encodes fine), so a
-		// BigInt block `data` replicates. FIXED: read paths project it
+		// BigInt data leaf replicates. FIXED: read paths project it
 		// through `cloneJsonSafe` — `{big:10n}` reads as `{big:10}` on every
 		// replica instead of throwing (deterministic normalization).
 		const src = new Y.Doc();
@@ -143,7 +143,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		src.get('blocks').setAttr('bad', sn);
 		sn.setAttr('id', 'bad');
 		sn.setAttr('type', 'paragraph');
-		sn.setAttr('data', { big: 10n });
+		sn.setAttr('d/big', 10n);
 		const update = Y.encodeStateAsUpdate(src); // wire-valid: writeAny path
 		const doc = new Y.Doc();
 		doc.clientID = cid++;
@@ -161,14 +161,12 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 	});
 
 	test('a local BigInt mark cannot poison reads; facade refuses pre-commit (R4 fixed)', () => {
-		// `text.format`/`applyDelta` accepts a BigInt mark (unlike `insert`,
-		// which validates). The format item integrates; then the commit's
-		// own update payload is encoded for 'update' listeners →
-		// ContentFormat.write's JSON.stringify throws mid-commit — the raw
-		// store keeps the hostile item (vendored write path, out of scope).
-		// FIXED side: `runs()` projects the mark through `cloneJsonSafe`
-		// instead of crashing (residual: full-store encode still throws —
-		// the poisoned ITEM is inside vendored serialization).
+		// The engine's `mark` accepts a BigInt value (unlike `insert`,
+		// which validates). The mark item integrates, and the commit's
+		// own update payload encodes it (the engine's one encoding writes
+		// any value) — the raw store keeps the hostile item (vendored write
+		// path, out of scope). FIXED side: `runs()` projects the mark
+		// through `cloneJsonSafe` instead of crashing.
 		const doc = new Y.Doc();
 		doc.clientID = cid++;
 		const ed = E.create(doc);
@@ -177,7 +175,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		cn.insert(0, 'hi');
 		// An `update` listener (a provider) makes the commit encode its payload.
 		doc.on('update', () => {});
-		expect(() => cn.format(0, 2, { big: 5n })).toThrow(/BigInt/i); // throws at commit
+		expect(() => cn.mark(0, 2, 'big', 5n, 0, 0)).not.toThrow();
 		// Reads survive: the hostile mark projects as its JSON value.
 		const runs = ed.runs(BOOTSTRAP_BLOCK);
 		expect(runs.find((r: any) => r.text === 'hi')?.marks).toEqual({ big: 5 });
@@ -187,7 +185,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		doc2.clientID = cid++;
 		const ed2 = E.create(doc2);
 		ed2.init();
-		expect(() => ed2.setMark(BOOTSTRAP_BLOCK, 0, 0, 'big', 5n)).toThrow(/BigInt|JSON/i);
+		expect(() => ed2.formatRange(BOOTSTRAP_BLOCK, 0, 0, { big: 5n })).toThrow(/BigInt|JSON/i);
 		expect(() => Y.encodeStateAsUpdate(doc2)).not.toThrow();
 	});
 });
@@ -241,7 +239,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 		const { ed } = seed();
 		const changes: any[] = [];
 		ed.onChange((c: any) => changes.push(c));
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]);
 		const first = changes.at(-1)!;
 		const orderArr = first.order.get(null);
 		// FIXED: the published array IS the retained baseline — frozen at
@@ -256,7 +254,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 			threw = true;
 		}
 		expect(threw).toBe(true);
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'y', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'y', type: 'paragraph' }]);
 		const second = changes.at(-1)!;
 		// The second commit DID change root order (y inserted) — the intact
 		// baseline diffs it correctly.
@@ -309,7 +307,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 		let writeThrew: unknown = null;
 		let readThrew: unknown = null;
 		try {
-			ed.setBlockData('b', cyclic);
+			ed.patchData('b', [{ path: [], value: cyclic }]);
 		} catch (e) {
 			writeThrew = e;
 		}

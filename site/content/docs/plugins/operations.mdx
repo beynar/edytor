@@ -1,10 +1,30 @@
 ---
 title: Operations
-description: How onBeforeOperation sees every edit as a command and its planned steps, and how to veto, replace or rewrite edits and react after them.
+description: The one set of document operations, written through the view (dispatched) or a bare document (raw), and how onBeforeOperation sees every write and its planned steps to veto, replace or rewrite it.
 icon: git-branch
 ---
 
-Every edit, whether typed, pasted, dragged or called from code, runs as a command through one dispatcher. Before anything is written, the dispatcher shows the command to every plugin's `onBeforeOperation`, then shows each step the command plans. Any plugin can refuse it, replace it with its own logic, or rewrite its payload. Use these hooks to enforce rules on the document (protected blocks, schema constraints) or to turn one edit into another (auto-pairing, mentions on `@`).
+Every write is one of the document's operations: `insertBlocks`, `splitBlock`, `insertText`, `patchData`, `moveBlocks` and the others listed [below](#operation-reference). There is one set, with two entry points under the same names and arguments:
+
+- **Through a view**, `edytor.insertText(id, offset, text)`: the write is dispatched. A readonly view or a read-only document refuses it, every plugin's `onBeforeOperation` sees it and each step it plans before anything is written, it is one transaction and one undo step, the blocks it touches are normalized, and the caret it decides (a range deletion, a placed paste) is selected. This is how your app, your plugins and the editor's own keys, menus and drags write.
+- **On a bare document**, `edytor.document.insertText(id, offset, text)`: the write is raw. No hook sees it, no view's undo policy applies, and no readonly check runs. Use it headless, on a server, or for a write that must not look like the user's ([the document API](/docs/reference/document-api)).
+
+Both answer the document's `OpResult`: `status` (`'applied'`, `'noop'` or `'refused'`) and `ids`, the blocks the operation is about (the inserted or split-off block, the merge target). A view's write refused by the view itself (readonly) or by a plugin answers `refused` with `reason: 'view'`.
+
+Handles (`Block`, `Text`, `InlineBlock`) only read: pass their ids to the operations. Offsets are block offsets, an inline atom counting 1: a text segment's offset `o` is `text.segStart + o`.
+
+```ts title="writes.ts" check
+const result = edytor.insertBlocks({ parent: null, index: 1 }, [
+	{ type: 'heading', data: { level: 2 }, content: [{ text: 'Notes' }] }
+]);
+if (result.status === 'applied') {
+	const [id] = result.ids;
+	edytor.insertText(id!, 5, '!');
+	edytor.patchData(id!, [{ path: ['level'], value: 3 }]);
+}
+```
+
+Through a view, an `insertText` without marks takes the insertion's marks, as typing does (the text before it, or the caret's pending marks when it lands at the caret); pass `{}` for plain text. A range deletion or a placed paste reads the view's hidden blocks (a closed toggle's body) unless you pass a view of your own.
 
 ## The change payload
 
@@ -15,25 +35,25 @@ Every edit, whether typed, pasted, dragged or called from code, runs as a comman
     operation: {
       type: "string",
       required: true,
-      description: "The operation name, such as 'insertText' or 'mergeBlockBackward'. Narrows payload.",
+      description: "The operation's name, such as 'insertText' or 'mergeBackward'. Narrows payload.",
     },
     payload: {
-      type: "object",
+      type: "unknown[] | object",
       required: true,
-      description: "The operation's arguments. Its shape depends on operation (table below).",
+      description: "A document operation's arguments, as a tuple (insertText: [id, offset, text, marks?]); a view command's payload object (table below).",
     },
     block: {
       type: "Block",
       required: true,
-      description: "The block the operation is about.",
+      description: "The block the operation names first: its block, the first of its blocks, a destination's parent, a position's block (the root for none).",
     },
     text: {
       type: "Text",
-      description: "The text segment, on text operations and text steps.",
+      description: "The text segment at the offset a text operation names.",
     },
     effect: {
       type: "PlanEffect",
-      description: "What the command would do. Present on a command that is one document plan; absent on steps and on text-level operations.",
+      description: "What the command would do. Present on a command that is one document plan; absent on steps.",
     },
     prevent: {
       type: "(cb?: () => void) => void",
@@ -45,25 +65,25 @@ Every edit, whether typed, pasted, dragged or called from code, runs as a comman
 
 ## Commands and steps
 
-A command is shown first, under its own name. If it is one document plan, each planned step is then shown under its documented operation name. A few examples:
+A command is shown first, under its own name. Each step it plans is then shown as the operation it performs, with that operation's arguments: `insertBlocks`, `moveBlocks`, `deleteBlock`, `splitBlock`, `mergeBlocks`, `setBlockType`, `patchData`, `insertText`, `insertInline`, `deleteText`, `removeInline` or `formatRange`. A step that is the command itself (same name, same block) is not shown twice, and a write into a block the plan creates is part of that creation. A few examples:
 
 | Gesture                                   | Command                        | Steps shown after it                                         |
 | ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
 | Typing                                    | `insertText`                   | none                                                         |
-| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter`, `insertBlockBefore`, `addChildBlock`, `unNestBlock` or `setBlock`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the steps it plans |
-| <kbd>Backspace</kbd> at a block start     | `setBlock`, `unNestBlock` or `mergeBlockBackward`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the child moves it plans |
-| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, one `moveBlock` or `moveBlocks` per run of adjacent siblings | the moves it plans |
-| Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
-| Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
-| Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `addChildBlocks`                 |
+| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlocks`, `unNestBlock` or `setBlock`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the steps it plans |
+| <kbd>Backspace</kbd> at a block start     | `setBlock`, `unNestBlock` or `mergeBackward`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | `setBlockType`, `moveBlocks`, `mergeBlocks` |
+| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, one `moveBlocks` or `unNestBlocks` per run of adjacent siblings | the moves it plans |
+| Deleting a range across blocks            | `deleteRange` (`replaceRange` when typing or a paste replaces it) | `deleteText`, `deleteBlock`, `mergeBlocks` |
+| Deleting a block selection                | `deleteBlocks`                 | one `deleteBlock` per selected block                         |
+| Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `insertBlocks`                   |
 | Dragging selected text in the editor      | `moveText` (one undo step)     | the placement's steps, then the range's deletion's (with <kbd>Alt</kbd>, a copy: the placement's) |
-| Markdown shortcut or slash command        | `setBlock`                     | `deleteContentAtRange` for the removed trigger text          |
-| Turn into (menus, <kbd>Mod</kbd> + <kbd>Alt</kbd> + digit) | `setBlock`, or `insertBlockAfter` for a kind inserted after the block; over several blocks, one per block | the moves and inserts that place the kind |
-| Formatting                                | `markText`                     | none                                                         |
-| Block handle or arrow-move                | `moveBlock` or `moveBlocks`    | none                                                         |
-| Duplicate (block menu, <kbd>Mod</kbd> + <kbd>D</kbd>) | `duplicateBlock`   | `addChildBlocks` on the parent                               |
+| Markdown shortcut or slash command        | `setBlock`                     | `deleteText` for the removed trigger text, `setBlockType`    |
+| Turn into (menus, <kbd>Mod</kbd> + <kbd>Alt</kbd> + digit) | `setBlock`, or `insertBlocks` for a kind inserted after the block; over several blocks, one per block | the moves and inserts that place the kind |
+| Formatting                                | `formatRange`, `clearMarks`    | none                                                         |
+| Block handle or arrow-move                | `moveBlocks`, `unNestBlocks` or `placeBeside` | the moves it plans                         |
+| Duplicate (block menu, <kbd>Mod</kbd> + <kbd>D</kbd>) | `duplicateBlock`   | `insertBlocks` on the parent                                 |
 
-The step names are `addChildBlocks`, `moveBlock`, `moveBlocks`, `removeBlock`, `splitBlock`, `mergeBlockBackward`, `setBlock`, `insertText`, `addInlineBlock` and `deleteContentAtRange`. Work an operation does internally, such as normalization, is part of it and is not shown separately.
+Normalization a write asks for runs in its transaction and is not shown separately.
 
 A command the document itself refuses is still shown, without steps, so a plugin can replace it.
 
@@ -77,8 +97,8 @@ A gesture over several blocks that issues one command per part refuses only the 
 | --- | --- | --- |
 | Turn into over several blocks | One per block | The vetoed block |
 | <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings | One per run | The vetoed run |
-| <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several lines of a code block | One `insertText` or `deleteContentAtRange` per line | The vetoed line |
-| Formatting across blocks | One `markText` per block | The vetoed block |
+| <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several lines of a code block | One `insertText` or `deleteText` per line | The vetoed line |
+| Formatting across blocks | One `formatRange` per block | The vetoed block |
 | The block menu's Duplicate | One per block | The vetoed block |
 | A block-selection delete, from the keyboard (any <kbd>Backspace</kbd> or <kbd>Delete</kbd> chord) or the block menu | One | Every block |
 | Typing or a paste over a block selection | One `insertFlow` replacing the blocks (`onDeleteSelectedBlocks` runs first, see [Writing plugins](/docs/plugins/writing-plugins)) | Every block |
@@ -98,7 +118,7 @@ export const lockedBlocksPlugin: Plugin = (edytor) => ({
 
 Because steps are shown too, this catches every path that would remove a locked block: <kbd>Backspace</kbd>, a range deletion, a cut, a block-selection delete.
 
-Typing, <kbd>Enter</kbd> or a paste over a text range runs two commands: `deleteContentWithinSelection` removes the range, then the insertion (`insertText`, `splitBlock`, `insertFlow`) runs at the caret it leaves. Refusing the insertion alone leaves the range deleted; to keep the range, refuse `deleteContentWithinSelection` or one of its steps.
+Typing, <kbd>Enter</kbd> or a paste over a text range runs two commands: `replaceRange` removes the range, then the insertion (`insertText`, `splitBlock`, `insertFlow`) runs at the caret it leaves. Refusing the insertion alone leaves the range deleted; to keep the range, refuse `replaceRange` or one of its steps.
 
 `effect` describes the whole plan:
 
@@ -113,7 +133,7 @@ Typing, <kbd>Enter</kbd> or a paste over a text range runs two commands: `delete
   }}
 />
 
-A step's veto refuses the command it belongs to, so check the operation name before you veto a step that many commands share, such as `insertText` or `deleteContentAtRange`.
+A step's veto refuses the command it belongs to, so check the operation name before you veto a step that many commands share, such as `insertText` or `deleteText`.
 
 ## Replacing an edit
 
@@ -125,19 +145,14 @@ import type { Plugin } from 'edytor';
 export const atMention: Plugin = (edytor) => ({
 	onBeforeOperation: (change) => {
 		if (change.operation !== 'insertText') return;
-		const { payload, block, text, prevent } = change;
-		if (payload.value !== '@') return;
-		// The caret in block offsets: { block, offset }, an inline atom counting 1.
+		const { payload, block, prevent } = change;
+		const [, offset, typed] = payload;
+		// Only an `@` typed at the caret: { block, offset }, an inline atom counting 1.
 		const caret = edytor.selection.caret;
-		// Only an `@` typed at the caret: in its block, its text segment, at its offset there.
-		const at = caret?.block.id === block.id ? block.textAtOffset(caret.offset) : null;
-		if (!caret || !at || at.text.id !== text.id) return;
-		if ((payload.start ?? at.offset) !== at.offset || (payload.end ?? at.offset) !== at.offset)
-			return;
+		if (typed !== '@' || caret?.block.id !== block.id || caret.offset !== offset) return;
 		prevent(() => {
-			const atom = { type: 'mention', data: {} };
-			const after = block.addInlineBlock({ offset: caret.offset, block: atom });
-			if (after) edytor.selection.setCaret({ block, offset: caret.offset + 1 });
+			const atom = edytor.insertInline(block.id, offset, { type: 'mention', data: {} });
+			if (atom.status === 'applied') edytor.selection.setCaret({ block, offset: offset + 1 });
 		});
 	}
 });
@@ -149,15 +164,15 @@ The callback is a command of its own. If another plugin refuses one of the opera
 
 A trigger plugin (`:smile:` → 😄, `@query` → a mention) removes the text that triggered it and writes its replacement. [Input rules and triggers](/docs/plugins/input-rules) do this for you, declared as data; this section is the machinery they are built on, for a replacement they do not cover. Issued as two operations, a veto of the second leaves the trigger text already gone. Three dispatcher members make the pair one refusable command, as the slash menu and markdown shortcuts do:
 
-- `edytor.dispatcher.lead(plan, body)` runs `body` with `plan`, prepared now, composed into the first operation `body` dispatches: one plan in one transaction. Hooks see the lead's steps with that operation's; a veto of any of them, or a refusal, writes neither. When that operation is itself one plan, the lead's steps on a block whose whole content the operation replaces are dropped. Otherwise the lead applies first and the operation reads the state it leaves. It answers `{ out, taken }`: `body`'s result, and whether an operation took the lead. When `taken` is `false`, nothing of the lead was written: either `body` dispatched nothing (remove the trigger yourself, as the slash menu does for a command that writes later), or the lead was a refusal and `body` did not run.
-- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`edytor.document.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when the view refuses it (readonly, a read-only document) or a plugin prevents it. When the document refuses the plan, `body` still runs, with that refusal as `plan` (`'writes' in plan` is `false`, and `apply(plan)` writes nothing and answers `refused`), and `dispatcher.last.status` is `refused`.
-- `edytor.dispatcher.caret(caret, ops?)` is the command's result caret, `{ block, offset }` in block offsets (or a text segment and an offset in it: `caret(text, offset, ops?)`): selected once, recorded on `dispatcher.last.selection`, and shown after the DOM update. With `ops`, the caret is declared before `ops` runs, so it follows the edit, and is written only when `ops` returns a truthy value. A caret inside text the edit deletes does not survive: set it after the edit instead.
+- `edytor.dispatcher.lead(plan, body)` runs `body` with `plan`, prepared now, composed into the first operation `body` dispatches: one plan in one transaction. Hooks see the lead's steps with that operation's; a veto of any of them, or a refusal, writes neither. When the lead deletes a block's whole content and that operation replaces it, the lead's step is dropped. It answers `{ out, taken }`: `body`'s result, and whether an operation took the lead. When `taken` is `false`, nothing of the lead was written: either `body` dispatched nothing (remove the trigger yourself, as the slash menu does for a command that writes later), or the lead was a refusal and `body` did not run.
+- `edytor.dispatcher.plan(operation, payload, prepare, block?)` dispatches a command of your own, under your own name, that is one prepared plan: admission, `onBeforeOperation` for the command and each step `prepare(payload)` plans (a rewritten payload is prepared again), one transaction, normalization, `dispatcher.last` and `onAfterOperation`. It answers the plan's `OpResult`, `refused` with `reason: 'view'` when the view or a plugin refused it.
+- `edytor.dispatcher.caret(caret, ops?)` is the command's result caret, `{ block, offset }` in block offsets (or a text segment and an offset in it: `caret(text, offset, ops?)`): selected once, recorded on `dispatcher.last.selection`, and shown after the DOM update. With `ops`, a write answering its `OpResult`, the caret is declared before `ops` runs, so it follows the edit, and is written only when `ops` is not refused. A caret inside text the edit deletes does not survive: set it after the edit instead.
 
-`edytor.dispatcher.permits()` answers whether the view accepts writes now: it is `false` in a readonly view, on a document that has become read-only, and before a document that requires hydration is decided. Every command asks it first and is refused when it answers `false`; ask it yourself before a write of your own that goes around the commands, such as the raw `edytor.document`.
+`edytor.dispatcher.permits()` answers whether the view accepts writes now: it is `false` in a readonly view, on a document that has become read-only, and before a document that requires hydration is decided. Every command asks it first and is refused when it answers `false`; ask it yourself before a raw write of your own on `edytor.document`.
 
-One more dispatcher member is not about triggers: `edytor.dispatcher.outside(body)` runs `body`'s commands outside the undo history. They are admitted, shown to hooks and recorded in `dispatcher.last` like any command, but they start no undo step and join none. Use it for a write that completes a step already taken, whose undo covers it, such as an upload's URL filling the image block its paste placed ([History](/docs/editor/history)). It throws when a transaction is already open.
+One more dispatcher member is not about triggers: `edytor.dispatcher.outside(body)` runs `body`'s commands outside the undo history. They are admitted, shown to hooks and recorded in `dispatcher.last` like any command, but they start no undo step and join none. Use it for a write that completes a step already taken, whose undo covers it, such as an upload's URL filling the image block its paste placed ([History](/docs/editor/history)). In development, it throws when a transaction is already open (a production build does not check).
 
-Prepare plans on the document itself, `edytor.document`: `edytor.document.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. It writes nothing, so preparing outside the dispatcher is safe; what the plan writes goes through the command that applies it. Its offsets are block offsets, the caret's. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
+Prepare plans on the document itself: `edytor.document.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. It writes nothing, so preparing outside the dispatcher is safe; what the plan writes goes through the command that applies it. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
 
 ```ts title="emoji.ts" check
 import type { Plugin } from 'edytor';
@@ -168,24 +183,20 @@ const EMOJI: Record<string, string> = { smile: '😄' };
 export const emojiPlugin: Plugin = (edytor) => ({
 	onBeforeOperation: (change) => {
 		if (change.operation !== 'insertText') return;
-		const { payload, block, text, prevent } = change;
-		const caret = edytor.selection.caret;
-		if (payload.value !== ':' || !caret) return;
-		// The text segment that shows the caret, and the caret's offset in it.
-		const at = caret.block.id === block.id ? block.textAtOffset(caret.offset) : null;
+		const { payload, block, prevent } = change;
+		const [, offset, typed] = payload;
 		// Only a `:` typed at the caret: another insertion completes no trigger.
-		if (!at || at.text.id !== text.id) return;
-		if ((payload.start ?? at.offset) !== at.offset || (payload.end ?? at.offset) !== at.offset)
-			return;
-		const match = /:(\w+)$/.exec(at.text.stringContent.slice(0, at.offset));
+		const caret = edytor.selection.caret;
+		if (typed !== ':' || caret?.block.id !== block.id || caret.offset !== offset) return;
+		const at = block.textAtOffset(offset);
+		const match = at && /:(\w+)$/.exec(at.text.stringContent.slice(0, at.offset));
 		const emoji = match && EMOJI[match[1]!];
 		if (!match || !emoji) return;
-		const from = caret.offset - match[0].length;
+		const from = offset - match[0].length;
 		prevent(() => {
 			const { dispatcher, document } = edytor;
 			const trigger = document.prepare.deleteText(block.id, from, match[0].length);
-			const start = at.offset - match[0].length;
-			dispatcher.lead(trigger, () => at.text.insertText({ value: emoji, start, end: start }));
+			dispatcher.lead(trigger, () => edytor.insertText(block.id, from, emoji));
 			if (dispatcher.last?.status === 'applied')
 				dispatcher.caret({ block, offset: from + emoji.length });
 		});
@@ -193,20 +204,20 @@ export const emojiPlugin: Plugin = (edytor) => ({
 });
 ```
 
-If another plugin refuses the `insertText`, or the `deleteContentAtRange` step that removes `:smile`, nothing is written and no undo step is recorded: the trigger text stays.
+If another plugin refuses the `insertText`, or the `deleteText` step that removes `:smile`, nothing is written and no undo step is recorded: the trigger text stays.
 
 ## Rewriting the payload
 
-Return a new payload from `onBeforeOperation` to replace the command's arguments. The code plugin auto-pairs brackets this way:
+Return new arguments from `onBeforeOperation` to replace the command's. The code plugin auto-pairs brackets this way:
 
 ```ts title="pairs.ts" check
 import type { Plugin } from 'edytor';
 
 export const pairs: Plugin = () => ({
-	onBeforeOperation: ({ operation, payload, block }) => {
-		if (block.type === 'codeLine' && operation === 'insertText' && payload.value === '(') {
-			return { ...payload, value: '()' };
-		}
+	onBeforeOperation: (change) => {
+		if (change.block.type !== 'codeLine' || change.operation !== 'insertText') return;
+		const [id, offset, typed, marks] = change.payload;
+		if (typed === '(') return [id, offset, '()', marks];
 	}
 });
 ```
@@ -215,7 +226,7 @@ The replacement is prepared again and shown to every plugin from the start. A Tu
 
 ## After an edit
 
-`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`. Its payload (`AfterOperationPayload`) narrows by `operation`, as `onBeforeOperation`'s does:
+`onAfterOperation` runs once per command, after its transaction, with the original payload and the plan's `effect`. It does not run for steps or for refused commands, and it has no `prevent`. Its payload (`AfterOperationPayload`) narrows by `operation`, as `onBeforeOperation`'s does:
 
 ```ts title="logTurnInto.ts" check
 import type { Plugin } from 'edytor';
@@ -223,60 +234,68 @@ import type { Plugin } from 'edytor';
 export const logTurnInto: Plugin = () => ({
 	onAfterOperation: (change) => {
 		if (change.operation === 'setBlock') console.log(change.block.id, 'is now', change.block.type);
-		if (change.operation === 'insertText') console.log('typed', change.payload.value, 'in', change.block.id);
+		if (change.operation === 'insertText') console.log('typed', change.payload[2], 'in', change.block.id);
 	}
 });
 ```
 
 ## Reading the result
 
-`edytor.dispatcher.last` holds the result of the last operation (read-only: the dispatcher records it):
+A view's operation answers its `OpResult`, and `edytor.dispatcher.last` holds the last command's result (read-only: the dispatcher records it), for a gesture that issues several:
 
 ```ts title="result.ts" check
-block.mergeBlockBackward();
-if (edytor.dispatcher.last?.status === 'refused') {
+const merged = edytor.mergeBackward(block.id);
+if (merged.status === 'refused') {
 	// A plugin, a readonly editor or the document refused it.
+}
+if (edytor.dispatcher.last?.status === 'refused') {
+	// The same, read from the last command.
 }
 ```
 
-`status` is `'applied'` (it wrote), `'noop'` (it ran and changed nothing), `'refused'` (a plugin, the readonly state or the document refused it) or `'failed'` (it threw; the error is rethrown and kept in `error`). A refusal is reported, never thrown.
+`dispatcher.last.status` is `'applied'` (it wrote), `'noop'` (it ran and changed nothing), `'refused'` (a plugin, the readonly state or the document refused it) or `'failed'` (it threw; the error is rethrown and kept in `error`). A refusal is reported, never thrown.
 
 A readonly editor, or a document that has become read-only, refuses every command that would write. An error thrown by a hook is not swallowed: it surfaces to the caller.
 
 ## Operation reference
 
-Text operations carry `text`. Block operations run on `block`.
+The document's operations, the same on `edytor` (dispatched) and on `edytor.document` (raw). A hook's `payload` is their arguments, in this order; offsets are block offsets.
 
-| Operation                      | Payload                                                     |
-| ------------------------------ | ----------------------------------------------------------- |
-| `insertText`                   | `{ value, start?, end?, marks? }`                           |
-| `deleteText`                   | `{ direction: 'BACKWARD' or 'FORWARD', length }`            |
-| `splitText`                    | `{ index? }`                                                |
-| `setText`                      | `{ value: JSONText[] }`                                     |
-| `markText`                     | `{ mark, start?, end?, value?, toggle? }`                   |
-| `removeMarksFromText`          | `{ start?, end? }`                                          |
-| `splitBlock`                   | `{ index, text }`                                           |
-| `insertBlockAfter`, `insertBlockBefore` | `{ block: JSONBlock }`                             |
-| `duplicateBlock`               | `{}` (a copy of the block and its subtree after it, under fresh ids) |
-| `addChildBlock`                | `{ block: JSONBlock, index }`                               |
-| `addChildBlocks`               | `{ blocks: JSONBlock[], index }`                            |
-| `removeBlock`                  | `{ keepChildren? }`                                         |
-| `deleteBlocks`                 | `{ blocks: Block[] }`                                       |
-| `mergeBlockBackward`, `mergeBlockForward` | `{}`                                             |
-| `nestBlock`, `unNestBlock`     | `{}`                                                        |
-| `setBlock`                     | `{ value: Partial<JSONBlock> }`                             |
-| `patchData`                    | `{ ops: ({ path, value? } \| { path, splice } \| { path, order })[], atom? }`: `data` writes (`block.data.x = …`, array methods, `setData`; `atom` for an inline block; on the root block, the document's; see [Properties](/docs/concepts/properties#commands-hooks-and-undo)), also a step of `setBlock` and Turn into |
-| `pushContentIntoBlock`         | `{ value: (Text \| InlineBlock)[] }`                        |
-| `moveBlock`                    | `{ path: number[] }`                                        |
-| `moveBlocks`                   | `{ blocks: Block[], path: number[] }`                       |
-| `addInlineBlock`               | `{ index, text, block: JSONInlineBlock }`                   |
-| `removeInlineBlock`            | `{ index }`                                                 |
-| `deleteContentAtRange`         | `{ start: [part, offset], end: [part, offset] }`            |
-| `deleteContentWithinSelection` | `{ replace? }`                                              |
-| `insertFlow`                   | `{ flow, target }`                                          |
-| `moveText`                     | `{ from: { start, end }, to, copy }`: selected text [dragged](/docs/editor/clipboard#dragging-text) to `to` (positions are `{ block, offset }`, block offsets), moved, or copied with <kbd>Alt</kbd>; one undo step |
-| `insertDivider`                | `{}`                                                        |
-| `acceptSuggestion`             | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's) |
-| `replaceMatches`               | `{ matches: { block, offset, length }[], replacement }`: [find and replace](/docs/plugins/find)'s Replace or Replace all, one undo step; a `deleteContentAtRange` and an `insertText` step follow it per match |
+| Operation | Arguments |
+| --- | --- |
+| `insertBlocks` | `(dest: { parent, index }, blocks: JSONBlock[])`; ids are minted where missing |
+| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks |
+| `nestBlock` | `(id, parent)`: the last child of `parent` (under its last item when it is a list) |
+| `unNestBlock`, `unNestBlocks` | `(id)`, `(ids)`: after their parent, the siblings after the last one becoming its children |
+| `liftOut` | `(id, kind, { keep?, after? })`: out of the containers a `kind` cannot sit in |
+| `wrapInLayout` | `(ids, kind?, columns?)`: a new layout around sibling blocks |
+| `placeBeside` | `(ids, target, side, kind?)`: a new column beside `target` |
+| `splitBlock` | `(id, offset, newId, tail?)`: the content after `offset` into a new block `newId` of `tail`'s kind (the block's by default) |
+| `mergeBlocks` | `(from, into)` |
+| `mergeBackward`, `mergeForward` | `(id)`: into the block before it, or the block after it into it |
+| `deleteBlock` | `(id, { keepChildren? })`: its children take its place unless `keepChildren: false` |
+| `deleteBlocks` | `(ids)`: a block selection; only the members leave |
+| `setBlock` | `(id, { type?, data?, content?, children? })`: content and children (JSON or specs) replace the block's |
+| `setBlockType` | `(id, type)` |
+| `patchData` | `(target, patches)`: `target` a block id, `{ block, atom }` for an inline atom, `null` for the document; each patch `{ path, value? }` (no `value` deletes), `{ path, splice }` or `{ path, order }` ([Properties](/docs/concepts/properties)) |
+| `duplicateBlock` | `(id, freshId?)`: a copy of the block and its subtree after it, under fresh ids |
+| `insertText` | `(id, offset, text, marks?)` |
+| `deleteText` | `(id, offset, length)` |
+| `formatRange` | `(id, offset, length, marks)`: `null` removes a mark |
+| `clearMarks` | `(id, offset, length)`: every mark in the range |
+| `insertInline` | `(id, offset, { id?, type, data? })` |
+| `removeInline` | `(id, atom)` |
+| `deleteRange`, `replaceRange` | `(from: { block, offset }, to, view?)`: a range across blocks (`replaceRange` keeps the head for a replacement) |
+| `insertFlow` | `(target, flow, view?)`: a paste's lines at a position, over blocks (`{ replace: ids }`) or at a slot |
 
-In `deleteContentAtRange`, `part` is an index into `block.content` and `offset` an offset inside that text.
+A view's commands that are one plan of several operations, with their payload objects:
+
+| Command | Payload |
+| --- | --- |
+| `moveText` | `{ from: { start, end }, to, copy }`: selected text [dragged](/docs/editor/clipboard#dragging-text) to `to` (positions are `{ block, offset }`), moved, or copied with <kbd>Alt</kbd>; one undo step |
+| `inlineMarkdown` | `{ value, start, end }`: a closing marker typed after marked-up text (`**bold**`) |
+| `insertDivider` | `{}` |
+| `acceptSuggestion` | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's) |
+| `replaceMatches` | `{ matches: { block, offset, length }[], replacement }`: [find and replace](/docs/plugins/find)'s Replace or Replace all, one undo step; a `deleteText` and an `insertText` step follow it per match |
+| `addComment` | `{ thread, runs }`: a [comment](/docs/plugins/comments)'s anchor |
+| `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows`, `fillTableCell` | the [table](/docs/plugins/table)'s rows and columns |

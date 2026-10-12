@@ -114,7 +114,10 @@ test.describe('block colours, toggle headings, table of contents, page block', (
 		await page.evaluate(() => {
 			const edytor = (window as unknown as { __EDYTOR__: any }).__EDYTOR__;
 			edytor.node.focus();
-			edytor.selection.selectBlocks(edytor.idToBlock.get('sub'));
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [edytor.idToBlock.get('sub')].map((block) => block.id)
+			});
 		});
 		await page.evaluate(() =>
 			Object.assign(window, {

@@ -28,7 +28,7 @@
  * owns: `destroy()` releases the document-created services but never
  * `doc.destroy()`s the borrowed doc (borrowing grants no destruction
  * authority). The same rule applies to an injected
- * `awareness` (the `_ownsAwareness` convention already used by
+ * `awareness` (the `#ownsAwareness` convention already used by
  * `IndexeddbPersistence`).
  *
  * ── Readiness ──────────────────────────────────────────────────────────
@@ -98,8 +98,8 @@
  *
  * ── History ────────────────────────────────────────────────────────────
  *
- * One registry-scoped `Y.UndoManager` per document (the facade's
- * supported seam). Capture is gated by TWO live checks, both consulted
+ * One registry-scoped undo manager per document (`doc/history.ts`, the
+ * facade's supported seam). Capture is gated by TWO live checks, both consulted
  * on every committing transaction:
  *
  * - `trackedOrigins` — a LIVE per-document set checked by identity: the
@@ -136,14 +136,14 @@
  * History is lazy: it attaches at `sync()`, or on first `history` access
  * once the doc is initialized — it NEVER initializes content itself, so
  * bootstrap/hydration writes all predate capture and are naturally
- * excluded. Stacks are unbounded (the engine prunes nothing); prune
- * explicitly via {@link clearHistory} / `history.clear()`, and tune the
- * merge window via `history.captureTimeout`.
+ * excluded. The undo stack keeps `history.limit` steps; drop them all
+ * via {@link clearHistory} / `history.clear()`, and tune the merge window
+ * via `history.captureTimeout`.
  */
 import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
 import { Y } from './engine.js';
-import type { EngineApi, YDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
 import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
 import {
@@ -152,14 +152,14 @@ import {
 	type AttributionController,
 	type DocumentAttribution
 } from './attribution/index.js';
+import { profileOf } from './attribution/attribution.js';
 import {
-	bindEdytorDoc,
+	docFacade,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
-	lineageDepthOf,
 	type BlockRole,
-	type EdytorDoc,
-	type EdytorDocBinding
+	type DocFacade,
+	type EdytorDocConfig
 } from './edytor-doc.js';
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
@@ -170,13 +170,19 @@ import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';
 import {
 	defaultSemantics,
+	facadeConfigOf,
+	mergeSemantics,
 	normalizeRole,
 	SemanticConflictError,
-	semanticsDigest,
-	type NormalizedRole
+	semanticsDigest
 } from './semantics.js';
 
 export { SemanticConflictError };
+
+/** Refuse `op` on a destroyed document. */
+const alive = (document: EdytorDocument, op: string): void => {
+	if (document.destroyed) throw new DocumentDestroyedError(op);
+};
 
 /** Local actor identity — durable across replicas, independent of presence profiles. */
 export type DocumentActor = {
@@ -244,17 +250,6 @@ export type DocumentOptions = {
 	 */
 	history?: { captureTimeout?: number; limit?: number };
 	/**
-	 * Opt-in per-block lineage ring — `depth > 0` captures a subtree
-	 * snapshot just before an edit displaces a block's current
-	 * `lastChangedBy` owner (handoffs, deletes, undo/redo touches),
-	 * ring-trimmed to this many entries per block. `0`/absent disables
-	 * the feature: no captures, byte-identical writes. Read via
-	 * {@link DocumentAttribution.history}. Must be a finite non-negative
-	 * integer — `NaN`/`Infinity`/fractional/negative values raise
-	 * `RangeError` at creation (an unbounded ring is worse than no ring).
-	 */
-	lineage?: { depth?: number };
-	/**
 	 * Decide an EMPTY document only from a provider that synced: the
 	 * room answered, or a local store hydrated. A provider's bound or
 	 * failure never seeds it, so a first visit offline writes nothing — no
@@ -321,7 +316,7 @@ export class DocumentDestroyedError extends Error {
  *
  * `sync()` is the only transition out of `pending`, and it is the
  * document-side admission re-check: a doc that arrived in a problem
- * state (unversioned/unsupported/foreign/legacy — e.g. via raw
+ * state (unversioned/unsupported/foreign — e.g. via raw
  * `applyUpdate` bypass writes) refuses there with a typed error, stays
  * `pending`, and preserves the state — never silently becoming `local`.
  */
@@ -341,13 +336,69 @@ const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`
 });
 
+/**
+ * DEV: publish the digest of a document's roles in its presence
+ * (`semantics`, {@link semanticsDigest}), so a room reading other roles
+ * logs the kinds they differ on (`semanticsMismatch`). Re-published at
+ * each adoption; a production build advertises nothing.
+ */
+const advertise = (
+	awareness: Awareness,
+	config: ReturnType<typeof mergeSemantics>,
+	defaultType: string
+): void => awareness.setLocalStateField('semantics', semanticsDigest({ ...config, defaultType }));
+
+/**
+ * DEV: `layout` needs a default child (its item kind); `lines` needs an
+ * island with a default child (its line kind), and
+ * the line kind belongs to it — outside such an island a block of that
+ * kind shows as its parent's default child, so a kind other blocks use
+ * (the default type, another kind's default child) would be recast.
+ */
+const warnLines = (
+	capability: {
+		config: ReturnType<typeof mergeSemantics>;
+		of: ReturnType<typeof facadeConfigOf>;
+	},
+	defaultType: string
+): void => {
+	const { roles, defaultChild } = capability.config;
+	for (const [type, role] of Object.entries(roles)) {
+		if (role.layout && !Object.hasOwn(defaultChild, type))
+			console.warn(
+				`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
+			);
+		if (role.table && !Object.hasOwn(defaultChild, type))
+			console.warn(
+				`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
+			);
+		if (!role.lines) continue;
+		const line = capability.of.defaultChildOf(type);
+		if (!role.island || line === undefined) {
+			console.warn(
+				`[edytor] "${type}" declares \`lines\` without \`island\` and a \`defaultChild\`: it holds no lines.`
+			);
+			continue;
+		}
+		const shared =
+			line === defaultType ||
+			Object.entries(defaultChild).some(
+				([other, child]) => child === line && !capability.of.roleOf(other)?.lines
+			);
+		if (shared)
+			console.warn(
+				`[edytor] "${type}" holds lines of "${line}", a kind other blocks use: outside "${type}" they show as their parent's default child. Give its lines a kind of their own.`
+			);
+	}
+};
+
 /** Internal constructor bag — use {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 export type EdytorDocumentInit = {
 	doc: YDoc;
 	/** Whether `destroy()` may `doc.destroy()` — true only for document-allocated docs. */
 	ownsDoc: boolean;
-	/** The bound facade binding this document composes (injected by `bindDocument`). */
-	binding: EdytorDocBinding;
+	/** The facade factory this document composes (injected by `bindDocument`). */
+	facade: (doc: EngineDoc, config: EdytorDocConfig) => DocFacade;
 	/** The bound attribution service (injected by `bindDocument`). */
 	attribution: AttributionBinding;
 	/** The engine this document's doc belongs to (for `encode`). */
@@ -358,7 +409,6 @@ export type EdytorDocumentInit = {
 	awareness?: Awareness;
 	semantics?: DocumentSemanticsConfig;
 	history?: { captureTimeout?: number; limit?: number };
-	lineage?: { depth?: number };
 	requireHydration?: boolean;
 };
 
@@ -368,7 +418,7 @@ export type EdytorDocumentInit = {
  */
 /**
  * The document's operations and reads are its own members
- * (`document.insertBlock(…)`, `document.toJSON()`): see `DocumentOperations`.
+ * (`document.insertBlocks(…)`, `document.toJSON()`): see `DocumentOperations`.
  * `transact` is the document's (its local origin by default).
  */
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare
@@ -383,16 +433,15 @@ export class EdytorDocument {
 	 * the document's lease on the maintained runs view.
 	 * @internal
 	 */
-	readonly facade: EdytorDoc;
+	readonly facade: DocFacade;
 	/** One shared awareness instance for every view/provider of this document. */
 	readonly awareness: Awareness;
 	/** The local actor identity (anonymous opaque id when none was supplied). */
 	readonly actor: DocumentActor;
 	/**
-	 * The attribution surface — compact per-block records, the
-	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings),
-	 * and a `legacy()` read over any pre-existing `a/` per-edit records
-	 * written by earlier builds. Ordinary edits perform no attribution
+	 * The attribution surface — compact per-block records and the
+	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings).
+	 * Ordinary edits perform no attribution
 	 * writes — authorship lands inside the owning op's transaction as the
 	 * block-level `b/<id>` record/`l` stamp. See
 	 * `src/lib/crdt/attribution/attribution.ts` for the full contract.
@@ -400,14 +449,12 @@ export class EdytorDocument {
 	 * lifecycle contract as {@link history}.
 	 *
 	 * Reads are pull-model: record arrivals emit no attribution-specific
-	 * change event — every fresh `block()`/`actors`/`legacy()` call reads
+	 * change event — every fresh `block()`/`actors` call reads
 	 * current replicated state.
 	 */
 	get attribution(): DocumentAttribution {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attribution');
-		}
-		return this._attributionCtl.view;
+		alive(this, 'attribution');
+		return this.#attributionCtl.view;
 	}
 	/**
 	 * The document's own local-edit transaction origin — headless edits via
@@ -439,20 +486,20 @@ export class EdytorDocument {
 	 * (their commits remain undoable), only FUTURE commits from the dead
 	 * origin stop capturing.
 	 */
-	private readonly _trackedOrigins = new Set<unknown>([this.transaction, null]);
+	readonly #trackedOrigins = new Set<unknown>([this.transaction, null]);
 
-	private readonly _engine: EngineApi;
-	private readonly _ownsDoc: boolean;
-	private readonly _ownsAwareness: boolean;
-	private _history: YUndoManager | undefined;
-	private readonly _attributionCtl: AttributionController;
+	readonly #engine: EngineApi;
+	readonly #ownsDoc: boolean;
+	readonly #ownsAwareness: boolean;
+	#_history: YUndoManager | undefined;
+	readonly #attributionCtl: AttributionController;
 	/**
 	 * `true` when the attached manager was destroyed by something other
 	 * than this document — its `destroy()` is a public engine surface, so
 	 * an external caller can kill it while the document lives. The getter
 	 * reattaches a fresh manager rather than handing back the corpse.
 	 */
-	private _readiness: DocumentReadiness = 'pending';
+	#_readiness: DocumentReadiness = 'pending';
 	private _destroyed = false;
 	/**
 	 * Attach references — every `createDocument`/`loadDocument`/
@@ -462,42 +509,39 @@ export class EdytorDocument {
 	 * lands (deduplicated `attachDocument` shares this instance across
 	 * callers/views).
 	 */
-	private _refs = 1;
-	/** The adopted capability tables: per kind, the first declaration. */
-	private readonly _capability = {
-		roles: new Map<string, NormalizedRole>(),
-		rendersContent: new Map<string, boolean>(),
-		defaultChild: new Map<string, string>(),
-		marks: new Map<string, MarkEdge>()
-	};
-	private _defaultType: string;
-	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
-	private readonly _lineageDepth: number | undefined;
+	#refs = 1;
+	/**
+	 * The adopted semantics (every contribution, merged: `mergeSemantics`)
+	 * and their lookups (`facadeConfigOf`, as the room reads its own).
+	 */
+	readonly #capability = { config: mergeSemantics(), of: facadeConfigOf({}) };
+	#defaultType: string;
+	readonly #historyOptions: { captureTimeout?: number; limit?: number } | undefined;
 	/** {@link DocumentOptions.requireHydration}: an empty document waits for a provider's `synced`. */
 	readonly requireHydration: boolean;
 	/** Attached providers keyed by transport target: one per target. */
-	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
-	private _pendingSyncs = 0;
-	private _healOff: (() => void) | undefined;
-	private _readyListeners = new Set<() => void>();
+	#providers = new Map<unknown, EdytorSyncCleanup | undefined>();
+	#pendingSyncs = 0;
+	#healOff: (() => void) | undefined;
+	#readyListeners = new Set<() => void>();
 
 	/** @internal Construct through {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 	constructor(init: EdytorDocumentInit) {
-		this._engine = init.engine;
+		this.#engine = init.engine;
 		this.doc = init.doc;
-		this._ownsDoc = init.ownsDoc;
-		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
-		this.facade = init.binding.create(asEngineDoc(this.doc), {
-			roleOf: (type) => this._capability.roles.get(type),
-			kinds: () => this._capability.roles.keys(),
-			defaultType: this._defaultType,
-			defaultChildOf: (type) => this._capability.defaultChild.get(type),
-			rendersContent: (type) => this.rendersContent(type),
-			markEdge: (mark) => this._capability.marks.get(mark),
+		this.#ownsDoc = init.ownsDoc;
+		this.#defaultType = init.semantics?.defaultType ?? 'paragraph';
+		const of = () => this.#capability.of;
+		this.facade = init.facade(asEngineDoc(this.doc), {
+			roleOf: (type) => of().roleOf(type),
+			kinds: () => of().kinds(),
+			defaultType: this.#defaultType,
+			defaultChildOf: (type) => of().defaultChildOf(type),
+			rendersContent: (type) => of().rendersContent(type),
+			markEdge: (mark) => of().markEdge(mark),
 			// The facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
-			lineageDepth: init.lineage?.depth,
 			// The `writable` guard: a write on a read-only document refuses
 			// with the `SchemaMismatchError` naming the stamp.
 			assertWritable: () => assertSchema(asEngineDoc(this.doc), 'document')
@@ -509,53 +553,27 @@ export class EdytorDocument {
 			Object.defineProperty(this, name, { get: () => this.facade[name], configurable: true });
 		}
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
-		this._ownsAwareness = init.awareness === undefined;
-		this._historyOptions = init.history;
-		this._lineageDepth = init.lineage?.depth;
+		this.#ownsAwareness = init.awareness === undefined;
+		this.#historyOptions = init.history;
 		this.requireHydration = init.requireHydration === true;
 		this.actor = init.actor ?? anonymousActor();
 		// Durable actor identity is separate from the presence profile: the
 		// `actor` field carries the stable id, `user`
 		// carries the display profile remote carets already read.
 		this.awareness.setLocalStateField('actor', this.actor);
-		if (this.actor.name !== undefined || this.actor.color !== undefined) {
-			this.awareness.setLocalStateField('user', {
-				...(this.actor.name !== undefined ? { name: this.actor.name } : {}),
-				...(this.actor.color !== undefined ? { color: this.actor.color } : {})
-			});
-		}
+		const user = profileOf(this.actor);
+		if (Object.keys(user).length) this.awareness.setLocalStateField('user', user);
 		// Attribution service — attaches after the facade (which gates
 		// foreign docs) and after the actor is fixed. Publishes this
 		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary
 		// edits perform no attribution work and per-block records are
 		// written inside the owning op's transaction by the facade.
-		this._attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
+		this.#attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
 			actor: this.actor
 		});
 		if (init.semantics) {
 			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
-		} else this._advertise();
-	}
-
-	/**
-	 * DEV: publish the digest of this document's roles in its presence
-	 * (`semantics`, {@link semanticsDigest}), so a room reading other roles
-	 * logs the kinds they differ on (`semanticsMismatch`). Re-published at
-	 * each adoption; a production build advertises nothing.
-	 */
-	private _advertise(): void {
-		if (!DEV) return;
-		const { roles, rendersContent, defaultChild, marks } = this._capability;
-		this.awareness.setLocalStateField(
-			'semantics',
-			semanticsDigest({
-				roles: Object.fromEntries(roles),
-				rendersContent: Object.fromEntries(rendersContent),
-				defaultChild: Object.fromEntries(defaultChild),
-				marks: Object.fromEntries([...marks].map(([mark, edge]) => [mark, { edge }])),
-				defaultType: this._defaultType
-			})
-		);
+		} else if (DEV) advertise(this.awareness, this.#capability.config, this.#defaultType);
 	}
 
 	/** The replica id (`doc.clientID`) — identifies the replica, not the actor. */
@@ -570,7 +588,7 @@ export class EdytorDocument {
 	 * WHICH kind of ready.
 	 */
 	get ready(): boolean {
-		return this._readiness !== 'pending';
+		return this.#_readiness !== 'pending';
 	}
 
 	/**
@@ -579,7 +597,7 @@ export class EdytorDocument {
 	 * need to tell "I decided this content" from "sync brought it").
 	 */
 	get readiness(): DocumentReadiness {
-		return this._readiness;
+		return this.#_readiness;
 	}
 
 	get destroyed(): boolean {
@@ -621,7 +639,7 @@ export class EdytorDocument {
 	 * @internal
 	 */
 	get historyCaptureTimeout(): number | undefined {
-		return this._historyOptions?.captureTimeout;
+		return this.#historyOptions?.captureTimeout;
 	}
 
 	/**
@@ -630,18 +648,7 @@ export class EdytorDocument {
 	 * dedupe check reads it (a reattach naming another limit is a conflict).
 	 */
 	get historyLimit(): number {
-		return this._historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
-	}
-
-	/**
-	 * The lineage ring depth this document was configured with — read by
-	 * the `attachDocument` dedupe compatibility check (a reattach naming
-	 * a different depth is a conflict; capture behavior cannot be retuned
-	 * on the live facade).
-	 * @internal
-	 */
-	get lineageDepth(): number | undefined {
-		return this._lineageDepth;
+		return this.#historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
 	}
 
 	/**
@@ -649,13 +656,15 @@ export class EdytorDocument {
 	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
 	get semantics() {
-		const { roles, rendersContent, defaultChild, marks } = this._capability;
+		const { roles, rendersContent, defaultChild, marks } = this.#capability.config;
+		const entries = <T, U>(table: Record<string, T>, f: (value: T) => U) =>
+			new Map(Object.entries(table).map(([key, value]) => [key, f(value)]));
 		return {
-			defaultType: this._defaultType,
-			roles: new Map<string, BlockRole>(roles),
-			rendersContent: new Map(rendersContent),
-			defaultChild: new Map(defaultChild),
-			marks: new Map(marks)
+			defaultType: this.#defaultType,
+			roles: entries<BlockRole, BlockRole>(roles, normalizeRole),
+			rendersContent: new Map(Object.entries(rendersContent)),
+			defaultChild: new Map(Object.entries(defaultChild)),
+			marks: entries(marks, (mark): MarkEdge => mark.edge ?? 'inclusive')
 		};
 	}
 
@@ -665,11 +674,11 @@ export class EdytorDocument {
 	 * and root normalization apply against the new block's actual parent.
 	 */
 	defaultChild = (parentType: string | null): string =>
-		(parentType !== null ? this._capability.defaultChild.get(parentType) : undefined) ??
-		this._defaultType;
+		(parentType !== null ? this.#capability.of.defaultChildOf(parentType) : undefined) ??
+		this.#defaultType;
 
 	/** Whether kind `type` renders its own content slot (undeclared kinds do). */
-	rendersContent = (type: string): boolean => this._capability.rendersContent.get(type) ?? true;
+	rendersContent = (type: string): boolean => this.#capability.of.rendersContent(type);
 
 	/**
 	 * Contribute document-level semantics — the seam views use to seed the
@@ -682,46 +691,23 @@ export class EdytorDocument {
 	 * - `rendersContent` and `defaultChild` entries follow the same rule;
 	 * - `defaultType` must match the document's when supplied.
 	 *
-	 * Atomic: everything validates before anything is adopted.
+	 * Atomic: everything validates before anything is adopted (the merge is
+	 * `mergeSemantics`'s).
 	 *
 	 * Contributions are document-lifetime: they survive the contributing
 	 * view's teardown, so sibling views keep the same structural rules.
 	 */
 	adoptSemantics = (config: DocumentSemanticsConfig): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('adoptSemantics');
+		alive(this, 'adoptSemantics');
+		if (config.defaultType !== undefined && config.defaultType !== this.#defaultType) {
+			throw new SemanticConflictError('defaultType', this.#defaultType, config.defaultType);
 		}
-		if (config.defaultType !== undefined && config.defaultType !== this._defaultType) {
-			throw new SemanticConflictError('defaultType', this._defaultType, config.defaultType);
+		const merged = mergeSemantics(this.#capability.config, { ...config, defaultType: undefined });
+		Object.assign(this.#capability, { config: merged, of: facadeConfigOf(merged) });
+		if (DEV) {
+			advertise(this.awareness, merged, this.#defaultType);
+			warnLines(this.#capability, this.#defaultType);
 		}
-		const incoming = [
-			['roles', Object.entries(config.roles ?? {}).map(([t, r]) => [t, normalizeRole(r)] as const)],
-			['rendersContent', Object.entries(config.rendersContent ?? {})],
-			['defaultChild', Object.entries(config.defaultChild ?? {})],
-			[
-				'marks',
-				Object.entries(config.marks ?? {}).map(
-					([mark, m]) => [mark, m?.edge ?? 'inclusive'] as const
-				)
-			]
-		] as const;
-		// Pass 1 — validate EVERYTHING before mutating: a conflicting entry
-		// late in a table must not leave earlier entries half-adopted.
-		for (const [table, entries] of incoming) {
-			for (const [type, value] of entries) {
-				const existing = this._capability[table].get(type);
-				if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
-					throw new SemanticConflictError(`${table} "${type}"`, existing, value);
-				}
-			}
-		}
-		// Pass 2 — apply: every incoming entry proved compatible.
-		for (const [table, entries] of incoming) {
-			const adopted = this._capability[table] as Map<string, unknown>;
-			for (const [type, value] of entries) adopted.set(type, value);
-		}
-		this._advertise();
-		if (DEV) this._warnLines();
 		// A newly void kind sheds its children at read time; a block
 		// promoted out of a newly island kind displays as a default child; a
 		// newly layout kind displays only its items (`layout.*`), a newly
@@ -735,42 +721,6 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * DEV: `layout` needs a default child (its item kind); `lines` needs an
-	 * island with a default child (its line kind), and
-	 * the line kind belongs to it — outside such an island a block of that
-	 * kind shows as its parent's default child, so a kind other blocks use
-	 * (the default type, another kind's default child) would be recast.
-	 */
-	private _warnLines(): void {
-		const { roles, defaultChild } = this._capability;
-		for (const [type, role] of roles) {
-			if (role.layout && !defaultChild.has(type))
-				console.warn(
-					`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
-				);
-			if (role.table && !defaultChild.has(type))
-				console.warn(
-					`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
-				);
-			if (!role.lines) continue;
-			const line = defaultChild.get(type);
-			if (!role.island || line === undefined) {
-				console.warn(
-					`[edytor] "${type}" declares \`lines\` without \`island\` and a \`defaultChild\`: it holds no lines.`
-				);
-				continue;
-			}
-			const shared =
-				line === this._defaultType ||
-				[...defaultChild].some(([other, child]) => child === line && !roles.get(other)?.lines);
-			if (shared)
-				console.warn(
-					`[edytor] "${type}" holds lines of "${line}", a kind other blocks use: outside "${type}" they show as their parent's default child. Give its lines a kind of their own.`
-				);
-		}
-	}
-
-	/**
 	 * The readiness transition — decide the document's content state. This
 	 * is the document-side admission re-check ({@link assertAdmission} —
 	 * usable → schema → verdict, the same reads the transport layer's
@@ -781,7 +731,7 @@ export class EdytorDocument {
 	 * - `'initialized'` verdict (provider-hydrated, or a loaded restore) →
 	 *   the schema was just asserted; content is left alone;
 	 * - a doc in a problem state (unversioned/unsupported/foreign schema
-	 *   claim, legacy layout — possible via raw `applyUpdate` writes that
+	 *   claim — possible via raw `applyUpdate` writes that
 	 *   bypass the transport gate) REFUSES readiness: the typed error
 	 *   propagates, the document stays `pending`, and the doc's state is
 	 *   preserved. Retrying after the state heals (e.g. a remote update
@@ -795,59 +745,55 @@ export class EdytorDocument {
 	 * not bootstrap — only this call (or `createDocument({value})`) does.
 	 */
 	sync = (value: JSONDoc = { children: [] }): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('sync');
-		}
-		if (this._readiness !== 'pending') {
+		alive(this, 'sync');
+		if (this.#_readiness !== 'pending') {
 			return;
 		}
 		const verdict = assertAdmission(asEngineDoc(this.doc), 'document');
 		if (verdict === 'initialized') {
 			// Hydrated/loaded doc — asserted above; content is left alone.
-			this._readiness = 'hydrated';
+			this.#_readiness = 'hydrated';
 		} else {
 			this.facade.seed(value.children, value.data);
-			this._readiness = 'local';
+			this.#_readiness = 'local';
 		}
-		this._attachHistory();
+		this.#attachHistory();
 		// Readiness decided — wake waiters synchronously. The hydrated
 		// branch writes nothing to the doc, so `update`-based observation
 		// misses it; polling alone would leave sibling views stale for
 		// ~50 ms. Isolated per the listener-isolation convention: one
 		// throwing waiter must not starve the rest or break `sync()`.
-		const listeners = Array.from(this._readyListeners);
-		this._readyListeners.clear();
+		const listeners = Array.from(this.#readyListeners);
+		this.#readyListeners.clear();
 		callEach('[edytor-document] ready', listeners);
 	};
 
 	/**
-	 * The default local history (registry-scoped `Y.UndoManager` —
+	 * The default local history (the registry-scoped undo manager —
 	 * `undo`/`redo`/`stopCapturing`/stacks). Lazy: attaches at `sync()`,
 	 * or on first access once the document is decided — it NEVER seeds
 	 * content itself (accessing it on a pending doc throws
 	 * {@link DocumentNotReadyError} instead of silently seeding).
 	 */
 	get history(): YUndoManager {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('history');
-		}
-		let history = this._history;
+		alive(this, 'history');
+		let history = this.#_history;
 		// A manager enrolls itself in its tracked origins and leaves them on
 		// `destroy()` — an external teardown (misuse, or the engine's own
 		// `doc.destroy` cascade) shows there.
-		if (history !== undefined && !this._trackedOrigins.has(history)) {
+		if (history !== undefined && !this.#trackedOrigins.has(history)) {
 			// The manager was destroyed externally — it no longer observes
 			// transactions or emits stack events, so returning it would
 			// silently disable capture. Reattach a fresh one (the dead
 			// manager's stacks are unrecoverable by definition).
-			this._history = undefined;
+			this.#_history = undefined;
 			history = undefined;
 		}
 		if (history === undefined) {
-			if (this._readiness === 'pending') {
+			if (this.#_readiness === 'pending') {
 				throw new DocumentNotReadyError('history');
 			}
-			history = this._attachHistory();
+			history = this.#attachHistory();
 		}
 		return history;
 	}
@@ -863,10 +809,8 @@ export class EdytorDocument {
 	 * on view teardown — already-captured ops stay undoable.
 	 */
 	trackOrigin = (origin: unknown): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('trackOrigin');
-		}
-		this._trackedOrigins.add(origin);
+		alive(this, 'trackOrigin');
+		this.#trackedOrigins.add(origin);
 	};
 
 	/**
@@ -881,12 +825,12 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			return;
 		}
-		this._trackedOrigins.delete(origin);
+		this.#trackedOrigins.delete(origin);
 	};
 
-	private _attachHistory = (): YUndoManager => {
-		if (this._history !== undefined) {
-			return this._history;
+	#attachHistory = (): YUndoManager => {
+		if (this.#_history !== undefined) {
+			return this.#_history;
 		}
 		// Two-layer capture rule (see the module header):
 		// - `trackedOrigins` — identity tracking: the document's headless
@@ -899,13 +843,13 @@ export class EdytorDocument {
 		//   `applyUpdate` — stamped or originless — can enter the local undo
 		//   stack. This is the actual remote-exclusion contract; untracked
 		//   remote origins are belt-and-suspenders on top of it.
-		this._history = this.facade.createUndoManager({
-			trackedOrigins: this._trackedOrigins,
-			captureTimeout: this._historyOptions?.captureTimeout,
+		this.#_history = this.facade.createUndoManager({
+			trackedOrigins: this.#trackedOrigins,
+			captureTimeout: this.#historyOptions?.captureTimeout,
 			limit: this.historyLimit,
 			captureTransaction: (transaction: { local?: boolean }) => transaction.local !== false
 		});
-		return this._history;
+		return this.#_history;
 	};
 
 	/**
@@ -916,10 +860,8 @@ export class EdytorDocument {
 	 * on pending).
 	 */
 	clearHistory = (): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('clearHistory');
-		}
-		this._history?.clear();
+		alive(this, 'clearHistory');
+		this.#_history?.clear();
 	};
 
 	/**
@@ -928,9 +870,7 @@ export class EdytorDocument {
 	 * when it is tracked).
 	 */
 	transact = <T>(cb: () => T, origin: unknown = this.transaction): T => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('transact');
-		}
+		alive(this, 'transact');
 		return this.facade.transact(cb, origin);
 	};
 
@@ -947,9 +887,9 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			return () => {};
 		}
-		this._readyListeners.add(listener);
+		this.#readyListeners.add(listener);
 		return () => {
-			this._readyListeners.delete(listener);
+			this.#readyListeners.delete(listener);
 		};
 	};
 
@@ -958,12 +898,12 @@ export class EdytorDocument {
 	 * bound. An editable view decides a pending document only when none is.
 	 */
 	get syncPending(): boolean {
-		return this._pendingSyncs > 0;
+		return this.#pendingSyncs > 0;
 	}
 
 	/** The standing refusal of each attached target that reported one, oldest first. */
-	private _refusals = new Map<unknown, SyncRefusedError>();
-	private _refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
+	#refusals = new Map<unknown, SyncRefusedError>();
+	#refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
 
 	/**
 	 * The server's refusal of a provider (a `1008`/`4xxx` close — see
@@ -974,7 +914,7 @@ export class EdytorDocument {
 	 * after a refreshed token), lifts it.
 	 */
 	get syncRefusal(): SyncRefusedError | undefined {
-		return Array.from(this._refusals.values()).at(-1);
+		return Array.from(this.#refusals.values()).at(-1);
 	}
 
 	/**
@@ -983,8 +923,8 @@ export class EdytorDocument {
 	 */
 	onSyncRefused = (listener: (refusal: SyncRefusedError) => void): (() => void) => {
 		if (this._destroyed) return () => {};
-		this._refusalListeners.add(listener);
-		return () => this._refusalListeners.delete(listener);
+		this.#refusalListeners.add(listener);
+		return () => this.#refusalListeners.delete(listener);
 	};
 
 	/**
@@ -1000,15 +940,15 @@ export class EdytorDocument {
 		if (this._destroyed || this.ready) return;
 		// An empty document waits for a provider that synced.
 		if (this.requireHydration && !synced && !isInitialized(asEngineDoc(this.doc))) return;
-		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
+		const waiting = this.#pendingSyncs > 0 || this.#refusals.size > 0;
 		if (waiting && !isInitialized(asEngineDoc(this.doc))) return;
 		try {
 			this.sync(value);
 		} catch (error) {
-			this._healOff ??= this.onWritableChange((writable) => {
+			this.#healOff ??= this.onWritableChange((writable) => {
 				if (!writable) return;
-				this._healOff?.();
-				this._healOff = undefined;
+				this.#healOff?.();
+				this.#healOff = undefined;
 				this._decide(value);
 			});
 			if (report) throw error;
@@ -1038,18 +978,16 @@ export class EdytorDocument {
 	 * `attach`: a provider of its own, under the same rules.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attachSync');
-		}
+		alive(this, 'attachSync');
 		const target = sync.target ?? sync;
-		if (this._providers.has(target)) return;
-		this._pendingSyncs += 1;
+		if (this.#providers.has(target)) return;
+		this.#pendingSyncs += 1;
 		let pending = true;
 		const settle = (): boolean => {
 			if (!pending) return false;
 			pending = false;
 			clearTimeout(bound);
-			this._pendingSyncs -= 1;
+			this.#pendingSyncs -= 1;
 			return true;
 		};
 		const decide = () => settle() && this._decide(opts.value);
@@ -1059,9 +997,9 @@ export class EdytorDocument {
 			if (!(error instanceof SyncRefusedError)) return void decide();
 			settle();
 			if (this._destroyed) return;
-			this._refusals.delete(target);
-			this._refusals.set(target, error);
-			callEach('[edytor-document] refusal', Array.from(this._refusalListeners), error);
+			this.#refusals.delete(target);
+			this.#refusals.set(target, error);
+			callEach('[edytor-document] refusal', Array.from(this.#refusalListeners), error);
 			// A document that already holds content is decided (hydrated); an
 			// empty one stays pending while the refusal stands.
 			this._decide(opts.value);
@@ -1073,7 +1011,7 @@ export class EdytorDocument {
 				awareness: this.awareness,
 				synced: () => {
 					settle();
-					this._refusals.delete(target);
+					this.#refusals.delete(target);
 					this._decide(opts.value, true, true);
 				},
 				failed,
@@ -1090,7 +1028,7 @@ export class EdytorDocument {
 			throw error;
 		}
 		if (typeof cleanup !== 'function') {
-			this._providers.set(target, undefined);
+			this.#providers.set(target, undefined);
 			return cleanup;
 		}
 		// The returned cleanup runs once and frees the target; tearing down
@@ -1099,20 +1037,20 @@ export class EdytorDocument {
 		// next attach or `sync()` does). After the cleanup, which releases
 		// the provider's own companions.
 		const release = (): ReturnType<EdytorSyncCleanup> => {
-			if (this._providers.get(target) !== release) return;
-			this._providers.delete(target);
-			const refused = this._refusals.delete(target);
+			if (this.#providers.get(target) !== release) return;
+			this.#providers.delete(target);
+			const refused = this.#refusals.delete(target);
 			decide();
 			const result = cleanup();
-			if (refused && this._providers.size > 0) this._decide(opts.value);
+			if (refused && this.#providers.size > 0) this._decide(opts.value);
 			return result;
 		};
-		this._providers.set(target, release);
+		this.#providers.set(target, release);
 		return release;
 	};
 
 	/** Full replicated state as a v14 update — `loadDocument` restores it on a fresh replica. */
-	encode = (): Uint8Array => this._engine.encodeStateAsUpdate(this.doc);
+	encode = (): Uint8Array => this.#engine.encodeStateAsUpdate(this.doc);
 
 	/**
 	 * Acquire one more attach reference and return its ONE-SHOT release
@@ -1127,17 +1065,15 @@ export class EdytorDocument {
 	 * lifecycle).
 	 */
 	retain = (): (() => void) => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('retain');
-		}
-		this._refs += 1;
+		alive(this, 'retain');
+		this.#refs += 1;
 		let released = false;
 		return () => {
 			if (released) {
 				return;
 			}
 			released = true;
-			this._releaseReference();
+			this.#releaseReference();
 		};
 	};
 
@@ -1161,26 +1097,26 @@ export class EdytorDocument {
 	 * grants no destruction authority). Post-teardown calls are a no-op.
 	 */
 	destroy = (): void => {
-		this._releaseReference();
+		this.#releaseReference();
 	};
 
 	/** Shared reference release — `destroy()` and `retain()` closures land here. */
-	private _releaseReference = (): void => {
+	#releaseReference = (): void => {
 		if (this._destroyed) {
 			return;
 		}
-		this._refs -= 1;
-		if (this._refs > 0) {
+		this.#refs -= 1;
+		if (this.#refs > 0) {
 			return;
 		}
-		this._refs = 0;
+		this.#refs = 0;
 		this._destroyed = true;
 
 		// Waiters parked on the readiness transition are dropped silently —
 		// a destroyed document never decides, and their views check
 		// `destroyed` before binding anyway.
-		this._readyListeners.clear();
-		this._healOff?.();
+		this.#readyListeners.clear();
+		this.#healOff?.();
 
 		// Provider/sync cleanups registered through `attachSync`.
 		const rethrowAsyncCleanupError = (error: unknown) => {
@@ -1188,7 +1124,7 @@ export class EdytorDocument {
 				throw error;
 			});
 		};
-		for (const release of [...this._providers.values()]) {
+		for (const release of [...this.#providers.values()]) {
 			try {
 				const result = release?.();
 				if (result && typeof result === 'object' && 'catch' in result) {
@@ -1200,11 +1136,11 @@ export class EdytorDocument {
 		}
 
 		// Doc observers held by the undo manager (absent before readiness).
-		this._history?.destroy();
+		this.#_history?.destroy();
 
 		// The attribution service controller — the view stays readable
 		// after release (a borrowed raw doc can outlive the document).
-		this._attributionCtl.destroy();
+		this.#attributionCtl.destroy();
 
 		// The facade's doc `update` subscriptions + this document's lease on
 		// the doc-shared run view (the view itself survives while another
@@ -1213,13 +1149,13 @@ export class EdytorDocument {
 
 		// Awareness is document-shared — destroy it only when the document
 		// created it (an injected instance belongs to its caller).
-		if (this._ownsAwareness) {
+		if (this.#ownsAwareness) {
 			this.awareness.destroy();
 		}
 
 		// `doc.destroy()` only for document-allocated docs — a borrowed raw
 		// doc outlives this document by contract.
-		if (this._ownsDoc) {
+		if (this.#ownsDoc) {
 			this.doc.destroy();
 		}
 	};
@@ -1235,7 +1171,7 @@ export type DocumentBinding = ReturnType<typeof bindDocument>;
  * their own surface here.
  */
 export const bindDocument = (Y: EngineApi) => {
-	const binding = bindEdytorDoc(Y);
+	const facade = docFacade(Y, { model: undefined, text: undefined });
 	const attribution = bindAttribution(Y);
 	const admission = bindAdmission(Y);
 	/**
@@ -1247,17 +1183,25 @@ export const bindDocument = (Y: EngineApi) => {
 	 */
 	const attached = new WeakMap<YDoc, EdytorDocument>();
 
+	/** A document over `doc`, registered for `attachDocument`'s dedupe. */
 	const init = (
-		initOpts: Omit<EdytorDocumentInit, 'binding' | 'attribution' | 'engine' | 'awarenessCtor'>
+		doc: YDoc,
+		ownsDoc: boolean,
+		options: DocumentOptions,
+		semantics = options.semantics
 	): EdytorDocument => {
-		lineageDepthOf(initOpts.lineage?.depth);
-		return new EdytorDocument({
-			...initOpts,
-			binding,
+		const document = new EdytorDocument({
+			...options,
+			doc,
+			ownsDoc,
+			semantics,
+			facade,
 			attribution,
 			engine: Y,
 			awarenessCtor: Awareness
 		});
+		attached.set(doc, document);
+		return document;
 	};
 
 	/**
@@ -1267,7 +1211,6 @@ export const bindDocument = (Y: EngineApi) => {
 	 * actor, awareness instance or merge window is a conflict.
 	 */
 	const assertAttachCompatible = (existing: EdytorDocument, options: DocumentOptions): void => {
-		lineageDepthOf(options.lineage?.depth);
 		if (options.awareness !== undefined && options.awareness !== existing.awareness) {
 			// SemanticConflictError serializes its operands — the awareness
 			// objects themselves are circular; describe them instead.
@@ -1277,43 +1220,15 @@ export const bindDocument = (Y: EngineApi) => {
 				'a different injected awareness'
 			);
 		}
-		if (options.actor !== undefined && options.actor.id !== existing.actor.id) {
-			throw new SemanticConflictError('actor.id', existing.actor.id, options.actor.id);
-		}
-		if (
-			options.history?.captureTimeout !== undefined &&
-			options.history.captureTimeout !== existing.historyCaptureTimeout
-		) {
-			throw new SemanticConflictError(
-				'history.captureTimeout',
-				existing.historyCaptureTimeout,
-				options.history.captureTimeout
-			);
-		}
-		if (options.history?.limit !== undefined && options.history.limit !== existing.historyLimit) {
-			throw new SemanticConflictError(
-				'history.limit',
-				existing.historyLimit,
-				options.history.limit
-			);
-		}
-		if (options.lineage?.depth !== undefined && options.lineage.depth !== existing.lineageDepth) {
-			throw new SemanticConflictError(
-				'lineage.depth',
-				existing.lineageDepth,
-				options.lineage.depth
-			);
-		}
-		if (
-			options.requireHydration !== undefined &&
-			options.requireHydration !== existing.requireHydration
-		) {
-			throw new SemanticConflictError(
-				'requireHydration',
-				existing.requireHydration,
-				options.requireHydration
-			);
-		}
+		const asked: [subject: string, live: unknown, wanted: unknown][] = [
+			['actor.id', existing.actor.id, options.actor?.id],
+			['history.captureTimeout', existing.historyCaptureTimeout, options.history?.captureTimeout],
+			['history.limit', existing.historyLimit, options.history?.limit],
+			['requireHydration', existing.requireHydration, options.requireHydration]
+		];
+		for (const [subject, live, wanted] of asked)
+			if (wanted !== undefined && wanted !== live)
+				throw new SemanticConflictError(subject, live, wanted);
 		if (options.semantics !== undefined) {
 			existing.adoptSemantics(options.semantics);
 		}
@@ -1333,17 +1248,7 @@ export const bindDocument = (Y: EngineApi) => {
 			// structural rather than assumed.
 			const doc = new Y.Doc();
 			assertAdmission(asEngineDoc(doc), 'created document');
-			const document = init({
-				doc,
-				ownsDoc: true,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics ?? defaultSemantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(document.doc, document);
+			const document = init(doc, true, options, options.semantics ?? defaultSemantics);
 			if (options.value !== undefined) {
 				try {
 					document.sync(options.value);
@@ -1361,9 +1266,8 @@ export const bindDocument = (Y: EngineApi) => {
 		 * state). Staged admission: the payload is
 		 * decoded+integrated onto a SCRATCH doc and the document admission
 		 * gate runs on the merged result — a corrupt payload
-		 * ({@link UndecodableUpdateError}), a v13-era layout
-		 * ({@link UnsupportedDocError} `'legacy'` → migration path), or a
-		 * schema claim this build cannot own ({@link SchemaMismatchError})
+		 * ({@link UndecodableUpdateError}, a v13 document's bytes among
+		 * them), or a schema claim this build cannot own ({@link SchemaMismatchError})
 		 * refuses BEFORE the facade/history/awareness ever compose, and
 		 * the caller's bytes are never touched. Only then does `sync()`
 		 * complete readiness (history attaches after the restored schema
@@ -1371,17 +1275,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 */
 		loadDocument: (update: Uint8Array, options: LoadDocumentOptions = {}): EdytorDocument => {
 			const doc = admission.admitUpdate(update, 'loaded document');
-			const document = init({
-				doc,
-				ownsDoc: true,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics ?? defaultSemantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(doc, document);
+			const document = init(doc, true, options, options.semantics ?? defaultSemantics);
 			try {
 				document.sync();
 			} catch (error) {
@@ -1400,8 +1294,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 * provider path) drives `sync()`.
 		 *
 		 * Admission runs BEFORE any composition touches the doc: a
-		 * foreign engine object or applied-but-unmigrated v13 state
-		 * refuses with {@link UnsupportedDocError}, an
+		 * foreign engine object refuses with {@link UnsupportedDocError}, an
 		 * unversioned/unsupported/foreign schema claim with
 		 * {@link SchemaMismatchError} — the borrowed doc is left
 		 * byte-identical (the gate reads are write-free) and can be
@@ -1434,25 +1327,14 @@ export const bindDocument = (Y: EngineApi) => {
 			// Doc-level admission before composition — a refusal is typed
 			// and leaves the borrowed doc untouched (see the docstring).
 			assertAdmission(asEngineDoc(doc), 'attached document');
-			const document = init({
-				doc,
-				ownsDoc: false,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(doc, document);
-			return document;
+			return init(doc, false, options);
 		}
 	};
 };
 
 // ── production binding (module singleton — bound ONCE) ─────────────────
 //
-// All documents share ONE `bindEdytorDoc` binding, so the doc-shared
+// All documents share ONE `bindDocModel` binding, so the doc-shared
 // `RunView` (its `WeakMap<doc>` lease table) is maintained exactly once
 // per doc no matter how many documents/views compose it.
 const productionBinding = bindDocument(Y);

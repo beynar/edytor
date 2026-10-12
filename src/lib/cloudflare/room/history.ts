@@ -5,7 +5,6 @@
  * and undoing that restore. The stores themselves are `../history.ts`.
  */
 import { Y } from '../../crdt/engine.js';
-import * as E from '../../crdt/protocol.js';
 import { gunzip, packed } from '../../crdt/storage.js';
 import {
 	asEngineDoc,
@@ -15,7 +14,7 @@ import {
 	engineOps,
 	stepsOf
 } from '../../crdt/structs.js';
-import type { JSONDoc, YDoc, YUndoManager } from '../../crdt/index.js';
+import type { JSONDoc, YUndoManager } from '../../crdt/index.js';
 import type { Attachment, RestoreResult, SocketIdentity } from '../DocumentRoom.js';
 import { PURGE_ORIGIN, RESTORE_ORIGIN, noTimers } from './shared.js';
 import {
@@ -61,9 +60,9 @@ export class RoomHistory {
 	/** Who the room writes for while a restore or its undo runs (the slot's editor). */
 	private writer: string | null = null;
 	/** The last restore's step (`room.history.undo`), read from the `restore` table at load. */
-	private restoreStep: RestoreStep | null = null;
+	#restoreStep: RestoreStep | null = null;
 	/** The history recording restores (`RESTORE_ORIGIN`), on the live facade. */
-	private restoreManager: YUndoManager | null = null;
+	#restoreManager: YUndoManager | null = null;
 	/** The version writes in flight (`historyWritten()`). */
 	private writing: Promise<unknown> = Promise.resolve();
 	private _config: HistoryConfig | null | undefined;
@@ -136,24 +135,24 @@ export class RoomHistory {
 	closeSlotIfPast() {
 		const room = this.room;
 		if ((room.scheduler.due('history') ?? Infinity) > room.clock()) return;
-		const captured = this.captureSlot();
+		const captured = this.#captureSlot();
 		if (captured === null) return;
-		const job = this.putSlot(captured);
+		const job = this.#putSlot(captured);
 		this.writing = Promise.all([this.writing, job]);
 		room.ctx.waitUntil?.(job);
 	}
 
 	/** Close the open slot: capture it now, write it (the alarm, a start past its end). */
 	async closeSlot(): Promise<void> {
-		const captured = this.captureSlot();
-		if (captured !== null) await this.putSlot(captured);
+		const captured = this.#captureSlot();
+		if (captured !== null) await this.#putSlot(captured);
 	}
 
 	/**
 	 * The open slot's version, read now (synchronous: nothing writes
 	 * between the read and the slot's close), and the slot closed.
 	 */
-	private captureSlot(): Version | null {
+	#captureSlot(): Version | null {
 		const room = this.room;
 		const { scheduler } = room;
 		const end = scheduler.due('history');
@@ -166,7 +165,7 @@ export class RoomHistory {
 		if (room.live === null) {
 			// No document to read (its rows unreadable, or refused): that slot is skipped.
 			scheduler.unschedule('history');
-			this.skipVersion({
+			this.#skipVersion({
 				key: historyKey(this.room.roomId, slotAt(end - 1, config.timeZone)),
 				error: 'room unavailable'
 			});
@@ -185,7 +184,7 @@ export class RoomHistory {
 			this.slotEditors.clear();
 			scheduler.unschedule('history');
 			if (key === null) {
-				this.skipVersion({ room: this.room.roomId, reason: 'key longer than 512 bytes' });
+				this.#skipVersion({ room: this.room.roomId, reason: 'key longer than 512 bytes' });
 				return null;
 			}
 			return { key, raw, blocks, editors, at: room.clock() };
@@ -193,13 +192,13 @@ export class RoomHistory {
 	}
 
 	/** Write a captured version (`room.history.value`); a failure is noted `history` and the slot skipped. */
-	private async putSlot(version: Version): Promise<void> {
+	async #putSlot(version: Version): Promise<void> {
 		const room = this.room;
 		const config = this.config!;
 		try {
 			const bytes = await packed(version.raw);
 			if (bytes.length > config.maxValueBytes) {
-				return this.skipVersion({
+				return this.#skipVersion({
 					key: version.key,
 					bytes: bytes.length,
 					limit: config.maxValueBytes
@@ -224,17 +223,17 @@ export class RoomHistory {
 				editors: version.editors.length
 			});
 		} catch (error) {
-			this.skipVersion({ key: version.key, error: String(error) });
+			this.#skipVersion({ key: version.key, error: String(error) });
 		}
 	}
 
-	private skipVersion(detail: Record<string, unknown>) {
+	#skipVersion(detail: Record<string, unknown>) {
 		this.room.counters.history.skipped++;
 		this.room.note({ reason: 'history', detail });
 	}
 
 	/** The history settings, or a throw: the room keeps no history. */
-	private requireHistory() {
+	#requireHistory() {
 		const config = this.config;
 		if (config === null) throw new Error('this room keeps no history (the `history` option)');
 		return config;
@@ -249,10 +248,10 @@ export class RoomHistory {
 
 	/** The room's versions, newest first (`AttachedDocument.listHistory`). */
 	async list(): Promise<HistoryEntry[]> {
-		const config = this.requireHistory();
+		const config = this.#requireHistory();
 		const now = this.room.clock();
 		const out: HistoryEntry[] = [];
-		for await (const { key, expiresAt, metadata } of this.storedVersions(config.store)) {
+		for await (const { key, expiresAt, metadata } of this.#storedVersions(config.store)) {
 			// Past its expiry it is gone, whether or not the store deleted it yet.
 			if (expiresAt !== null && expiresAt <= now) continue;
 			const entry = historyEntry(this.room.roomId, key, metadata, expiresAt);
@@ -262,7 +261,7 @@ export class RoomHistory {
 	}
 
 	/** Every version key the store holds under this room's prefix, page by page. */
-	private async *storedVersions(store: HistoryStore) {
+	async *#storedVersions(store: HistoryStore) {
 		const prefix = historyPrefix(this.room.roomId);
 		let cursor: string | undefined;
 		do {
@@ -287,7 +286,7 @@ export class RoomHistory {
 		let next = Infinity;
 		try {
 			const expired: string[] = [];
-			for await (const { key, expiresAt } of this.storedVersions(config.store)) {
+			for await (const { key, expiresAt } of this.#storedVersions(config.store)) {
 				if (expiresAt === null || parseHistoryKey(this.room.roomId, key) === null) continue;
 				if (expiresAt <= now) expired.push(key);
 				else next = Math.min(next, expiresAt);
@@ -304,22 +303,14 @@ export class RoomHistory {
 	/** Version `key` as JSON (`AttachedDocument.readHistory`). */
 	async read(key: string): Promise<JSONDoc | null> {
 		const room = this.room;
-		const config = this.requireHistory();
+		const config = this.#requireHistory();
 		if (parseHistoryKey(this.room.roomId, key) === null) return null;
 		const found = await config.store.get(key);
 		if (found === null || (found.expiresAt !== null && found.expiresAt <= room.clock()))
 			return null;
 		const bytes = await gunzip(found.value);
 		return noTimers(() => {
-			let doc: YDoc;
-			try {
-				doc = admit([{ v2: bytes }], `room ${room.ctx.id} version ${key}`, () => null);
-			} catch (error) {
-				// A version written by generation 4 reads through its JSON (`room.generation.convert`).
-				const problem = (error as { problem?: { kind?: string; version?: number } }).problem;
-				if (problem?.kind !== 'unsupported' || problem.version !== E.PREVIOUS_SCHEMA) throw error;
-				return crdt.generations.previousJSON([{ v2: bytes }], (d) => room.facadeOf(d));
-			}
+			const doc = admit(bytes, `room ${room.ctx.id} version ${key}`, () => null);
 			const facade = room.facadeOf(doc);
 			try {
 				return facade.toJSON();
@@ -334,7 +325,7 @@ export class RoomHistory {
 
 	/** The last restore's deleted content, kept for its undo (`prepareRoomDoc`). */
 	get restoreKeep(): Decoded['ds'] | null {
-		return this.restoreStep?.deletes ?? null;
+		return this.#restoreStep?.deletes ?? null;
 	}
 
 	/** Restore version `key` as a forward edit (`AttachedDocument.restoreHistory`). */
@@ -350,9 +341,9 @@ export class RoomHistory {
 			room.storage.heal();
 			const doc = room.requireDoc();
 			this.closeSlotIfPast();
-			const history = this.restoreHistoryOf();
+			const history = this.#restoreHistoryOf();
 			// One level: the previous restore's step goes.
-			this.dropRestore();
+			this.#dropRestore();
 			this.writer = options.user ?? null;
 			let report!: ReturnType<typeof crdt.doc.restoreTo>;
 			room.transacting = true;
@@ -386,7 +377,7 @@ export class RoomHistory {
 				deletesUpdate(kept.inserts),
 				deletesUpdate(kept.deletes)
 			);
-			this.restoreStep = kept;
+			this.#restoreStep = kept;
 			room.log({ edytor: 'restore', key, user: kept.user, undo: false });
 			room.storage.compactIfDue();
 			return { status: 'applied', key, ...report };
@@ -403,9 +394,9 @@ export class RoomHistory {
 			}
 			room.storage.heal();
 			room.requireDoc();
-			const step = this.restoreStep;
+			const step = this.#restoreStep;
 			if (step === null) return { status: 'noop' };
-			const history = this.restoreHistoryOf();
+			const history = this.#restoreHistoryOf();
 			// A woken room rebuilds the step from its table.
 			if (history.undoStack.length === 0) {
 				stepsOf<Pick<RestoreStep, 'inserts' | 'deletes'> & { meta: Map<unknown, unknown> }>(
@@ -431,7 +422,7 @@ export class RoomHistory {
 				room.storage.heal();
 				throw error;
 			}
-			this.dropRestore();
+			this.#dropRestore();
 			room.log({ edytor: 'restore', key: step.key, user: options.user ?? null, undo: true });
 			room.storage.compactIfDue();
 			return { status: undone ? 'applied' : 'noop' };
@@ -439,8 +430,8 @@ export class RoomHistory {
 	}
 
 	/** The history recording restores, on the live facade (`RESTORE_ORIGIN` only, one step each). */
-	private restoreHistoryOf(): YUndoManager {
-		return (this.restoreManager ??= this.room.facade.createUndoManager({
+	#restoreHistoryOf(): YUndoManager {
+		return (this.#restoreManager ??= this.room.facade.createUndoManager({
 			captureTimeout: 0,
 			trackedOrigins: new Set([RESTORE_ORIGIN])
 		}));
@@ -457,7 +448,7 @@ export class RoomHistory {
 				deletes: ArrayBuffer;
 			}>(`SELECT key, user, at, inserts, deletes FROM ${this.room.tables.restore} WHERE id = 0`)
 			.toArray()[0];
-		this.restoreStep =
+		this.#restoreStep =
 			row === undefined
 				? null
 				: {
@@ -469,39 +460,34 @@ export class RoomHistory {
 					};
 	}
 
-	/** Forget the last restore's step (its table was emptied: a conversion). */
-	clearRestore() {
-		this.restoreStep = null;
-	}
-
 	/** Forget the restore's step and the open slot's editors (a reset dropped their tables). */
 	forget() {
-		this.restoreStep = null;
+		this.#restoreStep = null;
 		this.slotEditors.clear();
 	}
 
 	/** The live document was replaced: the restore history recorded the old one. */
 	detach() {
-		this.restoreManager = null;
+		this.#restoreManager = null;
 	}
 
 	/** A restore past the purge horizon `at` can no longer be undone. */
 	expireRestore(at: number) {
-		if (this.restoreStep !== null && this.restoreStep.at <= at) this.dropRestore();
+		if (this.#restoreStep !== null && this.#restoreStep.at <= at) this.#dropRestore();
 	}
 
 	/**
 	 * Forget the last restore's step: its table row goes, then what it kept
 	 * is released and collected (the next compaction stores it collected).
 	 */
-	private dropRestore() {
+	#dropRestore() {
 		const room = this.room;
-		const step = this.restoreStep;
+		const step = this.#restoreStep;
 		if (step === null) return;
-		this.restoreStep = null;
+		this.#restoreStep = null;
 		room.sql.exec(`DELETE FROM ${room.tables.restore}`);
-		const history = this.restoreManager;
-		if (history !== null) room.facade.releaseHistory(history);
+		const history = this.#restoreManager;
+		if (history !== null) history.clear();
 		const doc = room.live;
 		if (doc === null) return;
 		const gc = collects(doc);

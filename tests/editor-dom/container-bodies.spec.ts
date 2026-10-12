@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './editorTest';
-import { modKey, trackPageIssues, waitForEditorReady } from './helpers';
+import { modKey, trackPageIssues, waitForEditorReady, notionTheme } from './helpers';
 
 /**
  * A container's body in real browsers (`body.*` and `callout.icon` in
@@ -30,7 +30,13 @@ const outline = (page: Page) =>
 
 const caret = (page: Page) =>
 	page.evaluate(() => {
-		const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+		const state = ((s) =>
+			s && {
+				...s.textRange(),
+				startBlock: s.textRange().startText?.parent,
+				isCollapsed: s.projection.isCollapsed,
+				isReversed: s.projection.isReversed
+			})((window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection);
 		return [state.startBlock?.parent?.id ?? null, state.startBlock?.index, state.yStart];
 	});
 
@@ -109,6 +115,7 @@ test.describe('container bodies', () => {
 	test("Enter at the end of a callout's title goes into its content", async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page, callout);
+		await notionTheme(page);
 		const title = page.locator('[data-edytor-id="c"] [data-edytor-callout-title]');
 		await expect(title).toHaveCSS('font-weight', '600');
 		await endOf(page, 'c');
@@ -187,8 +194,8 @@ test.describe('container bodies', () => {
 		await page.keyboard.press('ArrowRight');
 		await page.keyboard.press('ArrowRight');
 		await expect(picker.getByRole('menuitemradio', { name: '❗' })).toHaveAttribute(
-			'data-active',
-			''
+			'data-selected',
+			'true'
 		);
 		await page.keyboard.press('Enter');
 		await expect(picker).toHaveCount(0);
@@ -196,8 +203,8 @@ test.describe('container bodies', () => {
 		await icon.click();
 		await page.keyboard.press('End');
 		await expect(picker.getByRole('menuitem', { name: 'Remove icon' })).toHaveAttribute(
-			'data-active',
-			''
+			'data-selected',
+			'true'
 		);
 		await page.keyboard.press('Enter');
 		await expect.poll(() => iconOf(page, 'c')).toBe('');

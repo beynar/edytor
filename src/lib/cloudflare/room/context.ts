@@ -165,9 +165,9 @@ export class RoomContext {
 	access!: RoomAccess;
 	comments!: RoomComments;
 
-	private _facade: EdytorDoc | null = null;
-	private _lookups: ReturnType<typeof lookups> | null = null;
-	private _digest: Record<string, string> | null = null;
+	#_facade: EdytorDoc | null = null;
+	#_lookups: ReturnType<typeof lookups> | null = null;
+	#_digest: Record<string, string> | null = null;
 
 	constructor(
 		ctx: DurableObjectState,
@@ -207,12 +207,12 @@ export class RoomContext {
 
 	/** The room's block roles, read at first use (a subclass's fields exist by then). */
 	get lookups(): ReturnType<typeof lookups> {
-		return (this._lookups ??= lookups(this.options.semantics ?? defaultSemantics));
+		return (this.#_lookups ??= lookups(this.options.semantics ?? defaultSemantics));
 	}
 
 	/** The digest of the room's block roles a client's advertised one is compared with. */
 	get digest(): Record<string, string> {
-		return (this._digest ??= semanticsDigest(this.options.semantics ?? defaultSemantics));
+		return (this.#_digest ??= semanticsDigest(this.options.semantics ?? defaultSemantics));
 	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
@@ -226,13 +226,13 @@ export class RoomContext {
 	 */
 	get facade(): EdytorDoc {
 		noTimers(() => this.storage.heal());
-		return (this._facade ??= this.facadeOf(this.requireDoc()));
+		return (this.#_facade ??= this.facadeOf(this.requireDoc()));
 	}
 
 	/** Dispose of the facade over the live document (a new one is made at the next read). */
 	disposeFacade() {
-		this._facade?.dispose();
-		this._facade = null;
+		this.#_facade?.dispose();
+		this.#_facade = null;
 	}
 
 	/** The document as JSON. */

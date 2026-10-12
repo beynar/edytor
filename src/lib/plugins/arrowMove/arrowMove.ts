@@ -1,4 +1,5 @@
 import type { Plugin } from '$lib/plugins.js';
+import { branded } from '../brand.js';
 import type { HotKey } from '$lib/session/keymap.js';
 import type { BlockMoveDirection } from '$lib/session/moves.js';
 import {
@@ -19,24 +20,28 @@ const move =
 	(direction: BlockMoveDirection, caret = false): HotKey =>
 	({ edytor, prevent }) => {
 		const selected = [...edytor.selection.selectedBlocks];
-		const { startBlock: at, isCollapsed } = edytor.selection.state;
+		const { startText } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
+		const at = startText?.parent;
 		// A code line moves as its code block (`movable`).
 		const spanned = () =>
 			outermost(movable(isCollapsed ? (at ? [at] : []) : getSelectionBlocks(edytor)));
 		// A selected block's selected descendants travel with it (`outermost`), as the menu's Move does.
 		const blocks = selected.length ? outermost(movable(selected)) : caret ? spanned() : [];
-		if (!blocks.length || !edytor.canMoveBlocks({ blocks, direction })) return;
+		if (!blocks.length || !edytor.canMove({ blocks, direction })) return;
 		prevent(() => {
-			const moved = edytor.moveBlocks({ blocks, direction });
+			const moved = edytor.move({ blocks, direction });
 			if (moved.length && selected.length) selectMoved(edytor, moved, selected);
 		});
 	};
 
-export const arrowMovePlugin: Plugin = () => ({
-	hotkeys: {
-		'mod+arrowdown': move('down'),
-		'mod+arrowup': move('up'),
-		'mod+shift+arrowdown': move('down', true),
-		'mod+shift+arrowup': move('up', true)
-	}
-});
+/** Block moves from the keyboard (Mod+Up/Down, Mod+Shift+Up/Down): a default plugin. */
+export const createArrowMovePlugin = (): Plugin =>
+	branded('arrowMove', () => ({
+		hotkeys: {
+			'mod+arrowdown': move('down'),
+			'mod+arrowup': move('up'),
+			'mod+shift+arrowdown': move('down', true),
+			'mod+shift+arrowup': move('up', true)
+		}
+	}));

@@ -154,7 +154,7 @@ describe('shared model ctx — facet invalidation', () => {
 		const seen = reports(view);
 		set.A.transact(() => {
 			const node = doc.get('blocks').getAttr('a');
-			node.setAttr('data', { level: 2 });
+			node.setAttr('d/level', 2);
 		});
 		expect(seen).toHaveLength(1);
 		expect(seen[0].content.size).toBe(0);
@@ -305,8 +305,8 @@ describe('facade — change report & shared state', () => {
 		const changes = [];
 		ed.onChange((c) => changes.push(c));
 		ed.insertText('a', 0, '!');
-		ed.setMark('a', 0, 2, 'bold', true);
-		ed.setBlockData('b', { k: 1 });
+		ed.formatRange('a', 0, 2, { bold: true });
+		ed.patchData('b', [{ path: [], value: { k: 1 } }]);
 		expect(changes.length).toBe(3);
 		// insertText + setMark: content diffs only.
 		for (const c of changes.slice(0, 2)) {
@@ -325,7 +325,7 @@ describe('facade — change report & shared state', () => {
 		const ed = seedEd();
 		const changes = [];
 		ed.onChange((c) => changes.push(c));
-		ed.moveBlock('a', { parent: 'c', index: 0 });
+		ed.moveBlocks(['a'], { parent: 'c', index: 0 });
 		ed.deleteBlock('b');
 		expect(changes.length).toBe(2);
 		expect(changes[0].moved.has('a')).toBe(true);

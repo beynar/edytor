@@ -2,7 +2,7 @@
 /**
  * SW10-crdt-1 (found by the DST list shape, AW-09): a word or line delete
  * chord (Option/Ctrl+Backspace, Cmd+Backspace) at the start of a block
- * deletes the neighbour like a character (`deleteCollapsedUnit`). WebKit
+ * deletes the neighbour like a character (a unit delete, `runBeforeInputDeleteCommand`). WebKit
  * announces no `beforeinput` for it at the document's first text, so
  * Option+Backspace at the start of an empty first list item did nothing in
  * Safari while Backspace lifted it out. The keydown fallback now covers
@@ -12,8 +12,8 @@
 import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>
@@ -52,7 +52,7 @@ describe('SW10-crdt-1: a word or line chord at a block edge with no beforeinput'
 				{ type: 'unordered-list', children: [{ type: 'list-item' }] }
 			]);
 			const item = edytor.root!.children[0]!.children[0]!;
-			edytor.selection.setAtTextOffset(item.firstText!, 0);
+			edytor.selection.selectText(item.firstText!, 0);
 			await flushDomUpdates();
 			keydown(item.firstText!.node ?? editor, { key: 'Backspace', ...mods });
 			await flushDomUpdates();
@@ -71,7 +71,7 @@ describe('SW10-crdt-1: a word or line chord at a block edge with no beforeinput'
 			}
 		]);
 		const p = edytor.root!.children[0]!;
-		edytor.selection.setAtTextOffset(p.firstText!, 1);
+		edytor.selection.selectText(p.firstText!, 1);
 		await flushDomUpdates();
 		keydown(p.firstText!.node ?? editor, { key: 'Delete', altKey: true });
 		await flushDomUpdates();
@@ -84,7 +84,7 @@ describe('SW10-crdt-1: a word or line chord at a block edge with no beforeinput'
 	it('mid-text the chord stays the browser’s: no fallback runs without a beforeinput', async () => {
 		const { edytor, editor } = await render([{ type: 'paragraph', content: [{ text: 'hello' }] }]);
 		const p = edytor.root!.children[0]!;
-		edytor.selection.setAtTextOffset(p.firstText!, 3);
+		edytor.selection.selectText(p.firstText!, 3);
 		await flushDomUpdates();
 		keydown(p.firstText!.node ?? editor, { key: 'Backspace', altKey: true });
 		await flushDomUpdates();

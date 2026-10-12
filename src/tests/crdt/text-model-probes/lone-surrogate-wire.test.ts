@@ -35,6 +35,7 @@ import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertConverged } from '../harness/assert/convergence.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import * as delta from 'lib0-v14/delta';
+import { applyDelta } from '../harness/delta.js';
 
 const E = bindEdytorDoc(Y);
 const M = bindModel(Y);
@@ -84,7 +85,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		const a = new Y.Doc();
 		a.clientID = 1;
 		const ta = a.get('t');
-		a.transact(() => ta.applyDelta(delta.create().insert(`x${HI}y`)));
+		a.transact(() => applyDelta(ta, delta.create().insert(`x${HI}y`)));
 		const update = Y.encodeStateAsUpdate(a);
 		const b = new Y.Doc();
 		b.clientID = 2;
@@ -165,7 +166,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		const { A, B } = set;
 		A.transact(() => {
 			ed(A).setBlockType('p', `he${HI}ding`);
-			ed(A).setBlockData('p', { note: `da${LO}ta` });
+			ed(A).patchData('p', [{ path: [], value: { note: `da${LO}ta` } }]);
 			ops.setMark(A, 'p', 0, 2, `bo${HI}d`, true);
 		});
 		set.deliver('A', 'B');
@@ -210,7 +211,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		a.clientID = 1;
 		const ta = a.get('t');
 		// U+FFFD instead of a lone surrogate — wire-stable.
-		a.transact(() => ta.applyDelta(delta.create().insert('x�y')));
+		a.transact(() => applyDelta(ta, delta.create().insert('x�y')));
 		const update = Y.encodeStateAsUpdate(a);
 		const b = new Y.Doc();
 		b.clientID = 2;

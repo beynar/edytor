@@ -1,16 +1,20 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { pageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
-	import { pageHtml, pageIdOf, pageLabels, pageTitleOf, type PagePluginOptions } from './page.js';
+	import {
+		pageHtml,
+		pageIdOf,
+		pageTitleOf,
+		pageOptions as optionsOf,
+		type PageBlockLinkPayload,
+		type PagePluginOptions
+	} from './page.js';
 
-	export type { PagePluginOptions };
-
-	const optionsOf = new WeakMap<Edytor, PagePluginOptions>();
+	export type { PageBlockLinkPayload, PagePluginOptions };
 
 	/**
 	 * Notion's subpage block: a `page` block links to another document by
@@ -37,9 +41,8 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!optionsOf.has(edytor)) optionsOf.set(edytor, options);
-			pageLabels.claim(edytor, labelsWith('page', options.labels));
 			const own = optionsOf.get(edytor)!;
-			const labels = pageLabels.of(edytor);
+			const labels = labelsOf(edytor, 'page', pageEnglish);
 			const { create } = own;
 			return {
 				hotkeys: {
@@ -77,16 +80,18 @@
 								id: 'page.new',
 								label: labels.page,
 								icon: '📄',
-								keywords: keywordsOf(
-									'page.new',
-									['subpage', 'new page', 'document', 'link'],
-									own.keywords
-								),
+								keywords: keywordsOf(edytor, 'page.new', [
+									'subpage',
+									'new page',
+									'document',
+									'link'
+								]),
 								group: 'Basic blocks',
 								// Asked of the view given (a `+`'s menu asks it of the block it adds).
-								isEnabled: (view = edytor) => Boolean(view.selection.state.startBlock?.convertible),
+								isEnabled: (view = edytor) =>
+									Boolean(view.selection.textRange().startText?.parent.convertible),
 								run: () => {
-									const block = edytor.selection.state.startBlock;
+									const block = edytor.selection.textRange().startText?.parent;
 									if (!block?.convertible || !edytor.dispatcher.permits()) return false;
 									const made = create();
 									const { pageId: raw, title: named } =
@@ -114,9 +119,6 @@
 					: []
 			};
 		};
-
-	/** The page block without a way to open, name or create pages: a block showing its stored title. */
-	export const pagePlugin = createPagePlugin();
 </script>
 
 {#snippet page({ block }: BlockSnippetPayload<Record<string, unknown>>)}

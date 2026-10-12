@@ -52,11 +52,9 @@
  *   left out of the ack), the rest applied. Compaction reclaims the
  *   waiting deletes of client ids no user registered and no socket holds;
  *   `dropWaitingDeletes()` every one.
- * - storage format: the generation record says `storage: 'v2'` —
- *   snapshots in the v2 encoding, compressed in place after they are
- *   stored (`compressLater`), inflated at start (`inflate`); update and
- *   pending records stay v1. A container without `storage` (0.1.0-next.22)
- *   is all v1, and its next compaction rewrites it.
+ * - storage format: every record holds an update in the engine's one
+ *   encoding; a snapshot is compressed in place after it is stored
+ *   (`#compressLater`) and inflated at start (`inflate`).
  * - a Step2 serves the STORED state: the engine's pending structs (waiting
  *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the
@@ -450,7 +448,6 @@ export type RoomLogEntry =
 	// A client's advertised roles differ from the room's on these kinds (development builds).
 	| { edytor: 'semantics'; user: string; kinds: string[] }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
-	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number }
 	| { edytor: 'move'; moveId: string; role: 'out' | 'in'; peer: string; blocks: number }
 	| {
 			edytor: 'late';
@@ -464,12 +461,11 @@ export type RoomLogEntry =
 /** `pending`: deletes of items the room does not hold yet (they wait for them). */
 type RowKind = 'generation' | 'update' | 'snapshot' | 'pending';
 
-/** A stored record, reassembled: its kind, record number, bytes, and whether they are v2 (a v2 container's snapshot). */
+/** A stored record, reassembled: its kind, record number and bytes. */
 export type StoredRecord = {
 	kind: RowKind;
 	record: number;
 	bytes: Uint8Array<ArrayBuffer>;
-	v2: boolean;
 };
 
 // ── Validation ────────────────────────────────────────────────
@@ -688,10 +684,7 @@ export class AttachedDocument {
 	/** Every refusal since this instance started, by reason. */
 	refusalCounts: Partial<Record<Refusal['reason'], number>> = {};
 	/** How this instance came to be: a fresh container, or a restore of N stored records. */
-	origin:
-		| { kind: 'fresh' }
-		| { kind: 'restored'; records: number }
-		| { kind: 'converted'; from: number; records: number } = { kind: 'fresh' };
+	origin: { kind: 'fresh' } | { kind: 'restored'; records: number } = { kind: 'fresh' };
 	/** The room's parts and what they share (`room/context.ts`). */
 	private readonly room: RoomContext;
 

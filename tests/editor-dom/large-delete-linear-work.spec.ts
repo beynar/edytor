@@ -126,7 +126,10 @@ test.describe('R3 — 1,000 paragraphs end to end (F-O5)', () => {
 		await setSelectionByTextIndex(page, 0, 1);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(...edytor.root.children.slice(1));
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [...edytor.root.children.slice(1)].map((block) => block.id)
+			});
 		});
 		await meter(page);
 		const ms = await timeKey(page, 'Backspace');

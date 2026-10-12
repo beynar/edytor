@@ -52,8 +52,8 @@
  * — until the next non-composition occurrence, or `TAIL_MS` compared at use.
  *
  * The facts a display gate reads: `host` (the text whose element a live
- * session owns), `owns(node)`, and `ended(fn)` (the session end, after its
- * writes: where the catch-up display runs).
+ * session owns; the pin answers which nodes it holds) and `ended(fn)` (the
+ * session end, after its writes: where the catch-up display runs).
  */
 import type { DocChange } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -72,10 +72,11 @@ import { insertionMarks } from './editing/text.js';
 
 export type Phase = 'live' | 'tail' | 'gone';
 type Marks = Record<string, unknown>;
+type Place = { id: string; type?: string; kids: readonly string[] }[];
 
 /** How long the tail owns late signals of an engine that sends no next occurrence (compared at use). */
 const TAIL_MS = 500;
-const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
+const now = () => performance.now();
 
 const isAppleWebKit = () =>
 	typeof navigator !== 'undefined' &&
@@ -128,9 +129,8 @@ export class Composition {
 	#tail: Text | null = null;
 	#caret: { text: Text; offset: number } | null = null;
 	#waiting: (() => void)[] = [];
-	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: the re-placement check compares them. */
-	#where = '';
-	#order: { id: string; kids: readonly string[] }[] = [];
+	/** Where the host's block sits (`#place`): the re-placement check compares it. */
+	#where: Place = [];
 	/** After a re-placing commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
 	#resume: SelectionValue | 'lost' | null = null;
 	/** Phantom structural keys the tail swallowed (a test oracle). */
@@ -141,9 +141,6 @@ export class Composition {
 	get live() {
 		return this.phase === 'live';
 	}
-
-	/** `node` lies inside the element a live session owns (the pinned element). */
-	owns = (node: Node | null | undefined) => this.host !== null && this.edytor.pin.owns(node);
 
 	/** Run `fn` once the live session has ended (after its writes), or now when none is live. */
 	ended = (fn: () => void) => {
@@ -169,7 +166,7 @@ export class Composition {
 		const resume = this.#resume;
 		this.#resume = null;
 		if (resume && resume !== 'lost') selection.select(resume);
-		const { startText, endText, yStart, yEnd } = selection.state;
+		const { startText, endText, yStart, yEnd } = selection.textRange();
 		this.phase = 'live';
 		this.#tail = this.#caret = this.#region = null;
 		this.#own.clear();
@@ -188,8 +185,11 @@ export class Composition {
 					? 'block'
 					: 'blocks'
 				: false;
+		// With no target, the caret the browser parked for the IME.
+		const parked = targetless && dom?.anchorNode;
+		const point = parked ? this.edytor.ports.surface.pointAt(parked, dom.anchorOffset) : null;
 		const at = targetless
-			? this.#parkedAt(dom)
+			? point && { text: point.text, from: point.offset, to: point.offset }
 			: shown === 'blocks' || shown === 'atom'
 				? this.#rangeless()
 				: startText && {
@@ -200,7 +200,6 @@ export class Composition {
 		if (at) this.#pin(at.text, at.from, at.to);
 		this.host = at?.text ?? null;
 		this.#where = this.#place();
-		this.#order = this.#siblings();
 	};
 
 	/** A composition update: the model holds `value` (mechanical, in the capture group). */
@@ -255,7 +254,7 @@ export class Composition {
 	 */
 	restructured = (change: DocChange) => {
 		if (!this.live || !(change.removed.size || change.moved.size || change.meta.size)) return;
-		if (this.#place() === this.#where && !this.#reordered()) return;
+		if (!this.#replaced()) return;
 		const shown = this.edytor.pin.imeBuffer() ?? this.preview;
 		const at = this.#kept();
 		const lost = !at && this.preview ? 'lost' : null;
@@ -308,13 +307,11 @@ export class Composition {
 		}
 		const tail = this.tail();
 		this.occurred();
-		const { state, selectedBlocks, selectedInlineBlock } = this.edytor.selection;
+		// A caret: a block or atom selection is no collapsed projection.
 		const phantom =
 			tail &&
 			(event.key === 'Enter' || (event.key === 'Backspace' && isAppleWebKit())) &&
-			state.isCollapsed &&
-			!selectedBlocks.size &&
-			!selectedInlineBlock.size;
+			this.edytor.selection.projection.isCollapsed;
 		if (!phantom) return false;
 		this.swallows++;
 		event.preventDefault();
@@ -369,10 +366,11 @@ export class Composition {
 	 */
 	#rangeless() {
 		const { edytor } = this;
-		const { selectedBlocks, state } = edytor.selection;
+		const { selectedBlocks, projection } = edytor.selection;
 		const exit = selectedBlocks.size
 			? selectedBlocksExit(edytor)
-			: state.startText && { text: state.startText, offset: state.yStart };
+			: edytor.selection.textAt(projection.start);
+
 		const at = this.#open() ? this.#at() : exit;
 		if (!at) return null;
 		flushSync();
@@ -381,45 +379,43 @@ export class Composition {
 		return { text: at.text, from: at.offset, to: at.offset };
 	}
 
-	/** The text and offset of the caret the browser parked for a session with no target. */
-	#parkedAt(dom: DomSelectionSnapshot | null) {
-		const node = dom?.anchorNode;
-		const at = node ? this.edytor.ports.surface.pointAt(node, dom.anchorOffset) : null;
-		return at && { text: at.text, from: at.offset, to: at.offset };
-	}
-
-	/** The host's block and its ancestors (none once it is not visible). */
-	#chain() {
+	/**
+	 * Where the host's block sits: it and its ancestors (none once it is not
+	 * visible), each with its type and its parent's child ids.
+	 */
+	#place(): Place {
 		const { facade } = this.edytor;
 		const id = this.host?.parent.id;
-		return id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+		const chain = id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+		return chain.map((id) => ({
+			id,
+			type: facade.blockTypeOf(id),
+			kids: facade.childrenIds(facade.parentOf(id))
+		}));
 	}
 
-	/** The chain with its types. */
-	#place() {
-		const { facade } = this.edytor;
-		return this.#chain()
-			.map((id) => `${id}:${facade.blockTypeOf(id)}`)
-			.join('/');
-	}
-
-	/** Each chain member with its parent's child ids. */
-	#siblings() {
-		const { facade } = this.edytor;
-		return this.#chain().map((id) => ({ id, kids: facade.childrenIds(facade.parentOf(id)) }));
-	}
-
-	/** A chain member moved among the siblings it had and still has (a same-parent move). */
-	#reordered() {
-		const [before, after] = [this.#order, (this.#order = this.#siblings())];
+	/**
+	 * The host's block was re-placed since the last look: a chain member is
+	 * another block or kind, or moved among the siblings it had and still
+	 * has (a same-parent move).
+	 */
+	#replaced() {
+		const [before, after] = [this.#where, (this.#where = this.#place())];
 		const rank = (id: string, kids: readonly string[], other: readonly string[]) => {
 			const kept = new Set(other);
 			return kids.filter((kid) => kept.has(kid)).indexOf(id);
 		};
-		return before.some(({ id, kids }, i) => {
-			const now = after[i]?.kids ?? [];
-			return rank(id, kids, now) !== rank(id, now, kids);
-		});
+		return (
+			before.length !== after.length ||
+			before.some(({ id, type, kids }, i) => {
+				const now = after[i]!;
+				return (
+					now.id !== id ||
+					now.type !== type ||
+					rank(id, kids, now.kids) !== rank(id, now.kids, kids)
+				);
+			})
+		);
 	}
 
 	/** The preview's position while it is live and whole in one visible block (not deleted with it). */
@@ -458,17 +454,14 @@ export class Composition {
 		const start = this.#region && facade.resolveAnchor(this.#region.start);
 		const end = this.#region && facade.resolveAnchor(this.#region.end);
 		if (!start || !end || !this.#own.size) return [];
-		const spans =
-			start.blockId === end.blockId
-				? [{ blockId: start.blockId, from: start.offset, to: end.offset }]
-				: [
-						{ blockId: start.blockId, from: start.offset, to: facade.displayLength(start.blockId) },
-						{ blockId: end.blockId, from: 0, to: end.offset }
-					];
 		const units: { blockId: string; offset: number }[] = [];
-		for (const { blockId, from, to } of spans)
-			for (let offset = from; offset < to; offset++)
+		for (const { blockId, offset: from } of start.blockId === end.blockId
+			? [start]
+			: [start, end]) {
+			const to = blockId === end.blockId ? end.offset : facade.displayLength(blockId);
+			for (let offset = blockId === start.blockId ? from : 0; offset < to; offset++)
 				if (this.#own.has(this.#unit(blockId, offset))) units.push({ blockId, offset });
+		}
 		return units;
 	}
 
@@ -529,14 +522,11 @@ export class Composition {
 	#tracked<T>(write: () => T): T {
 		const um = this.edytor.undoManager;
 		if (!um || this.#item) return write();
-		const record = ({ stackItem }: { stackItem: unknown }) => (this.#item ??= stackItem);
-		um.on('stack-item-added', record);
-		um.on('stack-item-updated', record);
+		const off = um.observe(({ stackItem }) => (this.#item ??= stackItem));
 		try {
 			return write();
 		} finally {
-			um.off('stack-item-added', record);
-			um.off('stack-item-updated', record);
+			off();
 		}
 	}
 
@@ -549,7 +539,7 @@ export class Composition {
 		const { edytor } = this;
 		const { dispatcher, selection } = edytor;
 		// A command that moved the caret out of the region keeps it there.
-		const { startText: moved, yStart: movedAt } = selection.state;
+		const { startText: moved, yStart: movedAt } = selection.textRange();
 		const keep = this.#interrupted && moved && !this.covers(moved, movedAt);
 		this.#tail = this.host;
 		this.#ended = now();
@@ -560,13 +550,21 @@ export class Composition {
 			this.#hold();
 			if (at && value) {
 				const text = at.text;
-				const payload = { value, start: at.offset, end: at.offset, marks: this.marks };
+				const args = [text.parent.id, text.segStart + at.offset, value, this.marks] as const;
+				const prepare = (a: typeof args) => edytor.facade.prepare.insertText(...a);
+				// The preview goes first, in the command: the insertion is prepared over what it leaves.
 				dispatcher.run('insertFromComposition', () =>
-					dispatcher.dispatch('insertText', payload, { block: text.parent, text }, (p) => {
-						this.#erase();
-						text.insertAt(p.start, p.value, p.marks ?? this.marks);
-						if (selection.pending) selection.stage(undefined);
-					})
+					dispatcher.dispatch(
+						'insertText',
+						args,
+						{ block: text.parent, text },
+						(a) => {
+							this.#erase();
+							dispatcher.write(prepare(a));
+							if (selection.pending) selection.stage(undefined);
+						},
+						prepare
+					)
 				);
 			}
 			// A refused commit, or a cancel: the preview goes.
@@ -575,7 +573,7 @@ export class Composition {
 			const typed = dispatcher.last?.status === 'applied' ? value.length : 0;
 			if (text) this.#caret = { text, offset: Math.min(at.offset + typed, text.length) };
 		}
-		const { startText, yStart } = selection.state;
+		const { startText, yStart } = selection.textRange();
 		const caret = keep && startText ? { text: startText, offset: yStart } : this.#caret;
 		this.#release();
 		if (caret) void edytor.stabilizeCompositionSelection(caret.text, caret.offset);
@@ -588,8 +586,7 @@ export class Composition {
 		this.host = null;
 		// No host, no re-placement baseline: a stale one would end the next session
 		// when its start target's replacement commits (`#rangeless`).
-		this.#where = '';
-		this.#order = [];
+		this.#where = [];
 		this.#region = this.#merged = null;
 		this.#own.clear();
 		this.edytor.pin.release();

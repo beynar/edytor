@@ -20,6 +20,7 @@ import { acrossColumns, liftLayouts } from '$lib/selection/replaceSelection.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { flushDomUpdates } from '../../dom/test.utils.js';
 import { block, contractDoc, renderColumns } from './columns.helpers.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	delete (document as { caretPositionFromPoint?: unknown }).caretPositionFromPoint;
@@ -107,7 +108,7 @@ describe('a pointer drag-selection crossing into another column', () => {
 		// Back into column 1, the same drag: a text range from the press.
 		await extend(from, edytor, 'A2', 2);
 		expect(edytor.selection.value.kind).toBe('text');
-		expect(edytor.selection.state).toMatchObject({
+		expect(selectionState(edytor)).toMatchObject({
 			startBlock: block(edytor, 'A'),
 			yStart: 1,
 			endBlock: block(edytor, 'A2'),
@@ -173,7 +174,7 @@ describe('a pointer drag-selection crossing into another column', () => {
 		await flushDomUpdates();
 		expect(edytor.selection.dragging).toBe(false);
 		expect(edytor.selection.value.kind).toBe('text');
-		expect(edytor.selection.state).toMatchObject({
+		expect(selectionState(edytor)).toMatchObject({
 			startBlock: block(edytor, 'A'),
 			endBlock: block(edytor, 'B')
 		});

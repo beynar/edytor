@@ -5,6 +5,16 @@ import type { Text } from '$lib/text/text.svelte.js';
 
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { deleteBlockRangeAtSelection } from '../../helpers/model.js';
+import { selectionState } from '../../../selection.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import { deleteSelectedRange } from '$lib/selection/replaceSelection.js';
+
+/** The selected range deleted as Backspace does (`del.range.*`); answers the caret it leaves. */
+const deleteRange = (edytor: Edytor) => {
+	deleteSelectedRange(edytor);
+	const { startText, yStart } = edytor.selection.textRange();
+	return [startText, yStart] as const;
+};
 
 export const fixtures = defineFixtures([
 	defineModelTransformFixture({
@@ -16,7 +26,7 @@ export const fixtures = defineFixtures([
 		),
 		run: () => null,
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.isCollapsed).toBe(false);
+			expect(selectionState(edytor).isCollapsed).toBe(false);
 			expect(edytor.selection.projection.isTextSpanning).toBe(false);
 			expect(edytor.selection.projection.isBlockSpanning).toBe(false);
 			expect(edytor.selection.projection.content.length).toBe(5);
@@ -130,7 +140,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello |world|!</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		result: { kind: 'cursor', path: [0, 0], offset: 6 },
 		output: (
 			<root>
@@ -147,7 +157,7 @@ export const fixtures = defineFixtures([
 				<paragraph>La|st</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		output: (
 			<root>
 				<paragraph>Fist</paragraph>
@@ -163,7 +173,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Second|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		output: (
 			<root>
 				<paragraph></paragraph>
@@ -182,7 +192,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		output: (
 			<root>
 				<paragraph>Ficond</paragraph>
@@ -205,7 +215,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		output: (
 			<root>
 				<paragraph>Ficond</paragraph>
@@ -230,7 +240,7 @@ export const fixtures = defineFixtures([
 				<paragraph>After</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		run: ({ edytor }) => deleteRange(edytor),
 		result: { kind: 'cursor', path: [0, 0], offset: 0 },
 		output: (
 			<root>

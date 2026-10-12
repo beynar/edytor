@@ -9,7 +9,6 @@
  * parked is never adopted.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { takeKeys } from '$lib/events/onFocus.js';
 import {
 	dispatchComposition,
@@ -19,6 +18,8 @@ import {
 	setNativeSelection,
 	textNodeOf
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -288,6 +289,6 @@ describe('an input with no target', () => {
 		editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		await setNativeSelection(edytor, text, 3);
 		expect((await dispatchDomKeyDown(editor, { key: 'End' })).defaultPrevented).toBe(true);
-		expect(edytor.selection.state.yStart).toBe(6);
+		expect(selectionState(edytor).yStart).toBe(6);
 	});
 });

@@ -8,17 +8,14 @@
 
 	export const mentionPlugin: Plugin = (edytor) => ({
 		onBeforeOperation: ({ operation, payload, block, prevent }) => {
-			if (operation !== 'insertText' || payload.value !== '@') return;
-			const { yStart, startText } = edytor.selection.state;
+			if (operation !== 'insertText' || payload[2] !== '@') return;
+			const { yStart, startText } = edytor.selection.textRange();
 			if (!startText) return;
 			// The atom replaces the typed `@`; the caret lands after it.
 			prevent(() => {
-				const after = block.addInlineBlock({
-					index: yStart,
-					text: startText,
-					block: { type: 'mention', data: {} }
-				});
-				edytor.dispatcher.caret(after, 0);
+				const offset = startText.segStart + yStart;
+				edytor.insertInline(block.id, offset, { type: 'mention', data: {} });
+				edytor.dispatcher.caret({ block, offset: offset + 1 });
 			});
 		},
 		inlineBlocks: {

@@ -4,7 +4,7 @@
  */
 import { cloneJsonSafe } from '../../../utils/json.js';
 import type { BlockId } from '../../placement/model.js';
-import { type RangeReadStats, canonKey, deepFreeze, displayOf } from '../model.js';
+import { type RangeReadStats, canonKey, deepFreeze, displayOf, readSegs } from '../model.js';
 import type { ContentRun, RunViewDebug } from '../runs.js';
 import type { IndexPlacement } from './placement.js';
 import { type Deps, runEquals } from './shared.js';
@@ -12,7 +12,7 @@ import type { IndexState } from './state.js';
 
 /** The run cache of one doc's index. */
 export const indexCache = (ix: IndexState & IndexPlacement) => {
-	const { T, blocks, textConsumers, listConsumers, cache, dirty, foldStats, frames, ownShim } = ix;
+	const { blocks, textConsumers, listConsumers, cache, dirty, foldStats, frames, ownShim } = ix;
 
 	const rangeStats: RangeReadStats = { items: 0, markers: 0 };
 
@@ -106,7 +106,7 @@ export const indexCache = (ix: IndexState & IndexPlacement) => {
 				for (const c of blocks.get(x)?.claims ?? []) deps.lists.add(c.m);
 			}) ?? [];
 		const fresh: ContentRun[] = [];
-		for (const item of T.readSegs(segs, rangeStats)) {
+		for (const item of readSegs(segs, rangeStats)) {
 			if (item.kind === 'text') {
 				const last = fresh[fresh.length - 1];
 				const marks = item.marks === undefined ? undefined : intern(item.marks);

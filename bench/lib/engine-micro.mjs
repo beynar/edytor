@@ -1,5 +1,7 @@
 // WU9 engine micro-benchmark: the two named vendored hot paths.
-//   1. YNode.applyDelta() on a fragmented long paragraph at distant positions —
+//   1. a delta applied to a fragmented long paragraph at distant positions (the
+//      engine's own `applyDelta` for a baseline that still ships it, else the
+//      test port over the fork's write cursor, UPSTREAM.md YP16) —
 //      the cursor starts at _start every call, so each op costs O(position).
 //   2. createAbsolutePositionFromRelativePosition() — resolves an anchor by
 //      walking left from the bound item, summing visible length.
@@ -14,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 const ENGINE_DIR = process.env.ENGINE_DIR ?? '../../src/lib/crdt/vendor/yjs/src';
 const Y = await import(fileURLToPath(new URL(`${ENGINE_DIR}/index.js`, import.meta.url)));
 const delta = await import('lib0-v14/delta');
+const { applyDelta } = await import('../../src/tests/crdt/harness/delta.js');
 console.log(`engine: ${ENGINE_DIR}`);
 
 const QUICK = process.argv.includes('quick');
@@ -30,7 +33,7 @@ const buildFragmentedText = (n) => {
 		for (let i = 0; i < n; i++) {
 			d.insert('x', i % 2 === 0 ? { b: true } : { i: true });
 		}
-		text.applyDelta(d);
+		applyDelta(text, d);
 	});
 	return { doc, text };
 };
@@ -62,11 +65,11 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (distant)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			// undo the insert by deleting it again so the doc stays ~constant
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -79,10 +82,10 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (mid)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -96,14 +99,15 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		'applyDelta sequential append (typing)',
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(text.length).insert('y'));
+				applyDelta(text, delta.create().retain(text.length).insert('y'));
 			});
 		},
 		QUICK ? 300 : 1000
 	);
 	// undo the appended run (warmup + iters) so later lanes see the same shape
 	doc.transact(() => {
-		text.applyDelta(
+		applyDelta(
+			text,
 			delta
 				.create()
 				.retain(beforeLen)
@@ -124,10 +128,10 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		() => {
 			const pos = Math.floor(rand() * (text.length - 2)) + 1;
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -140,30 +144,30 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (near)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
 	);
 }
 
-// ── 2. relative-position resolution — multiple anchors ──────────────
+// ── 2. position resolution — multiple anchors (ids, fork patch YP19) ──
 {
 	// create anchors scattered across the text, then resolve each.
 	const anchors = [];
 	const N_ANCHORS = 200;
 	for (let i = 0; i < N_ANCHORS; i++) {
 		const idx = Math.floor(((i + 0.5) * text.length) / N_ANCHORS);
-		anchors.push(Y.createRelativePositionFromTypeIndex(text, idx, 0));
+		anchors.push(Y.idAtIndex(text, idx, 0));
 	}
 	bench(
-		`createAbsolutePositionFromRelativePosition ×${N_ANCHORS} (resolve all)`,
+		`indexOfId ×${N_ANCHORS} (resolve all)`,
 		() => {
 			for (const a of anchors) {
-				Y.createAbsolutePositionFromRelativePosition(a, doc, false);
+				Y.indexOfId(doc, a);
 			}
 		},
 		QUICK ? 100 : 400
@@ -171,21 +175,21 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 	// per-anchor cost for one distant anchor
 	const far = anchors[N_ANCHORS - 1];
 	bench(
-		'createAbsolutePositionFromRelativePosition (single distant)',
+		'indexOfId (single distant)',
 		() => {
-			Y.createAbsolutePositionFromRelativePosition(far, doc, false);
+			Y.indexOfId(doc, far);
 		},
 		QUICK ? 2000 : 8000
 	);
 }
 
-// ── 3. anchor creation — createRelativePositionFromTypeIndex ────────
+// ── 3. anchor creation — idAtIndex ──────────────────────────────────
 {
 	const pos = Math.floor(text.length * 0.9);
 	bench(
-		`createRelativePositionFromTypeIndex(${pos}) (distant)`,
+		`idAtIndex(${pos}) (distant)`,
 		() => {
-			Y.createRelativePositionFromTypeIndex(text, pos, 0);
+			Y.idAtIndex(text, pos, 0);
 		},
 		QUICK ? 2000 : 8000
 	);

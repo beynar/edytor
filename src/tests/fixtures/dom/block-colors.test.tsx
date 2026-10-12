@@ -13,14 +13,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { BLOCK_COLORS, colorable, setBlockColor } from '$lib/block/colors.js';
-import { ownedOf } from '$lib/surface/attributes.js';
 import { convertToKind } from '$lib/kinds.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { blockMenuPlugin, codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -73,15 +71,17 @@ const openColors = async () => {
 
 describe('Rendering: the palette name on the block element', () => {
 	it('a text colour and a background render as owned attributes', async () => {
-		const view = await render([p('a', { color: 'red' }), p('b', { background: 'blue' }), p('c')]);
+		await render([p('a', { color: 'red' }), p('b', { background: 'blue' }), p('c')]);
 		expect(element('a').getAttribute('data-edytor-color')).toBe('red');
 		expect(element('a').hasAttribute('data-edytor-background')).toBe(false);
 		expect(element('b').getAttribute('data-edytor-background')).toBe('blue');
 		expect(element('c').hasAttribute('data-edytor-color')).toBe(false);
-		// The attribute table owns them: a stripped one is foreign damage.
-		const owned = ownedOf(view.edytor, element('a'), { kind: 'block', block: 'a' })!.owned;
-		expect(owned['data-edytor-color']).toBe('red');
-		expect(owned['data-edytor-background']).toBeNull();
+		// The attribute table owns them: a stripped or a foreign one is damage, healed.
+		element('a').removeAttribute('data-edytor-color');
+		element('a').setAttribute('data-edytor-background', 'green');
+		await flushDomUpdates();
+		expect(element('a').getAttribute('data-edytor-color')).toBe('red');
+		expect(element('a').hasAttribute('data-edytor-background')).toBe(false);
 	});
 
 	it('a value that is no colour name renders nothing', async () => {
@@ -235,7 +235,7 @@ describe('The block menu’s Color flyout (Notion)', () => {
 			],
 			[blockMenuPlugin]
 		);
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'u'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'u'));
 		await flushDomUpdates();
 		await openMenu(view, 'a');
 		await openColors();

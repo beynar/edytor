@@ -1,16 +1,33 @@
+<script lang="ts" module>
+	import { mount, unmount } from 'svelte';
+	import type { Plugin } from '$lib/plugins.js';
+	import type { SuggestionBarOptions } from './suggestionsPlugin.js';
+	import Self from './SuggestionBars.svelte';
+
+	/**
+	 * The suggestion bar (Notion AI's): your `bar` under each block
+	 * suggestion (Accept, Discard, and Try again when the app passed
+	 * `onRetry`); its keys are the suggestions plugin's.
+	 */
+	export const createSuggestionBarPlugin =
+		({ bar }: SuggestionBarOptions): Plugin =>
+		(edytor) => ({
+			onEdytorAttached: () => {
+				const bars = mount(Self, { target: edytor.overlay.layer!, props: { edytor, bar } });
+				return () => void unmount(bars);
+			}
+		});
+</script>
+
 <script lang="ts">
+	import { takeKeys } from '$lib/events/onFocus.js';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 	import type { SuggestionBarPayload } from './suggestionsPlugin.js';
-	import type { SuggestionsLabels } from '$lib/labels.js';
 
-	let {
-		edytor,
-		bar,
-		labels
-	}: { edytor: Edytor; bar?: Snippet<[SuggestionBarPayload]>; labels: SuggestionsLabels } =
-		$props();
+	/** The plugin's `bar` under each block suggestion's preview, placed once per frame. */
+	let { edytor, bar }: { edytor: Edytor; bar: Snippet<[SuggestionBarPayload]> } = $props();
 
 	/** Each bar's place under its preview, layer-relative, measured once per frame. */
 	let places = $state<Record<string, { left: number; top: number; width: number }>>({});
@@ -48,20 +65,17 @@
 		suggestion,
 		accept: () => {
 			suggestion.accept();
-			edytor.expectInternalFocus();
-			edytor.node?.focus({ preventScroll: true });
+			takeKeys(edytor);
 		},
 		discard: suggestion.discard,
 		retry: suggestion.retryable ? suggestion.retry : undefined,
 		readonly: edytor.readonly,
-		labels
+		mac: edytor.keymap.isMac
 	});
-	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
 {#each shown as suggestion (suggestion.id)}
 	{@const place = places[suggestion.id]}
-	{@const actions = payload(suggestion)}
 	<div
 		data-edytor-suggestion-bar={suggestion.id}
 		data-status={suggestion.status}
@@ -70,38 +84,7 @@
 		style:top={`${place?.top ?? 0}px`}
 		style:visibility={place ? undefined : 'hidden'}
 	>
-		{#if bar}
-			{@render bar(actions)}
-		{:else}
-			<span data-edytor-suggestion-label
-				>{suggestion.status === 'streaming'
-					? labels.writing(suggestion.label)
-					: (suggestion.label ?? labels.suggestion)}</span
-			>
-			{#if !actions.readonly}
-				<button
-					type="button"
-					data-edytor-suggestion-accept
-					onmousedown={keep}
-					onclick={actions.accept}
-					>{labels.accept} <kbd>{edytor.keymap.isMac ? '⌘↵' : `${labels.ctrl}+↵`}</kbd></button
-				>
-			{/if}
-			<button
-				type="button"
-				data-edytor-suggestion-discard
-				onmousedown={keep}
-				onclick={actions.discard}>{labels.discard} <kbd>{labels.escape}</kbd></button
-			>
-			{#if actions.retry && !actions.readonly}
-				<button
-					type="button"
-					data-edytor-suggestion-retry
-					onmousedown={keep}
-					onclick={actions.retry}>{labels.retry}</button
-				>
-			{/if}
-		{/if}
+		{@render bar(payload(suggestion))}
 	</div>
 {/each}
 
@@ -109,45 +92,5 @@
 	[data-edytor-suggestion-bar] {
 		position: absolute;
 		z-index: 30;
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px;
-		border-radius: 8px;
-		background: var(--edytor-suggestion-bar-background, #fff);
-		box-shadow:
-			0 0 0 1px rgb(15 15 15 / 0.05),
-			0 3px 6px rgb(15 15 15 / 0.1),
-			0 9px 24px rgb(15 15 15 / 0.2);
-		font-size: 13px;
-		line-height: 1.2;
-		white-space: nowrap;
-		user-select: none;
-	}
-	[data-edytor-suggestion-label] {
-		padding: 0 6px;
-		color: var(--edytor-suggestion-accent, #2383e2);
-		font-weight: 500;
-	}
-	[data-edytor-suggestion-bar] button {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 26px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 6px;
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		cursor: pointer;
-	}
-	[data-edytor-suggestion-bar] button:hover {
-		background: rgb(55 53 47 / 0.08);
-	}
-	[data-edytor-suggestion-bar] kbd {
-		color: rgb(55 53 47 / 0.5);
-		font: inherit;
-		font-size: 11px;
 	}
 </style>

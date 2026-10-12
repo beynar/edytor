@@ -136,7 +136,9 @@ describe('docs: attribution + actor reads', () => {
 			lastChangedBy: 'user-42'
 		});
 		// U2 — no per-edit capture records on a fresh document.
-		expect(document.attribution.legacy()).toBeNull();
+		expect(
+			[...document.doc.get('attribution').attrKeys()].filter((k) => k.startsWith('a/'))
+		).toEqual([]);
 		document.destroy();
 	});
 });

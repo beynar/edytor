@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import {
 	canonicalTree,
@@ -19,6 +18,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>
@@ -44,7 +44,7 @@ type Rendered = Awaited<ReturnType<typeof render>>;
 
 const text = ({ edytor }: Rendered, id: string) => edytor.idToBlock.get(id)!.firstText!;
 const select = async (r: Rendered, [a, x]: [string, number], [b, y]: [string, number]) => {
-	r.edytor.selection.setAtRange(text(r, a), x, text(r, b), y);
+	r.edytor.selection.selectText(text(r, a), x, text(r, b), y);
 	await flushDomUpdates();
 	r.edytor.undoManager.stopCapturing();
 };
@@ -95,7 +95,7 @@ describe('copy, cut and Backspace agree on the hidden body (DR-delete-1)', () =>
 			{ type: 'paragraph', content: [{ text: 'er' }] }
 		]);
 		// Pasting it back loses nothing: the body rides its header line.
-		r.edytor.selection.setAtTextOffset(text(r, 'before'), 6);
+		r.edytor.selection.selectText(text(r, 'before'), 6);
 		await flushDomUpdates();
 		r.editor.dispatchEvent(clipboardEvent('paste', data));
 		await flushDomUpdates();

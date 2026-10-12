@@ -400,7 +400,7 @@ const afternoon = async (room: string) => {
 		f.insertBlocks({ parent: null, index: 2 }, [
 			{ id: 'p4', type: 'paragraph', content: [{ kind: 'text', text: 'four' }] }
 		]);
-		f.setBlockData('p1', { color: 'red' });
+		f.patchData('p1', [{ path: [], value: { color: 'red' } }]);
 	});
 	b.transact(() => {
 		b.facade.insertText('p3', 5, ' and more');

@@ -2257,13 +2257,13 @@ test.describe('browser selection behavior', () => {
 					__EDYTOR__?: {
 						root?: { children: Array<{ firstText?: unknown }> };
 						selection?: {
-							setAtRange: (
+							selectText: (
 								startText: unknown,
 								startOffset: number,
 								endText: unknown,
 								endOffset: number,
-								options: { isReversed?: boolean }
-							) => Promise<void>;
+								isReversed?: boolean
+							) => void;
 						};
 					};
 				}
@@ -2291,7 +2291,7 @@ test.describe('browser selection behavior', () => {
 				configurable: true
 			});
 
-			await edytor.selection.setAtRange(text, 2, text, 6, { isReversed: true });
+			await edytor.selection.selectText(text, 2, text, 6, true);
 		});
 
 		await expectSelection(page, {

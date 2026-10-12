@@ -11,8 +11,8 @@ import type { ProjectedDoc } from '$lib/crdt/index.js';
  * U5 → arch-v2 R4 — text edits never project the document; text handles
  * read the index.
  *
- * The `segStart` display-offset read the `insertAt`/`deleteAt`/`formatAt`
- * mutation surface performs reads `facade.contentItems(blockId)` (the
+ * The `segStart` display-offset read a write at a segment's offset performs
+ * reads `facade.contentItems(blockId)` (the
  * transaction-aware per-block surface), never `facade.project()`. Since R4
  * a `Text` is an id-only handle (block, ordinal) whose getters read the same
  * surface, so inside a transaction it shows the writes.
@@ -64,7 +64,7 @@ describe('scoped text refresh — project() elimination', () => {
 			const before = { ...counts };
 
 			edytor.transact(() => {
-				text.insertAt(0, 'X');
+				edytor.facade.insertText(text.blockId, text.segStart + 0, 'X');
 			});
 
 			expect(counts.project - before.project).toBe(0);
@@ -88,12 +88,14 @@ describe('scoped text refresh — project() elimination', () => {
 		const text = textOf(edytor, 0);
 
 		for (let i = 0; i < 5; i++) {
-			edytor.transact(() => text.insertAt(i, 'x'));
+			edytor.transact(() => edytor.facade.insertText(text.blockId, text.segStart + i, 'x'));
 		}
 		for (let i = 0; i < 3; i++) {
-			edytor.transact(() => text.deleteAt(0, 1));
+			edytor.transact(() => edytor.facade.deleteText(text.blockId, text.segStart + 0, 1));
 		}
-		edytor.transact(() => text.formatAt(0, 3, { bold: true }));
+		edytor.transact(() =>
+			edytor.facade.formatRange(text.blockId, text.segStart + 0, 3, { bold: true })
+		);
 
 		expect(counts.project).toBe(0);
 		expect(text.stringContent.slice(0, 3)).toBe('xxH');
@@ -112,10 +114,10 @@ describe('scoped text refresh — project() elimination', () => {
 		const text = textOf(edytor, 0);
 
 		edytor.transact(() => {
-			text.deleteAt(0, text.length);
-			text.insertAt(0, 'a');
-			text.insertAt(1, 'b');
-			text.insertAt(2, 'c');
+			edytor.facade.deleteText(text.blockId, text.segStart + 0, text.length);
+			edytor.facade.insertText(text.blockId, text.segStart + 0, 'a');
+			edytor.facade.insertText(text.blockId, text.segStart + 1, 'b');
+			edytor.facade.insertText(text.blockId, text.segStart + 2, 'c');
 		});
 
 		expect(counts.project).toBe(0);
@@ -141,12 +143,12 @@ describe('scoped text refresh — correctness', () => {
 				.join('');
 
 		edytor.transact(() => {
-			text.insertAt(5, ' brave');
+			edytor.facade.insertText(text.blockId, text.segStart + 5, ' brave');
 			expect(shown()).toBe('Hello brave world');
 			expect(text.stringContent).toBe('Hello brave world');
-			text.deleteAt(5, 6);
+			edytor.facade.deleteText(text.blockId, text.segStart + 5, 6);
 			expect(shown()).toBe('Hello world');
-			text.formatAt(0, 5, { italic: true });
+			edytor.facade.formatRange(text.blockId, text.segStart + 0, 5, { italic: true });
 			expect(text.value[0]?.marks?.italic).toBe(true);
 		});
 		// (U7 provenance stamps `attribution` on emitted items — strip it.)
@@ -180,7 +182,7 @@ describe('scoped text refresh — correctness', () => {
 
 		const firstValue = firstText.value;
 		edytor.transact(() => {
-			secondText.insertAt(0, '!');
+			edytor.facade.insertText(secondText.blockId, secondText.segStart + 0, '!');
 		});
 		expect(secondText.stringContent).toBe('!world');
 		expect(firstText.stringContent).toBe('Hello');
@@ -189,12 +191,12 @@ describe('scoped text refresh — correctness', () => {
 
 		// Deleting inside the FIRST segment moves the second's offset.
 		edytor.transact(() => {
-			firstText.deleteAt(0, 2);
+			edytor.facade.deleteText(firstText.blockId, firstText.segStart + 0, 2);
 		});
 		expect(firstText.stringContent).toBe('llo');
 		expect(secondText.segStart).toBe(4); // 'llo' + 1 atom
 		edytor.transact(() => {
-			secondText.insertAt(0, '?');
+			edytor.facade.insertText(secondText.blockId, secondText.segStart + 0, '?');
 		});
 		expect(secondText.stringContent).toBe('?!world');
 	});
@@ -216,7 +218,7 @@ describe('scoped text refresh — correctness', () => {
 		]);
 
 		edytor.transact(() => {
-			text.insertAt(6, 'big ', { bold: true });
+			edytor.facade.insertText(text.blockId, text.segStart + 6, 'big ', { bold: true });
 		});
 		// Attribution provenance splits same-mark runs at authorship
 		// boundaries — `stripAttribution` re-merges them for comparison.
@@ -226,7 +228,7 @@ describe('scoped text refresh — correctness', () => {
 		]);
 
 		edytor.transact(() => {
-			text.formatAt(0, 5, { underline: true });
+			edytor.facade.formatRange(text.blockId, text.segStart + 0, 5, { underline: true });
 		});
 		expect(text.value[0]?.marks).toEqual({ underline: true });
 		expect(text.value.at(-1)?.marks).toEqual({ bold: true });
@@ -250,7 +252,7 @@ describe('scoped text refresh — correctness', () => {
 		expect(text.isEmpty).toBe(true);
 
 		edytor.transact(() => {
-			text.insertAt(0, 'now full');
+			edytor.facade.insertText(text.blockId, text.segStart + 0, 'now full');
 		});
 		expect(text.stringContent).toBe('now full');
 	});
@@ -321,7 +323,8 @@ describe('scoped text refresh — correctness', () => {
 
 		// Split at offset 6 — 'world' moves to a fresh sibling whose backing
 		// slice claims the tail (no atom copies; ownership moves).
-		const sibling = block.splitBlock({ index: 6, text });
+		edytor.splitBlock(block.id, text.segStart + 6, 'sibling');
+		const sibling = edytor.idToBlock.get('sibling');
 		expect(sibling).toBeTruthy();
 		const siblingText = sibling!.content[0] as Text;
 		expect(siblingText.stringContent).toBe('world');
@@ -332,7 +335,7 @@ describe('scoped text refresh — correctness', () => {
 
 		// Merge the sibling back — the committed segment of the surviving
 		// block shows the reclaimed atoms under the original owner.
-		const merged = sibling!.mergeBlockBackward();
+		const merged = edytor.idToBlock.get(edytor.mergeBackward(sibling!.id).ids[0]!);
 		expect(merged).toBeTruthy();
 		const mergedText = merged!.content[0] as Text;
 		expect(mergedText.stringContent).toBe('Hello world');
@@ -362,7 +365,7 @@ describe('scoped text refresh — correctness', () => {
 
 		const third = edytor.root!.children[2];
 		// move → placement churn
-		third.moveBlock({ path: [0] });
+		edytor.moveBlocks([third.id], { parent: null, index: 0 });
 		check();
 		// delete → hidden
 		edytor.transact(() => {

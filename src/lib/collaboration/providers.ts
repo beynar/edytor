@@ -5,7 +5,11 @@
  * classes). The factories themselves live in ONE place, `bindProviders(Y)`
  * in `src/lib/crdt/providers/index.ts`.
  */
-import { providers } from '$lib/crdt/providers/bound.js';
+import { prefetch as prefetchStack, providers } from '$lib/crdt/providers/bound.js';
+import {
+	documentSnapshot as snapshotOf,
+	lastUpdated as lastUpdatedOf
+} from '$lib/crdt/providers/index.js';
 import {
 	type Awareness,
 	type EdytorSync,
@@ -39,8 +43,8 @@ export const createWebsocketSync = providers.createWebsocketSync as (
 // (`../crdt/providers/indexeddb`), which `nodenext` consumers reject.
 export const clearDocument: ProviderStack['clearDocument'] = providers.clearDocument;
 /** Keep a document's local copy fresh without opening it (sync once, then close). */
-export const prefetch: ProviderStack['prefetch'] = providers.prefetch;
+export const prefetch: typeof prefetchStack = prefetchStack;
 /** When a room last stored a change: one authorized HTTP request, no document opened. */
-export const lastUpdated: ProviderStack['lastUpdated'] = providers.lastUpdated;
+export const lastUpdated: typeof lastUpdatedOf = lastUpdatedOf;
 /** A room's document as JSON (one authorized HTTP request), for `<Edytor snapshot>`. */
-export const documentSnapshot: ProviderStack['documentSnapshot'] = providers.documentSnapshot;
+export const documentSnapshot: typeof snapshotOf = snapshotOf;

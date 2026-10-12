@@ -15,12 +15,12 @@ test('undo leaves model and native selection in agreement', async ({ page }) => 
 		const block = e.root.children[0];
 		const texts = block.content.filter((p: { length?: number }) => typeof p.length === 'number');
 		if (texts.length < 2) throw new Error('need >=2 texts');
-		await e.selection.setAtRange(
+		await e.selection.selectText(
 			texts[0],
 			2,
 			texts[texts.length - 1],
 			texts[texts.length - 1].length,
-			{ isReversed: true }
+			true
 		);
 	});
 	await page.waitForTimeout(100);
@@ -54,7 +54,13 @@ test('undo leaves model and native selection in agreement', async ({ page }) => 
 			const t = el?.closest('[data-edytor-text]');
 			return t ? texts.indexOf(t) : -1;
 		};
-		const state = e.selection.state;
+		const state = ((s) =>
+			s && {
+				...s.textRange(),
+				startBlock: s.textRange().startText?.parent,
+				isCollapsed: s.projection.isCollapsed,
+				isReversed: s.projection.isReversed
+			})(e.selection);
 		const renderedTexts = e.root.children[0].content.filter(
 			(p: { length?: number }) => typeof p.length === 'number'
 		);

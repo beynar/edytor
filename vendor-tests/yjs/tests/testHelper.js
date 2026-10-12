@@ -9,7 +9,8 @@ import * as map from 'lib0-v14/map'
 import * as math from 'lib0-v14/math'
 import * as list from 'lib0-v14/list'
 import * as delta from 'lib0-v14/delta'
-import { createIdSet, createIdMap, encodeIdMap } from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
+import { createIdSet } from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
+import { toDeltaDeep } from '../../../src/tests/crdt/harness/delta.js'
 
 export * from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 
@@ -32,42 +33,16 @@ const broadcastMessage = (y, m) => {
   }
 }
 
-export let useV2 = false
-
-export const encV1 = {
+/**
+ * YP17: the fork has one update encoding; the helpers' encoding switch is gone.
+ */
+export const enc = {
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   mergeUpdates: Y.mergeUpdates,
   applyUpdate: Y.applyUpdate,
   logUpdate: () => {}, // YP8: the update loggers are pruned
   updateEventName: /** @type {'update'} */ ('update'),
-  /**
-   * YP8: the V1 `diffUpdate` wrapper is pruned; the V2 core it wrapped is kept.
-   * @param {Uint8Array} update
-   * @param {Uint8Array} sv
-   */
-  diffUpdate: (update, sv) => Y.diffUpdateV2(update, sv, Y.UpdateDecoderV1, Y.UpdateEncoderV1)
-}
-
-export const encV2 = {
-  encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
-  mergeUpdates: Y.mergeUpdatesV2,
-  applyUpdate: Y.applyUpdateV2,
-  logUpdate: () => {}, // YP8: the update loggers are pruned
-  updateEventName: /** @type {'updateV2'} */ ('updateV2'),
-  diffUpdate: Y.diffUpdateV2
-}
-
-export let enc = encV1
-
-const useV1Encoding = () => {
-  useV2 = false
-  enc = encV1
-}
-
-const useV2Encoding = () => {
-  console.error('sync protocol doesnt support v2 protocol yet, fallback to v1 encoding') // @Todo
-  useV2 = false
-  enc = encV1
+  diffUpdate: Y.diffUpdate
 }
 
 /**
@@ -286,13 +261,6 @@ export const init = (tc, { users = 5 } = {}, initTestObject) => {
     users: []
   }
   const gen = tc.prng
-  // choose an encoding approach at random
-  if (prng.bool(gen)) {
-    useV2Encoding()
-  } else {
-    useV1Encoding()
-  }
-
   const testConnector = new TestConnector(gen)
   result.testConnector = testConnector
   for (let i = 0; i < users; i++) {
@@ -306,7 +274,6 @@ export const init = (tc, { users = 5 } = {}, initTestObject) => {
   }
   testConnector.syncAll()
   result.testObjects = result.users.map(initTestObject || (() => null))
-  useV1Encoding()
   return /** @type {any} */ (result)
 }
 
@@ -330,70 +297,6 @@ export const compareIdSets = (idSet1, idSet2) => {
 }
 
 /**
- * only use for testing
- *
- * @template T
- * @param {Array<Y.ContentAttribute<T>>} attrs
- * @param {Y.ContentAttribute<T>} attr
- *
- */
-const _idmapAttrsHas = (attrs, attr) => {
-  const hash = attr.hash()
-  return attrs.find(a => a.hash() === hash)
-}
-
-/**
- * only use for testing
- *
- * @template T
- * @param {Array<Y.ContentAttribute<T>>} a
- * @param {Array<Y.ContentAttribute<T>>} b
- */
-export const _idmapAttrsEqual = (a, b) => a.length === b.length && a.every(v => _idmapAttrsHas(b, v))
-
-/**
- * Ensure that all attributes exist. Also create a copy and compare it to the original.
- *
- * @template T
- * @param {Y.IdMap<T>} idmap
- */
-export const validateIdMap = idmap => {
-  const copy = Y.createIdMap()
-  idmap.clients.forEach((ranges, client) => {
-    ranges.getIds().forEach(range => {
-      range.attrs.forEach(attr => {
-        t.assert(idmap.attrs.has(attr))
-        t.assert(idmap.attrsH.get(attr.hash()) === attr)
-        copy.add(client, range.clock, range.len, range.attrs.slice())
-      })
-    })
-    t.assert(copy.clients.get(client)?.getIds().length === ranges.getIds().length)
-  })
-  t.assert(idmap.attrsH.size === idmap.attrs.size)
-}
-
-/**
- * @template T
- * @param {Y.IdMap<T>} idmap1
- * @param {Y.IdMap<T>} idmap2
- */
-export const compareIdmaps = (idmap1, idmap2) => {
-  t.assert(idmap1.clients.size === idmap2.clients.size)
-  for (const [client, _items1] of idmap1.clients.entries()) {
-    const items1 = _items1.getIds()
-    const items2 = idmap2.clients.get(client)?.getIds()
-    t.assert(items2 !== undefined && items1.length === items2.length)
-    for (let i = 0; i < items1.length; i++) {
-      const di1 = items1[i]
-      const di2 = /** @type {Array<import('../../../src/lib/crdt/vendor/yjs/src/utils/ids.js').AttrRange<T>>} */ (items2)[i]
-      t.assert(di1.clock === di2.clock && di1.len === di2.len && _idmapAttrsEqual(di1.attrs, di2.attrs))
-    }
-  }
-  validateIdMap(idmap1)
-  validateIdMap(idmap2)
-}
-
-/**
  * @param {prng.PRNG} gen
  * @param {number} clients
  * @param {number} clockRange (max clock - exclusive - by each client)
@@ -412,36 +315,6 @@ export const createRandomIdSet = (gen, clients, clockRange) => {
     idset.clients.delete(prng.uint32(gen, 0, clients))
   }
   return idset
-}
-
-/**
- * @template T
- * @param {prng.PRNG} gen
- * @param {number} clients
- * @param {number} clockRange (max clock - exclusive - by each client)
- * @param {Array<T>} attrChoices (max clock - exclusive - by each client)
- * @return {Y.IdMap<T>}
- */
-export const createRandomIdMap = (gen, clients, clockRange, attrChoices) => {
-  const maxOpLen = 5
-  const numOfOps = math.ceil((clients * clockRange) / maxOpLen)
-  const idMap = createIdMap()
-  for (let i = 0; i < numOfOps; i++) {
-    const client = prng.uint32(gen, 0, clients - 1)
-    const clockStart = prng.uint32(gen, 0, clockRange)
-    const len = prng.uint32(gen, 0, clockRange - clockStart)
-    const attrs = [prng.oneOf(gen, attrChoices)]
-    // maybe add another attr
-    if (prng.bool(gen)) {
-      const a = prng.oneOf(gen, attrChoices)
-      if (attrs.find(attr => attr === a) == null) {
-        attrs.push(a)
-      }
-    }
-    idMap.add(client, clockStart, len, attrs.map(v => Y.createContentAttribute('', v)))
-  }
-  t.info(`Created IdMap with ${numOfOps} ranges and ${attrChoices.length} different attributes. Encoded size: ${encodeIdMap(idMap).byteLength}`)
-  return idMap
 }
 
 /**
@@ -469,7 +342,7 @@ export const compare = users => {
   // @todo fix type error here
   // @ts-ignore
   const userXmlValues = users.map(u => u.get('xml').toString())
-  const userTextValues = users.map(u => u.get('text').toDeltaDeep())
+  const userTextValues = users.map(u => toDeltaDeep(u.get('text')))
   for (const u of users) {
     t.assert(u.store.pendingDs === null)
     t.assert(u.store.pendingStructs === null)
@@ -494,7 +367,6 @@ export const compare = users => {
       return true
     })
     t.compare(Y.encodeStateVector(users[i]), Y.encodeStateVector(users[i + 1]))
-    Y.equalIdSets(Y.createDeleteSetFromStructStore(users[i].store), Y.createDeleteSetFromStructStore(users[i + 1].store))
     compareStructStores(users[i].store, users[i + 1].store)
     // YP8: snapshots are pruned — a snapshot is (state vector, delete set); the state vectors are
     // compared above, so compare the encoded delete sets.
@@ -510,7 +382,7 @@ export const compare = users => {
  * @param {Y.StructStore} store
  */
 const encodeDeleteSet = store => {
-  const encoder = new Y.UpdateEncoderV1()
+  const encoder = new Y.UpdateEncoder()
   Y.writeIdSet(encoder, Y.createDeleteSetFromStructStore(store))
   return encoder.toUint8Array()
 }

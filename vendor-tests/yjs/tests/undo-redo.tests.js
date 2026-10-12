@@ -2,43 +2,15 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import { init } from './testHelper.js' // eslint-disable-line
 import * as t from 'lib0-v14/testing'
 import * as delta from 'lib0-v14/delta'
-
-export const testInconsistentFormat = () => {
-  /**
-   * @param {Y.Doc} ydoc
-   */
-  const testYjsMerge = ydoc => {
-    const content = ydoc.get('text')
-    content.format(0, 6, { bold: null })
-    content.format(6, 4, { type: 'text' })
-    t.compare(content.toDelta(), delta.create().insert('Merge Test', { type: 'text' }).insert(' After', { type: 'text', italic: true }).done())
-  }
-  const initializeYDoc = () => {
-    const yDoc = new Y.Doc({ gc: false })
-    const content = yDoc.get('text')
-    content.insert(0, ' After', { type: 'text', italic: true })
-    content.insert(0, 'Test', { type: 'text' })
-    content.insert(0, 'Merge ', { type: 'text', bold: true })
-    return yDoc
-  }
-  {
-    const yDoc = initializeYDoc()
-    testYjsMerge(yDoc)
-  }
-  {
-    const initialYDoc = initializeYDoc()
-    const yDoc = new Y.Doc({ gc: false })
-    Y.applyUpdate(yDoc, Y.encodeStateAsUpdate(initialYDoc))
-    testYjsMerge(yDoc)
-  }
-}
+import { toDelta, toDeltaDeep, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
+import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
 
 /**
  * @param {t.TestCase} tc
  */
 export const testInfiniteCaptureTimeout = tc => {
   const { array0 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(array0, { captureTimeout: Number.MAX_VALUE })
+  const undoManager = new UndoManager(array0, { captureTimeout: Number.MAX_VALUE })
   array0.push([1, 2, 3])
   undoManager.stopCapturing()
   array0.push([4, 5, 6])
@@ -47,58 +19,12 @@ export const testInfiniteCaptureTimeout = tc => {
 }
 
 /**
- * @param {t.TestCase} tc
- */
-export const testUndoText = tc => {
-  const { testConnector, text0, text1 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(text0)
-
-  // items that are added & deleted in the same transaction won't be undo
-  text0.insert(0, 'test')
-  text0.delete(0, 4)
-  undoManager.undo()
-  t.assert(text0.toString() === '')
-
-  // follow redone items
-  text0.insert(0, 'a')
-  undoManager.stopCapturing()
-  text0.delete(0, 1)
-  undoManager.stopCapturing()
-  undoManager.undo()
-  t.assert(text0.toString() === 'a')
-  undoManager.undo()
-  t.assert(text0.toString() === '')
-
-  text0.insert(0, 'abc')
-  text1.insert(0, 'xyz')
-  testConnector.syncAll()
-  undoManager.undo()
-  t.assert(text0.toString() === 'xyz')
-  undoManager.redo()
-  t.assert(text0.toString() === 'abcxyz')
-  testConnector.syncAll()
-  text1.delete(0, 1)
-  testConnector.syncAll()
-  undoManager.undo()
-  t.assert(text0.toString() === 'xyz')
-  undoManager.redo()
-  t.assert(text0.toString() === 'bcxyz')
-  // test marks
-  text0.format(1, 3, { bold: true })
-  t.compare(text0.toDelta(), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
-  undoManager.undo()
-  t.compare(text0.toDelta(), delta.create().insert('bcxyz').done())
-  undoManager.redo()
-  t.compare(text0.toDelta(), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
-}
-
-/**
  * Test case to fix #241
  * @param {t.TestCase} _tc
  */
 export const testEmptyTypeScope = _tc => {
   const ydoc = new Y.Doc()
-  const um = new Y.UndoManager([], { doc: ydoc })
+  const um = new UndoManager([], { doc: ydoc })
   const yarray = ydoc.get()
   um.addToScope(yarray)
   yarray.insert(0, [1])
@@ -136,7 +62,7 @@ export const testRejectUpdateExample = _tc => {
    */
   const updateHandler = (update) => {
     // don't handle changes of the local undo manager, which is used to undo invalid changes
-    const um = new Y.UndoManager(restrictedType, { trackedOrigins: new Set(['remote change']) })
+    const um = new UndoManager(restrictedType, { trackedOrigins: new Set(['remote change']) })
     const beforePendingDs = ydoc.store.pendingDs
     const beforePendingStructs = ydoc.store.pendingStructs?.update
     try {
@@ -149,7 +75,7 @@ export const testRejectUpdateExample = _tc => {
       ydoc.store.pendingDs = beforePendingDs
       ydoc.store.pendingStructs = null
       if (beforePendingStructs) {
-        Y.applyUpdateV2(ydoc, beforePendingStructs)
+        Y.applyUpdate(ydoc, beforePendingStructs)
       }
     }
   }
@@ -165,7 +91,7 @@ export const testRejectUpdateExample = _tc => {
  */
 export const testGlobalScope = _tc => {
   const ydoc = new Y.Doc()
-  const um = new Y.UndoManager(ydoc)
+  const um = new UndoManager(ydoc)
   const yarray = ydoc.get()
   yarray.insert(0, [1])
   um.undo()
@@ -181,7 +107,7 @@ export const testDoubleUndo = _tc => {
   const text = doc.get()
   text.insert(0, '1221')
 
-  const manager = new Y.UndoManager(text)
+  const manager = new UndoManager(text)
 
   text.insert(2, '3')
   text.insert(3, '3')
@@ -200,7 +126,7 @@ export const testDoubleUndo = _tc => {
 export const testUndoMap = tc => {
   const { testConnector, map0, map1 } = init(tc, { users: 2 })
   map0.setAttr('a', 0)
-  const undoManager = new Y.UndoManager(map0)
+  const undoManager = new UndoManager(map0)
   map0.setAttr('a', 1)
   undoManager.undo()
   t.assert(map0.getAttr('a') === 0)
@@ -251,7 +177,7 @@ export const testUndoEmbeddedTypeAttribute = tc => {
   text0.insert(0, [button])
   testConnector.syncAll()
 
-  const undoManager = new Y.UndoManager(text0)
+  const undoManager = new UndoManager(text0)
   undoManager.stopCapturing()
   // change an attribute, then delete the embedded type
   button.setAttr('type', 'paragraph')
@@ -271,7 +197,7 @@ export const testUndoEmbeddedTypeAttribute = tc => {
  */
 export const testUndoArray = tc => {
   const { testConnector, array0, array1 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(array0)
+  const undoManager = new UndoManager(array0)
   array0.insert(0, [1, 2, 3])
   array1.insert(0, [4, 5, 6])
   testConnector.syncAll()
@@ -320,35 +246,9 @@ export const testUndoArray = tc => {
 /**
  * @param {t.TestCase} tc
  */
-export const testUndoXml = tc => {
-  const { xml0 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(xml0)
-  const child = new Y.Node('p')
-  xml0.insert(0, [child])
-  const textchild = Y.Node.from(delta.create().insert('content'))
-  child.insert(0, [textchild])
-  // format textchild and revert that change
-  undoManager.stopCapturing()
-  textchild.format(3, 4, { bold: true })
-  const v1 = delta.create().insert([delta.create('p').insert([delta.create().insert('con').insert('tent', { bold: true }).done()]).done()]).done()
-  const v2 = delta.create().insert([delta.create('p').insert([delta.create().insert('content').done()]).done()]).done()
-  t.compare(xml0.toDeltaDeep(), v1)
-  undoManager.undo()
-  t.compare(xml0.toDeltaDeep(), v2)
-  undoManager.redo()
-  t.compare(xml0.toDeltaDeep(), v1)
-  xml0.delete(0, 1)
-  t.compare(xml0.toDeltaDeep(), delta.create().done())
-  undoManager.undo()
-  t.compare(xml0.toDeltaDeep(), v1)
-}
-
-/**
- * @param {t.TestCase} tc
- */
 export const testUndoEvents = tc => {
   const { text0 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(text0)
+  const undoManager = new UndoManager(text0)
   let counter = 0
   let receivedMetadata = -1
   undoManager.on('stack-item-added', /** @param {any} event */ event => {
@@ -374,7 +274,7 @@ export const testUndoEvents = tc => {
 export const testTrackClass = tc => {
   const { users, text0 } = init(tc, { users: 3 })
   // only track origins that are numbers
-  const undoManager = new Y.UndoManager(text0, { trackedOrigins: new Set([Number]) })
+  const undoManager = new UndoManager(text0, { trackedOrigins: new Set([Number]) })
   users[0].transact(() => {
     text0.insert(0, 'abc')
   }, 42)
@@ -392,8 +292,8 @@ export const testTypeScope = tc => {
   const text0 = new Y.Node()
   const text1 = new Y.Node()
   array0.insert(0, [text0, text1])
-  const undoManager = new Y.UndoManager(text0)
-  const undoManagerBoth = new Y.UndoManager([text0, text1])
+  const undoManager = new UndoManager(text0)
+  const undoManagerBoth = new UndoManager([text0, text1])
   text1.insert(0, 'abc')
   t.assert(undoManager.undoStack.length === 0)
   t.assert(undoManagerBoth.undoStack.length === 1)
@@ -409,8 +309,8 @@ export const testTypeScope = tc => {
  */
 export const testUndoInEmbed = tc => {
   const { text0 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(text0)
-  const nestedText = Y.Node.from(delta.create().insert('initial text'))
+  const undoManager = new UndoManager(text0)
+  const nestedText = fromDelta(delta.create().insert('initial text'))
   undoManager.stopCapturing()
   text0.insert(0, [nestedText], { bold: true })
   t.assert(nestedText.toString() === 'initial text')
@@ -429,7 +329,7 @@ export const testUndoInEmbed = tc => {
  */
 export const testUndoDeleteFilter = tc => {
   const array0 = init(tc, { users: 3 }).array0
-  const undoManager = new Y.UndoManager(array0, { deleteFilter: item => !(item instanceof Y.Item) || (item.content instanceof Y.ContentType && item.content.type._map.size === 0) })
+  const undoManager = new UndoManager(array0, { deleteFilter: item => !(item instanceof Y.Item) || (item.content instanceof Y.ContentType && item.content.type._map.size === 0) })
   const map0 = new Y.Node()
   map0.setAttr('hi', 1)
   const map1 = new Y.Node()
@@ -459,8 +359,8 @@ export const testUndoUntilChangePerformed = _tc => {
   yMap2.setAttr('key', 'value')
   yArray.push([yMap2])
 
-  const undoManager = new Y.UndoManager([yArray], { trackedOrigins: new Set([doc.clientID]) })
-  const undoManager2 = new Y.UndoManager([doc2.get('array')], { trackedOrigins: new Set([doc2.clientID]) })
+  const undoManager = new UndoManager([yArray], { trackedOrigins: new Set([doc.clientID]) })
+  const undoManager2 = new UndoManager([doc2.get('array')], { trackedOrigins: new Set([doc2.clientID]) })
 
   Y.transact(doc, () => yMap2.setAttr('key', 'value modified'), doc.clientID)
   undoManager.stopCapturing()
@@ -478,7 +378,7 @@ export const testUndoUntilChangePerformed = _tc => {
 export const testUndoNestedUndoIssue = _tc => {
   const doc = new Y.Doc({ gc: false })
   const design = doc.get()
-  const undoManager = new Y.UndoManager(design, { captureTimeout: 0 })
+  const undoManager = new UndoManager(design, { captureTimeout: 0 })
 
   const text = new Y.Node()
 
@@ -507,19 +407,19 @@ export const testUndoNestedUndoIssue = _tc => {
     blocks3.push([blocks3block])
     text.setAttr('blocks', blocks3block)
   })
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({}))
+  t.compare(toDeltaDeep(design), delta.from({}))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
 }
 
 /**
@@ -530,7 +430,7 @@ export const testUndoNestedUndoIssue = _tc => {
 export const testConsecutiveRedoBug = _tc => {
   const doc = new Y.Doc()
   const yRoot = doc.get()
-  const undoMgr = new Y.UndoManager(yRoot)
+  const undoMgr = new UndoManager(yRoot)
 
   let yPoint = new Y.Node()
   yPoint.setAttr('x', 0)
@@ -582,7 +482,7 @@ export const testUndoXmlBug = _tc => {
   const origin = 'origin'
   const doc = new Y.Doc()
   const fragment = doc.get('t')
-  const undoManager = new Y.UndoManager(fragment, {
+  const undoManager = new UndoManager(fragment, {
     captureTimeout: 0,
     trackedOrigins: new Set([origin])
   })
@@ -627,7 +527,7 @@ export const testUndoBlockBug = _tc => {
   const doc = new Y.Doc({ gc: false })
   const design = doc.get()
 
-  const undoManager = new Y.UndoManager(design, { captureTimeout: 0 })
+  const undoManager = new UndoManager(design, { captureTimeout: 0 })
 
   const text = new Y.Node()
 
@@ -678,63 +578,6 @@ export const testUndoBlockBug = _tc => {
 }
 
 /**
- * Undo text formatting delete should not corrupt peer state.
- *
- * @see https://github.com/yjs/yjs/issues/392
- * @param {t.TestCase} _tc
- */
-export const testUndoDeleteTextFormat = _tc => {
-  const doc = new Y.Doc()
-  const text = doc.get()
-  text.insert(0, 'Attack ships on fire off the shoulder of Orion.')
-  const doc2 = new Y.Doc()
-  const text2 = doc2.get()
-  Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc))
-  const undoManager = new Y.UndoManager(text)
-
-  text.format(13, 7, { bold: true })
-  undoManager.stopCapturing()
-  Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc))
-
-  text.format(16, 4, { bold: null })
-  undoManager.stopCapturing()
-  Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc))
-
-  undoManager.undo()
-  Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc))
-
-  const expect = delta.create()
-    .insert('Attack ships ')
-    .insert('on fire', { bold: true })
-    .insert(' off the shoulder of Orion.')
-  t.compare(text.toDelta(), expect)
-  t.compare(text2.toDelta(), expect)
-}
-
-/**
- * Undo text formatting delete should not corrupt peer state.
- *
- * @see https://github.com/yjs/yjs/issues/392
- * @param {t.TestCase} _tc
- */
-export const testBehaviorOfIgnoreRemoteAttributeChangesProperty = _tc => {
-  const doc = new Y.Doc()
-  const doc2 = new Y.Doc()
-  doc.on('update', update => Y.applyUpdate(doc2, update, doc))
-  doc2.on('update', update => Y.applyUpdate(doc, update, doc2))
-  const map1 = doc.get()
-  const map2 = doc2.get()
-  const um1 = new Y.UndoManager(map1, { ignoreRemoteAttributeChanges: true })
-  map1.setAttr('x', 1)
-  map2.setAttr('x', 2)
-  map1.setAttr('x', 3)
-  map2.setAttr('x', 4)
-  um1.undo()
-  t.assert(map1.getAttr('x') === 2)
-  t.assert(map2.getAttr('x') === 2)
-}
-
-/**
  * Special deletion case.
  *
  * @see https://github.com/yjs/yjs/issues/447
@@ -744,7 +587,7 @@ export const testSpecialDeletionCase = _tc => {
   const origin = 'undoable'
   const doc = new Y.Doc()
   const fragment = doc.get()
-  const undoManager = new Y.UndoManager(fragment, { trackedOrigins: new Set([origin]) })
+  const undoManager = new UndoManager(fragment, { trackedOrigins: new Set([origin]) })
   doc.transact(() => {
     const e = new Y.Node('test')
     e.setAttr('a', '1')
@@ -771,7 +614,7 @@ export const testSpecialDeletionCase = _tc => {
  */
 export const testUndoDeleteInMap = (tc) => {
   const { map0 } = init(tc, { users: 3 })
-  const undoManager = new Y.UndoManager(map0, { captureTimeout: 0 })
+  const undoManager = new UndoManager(map0, { captureTimeout: 0 })
   map0.setAttr('a', 'a')
   map0.deleteAttr('a')
   map0.setAttr('a', 'b')
@@ -794,32 +637,3 @@ export const testUndoDeleteInMap = (tc) => {
   t.compare(map0.toJSON().attrs, { a: 'a' })
 }
 
-/**
- * It should expose the StackItem being processed if undoing
- *
- * @param {t.TestCase} _tc
- */
-export const testUndoDoingStackItem = async (_tc) => {
-  const doc = new Y.Doc()
-  const text = doc.get('text')
-  const undoManager = new Y.UndoManager([text])
-  undoManager.on('stack-item-added', /** @param {any} event */ event => {
-    event.stackItem.meta.set('str', '42')
-  })
-  let metaUndo = /** @type {any} */ (null)
-  let metaRedo = /** @type {any} */ (null)
-  text.observe((event) => {
-    const /** @type {Y.UndoManager} */ origin = event.transaction.origin
-    if (origin === undoManager && origin.undoing) {
-      metaUndo = origin.currStackItem?.meta.get('str')
-    } else if (origin === undoManager && origin.redoing) {
-      metaRedo = origin.currStackItem?.meta.get('str')
-    }
-  })
-  text.insert(0, 'abc')
-  undoManager.undo()
-  undoManager.redo()
-  t.compare(metaUndo, '42', 'currStackItem is accessible while undoing')
-  t.compare(metaRedo, '42', 'currStackItem is accessible while redoing')
-  t.compare(undoManager.currStackItem, null, 'currStackItem is null after observe/transaction')
-}

@@ -10,69 +10,62 @@ import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { dropText, textDragOf } from '$lib/clipboard/moveText.js';
-import { cloneJson, type JSONText } from '$lib/utils/json.js';
+import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
 import { insertionMarks } from '$lib/session/editing/text.js';
 import { id, vetoable } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
-import { getYIndex } from '$lib/selection/selection.utils.js';
+import { siblingSlot } from '$lib/session/handles.js';
+import type { OpResult, Plan, Prepared } from '$lib/crdt/edytor-doc.js';
+import type { SplitTail } from '$lib/crdt/placement/model.js';
+import { REFUSED } from '$lib/crdt/doc/plan.js';
+import { offsetIn } from '$lib/selection/selection.utils.js';
 import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { INTENTS, caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
+import { caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
+
+/** A kind's fresh data: its first preset's (a new to-do is unchecked). */
+const freshData = (block: Block): NonNullable<JSONBlock['data']> => ({
+	...(block.definition.presets?.[0]?.data ?? {})
+});
 
 /**
- * Offer an intent's key to the bindings once per occurrence (the key it stands
- * for when no keydown offered it: Android, virtual keyboards): not when its
- * keydown already offered it (`offered`). A non-cancelable intent is offered
- * too — its attempt owns the browser's drift either way.
+ * The line Enter starts after `block` (a split's tail, a new sibling): a
+ * list-like kind (`continues`) itself, with fresh data; any other, its
+ * parent's default child.
  */
-export const runBeforeInputHotkeyBridge = (
-	edytor: Edytor,
-	snapshot: Attempt,
-	offered: string | null
-) => {
-	const key =
-		snapshot.inputType === 'insertText' && snapshot.data === '\t'
-			? 'tab'
-			: INTENTS[snapshot.inputType]?.key;
-	return Boolean(key && key !== offered && edytor.keymap.run(key));
+const nextLine = (block: Block): JSONBlock =>
+	block.definition.continues
+		? { type: block.type, data: freshData(block) }
+		: { type: block.edytor.defaultChild(block.parent!) };
+
+/** The block an operation answered first (inserted, split off), once written. */
+const blockOf = (edytor: Edytor, result: OpResult) => edytor.idToBlock.get(result.ids[0] ?? '');
+
+/**
+ * Type `value` at the insertion target (the selection it replaces removed
+ * first) with the insertion's marks; `. ` after a space or a dot replaces
+ * it (the auto-dot: autocorrect replaces the character before). Answers
+ * where it went.
+ */
+const type = (edytor: Edytor, snapshot: Attempt, value: string) => {
+	const marks = insertionMarks(edytor, snapshot);
+	const target = replaceSelectionForInsertion(edytor, snapshot);
+	if (!target) return null;
+	const { text, offset } = target;
+	const isAutoDot = value === '. ' && offset > 0 && ' .'.includes(text.stringContent[offset - 1]);
+	const at = text.segStart + offset - (isAutoDot ? 1 : 0);
+	if (isAutoDot) edytor.deleteText(text.parent.id, at, 1);
+	edytor.insertText(text.parent.id, at, value, marks);
+	return { text, offset, end: offset + (isAutoDot ? 1 : value.length) };
 };
 
 const insertText = (edytor: Edytor, snapshot: Attempt) => {
 	const { data } = snapshot;
 	// A text insertion while composing is the session's commit.
 	if (snapshot.inputType === 'insertText' && edytor.composition.commit(data ?? '')) return;
-	if (!snapshot.startText || !data) {
-		return;
-	}
-
-	const marks = insertionMarks(edytor, snapshot);
-	const target = replaceSelectionForInsertion(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-
-	const autoDotPreviousCharacter = target.text.stringContent.slice(
-		target.offset - 1,
-		target.offset
-	);
-	const shouldApplyAutoDot =
-		data === '. ' && target.offset > 0 && [' ', '.'].includes(autoDotPreviousCharacter);
-	if (shouldApplyAutoDot) {
-		target.text.insertText({
-			value: data,
-			start: target.offset,
-			end: target.offset,
-			marks,
-			isAutoDot: true
-		});
-		caretAt(edytor, target.text, target.offset + 1);
-		return;
-	}
-
-	target.text.insertText({ value: data, start: target.offset, end: target.offset, marks });
-	caretAt(edytor, target.text, target.offset + data.length);
+	const at = snapshot.startText && data && type(edytor, snapshot, data);
+	if (at) caretAt(edytor, at.text, at.end);
 };
 
 /**
@@ -88,16 +81,17 @@ const editSelectedBlocks = (edytor: Edytor) => {
 	// The caret replaces the block selection; a refused new line keeps it.
 	if (line) caretAt(edytor, line, line.length);
 	else {
-		const block = last.insertBlockAfter({ block: { type: edytor.defaultChild(last.parent!) } });
-		caretAt(edytor, block?.firstText, 0);
+		const line = { type: edytor.defaultChild(last.parent!) };
+		caretAt(edytor, blockOf(edytor, edytor.insertBlocks(siblingSlot(last), [line]))?.firstText, 0);
 	}
 	return true;
 };
 
 /**
  * A soft break; the caret lands after it, or before it (Emacs open-line).
- * When normalization splits the block on the break (code lines), "after" is
- * the new block's start and "before" the source block's trailing edge.
+ * When normalization splits the block on the break (code lines: the break is
+ * gone from its text), "after" is the new block's start and "before" the
+ * source block's trailing edge.
  */
 export const insertLineBreak = (
 	edytor: Edytor,
@@ -105,138 +99,100 @@ export const insertLineBreak = (
 	caret: 'after' | 'before' = 'after'
 ) => {
 	if (editSelectedBlocks(edytor)) return;
-	const marks = insertionMarks(edytor, snapshot);
-	const target = replaceSelectionForInsertion(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-
-	const sourceBlock = target.text.parent;
-	const sourceParent = sourceBlock.parent;
-	const sourceIndex = sourceBlock.index;
-	const sourceSiblingCount = sourceParent?.children.length ?? 0;
-	target.text.insertText({ value: '\n', start: target.offset, end: target.offset, marks });
-	sourceBlock.normalizeContent();
-
-	const normalizedNextBlock = sourceParent?.children[sourceIndex + 1];
-	const split =
-		sourceParent &&
-		sourceParent.children.length > sourceSiblingCount &&
-		normalizedNextBlock?.type === sourceBlock.type;
+	const at = type(edytor, snapshot, '\n');
+	if (!at) return;
+	const { text, offset } = at;
+	const block = text.parent;
 	const before = caret === 'before';
-	const text = !split
-		? target.text
-		: before
-			? (sourceBlock.lastText ?? target.text)
-			: normalizedNextBlock.firstText!;
-	const offset = !split ? target.offset + (before ? 0 : 1) : before ? text.length : 0;
-	caretAt(edytor, text, offset);
+	if (text.stringContent[offset] === '\n') return caretAt(edytor, text, offset + (before ? 0 : 1));
+	const line = before
+		? (block.lastText ?? text)
+		: block.parent?.children[block.index + 1]?.firstText;
+	caretAt(edytor, line, before ? (line?.length ?? 0) : 0);
 };
 
-const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
-	edytor.marks.has('link') ? { link: { href: uri } } : undefined;
-
-/** Plain text with `marks` (or a URI, as a link) as a flow (`flow.shape`). */
-const textFlow = (
-	edytor: Edytor,
-	dataTransfer: DataTransfer | null | undefined,
-	fallback = '',
-	marks?: JSONText['marks']
-) => {
-	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
-	const plain = dataTransfer?.getData('text/plain') || '';
-	const value = plain || uri || fallback;
-	return value ? flowOfText(value, !plain && uri ? getLinkMarksForUri(edytor, uri) : marks) : null;
-};
-
-const insertFromPaste = async (edytor: Edytor, snapshot: Attempt) => {
-	const flow = textFlow(edytor, snapshot.dataTransfer, '', insertionMarks(edytor, snapshot));
-	if (!flow) return;
-	// The paste consumes the caret's pending marks, as typing does.
-	if (edytor.selection.pending) edytor.selection.stage(undefined);
-	await pasteFlow(edytor, flow, { selection: snapshot });
-};
-
-const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
+const runPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
 	const event = { clipboardData: dataTransfer } as unknown as ClipboardEvent;
-	for (const plugin of edytor.plugins) {
+	for (const plugin of edytor.plugins)
 		vetoable((prevent) => plugin.onPaste?.({ prevent, e: event }));
-	}
 };
 
-/** The drop point the browser reported, in block offsets (`null`: not in a text). */
-const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
-	const range = snapshot.declared;
+/** The drop point the browser reported: its text and offset (`null`: not in a text). */
+const dropPoint = (edytor: Edytor, { declared: range }: Attempt) => {
 	const text =
 		range && edytor.node?.contains(range.startContainer)
 			? edytor.selection.getTextOfNode(range.startContainer, range.startOffset)
 			: null;
-	if (!text) return null;
-	const offset = Math.max(
-		0,
-		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
-	);
-	return { block: text.parent.id, offset: text.segStart + offset };
-};
-
-// A drop reported while whole blocks are selected must insert at the drop
-// point — not replace the block selection. The earlier target-range sync is
-// skipped for block selections (the DOM caret sits inside a selected block),
-// so resolve the reported range directly. `undefined`: no such selection.
-const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
-	const { selection, node } = edytor;
-	if (selection.selectedBlocks.size === 0 && selection.selectedInlineBlock.size === 0) return;
-	const range = snapshot.declared;
-	const text =
-		range && node?.contains(range.startContainer)
-			? selection.getTextOfNode(range.startContainer, range.startOffset)
-			: null;
-	if (!text) return null;
-	const offset = Math.max(
-		0,
-		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
-	);
-	selection.setAtTextOffset(text, offset);
-	return { text, offset };
+	return text && { text, offset: offsetIn(text, range!.startContainer, range!.startOffset) };
 };
 
 /**
- * Drop/as-quotation payloads replay the paste pipeline: an embedded Edytor
+ * A paste occurrence inserts the plain text (or the URI, as a link) the
+ * paste handler left to it. A drop replays the paste pipeline: an embedded Edytor
  * fragment round-trips (cross-editor drags), files and html route through the
  * plugin `onPaste` hook (claimed via `prevent`: the recorded veto aborts
- * this function and is caught by the beforeinput caller), `text/uri-list` becomes
- * a link when a `link` mark is registered, unclaimed `text/html` is imported,
- * and `text/plain` inserts as text.
- * Unclaimed files insert nothing rather than degrading to file-name text.
+ * this function and is caught by the beforeinput caller), unclaimed
+ * `text/html` is imported, `text/plain` inserts as text and `text/uri-list`
+ * as a link when a `link` mark is registered. Unclaimed files insert nothing
+ * rather than degrading to file-name text. A paste's text takes the caret's
+ * insertion marks and consumes its pending ones, as typing does. A drop over
+ * selected blocks or an atom lands at its point (the declared-range sync
+ * skips a block selection: the DOM caret sits in a selected block), never
+ * over them; the view's own text drag dropped is a move (a copy with Alt) of
+ * its range.
  */
-const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
-	// The view's own text drag dropped here: a move (a copy with Alt) of its range.
+const insertPayload = async (edytor: Edytor, snapshot: Attempt) => {
+	const { selection } = edytor;
+	const paste = snapshot.inputType === 'insertFromPaste';
+	const point = dropPoint(edytor, snapshot);
 	const drag = textDragOf(edytor);
 	if (drag?.dropping && snapshot.inputType === 'insertFromDrop') {
 		drag.dropping = false;
-		const to = dropPoint(edytor, snapshot);
-		if (to) dropText(edytor, drag, to);
+		if (point)
+			dropText(edytor, drag, {
+				block: point.text.parent.id,
+				offset: point.text.segStart + point.offset
+			});
 		return;
 	}
+	// `undefined`: no block or atom selection for the drop to land beside.
+	const land = () => {
+		if (paste || !(selection.selectedBlocks.size || selection.selectedInlineBlock.size)) return;
+		if (point) selection.selectText(point.text, point.offset);
+		return point;
+	};
 	const dataTransfer = snapshot.dataTransfer ?? null;
-	const fragment = readEdytorClipboardFragment(dataTransfer);
-	if (!fragment && dataTransfer) {
-		if ((dataTransfer.files?.length ?? 0) > 0) {
-			// A plugin places the files at the selection: the drop point, never over selected blocks.
-			if (resolveDropPoint(edytor, snapshot) !== null)
-				runDataTransferPastePlugins(edytor, dataTransfer);
-			return;
-		}
-		if (dataTransfer.getData('text/html')) {
-			runDataTransferPastePlugins(edytor, dataTransfer);
-		}
+	// A paste occurrence is the plain text its handler left to it (Shift-paste too).
+	const fragment = !paste && readEdytorClipboardFragment(dataTransfer);
+	if (!paste && !fragment && dataTransfer) {
+		// A plugin places the files at the selection: the drop point, never over selected blocks.
+		if (dataTransfer.files?.length)
+			return void (land() !== null && runPastePlugins(edytor, dataTransfer));
+		if (dataTransfer.getData('text/html')) runPastePlugins(edytor, dataTransfer);
 	}
+	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
+	const plain = dataTransfer?.getData('text/plain') || '';
+	const text = plain || uri || snapshot.data || '';
 	const flow = fragment
 		? flowOfFragment(fragment)
-		: (flowOfHtml(edytor, dataTransfer?.getData('text/html')) ??
-			textFlow(edytor, dataTransfer, snapshot.data ?? ''));
-	const at = flow ? resolveDropPoint(edytor, snapshot) : null;
-	if (flow && at !== null) await pasteFlow(edytor, flow, { at, selection: snapshot });
+		: (!paste && flowOfHtml(edytor, dataTransfer?.getData('text/html'))) ||
+			(text
+				? flowOfText(
+						text,
+						!plain && uri
+							? edytor.marks.has('link')
+								? { link: { href: uri } }
+								: undefined
+							: paste
+								? insertionMarks(edytor, snapshot)
+								: undefined
+					)
+				: null);
+	if (!flow) return;
+	const at = land();
+	if (at === null) return;
+	if (paste && selection.pending) selection.stage(undefined);
+	await pasteFlow(edytor, flow, { at, selection: snapshot });
 };
 
 /**
@@ -244,34 +200,59 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
  * keeps the kind — a continuing kind's with its first preset's data (a new
  * to-do is unchecked), any other's with the block's (a heading's level).
  */
-const liftContent = (block: Block, text: Text): Block | null => {
-	const { continues, presets } = block.definition;
-	const data = continues ? { ...(presets?.[0]?.data ?? {}) } : cloneJson(block.data);
-	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
-		block.edytor.facade.prepare.splitBlock(block.id, text.segStart + index, id('b'), {
-			type: block.type,
-			data
-		})
-	);
-	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
+const liftContent = (block: Block, text: Text) => {
+	const { edytor } = block;
+	const data = block.definition.continues ? freshData(block) : cloneJson(block.data);
+	const tail = { type: block.type, data };
+	return blockOf(edytor, edytor.splitBlock(block.id, text.segStart + text.length, id('b'), tail));
+};
+
+/**
+ * A split whose children stay with the block (a container's header): the
+ * tail becomes the block's first child (`child`) or its next sibling. One
+ * plan: the document's split step, placed there, without the move that
+ * gives the tail the children.
+ */
+const splitKeepingChildren = (
+	edytor: Edytor,
+	[id, offset, born, tail]: [string, number, string, SplitTail?],
+	child: boolean
+): Prepared => {
+	const { facade } = edytor;
+	const split = facade.prepare.splitBlock(id, offset, born, tail);
+	const step = 'writes' in split ? split.writes[0] : undefined;
+	if (step?.op !== 'splitBlock') return REFUSED;
+	if (!child) return facade.compose({ ...(split as Plan), writes: [step] });
+	// The rank of a first child, and the document's answer on placing the kind there.
+	const slot = facade.prepare.insertBlocks({ parent: id, index: 0 }, [
+		{ id: born, type: tail?.type ?? facade.defaultChild(id) }
+	]);
+	const first = 'writes' in slot ? slot.writes[0] : undefined;
+	if (first?.op !== 'insertBlocks') return REFUSED;
+	const placed = { ...step, parent: id, rank: first.ranks[0]! };
+	return facade.compose({ ...(split as Plan), writes: [placed] });
 };
 
 /**
  * Enter in the middle of a container's header: the children stay with it.
  * The tail becomes its first child (its default child kind); a closed
- * toggle's goes to a toggle after it instead. One plan.
+ * toggle's goes to a toggle after it instead. One plan, dispatched as the
+ * `splitBlock` it is.
  */
 const splitHeader = (block: Block, text: Text, index: number, open: boolean | undefined) => {
-	const edytor = block.edytor;
-	const { presets } = block.definition;
+	const { edytor } = block;
 	const inside = open !== false;
 	const tail = inside
 		? { type: edytor.defaultChild(block), data: {} }
-		: { type: block.type, data: { ...(presets?.[0]?.data ?? {}) } };
-	const plan = dispatchPlan(block, 'splitBlock', { index, text }, (payload) =>
-		prepareSplitKeepingChildren.call(block, payload, tail, inside)
-	);
-	return plan && edytor.idToBlock.get(plan.ids[0]!);
+		: { type: block.type, data: freshData(block) };
+	const args: [string, number, string, SplitTail] = [
+		block.id,
+		text.segStart + index,
+		id('b'),
+		tail
+	];
+	const split = (a: typeof args) => splitKeepingChildren(edytor, a, inside);
+	return blockOf(edytor, edytor.dispatcher.plan('splitBlock', args, split, block));
 };
 
 const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
@@ -280,25 +261,15 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	const cell = snapshot.startText?.parent;
 	if (cell && edytor.facade.isTableCell(cell.id)) return insertLineBreak(edytor, snapshot);
 	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-	edytor.selection.setAtTextOffset(target.text, target.offset);
-
-	const { startText, isCollapsed, yStart } = edytor.selection.state;
+	if (!target?.text.parent.parent) return;
+	const { text: startText, offset: yStart } = target;
+	edytor.selection.selectText(startText, yStart);
 	const { isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
-
-	if (!isCollapsed || !startText?.parent.parent) {
-		return;
-	}
 	// The new sibling's actual parent decides its type.
-	const defaultBlock = edytor.defaultChild(startText.parent.parent);
+	const defaultBlock = edytor.defaultChild(startText.parent.parent!);
 	const current = startText.parent;
-	const { continues, presets } = current.definition;
-	/** A list-like kind continues itself (a fresh to-do is unchecked); others start the default. */
-	const sibling = continues
-		? { type: current.type, data: { ...(presets?.[0]?.data ?? {}) } }
-		: { type: defaultBlock };
+	const { continues } = current.definition;
+	const sibling = nextLine(current);
 
 	// Enter in the empty last line of a lines island (a code block) holding
 	// other lines leaves it: the line goes, and the parent's default kind
@@ -314,8 +285,9 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		current.index > 0 &&
 		current.index === island.children.length - 1
 	) {
-		current.removeBlock();
-		const after = island.insertBlockAfter({ block: { type: edytor.defaultChild(island.parent) } });
+		edytor.deleteBlock(current.id);
+		const line = { type: edytor.defaultChild(island.parent) };
+		const after = blockOf(edytor, edytor.insertBlocks(siblingSlot(island), [line]));
 		return caretAt(edytor, after?.firstText, 0);
 	}
 
@@ -327,10 +299,11 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	// then out of the list.
 	const item = Boolean(current.list);
 	if ((continues || item) && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
-		if ((item || current.parent?.definition.continues) && current.unNestBlock())
+		const outdents = item || current.parent?.definition.continues;
+		if (outdents && edytor.unNestBlock(current.id).status === 'applied')
 			return caretAt(edytor, current.firstText, 0);
 		if (item) return;
-		current.setBlock({ value: { type: defaultBlock, data: {} } });
+		edytor.setBlock(current.id, { type: defaultBlock, data: {} });
 		return caretAt(edytor, current.firstText, 0);
 	}
 
@@ -344,9 +317,11 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		if (header) {
 			const opened =
 				open === false
-					? current.insertBlockAfter({ block: sibling })
-					: current.addChildBlock({ block: { type: edytor.defaultChild(current) }, index: 0 });
-			return caretAt(edytor, opened?.firstText, 0);
+					? edytor.insertBlocks(siblingSlot(current), [sibling])
+					: edytor.insertBlocks({ parent: current.id, index: 0 }, [
+							{ type: edytor.defaultChild(current) }
+						]);
+			return caretAt(edytor, blockOf(edytor, opened)?.firstText, 0);
 		}
 		const currentBlock = startText.parent;
 		if (currentBlock.hasChildren && currentBlock.hasContent) {
@@ -355,49 +330,45 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 			return caretAt(edytor, liftContent(currentBlock, startText)?.firstText, 0);
 		}
 
-		const newBlock = currentBlock.insertBlockAfter({ block: sibling });
+		const newBlock = blockOf(edytor, edytor.insertBlocks(siblingSlot(currentBlock), [sibling]));
 		const text = newBlock?.firstText;
 		return caretAt(edytor, text, text?.length ?? 0);
 	}
 
 	if (isAtStartOfBlock) {
-		startText.parent.insertBlockBefore({ block: sibling });
+		edytor.insertBlocks(siblingSlot(startText.parent, false), [sibling]);
 		caretAt(edytor, startText, 0);
 		return;
 	}
 
 	const newBlock = header
 		? splitHeader(current, startText, yStart, open)
-		: current.splitBlock({ index: yStart, text: startText });
+		: blockOf(edytor, edytor.splitBlock(current.id, startText.segStart + yStart, id('b'), sibling));
 	caretAt(edytor, newBlock?.firstText, 0);
 };
 
 /** The model command for a `beforeinput`, run as one user command (undo policy, prevention scope). */
 export const runBeforeInputCommand = (edytor: Edytor, snapshot: Attempt) =>
-	edytor.dispatcher.run(snapshot.inputType, () => beforeInputCommand(edytor, snapshot));
+	edytor.dispatcher.run(snapshot.inputType, () => {
+		const { inputType, data } = snapshot;
+		switch (kindOf(inputType)) {
+			case 'text':
+				return insertText(edytor, snapshot);
+			case 'delete':
+				return runBeforeInputDeleteCommand(edytor, snapshot);
+			case 'break':
+				return inputType === 'insertParagraph'
+					? insertParagraph(edytor, snapshot)
+					: insertLineBreak(edytor, snapshot);
+			case 'payload':
+				return insertPayload(edytor, snapshot);
+			case 'composition':
+				if (inputType === 'insertCompositionText')
+					return edytor.composition.update(data ?? '', snapshot);
+				if (inputType === 'insertFromComposition') return edytor.composition.commit(data ?? '');
+		}
+	});
 
 /** An editing intent at the current selection (a key binding's command): no event to fabricate. */
 export const runIntent = (edytor: Edytor, inputType: string) =>
 	runBeforeInputCommand(edytor, intentSnapshot(edytor, inputType));
-
-const beforeInputCommand = (edytor: Edytor, snapshot: Attempt) => {
-	const type = snapshot.inputType;
-	switch (kindOf(type)) {
-		case 'text':
-			return insertText(edytor, snapshot);
-		case 'delete':
-			return runBeforeInputDeleteCommand(edytor, snapshot);
-		case 'break':
-			return type === 'insertParagraph'
-				? insertParagraph(edytor, snapshot)
-				: insertLineBreak(edytor, snapshot);
-		case 'payload':
-			return type === 'insertFromPaste'
-				? insertFromPaste(edytor, snapshot)
-				: insertFromDataTransfer(edytor, snapshot);
-		case 'composition':
-			if (type === 'insertCompositionText')
-				return edytor.composition.update(snapshot.data ?? '', snapshot);
-			if (type === 'insertFromComposition') return edytor.composition.commit(snapshot.data ?? '');
-	}
-};

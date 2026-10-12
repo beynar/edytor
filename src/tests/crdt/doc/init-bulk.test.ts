@@ -122,15 +122,15 @@ describe('U7 — init quadratic removal', () => {
 			// New block mid-transaction — its rec exists only through the
 			// read-your-writes fold of the in-flight changed map.
 			expect(
-				ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status
+				ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]).status
 			).toBe('applied');
 			// Repeat writes to the SAME registry attr key in one transaction:
 			// `changed` holds one (type,key) pair no matter how many writes —
 			// the fold must still surface the latest value every read.
 			ed.setBlockType('x', 'list');
 			ed.setBlockType('x', 'quote');
-			ed.setBlockData('x', { n: 1 });
-			ed.setBlockData('x', { n: 2 });
+			ed.patchData('x', [{ path: [], value: { n: 1 } }]);
+			ed.patchData('x', [{ path: [], value: { n: 2 } }]);
 			ed.insertText('x', 0, 'a');
 			ed.insertText('x', 0, 'b');
 			expect(ed.project().children[1].id).toBe('x');

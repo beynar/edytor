@@ -25,8 +25,9 @@ import { describe, expect, it } from 'vitest';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { CLOSE, validRoomId } from '$lib/crdt/providers/room.js';
+import { DOCUMENT_WRITES } from '$lib/crdt/operations.js';
+import { richTextPlugin } from '../routes/chrome/plugins.js';
 
 const root = join(import.meta.dirname, '../..');
 
@@ -332,7 +333,9 @@ describe('docs drift', () => {
 				(mention) => `${relative(root, path)}: ${mention}`
 			);
 		});
-		expect(mentions.length).toBeGreaterThan(0);
+		// The docs name the version they describe (a release is no pre-release, so
+		// the pattern above does not find it).
+		expect(docs.some((path) => pageText(path).includes(`\`${version}\``))).toBe(true);
 		expect(mentions.filter((mention) => !mention.endsWith(`: ${version}`))).toEqual([]);
 	});
 
@@ -512,7 +515,10 @@ describe('docs drift', () => {
 
 	it('every `edytor.<member>` a doc names exists, unless the doc says it is gone (SW8-docs-1)', () => {
 		const source = readFileSync(join(root, 'src/lib/edytor.svelte.ts'), 'utf8');
+		// The document's writes are the view's members too, under the same names.
+		const writes = new Set<string>(DOCUMENT_WRITES);
 		const member = (name: string) =>
+			writes.has(name) ||
 			new RegExp(`^\\t(?:readonly |get |set |static )*${name}\\b\\s*[=:(!?<]`, 'm').test(source);
 		const gone = /removed|is gone|are gone|no longer|replaced|→/;
 		const stale = docs.flatMap((path) =>
@@ -655,18 +661,15 @@ describe('docs drift', () => {
 		expect(quickStart).toMatch(/actor id `guest:<id>`/);
 	});
 
-	it('the operations page has a payload row for every dispatched operation', () => {
+	it('the operations page has a row for every operation and every command', () => {
 		const page = readFileSync(join(root, 'site/content/docs/plugins/operations.mdx'), 'utf8');
-		const names = new Set(
-			['src/lib/block', 'src/lib/text']
-				.flatMap((dir) => sources(join(root, dir)))
-				.concat(join(root, 'src/lib/edytor.svelte.ts'))
-				.flatMap((path) => [...readFileSync(path, 'utf8').matchAll(/\bbatch\(\s*'(\w+)'/g)])
-				.map(([, name]) => name)
-				// Normalization runs inside the command that requested it; hooks never see it.
-				.filter((name) => !name.startsWith('normalize'))
-		);
-		expect(names.size).toBeGreaterThan(20);
+		const plugins = readFileSync(join(root, 'src/lib/plugins.ts'), 'utf8');
+		const commands = /export interface Commands \{([\s\S]*?)\n\}/.exec(plugins)![1]!;
+		const names = new Set([
+			...DOCUMENT_WRITES,
+			...[...commands.matchAll(/^\t(\w+):/gm)].map(([, name]) => name!)
+		]);
+		expect(names.size).toBeGreaterThan(30);
 		const rows = page.split('\n').filter((line) => line.startsWith('| `'));
 		expect([...names].filter((name) => !rows.some((row) => row.includes(`\`${name}\``)))).toEqual(
 			[]
@@ -849,8 +852,8 @@ describe('docs drift', () => {
 				'contract',
 				notClaimed,
 				[
-					'insertBlockBefore',
-					'prepareSplitKeepingChildren',
+					'`insertBlocks` before or after it',
+					'splitKeepingChildren',
 					'duplicateBlock',
 					'`whole`',
 					'`replace`',
@@ -863,7 +866,7 @@ describe('docs drift', () => {
 				'document-api',
 				read('site/content/docs/reference/document-api.mdx'),
 				[
-					'`insertBlock(s)`',
+					'`insertBlocks`',
 					'`duplicateBlock`',
 					'`whole`',
 					'`replace`s blocks',
@@ -972,11 +975,11 @@ describe('docs drift', () => {
 		);
 	});
 
-	it('a selected list stands for its subtree through selectedMembers; an edge divider is left out (HX-02, HX-07, HX-08)', () => {
+	it('a selected list stands for its subtree through selectedMembers (HX-02, HX-07)', () => {
 		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
 		const members = 'a selected list or code block with';
 		expect(read('editor/commands.mdx')).toContain(
-			'edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers });'
+			'edytor.deleteBlocks(edytor.selection.selectedMembers.map((block) => block.id));'
 		);
 		expect(read('plugins/block-handles.mdx')).toContain(
 			"await edytor.runCommand('block.heading2');"
@@ -992,9 +995,6 @@ describe('docs drift', () => {
 		);
 		expect(read('plugins/block-menu.mdx')).toContain(
 			'A list or a code block is one block to the menu'
-		);
-		expect(read('editor/selection.mdx')).toContain(
-			'A divider that starts or ends the document has no line beyond it, so it is left out'
 		);
 	});
 
@@ -1426,23 +1426,26 @@ describe('documented command results (editor/commands)', () => {
 		new Edytor({ value: structuredClone(value), plugins: [...plugins, richTextPlugin] });
 	const ids = (edytor: Edytor) => edytor.root!.children.map((block) => block.id);
 
-	it('a creating command answers null when the document refuses, undefined when it never ran', () => {
+	it('a creating operation answers refused when the document refuses or the view never ran it', () => {
 		const edytor = view();
-		const a = edytor.idToBlock.get('a')!;
 		// The document refuses a reused id.
-		expect(a.insertBlockAfter({ block: { id: 'b', type: 'paragraph' } })).toBeNull();
+		expect(
+			edytor.insertBlocks({ parent: null, index: 1 }, [{ id: 'b', type: 'paragraph' }]).status
+		).toBe('refused');
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		edytor.readonly = true;
-		expect(a.insertBlockAfter({ block: { type: 'paragraph' } })).toBeUndefined();
+		expect(edytor.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]).status).toBe(
+			'refused'
+		);
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		const vetoed = view([
 			() => ({
-				onBeforeOperation: ({ operation, prevent }) => operation === 'insertBlockAfter' && prevent()
+				onBeforeOperation: ({ operation, prevent }) => operation === 'insertBlocks' && prevent()
 			})
 		]);
-		expect(
-			vetoed.idToBlock.get('a')!.insertBlockAfter({ block: { type: 'paragraph' } })
-		).toBeUndefined();
+		expect(vetoed.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]).status).toBe(
+			'refused'
+		);
 		expect(vetoed.dispatcher.last?.status).toBe('refused');
 		expect(ids(vetoed)).toEqual(['a', 'b', 'c', 'd']);
 	});
@@ -1450,26 +1453,26 @@ describe('documented command results (editor/commands)', () => {
 	it('a direction move keeps document order; a target move keeps the order given', () => {
 		const edytor = view();
 		const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.moveBlocks({ blocks: [c!, b!], direction: 'up' });
+		edytor.move({ blocks: [c!, b!], direction: 'up' });
 		expect(ids(edytor)).toEqual(['b', 'c', 'a', 'd']);
-		edytor.moveBlocks({ blocks: [a!, b!], target: d!, position: 'after' });
+		edytor.move({ blocks: [a!, b!], target: d!, position: 'after' });
 		expect(ids(edytor)).toEqual(['c', 'd', 'a', 'b']);
-		edytor.moveBlocks({ blocks: [b!, a!], target: c!, position: 'before' });
+		edytor.move({ blocks: [b!, a!], target: c!, position: 'before' });
 		expect(ids(edytor)).toEqual(['b', 'a', 'c', 'd']);
 	});
 
 	it('a refused move sets `dispatcher.last`, as every command does (SW8-docs-2)', () => {
 		const edytor = view();
 		const [a, b] = ['a', 'b'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.moveBlocks({ blocks: [b!], direction: 'up' });
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'applied' });
+		edytor.move({ blocks: [b!], direction: 'up' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'applied' });
 		// No previous sibling to nest under: the move is structurally refused.
-		expect(edytor.moveBlocks({ blocks: [b!], direction: 'in' })).toEqual([]);
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'refused' });
-		edytor.moveBlocks({ blocks: [a!, b!], direction: 'down' });
+		expect(edytor.move({ blocks: [b!], direction: 'in' })).toEqual([]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
+		edytor.move({ blocks: [a!, b!], direction: 'down' });
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'applied' });
 		edytor.readonly = true;
-		expect(edytor.moveBlocks({ blocks: [a!, b!], direction: 'up' })).toEqual([]);
+		expect(edytor.move({ blocks: [a!, b!], direction: 'up' })).toEqual([]);
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
 		expect(ids(edytor)).toEqual(['c', 'b', 'a', 'd']);
 	});
@@ -1481,13 +1484,12 @@ describe('documented command results (editor/commands)', () => {
  * paragraph long enough to be a wall of text is a list or a table waiting to
  * happen. The changelog is written for users: per release, what breaks, what
  * is new and what was fixed, never a ticket, a contract row or a file of the
- * repository. Importing v13 documents is a guide of its own.
+ * repository.
  */
 describe('docs readability (WU-19)', () => {
 	const site = files(join(root, 'site/content/docs'));
 	const read = (path: string) => readFileSync(join(root, 'site/content/docs', path), 'utf8');
 	const CHANGELOG = 'reference/migration.mdx';
-	const IMPORT = 'reference/v13-import.mdx';
 
 	/** The lines of a page outside fenced code and table rows, with their numbers. */
 	const prose = (text: string) => {
@@ -1515,7 +1517,7 @@ describe('docs readability (WU-19)', () => {
 		expect(long).toEqual([]);
 	});
 
-	it('the changelog and the v13 import guide name no ticket, contract row or repository path', () => {
+	it('the changelog names no ticket, contract row or repository path', () => {
 		// The ticket grammar `pnpm check:api` rejects in public JSDoc
 		// (`scripts/api-report.mjs`), function keys (`Alt+F10`) and Cloudflare's
 		// R2 aside.
@@ -1524,7 +1526,7 @@ describe('docs readability (WU-19)', () => {
 		// The contract rows' namespaces (`del.blocks.promote`, `room.compact.*`).
 		const row =
 			/^(?:(?:del|flow|sel|hist|layout|order|room|net|conc|merge|mark|link)(?:\.[\w*-]+)+|doc\.(?:empty|hydrate)\b.*|data\.(?:atomic|retype)\b.*|id\.same\b.*|code\.language\b.*|crdt\.doc\b.*|[\w.]+\.\*)$/;
-		const hits = [CHANGELOG, IMPORT].flatMap((page) =>
+		const hits = [CHANGELOG].flatMap((page) =>
 			prose(read(page)).flatMap(([at, line]) => {
 				const text = line.replace(/<kbd>[^<]*<\/kbd>|\+F\d{1,2}\b/g, '');
 				const found = [
@@ -1573,14 +1575,12 @@ describe('docs readability (WU-19)', () => {
 		expect(notes.trimStart()).toMatch(/^### Unreleased\n/);
 	});
 
-	it('the v13 import guide is a page of its own, in the reference sidebar', () => {
-		const guide = read(IMPORT);
-		expect(guide).toContain('migration.migrate(name)');
-		expect(guide).toContain('`rolledback`');
-		expect(read('reference/meta.ts')).toMatch(/"migration",\s*"v13-import"/);
-		expect(read(CHANGELOG)).not.toContain('## Importing v13 documents');
+	it('no page links the removed v13 import guide', () => {
+		expect(read('reference/meta.ts')).not.toContain('v13-import');
 		const stale = site
-			.filter((path) => readFileSync(path, 'utf8').includes('migration#importing-v13-documents'))
+			.filter((path) =>
+				/v13-import|migration#importing-v13-documents/.test(readFileSync(path, 'utf8'))
+			)
 			.map((path) => relative(root, path));
 		expect(stale).toEqual([]);
 	});
@@ -1741,9 +1741,9 @@ describe('docs readability (WU-19)', () => {
 		expect(filed).toEqual([]);
 	});
 
-	it('the README names the changelog and the v13 import guide', () => {
+	it('the README names the changelog', () => {
 		const readme = readFileSync(join(root, 'README.md'), 'utf8');
-		expect(readme).toContain('https://edytor.dev/docs/reference/v13-import');
+		expect(readme).not.toContain('https://edytor.dev/docs/reference/v13-import');
 		expect(readme).toMatch(/\[changelog\]\(https:\/\/edytor\.dev\/docs\/reference\/migration\)/);
 	});
 });

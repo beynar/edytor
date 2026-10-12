@@ -6,6 +6,7 @@
  */
 import type { DocChange, YDoc, YUndoManager } from '../../crdt/index.js';
 import { asEngineDoc } from '../../crdt/structs.js';
+import { common } from '../../crdt/data.js';
 import type { Attachment, FrameValidation, ValidatedBlock } from '../DocumentRoom.js';
 import { ROOM_ORIGIN } from './shared.js';
 import { lockedBlocks } from '../locks.js';
@@ -28,36 +29,17 @@ export type Validation = {
 	off: () => void;
 };
 
-/** The ids of `next` that left their order relative to the others both lists hold (a longest increasing run kept). */
+/** The ids of `next` that left their order relative to the others both lists hold (a longest common run kept). */
 const reordered = (previous: readonly string[], next: readonly string[]): string[] => {
-	const at = new Map(previous.map((id, i) => [id, i]));
-	const common = next.filter((id) => at.has(id));
-	// Longest increasing run of previous positions (patience sorting).
-	const tails: number[] = [];
-	const links: number[] = new Array(common.length).fill(-1);
-	const tailAt: number[] = [];
-	common.forEach((id, i) => {
-		const position = at.get(id)!;
-		let lo = 0;
-		let hi = tails.length;
-		while (lo < hi) {
-			const mid = (lo + hi) >> 1;
-			if (tails[mid] < position) lo = mid + 1;
-			else hi = mid;
-		}
-		tails[lo] = position;
-		tailAt[lo] = i;
-		links[i] = lo > 0 ? tailAt[lo - 1] : -1;
-	});
-	const kept = new Set<number>();
-	for (let i = tails.length ? tailAt[tails.length - 1] : -1; i !== -1; i = links[i]) kept.add(i);
-	return common.filter((_, i) => !kept.has(i));
+	const kept = new Set(common(previous, next).map(([, j]) => next[j]));
+	const held = new Set(previous);
+	return next.filter((id) => held.has(id) && !kept.has(id));
 };
 
 export class RoomValidation {
 	/** The index `validate` reads (built at its first frame, for the live document). */
 	private validation: Validation | null = null;
-	private _validator: ((frame: FrameValidation) => boolean | void) | null | undefined;
+	#_validator: ((frame: FrameValidation) => boolean | void) | null | undefined;
 
 	constructor(private readonly room: RoomContext) {}
 
@@ -66,11 +48,11 @@ export class RoomValidation {
 	 * then `validate`; `null` when neither is set (no block index is kept).
 	 */
 	private get validator(): ((frame: FrameValidation) => boolean | void) | null {
-		if (this._validator !== undefined) return this._validator;
+		if (this.#_validator !== undefined) return this.#_validator;
 		const locks = this.room.options.locks;
 		const validate = this.room.options.validate;
 		const locked = locks ? lockedBlocks(locks) : null;
-		return (this._validator =
+		return (this.#_validator =
 			locked === null
 				? (validate ?? null)
 				: validate === undefined
@@ -90,7 +72,7 @@ export class RoomValidation {
 	}
 
 	/** A shown block's state, read from the facade (`null`: it does not show). */
-	private blockState(id: string): ValidatedBlock | null {
+	#blockState(id: string): ValidatedBlock | null {
 		const facade = this.room.facade;
 		if (!facade.isVisibleBlock(id)) return null;
 		return {
@@ -120,7 +102,7 @@ export class RoomValidation {
 				const ids = facade.childrenIds(parent);
 				children.set(parent, ids);
 				for (const id of ids) {
-					const state = this.blockState(id);
+					const state = this.#blockState(id);
 					if (state !== null) states.set(id, state);
 					walk(id);
 				}
@@ -134,7 +116,7 @@ export class RoomValidation {
 				frame: null,
 				off: () => {}
 			};
-			created.off = facade.onChange((change) => this.indexChange(created, change));
+			created.off = facade.onChange((change) => this.#indexChange(created, change));
 			v = this.validation = created;
 		}
 		if (v.history === null && crdt.doc.isInitialized(asEngineDoc(doc))) {
@@ -148,7 +130,7 @@ export class RoomValidation {
 	}
 
 	/** Keep the index from one change report, recording what the frame being validated touched. */
-	private indexChange(v: Validation, change: DocChange) {
+	#indexChange(v: Validation, change: DocChange) {
 		const frame = v.frame?.origin === change.origin ? v.frame : null;
 		const touch = (id: string) => {
 			if (frame === null) return;
@@ -163,7 +145,7 @@ export class RoomValidation {
 		};
 		const read = (id: string, moved: boolean) => {
 			const was = v.states.get(id);
-			const state = this.blockState(id);
+			const state = this.#blockState(id);
 			if (state === null) return drop(id);
 			if (!moved || was === undefined || was.parent !== state.parent) touch(id);
 			v.states.set(id, state);
@@ -200,7 +182,7 @@ export class RoomValidation {
 		const frame = v.frame;
 		v.frame = null;
 		if (frame === null || (frame.touched.size === 0 && !frame.data)) {
-			if (v.history) room.facade.releaseHistory(v.history);
+			if (v.history) v.history.clear();
 			return;
 		}
 		const touched = [...frame.touched];
@@ -235,6 +217,6 @@ export class RoomValidation {
 				}
 			}
 		}
-		if (v.history) room.facade.releaseHistory(v.history);
+		if (v.history) v.history.clear();
 	}
 }

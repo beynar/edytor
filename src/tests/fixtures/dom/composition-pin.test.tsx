@@ -36,6 +36,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference (`arch-v2/ref-i4`): expected-fail until I4 flips it. */
 const row = it;
@@ -98,7 +99,7 @@ const textElements = (element: Element) =>
 const placeholders = (editor: HTMLElement) =>
 	editor.querySelectorAll('[data-edytor-text="true"][data-placeholder]').length;
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startText?.parent.id, offset: yStart, isCollapsed };
 };
 
@@ -274,7 +275,7 @@ describe('F-I12 (a) — D-20: a same-parent reorder moves the IME’s node too',
 		'a peer moves the composing block after its next sibling: committed first, once',
 		async () => {
 			const { edytor, editor, remote, host } = await composingBetween();
-			expect(remote.facade.moveBlock(host, { parent: null, index: 3 }).status).toBe('applied');
+			expect(remote.facade.moveBlocks([host], { parent: null, index: 3 }).status).toBe('applied');
 			remote.sync();
 			expect(edytor.isComposing).toBe(false);
 			await flushDomUpdates();
@@ -293,10 +294,9 @@ describe('F-I12 (a) — D-20: a same-parent reorder moves the IME’s node too',
 
 	pin('a peer inserting a sibling above only shifts the index: the session lives', async () => {
 		const { edytor, editor, remote } = await composingBetween();
-		remote.facade.insertBlock(
-			{ parent: null, index: 0 },
+		remote.facade.insertBlocks({ parent: null, index: 0 }, [
 			{ id: 'peer-top', type: 'paragraph', content: [{ kind: 'text', text: 'top' }] }
-		);
+		]);
 		remote.sync();
 		await flushDomUpdates();
 		expect(edytor.isComposing).toBe(true);

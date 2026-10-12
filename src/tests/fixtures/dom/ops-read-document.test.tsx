@@ -39,6 +39,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference (`arch-v2/ref-r3`); green since R3. */
 const row = it;
@@ -175,8 +176,8 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 		await flushDomUpdates();
 
 		expect(texts(edytor)).toEqual([`paragraph ${n - 1}`]);
-		expect(edytor.selection.state.startText?.stringContent).toBe(`paragraph ${n - 1}`);
-		expect(edytor.selection.state.yStart).toBe(1);
+		expect(selectionState(edytor).startText?.stringContent).toBe(`paragraph ${n - 1}`);
+		expect(selectionState(edytor).yStart).toBe(1);
 		if (!keep) unmount();
 		return m;
 	};
@@ -197,7 +198,7 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 
 	const blockDelete = async (n: number, keep = false) => {
 		const { edytor, unmount } = await many(n);
-		edytor.selection.selectBlocks(...edytor.root!.children.slice(1));
+		selectBlocks(edytor, ...edytor.root!.children.slice(1));
 		await flushDomUpdates();
 		const m = meter(edytor);
 		const key = new KeyboardEvent('keydown', {
@@ -244,8 +245,7 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 				const m = meter(edytor);
 				reads = 0;
 				edytor.transact(() => {
-					for (let i = 0; i < n; i++)
-						text.insertText({ value: 'x', start: from + i, end: from + i });
+					for (let i = 0; i < n; i++) edytor.insertText(text.parent.id, from + i, 'x');
 				});
 				m.stop();
 				return { m, reads };
@@ -303,8 +303,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alpha', 'be', 'ta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('ta');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText?.stringContent).toBe('ta');
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('Backspace at a block start (merge): one report, no projection', async () => {
@@ -317,8 +317,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alphabeta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('alphabeta');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).startText?.stringContent).toBe('alphabeta');
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	row('a multi-line paste: one report, no projection, caret after the pasted text', async () => {
@@ -333,8 +333,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alpha', 'beone', 'two', 'threeta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('threeta');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).startText?.stringContent).toBe('threeta');
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	row('Tab (nest): one report, no projection', async () => {
@@ -354,7 +354,7 @@ describe('operations never read the mirror mid-transaction', () => {
 		const text = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, text, 1, text, 4);
 		const m = meter(edytor);
-		text.markText({ mark: 'bold', start: 1, end: 4, toggle: true });
+		edytor.formatRange(text.parent.id, 1, 3, { bold: true });
 		m.stop();
 		expect(edytor.value.children?.[0]?.content).toEqual([
 			{ text: 'a' },
@@ -390,12 +390,12 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 		await setNativeSelection(edytor, block.firstText, 5);
 		const m = meter(edytor);
 		edytor.transact(() => {
-			block.firstText!.insertText({ value: 'A', start: 0, end: 0 });
-			block.firstText!.insertText({ value: 'BC', start: 0, end: 0 });
+			edytor.insertText(block.id, 0, 'A');
+			edytor.insertText(block.id, 0, 'BC');
 		});
 		m.stop();
 
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect(texts(edytor)).toEqual(['BCAHello world']);
 		expect(startText).toBe(edytor.root!.children[0]!.firstText);
 		expect(startText?.stringContent).toBe('BCAHello world');
@@ -420,12 +420,12 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 			remote.facade.insertText(block.id, 9, 'X');
 			remote.push();
 
-			const { startText, yStart } = edytor.selection.state;
+			const { startText, yStart } = selectionState(edytor);
 			expect(texts(edytor)).toEqual(['Say HelloX world']);
 			expect(startText).toBe(edytor.root!.children[0]!.firstText);
 			expect(yStart).toBe(9);
 			await flushDomUpdates();
-			expect(edytor.selection.state.yStart).toBe(9);
+			expect(selectionState(edytor).yStart).toBe(9);
 		}
 	);
 
@@ -443,13 +443,13 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 		remote.facade.mergeBackward(beta!.id);
 		remote.push();
 
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = selectionState(edytor);
 		expect(texts(edytor)).toEqual(['alphabeta']);
 		expect(startText).toBe(alpha!.firstText);
 		expect(yStart).toBe(7);
 		await flushDomUpdates();
-		expect(edytor.selection.state.startText?.stringContent).toBe('alphabeta');
-		expect(edytor.selection.state.yStart).toBe(7);
+		expect(selectionState(edytor).startText?.stringContent).toBe('alphabeta');
+		expect(selectionState(edytor).yStart).toBe(7);
 	});
 
 	row(
@@ -466,12 +466,12 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 			await setNativeSelection(edytor, beta!.firstText, 2);
 			const m = meter(edytor);
 			edytor.transact(() => {
-				beta!.mergeBlockBackward();
-				alpha!.firstText!.insertText({ value: '>', start: 0, end: 0 });
+				edytor.mergeBackward(beta!.id);
+				edytor.insertText(alpha!.id, 0, '>');
 			});
 			m.stop();
 
-			const { startText, yStart } = edytor.selection.state;
+			const { startText, yStart } = selectionState(edytor);
 			expect(texts(edytor)).toEqual(['>alphabeta']);
 			expect(startText).toBe(edytor.root!.children[0]!.firstText);
 			expect(yStart).toBe(8);

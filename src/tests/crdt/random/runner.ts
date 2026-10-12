@@ -209,7 +209,7 @@ export const expectedViolations = (ops: CrdtOps): Set<string> => {
 
 /** Engine-cleanup/internals frames — a crash here is upstream's, not the adapter's. */
 const ENGINE_INTERNAL_CRASH =
-	/cleanupTransactions|cleanupYTextAfterTransaction|tryMerge|tryToMergeWithLefts|findIndexSS|findIndexCleanStart|iterateStructs|integrateStructs|readAndApplyDeleteSet|applyUpdateV2/;
+	/cleanupTransactions|cleanupYTextAfterTransaction|tryMerge|tryToMergeWithLefts|findIndexSS|findIndexCleanStart|iterateStructs|integrateStructs|readAndApplyDeleteSet|readUpdate/;
 
 /** True iff a (client, clock) item exists integrated on at least one replica. */
 const unionCovers = (peers: Peer[], client: number, clock: number): boolean =>
@@ -220,7 +220,7 @@ const unionCovers = (peers: Peer[], client: number, clock: number): boolean =>
  * into `[client, clockStart, len]` dep ranges.
  */
 const pendingDsRanges = (pendingDs: Uint8Array): Array<[number, number, number]> => {
-	const dec = new Y.UpdateDecoderV2(decoding.createDecoder(pendingDs));
+	const dec = new Y.UpdateDecoder(decoding.createDecoder(pendingDs));
 	decoding.readVarUint(dec.restDecoder); // struct count (always 0)
 	const idset = Y.readIdSet(dec);
 	const deps: Array<[number, number, number]> = [];
@@ -254,7 +254,7 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
 		try {
 			// The update's struct id ranges (skips excluded) — what the
 			// pruned `createContentIdsFromUpdateV2` returned as `inserts`.
-			for (const s of Y.decodeUpdateV2(ps.update).structs) {
+			for (const s of Y.decodeUpdate(ps.update).structs) {
 				if (s instanceof Y.Skip) continue;
 				out.push({ client: s.id.client, start: s.id.clock, len: s.length });
 			}
@@ -281,7 +281,7 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
  * regressed a state vector or dropped pending items) and post-barrier
  * pending state remains. After `healPeer × n + deliverAll + syncAll('full')
  * + deliverAll`, every item in every store has been offered to every peer,
- * so a still-pending struct is either absent from all stores or stranded
+ * so a still-pending struct (or skipped gap) is either absent from all stores or stranded
  * behind a transitively destroyed dep — both are correct convergent-loss
  * semantics, not sync defects.
  *
@@ -293,7 +293,9 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
 const hasDestroyedPendingDeps = (peers: Peer[], sawLoss: boolean): boolean => {
 	let sawPendingStructs = false;
 	for (const p of peers) {
-		if (p.doc.store.pendingStructs) sawPendingStructs = true;
+		// A gap the store integrated around (a skip) is pending too: the
+		// structs after it wait on what never arrived.
+		if (p.doc.store.pendingStructs || !p.doc.store.skips.isEmpty()) sawPendingStructs = true;
 	}
 	if (sawPendingStructs) {
 		// Pending residue after a barrier in a run with observed loss is

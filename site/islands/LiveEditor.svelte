@@ -5,20 +5,27 @@
 
 <script lang="ts">
 	import {
-		Edytor,
+	Edytor,
+	createColumnsPlugin,
+	createMarkdownShortcutsPlugin,
+	richTextPlaceholder,
+	tableBlock,
+	type EdytorInstance,
+	type JSONDoc
+} from 'edytor';
+	// The demo's chrome (the package draws none), copied by scripts/pack-edytor.sh.
+	import {
+		blockHandlesPlugin,
 		blockMenuPlugin,
 		codePlugin,
-		columnsPlugin,
-		createMarqueePlugin,
-		markdownShortcutsPlugin,
-		richTextPlaceholder,
+		imagePlugin,
+		marquee,
+		richTextPlugin,
 		slashMenuPlugin,
-		tableBlock,
+		suggestionsPlugin,
 		tablePlugin,
-		toolbarPlugin,
-		type EdytorInstance,
-		type JSONDoc
-	} from 'edytor';
+		toolbarPlugin
+	} from './chrome/plugins';
 	import 'edytor/themes/notion.css';
 	import './live-editor.css';
 	import { aiDemoPlugin, askAI } from './ai-demo';
@@ -134,18 +141,23 @@
 		return () => awareness.off('change', read);
 	});
 
-	// Rich text, images, block moves and the suggestion bar are defaults; columns, tables
-	// and the marquee are opt-in. A drag from the frame's margin selects blocks.
+	// Rich text, images, block moves and the suggestion keys are defaults (listed here with
+	// the demo's chrome); columns, tables and the marquee are opt-in. A drag from the
+	// frame's margin selects blocks.
 	const plugins = [
 		aiDemoPlugin,
+		blockHandlesPlugin,
 		blockMenuPlugin,
 		codePlugin,
-		columnsPlugin,
+		createColumnsPlugin(),
 		tablePlugin,
-		createMarqueePlugin({ container: '.live-editor' }),
-		markdownShortcutsPlugin,
+		marquee({ container: '.live-editor' }),
+		createMarkdownShortcutsPlugin(),
 		slashMenuPlugin,
-		toolbarPlugin
+		toolbarPlugin,
+		suggestionsPlugin,
+		imagePlugin,
+		richTextPlugin
 	];
 </script>
 

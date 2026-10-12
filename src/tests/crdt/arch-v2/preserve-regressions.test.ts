@@ -74,7 +74,9 @@ describe('fixed user requirements: preserve content the user did not remove', ()
 	it('undoing empty block creation preserves a foreign text contribution in the same shell', () => {
 		const [a, b] = peers([{ id: 'P', text: 'abc' }]);
 		b.receiveAll(
-			a.capture(() => a.ed.insertBlock({ parent: null, index: 1 }, { id: 'N', type: 'paragraph' }))
+			a.capture(() =>
+				a.ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'N', type: 'paragraph' }])
+			)
 		);
 		a.receiveAll(b.capture(() => b.ed.insertText('N', 0, 'foreign')));
 		expect(a.undo()).not.toBeNull();
@@ -134,11 +136,11 @@ describe('exact structural and offline continuation probes', () => {
 			{ id: 'B', text: 'b' },
 			{ id: 'C', text: 'c' }
 		]);
-		expect(a.ed.moveBlock('A', { parent: null, index: 2 }).status).toBe('applied');
+		expect(a.ed.moveBlocks(['A'], { parent: null, index: 2 }).status).toBe('applied');
 		expect(a.tree()).toBe('B:"b" C:"c" A:"a"');
-		expect(a.ed.moveBlock('C', { parent: null, index: 0 }).status).toBe('applied');
+		expect(a.ed.moveBlocks(['C'], { parent: null, index: 0 }).status).toBe('applied');
 		expect(a.tree()).toBe('C:"c" B:"b" A:"a"');
-		expect(a.ed.moveBlock('A', { parent: null, index: 0 }).status).toBe('applied');
+		expect(a.ed.moveBlocks(['A'], { parent: null, index: 0 }).status).toBe('applied');
 		expectReplicas([a, b], 'A:"a" C:"c" B:"b"');
 	});
 
@@ -148,7 +150,7 @@ describe('exact structural and offline continuation probes', () => {
 			{ id: 'B', text: 'cd' },
 			{ id: 'C', text: 'ef' }
 		]);
-		expect(a.ed.moveBlock('A', { parent: null, index: 2 }).status).toBe('applied');
+		expect(a.ed.moveBlocks(['A'], { parent: null, index: 2 }).status).toBe('applied');
 		expect(a.ed.splitBlock('A', 1, 'T').status).toBe('applied');
 		expectReplicas([a, b], 'B:"cd" C:"ef" A:"a" T:"b"');
 		a.undo();

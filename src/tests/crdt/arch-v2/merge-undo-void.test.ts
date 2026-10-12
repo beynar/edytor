@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate, tree } from './replica-harness.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 /** Every outcome converged, well-formed, and shows `expected`. */
 const expectTree = (outcomes, expected: string) => {
@@ -162,7 +163,7 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 	const P = [{ id: 'P', text: 'p', data: { v: 0 } }];
 	const types = { mine: 'heading', theirs: 'quote' };
 	const retype = (r, who) => r.ed.setBlockType('P', types[who]);
-	const redata = (r, who) => r.ed.setBlockData('P', { v: who });
+	const redata = (r, who) => r.ed.patchData('P', [{ path: [], value: { v: who } }]);
 	const M = [
 		{
 			id: 'P',
@@ -170,7 +171,8 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 		}
 	];
 	const inlineData = (ed) => ed.contentItems('P').find((c) => c.kind === 'inline')?.data;
-	const reinline = (r, who) => r.ed.setInlineData('P', 'M', { v: who });
+	const reinline = (r, who) =>
+		r.ed.patchData({ block: 'P', atom: 'M' }, [{ path: [], value: { v: who } }]);
 
 	it('setBlockType × undo', () => {
 		expectEach(race(P, retype, undo), (ed) => ed.blockTypeOf('P'), 'paragraph', 'quote');
@@ -224,7 +226,7 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 describe('UW-01: the serializer never emits a typeless registered block', () => {
 	it('blockJSON asserts in DEV instead of emitting type ""', () => {
 		const r = replica('A', seedUpdate([{ id: 'P', text: 'p' }]), 20);
-		r.doc.transact(() => r.ed.model.blockNodeOf(r.doc, 'P').deleteAttr('type'));
+		r.doc.transact(() => blockNodeOf(r.doc, 'P').deleteAttr('type'));
 		expect(() => r.ed.toJSON()).toThrow(/block P has no type/);
 		expect(r.ed.blockJSON('ghost').type).toBe('');
 		r.destroy();

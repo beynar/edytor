@@ -74,7 +74,7 @@ export class ReplicaRegistry {
 			if (!writer) return true;
 			this.register([{ replica, user }]);
 			this.room.note({ reason: 'orphan', detail: { replica, user } });
-			this.bindOrphan(replica, user);
+			this.#bindOrphan(replica, user);
 			return true;
 		}
 		if (owner !== undefined || (sv.get(replica) ?? 0) > 0) return false;
@@ -133,7 +133,7 @@ export class ReplicaRegistry {
 	 * room holds content of it. A failed write is healed here, the claim
 	 * kept (the binding then stays as it was).
 	 */
-	private bindOrphan(replica: number, user: string) {
+	#bindOrphan(replica: number, user: string) {
 		const room = this.room;
 		const doc = room.live;
 		if (doc === null || (stateVector(doc).get(replica) ?? 0) === 0) return;

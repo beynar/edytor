@@ -1,9 +1,9 @@
 /**
- * The version history panel: a room's stored versions, a read-only preview
- * of one with the blocks changed since highlighted, and Restore / Undo
- * restore (site `server/history-panel`).
+ * The version history: a room's stored versions, a read-only preview of one
+ * with the blocks changed since highlighted, and Restore / Undo restore
+ * (`VersionHistory`; site `server/history-panel`). The panel's markup is
+ * the app's.
  */
-export { default as HistoryPanel } from './HistoryPanel.svelte';
 export {
 	createHistoryClient,
 	HistoryRequestError,
@@ -15,8 +15,7 @@ export {
 } from './client.js';
 export { versionDiff, type VersionChange, type VersionDiff } from './diff.js';
 export {
-	defaultHistoryLabels,
-	type HistoryPanelLabels,
-	type HistoryPanelProps,
-	type HistoryVersionItem
-} from './panel.js';
+	VersionHistory,
+	type VersionHistoryStatus,
+	type VersionHistoryOptions
+} from './panel.svelte.js';

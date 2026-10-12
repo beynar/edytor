@@ -23,11 +23,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import {
 	canonicalTree,
 	dispatchDomBeforeInput,
@@ -36,6 +33,8 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S2. */
 const row = it;
@@ -105,7 +104,8 @@ describe('F-P16 — extensions keep their interception contract (FP-6)', () => {
 	pin('(a) a hook retargets a grouped move: the replacement lands', async () => {
 		const retarget: Plugin = () => ({
 			onBeforeOperation: (change) => {
-				if (change.operation === 'moveBlocks') return { ...change.payload, path: [3] };
+				if (change.operation === 'moveBlocks')
+					return [change.payload[0], { ...change.payload[1], index: 3 }];
 			}
 		});
 		const { edytor } = await renderDomEdytor(
@@ -118,7 +118,7 @@ describe('F-P16 — extensions keep their interception contract (FP-6)', () => {
 			{ plugins: plugins(retarget), autoSelectFixture: false }
 		);
 		const [one, two] = edytor.root!.children;
-		one!.moveBlocks({ blocks: [one!, two!], path: [1] });
+		edytor.moveBlocks([one!.id, two!.id], { parent: null, index: 1 });
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual([
 			'paragraph:three',
@@ -174,7 +174,7 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin, vetoing('setBlock')) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin(), vetoing('setBlock')) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
@@ -187,13 +187,13 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin()) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['heading:']);
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect(startText).toBe(textOf(edytor, [0]));
 		expect([yStart, isCollapsed]).toEqual([0, true]);
 	});
@@ -242,7 +242,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 		expect(shape(edytor)).toEqual(['paragraph:ab', 'paragraph:', '>paragraph:child']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
 	});
 
 	row('divider inside text: refusing the divider insertion refuses the split', async () => {
@@ -250,7 +250,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 			<root>
 				<paragraph>ab|cd</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('addChildBlocks')) }
+			{ plugins: plugins(vetoing('insertBlocks')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' })
@@ -266,7 +266,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['paragraph:ab', 'divider:', 'paragraph:cd']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [2]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [2]));
 	});
 
 	pin('divider in an empty block converts it, a fresh paragraph after', async () => {
@@ -278,7 +278,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['divider:', 'paragraph:']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
 	});
 
 	pin('divider at a block start goes before it, the caret stays', async () => {
@@ -290,8 +290,8 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['divider:', 'paragraph:ab']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('Backspace merge unnesting children: refusing the children move', async () => {
@@ -303,7 +303,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					<paragraph>c</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'c')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'c')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' })
@@ -318,7 +318,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					b<paragraph>c</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'c')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'c')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' })
@@ -331,7 +331,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 				<paragraph>a</paragraph>
 				<paragraph>b|</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'b')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'b')) }
 		);
 		await expectRefusedWhole(edytor, () => dispatchDomKeyDown(editor, { key: 'Tab' }));
 	});
@@ -343,7 +343,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					a<paragraph>b|</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'b')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'b')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomKeyDown(editor, { key: 'Tab', shiftKey: true })

@@ -8,7 +8,6 @@
 import { describe, expect, it } from 'vitest';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
 import {
 	canonicalTree,
@@ -17,6 +16,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>
@@ -45,7 +46,7 @@ type Rendered = Awaited<ReturnType<typeof collapsed>>;
 /** Select `toggle:2` to `after:3` ('tle' … 'aft'). */
 const selectAcross = async ({ edytor }: Rendered) => {
 	const text = (id: string) => edytor.idToBlock.get(id)!.firstText!;
-	edytor.selection.setAtRange(text('toggle'), 2, text('after'), 3);
+	edytor.selection.selectText(text('toggle'), 2, text('after'), 3);
 	await flushDomUpdates();
 };
 
@@ -83,7 +84,7 @@ describe('marks over a range from a collapsed toggle header (SW7-delete)', () =>
 		const text = (id: string) => r.edytor.idToBlock.get(id)!.firstText!;
 		await selectAcross(r);
 		await dispatchDomKeyDown(document, { key: 'b', ctrlKey: true });
-		r.edytor.selection.setAtRange(text('toggle'), 0, text('toggle'), 0);
+		r.edytor.selection.selectText(text('toggle'), 0, text('toggle'), 0);
 		await flushDomUpdates();
 		await selectAcross(r);
 		await dispatchDomKeyDown(document, { key: 'b', ctrlKey: true });
@@ -110,7 +111,7 @@ describe('mixed marks over a range across blocks (SW7-delete)', () => {
 			}
 		});
 		const text = (id: string) => edytor.idToBlock.get(id)!.firstText!;
-		edytor.selection.setAtRange(text('a'), 0, text('b'), 5);
+		edytor.selection.selectText(text('a'), 0, text('b'), 5);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'b', ctrlKey: true });
 		expect(canonicalTree(edytor)).toEqual([
@@ -176,7 +177,7 @@ describe('marks over a block selection that holds a collapsed toggle (FX-07)', (
 					]
 				}
 			});
-			edytor.selection.selectBlocks(...ids.map((id) => edytor.idToBlock.get(id)!));
+			selectBlocks(edytor, ...ids.map((id) => edytor.idToBlock.get(id)!));
 			await flushDomUpdates();
 			// The toolbar's state reads the same spans: the body is not among them.
 			expect(selectedTextSpans(edytor).map(({ text }) => text.parent.id)).toEqual(ids);
@@ -204,7 +205,7 @@ describe('the word keys over every block, a closed toggle last (SW15-keys-1)', (
 				]
 			}
 		});
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText, 0);
 		await flushDomUpdates();
 		for (let i = 0; i < 3; i++) await dispatchDomKeyDown(document, { key: 'a', ctrlKey: true });
 		expect(edytor.selection.selectedBlocks.size).toBe(3);

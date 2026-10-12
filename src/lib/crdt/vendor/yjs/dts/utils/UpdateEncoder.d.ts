@@ -1,70 +1,4 @@
-export class IdSetEncoderV1 {
-    restEncoder: encoding.Encoder;
-    toUint8Array(): Uint8Array<ArrayBuffer>;
-    resetIdSetCurVal(): void;
-    /**
-     * @param {number} clock
-     */
-    writeIdSetClock(clock: number): void;
-    /**
-     * @param {number} len
-     */
-    writeIdSetLen(len: number): void;
-}
-export class UpdateEncoderV1 extends IdSetEncoderV1 {
-    /**
-     * @param {ID} id
-     */
-    writeLeftID(id: ID): void;
-    /**
-     * @param {ID} id
-     */
-    writeRightID(id: ID): void;
-    /**
-     * Use writeClient and writeClock instead of writeID if possible.
-     * @param {number} client
-     */
-    writeClient(client: number): void;
-    /**
-     * @param {number} info An unsigned 8-bit integer
-     */
-    writeInfo(info: number): void;
-    /**
-     * @param {string} s
-     */
-    writeString(s: string): void;
-    /**
-     * @param {boolean} isYKey
-     */
-    writeParentInfo(isYKey: boolean): void;
-    /**
-     * @param {number} info An unsigned 8-bit integer
-     */
-    writeTypeRef(info: number): void;
-    /**
-     * Write len of a struct - well suited for Opt RLE encoder.
-     *
-     * @param {number} len
-     */
-    writeLen(len: number): void;
-    /**
-     * @param {any} any
-     */
-    writeAny(any: any): void;
-    /**
-     * @param {Uint8Array} buf
-     */
-    writeBuf(buf: Uint8Array): void;
-    /**
-     * @param {any} embed
-     */
-    writeJSON(embed: any): void;
-    /**
-     * @param {string} key
-     */
-    writeKey(key: string): void;
-}
-export class IdSetEncoderV2 {
+export class IdSetEncoder {
     restEncoder: encoding.Encoder;
     dsCurrVal: number;
     toUint8Array(): Uint8Array<ArrayBuffer>;
@@ -78,7 +12,7 @@ export class IdSetEncoderV2 {
      */
     writeIdSetLen(len: number): void;
 }
-export class UpdateEncoderV2 extends IdSetEncoderV2 {
+export class UpdateEncoder extends IdSetEncoder {
     /**
      * @type {Map<string,number>}
      */
@@ -142,10 +76,6 @@ export class UpdateEncoderV2 extends IdSetEncoderV2 {
      */
     writeBuf(buf: Uint8Array): void;
     /**
-     * This is mainly here for legacy purposes.
-     *
-     * Initial we incoded objects using JSON. Now we use the much faster lib0-v14/any-encoder. This method mainly exists for legacy purposes for the v1 encoder.
-     *
      * @param {any} embed
      */
     writeJSON(embed: any): void;
@@ -159,6 +89,4 @@ export class UpdateEncoderV2 extends IdSetEncoderV2 {
      */
     writeKey(key: string): void;
 }
-export type IdSetEncoder = IdSetEncoderV1 | IdSetEncoderV2;
-export type UpdateEncoder = UpdateEncoderV1 | UpdateEncoderV2;
 import * as encoding from 'lib0-v14/encoding';

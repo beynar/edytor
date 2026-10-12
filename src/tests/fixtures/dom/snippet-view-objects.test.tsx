@@ -16,10 +16,10 @@ import { describe, expect, it } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4a. */
 const row = it;
@@ -86,7 +86,7 @@ describe('snippets receive declared view objects', () => {
 		expect([view.selected, view.focused]).toEqual([false, false]);
 		expect(view.handle).toBe(note);
 
-		note.setBlock({ value: { data: { level: 2 } } });
+		note.edytor.setBlock(note.id, { data: { level: 2 } });
 		await flushDomUpdates();
 		expect(view.data).toEqual({ level: 2 });
 	});

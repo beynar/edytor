@@ -19,6 +19,7 @@
  * The engine surface is injected (`Y: EngineApi`) like every other bound
  * module — this file never imports vendor `.js`.
  */
+import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 
 /**
@@ -52,18 +53,18 @@ export type IdSetLike = {
 
 /**
  * The doc's struct store — vendor-internal (`doc.store.clients`).
- * FAIL-FAST: a missing store means the doc is not a vendored-engine doc
- * (or the vendored layout changed) — either way the only honest response
- * is a descriptive throw, never a silent fallback.
+ * FAIL-FAST in development: a missing store means the doc is not a
+ * vendored-engine doc (or the vendored layout changed) — either way the only
+ * honest response is a descriptive throw, never a silent fallback.
  */
 export const clientsOf = (doc: EngineDoc): Map<number, StoreStruct[]> => {
 	const clients = (doc as { store?: { clients?: Map<number, StoreStruct[]> } }).store?.clients;
-	if (clients === undefined) {
+	if (DEV && clients === undefined) {
 		throw new Error(
 			'structs: doc.store.clients missing — the vendored engine layout changed (or this doc is not a vendored-engine doc)'
 		);
 	}
-	return clients;
+	return clients!;
 };
 
 /**
@@ -86,23 +87,21 @@ export const structAt = (
 };
 
 /**
- * Walk every struct an IdSet covers, invoking `fn` per struct in
- * (client, clock) order. IdSet ranges are item-aligned (they record whole
- * structs), so an overlapping struct is a covered struct — the walk never
- * splits.
- *
- * `fn` returning `false` halts the walk early (caller-side short-circuit).
+ * Walk every struct an IdSet covers, in (client, clock) order: `fn(struct,
+ * from, to)` gets the struct and the clock range `[from, to)` of it the set
+ * covers (a struct can reach past a range a diff of two id sets cut). The
+ * walk never splits a struct; `fn` returning `false` halts it.
  *
  * Returns `false` when coverage was INCOMPLETE — a client's struct list
  * was missing or a range start could not be located — so the caller can
  * fall back to an all-consumers/opaque answer instead of trusting a
  * partial walk. `clientsOf` throws first when the store itself is absent.
  */
-export const walkIdSetStructs = (
+export const walkIdSet = (
 	Y: EngineApi,
 	doc: EngineDoc,
 	idSet: IdSetLike,
-	fn: (struct: StoreStruct) => boolean | void
+	fn: (struct: StoreStruct, from: number, to: number) => boolean | void
 ): boolean => {
 	const clients = clientsOf(doc);
 	let complete = true;
@@ -126,48 +125,10 @@ export const walkIdSetStructs = (
 			for (; i < structs.length; i++) {
 				const s = structs[i]!;
 				if (s.id.clock >= end) break;
-				if (fn(s) === false) {
+				if (fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length)) === false) {
 					stopped = true;
 					return;
 				}
-			}
-		}
-	});
-	return complete;
-};
-
-/**
- * {@link walkIdSetStructs}, clipped: `fn(struct, from, to)` gets the clock
- * range `[from, to)` of the struct the id set covers (a struct can reach past
- * a range a diff of two id sets cut).
- */
-export const walkIdSetRanges = (
-	Y: EngineApi,
-	doc: EngineDoc,
-	idSet: IdSetLike,
-	fn: (struct: StoreStruct, from: number, to: number) => void
-): boolean => {
-	const clients = clientsOf(doc);
-	let complete = true;
-	idSet.clients.forEach((ranges, client) => {
-		const structs = clients.get(client);
-		if (structs === undefined) {
-			complete = false;
-			return;
-		}
-		for (const r of ranges.getIds()) {
-			const end = r.clock + r.len;
-			let i: number;
-			try {
-				i = Y.findIndexSS(structs as never[], r.clock);
-			} catch {
-				complete = false;
-				continue;
-			}
-			for (; i < structs.length; i++) {
-				const s = structs[i]!;
-				if (s.id.clock >= end) break;
-				fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length));
 			}
 		}
 	});
@@ -251,11 +212,11 @@ export const newNode = (Y: EngineApi, name: string): EngineNode =>
 	new Y.Node(name) as unknown as EngineNode;
 
 /**
- * A renderer-free bounded read cursor on `node` (the fork's `RangeCursor`),
- * in the caller's view of a cursor.
+ * A bounded read cursor on `node` (the fork's `RangeCursor`), in the
+ * caller's view of a cursor.
  */
 export const rangeCursorOf = <C>(Y: EngineApi, node: EngineNode): C =>
-	new Y.RangeCursor(asYNode(node), null) as unknown as C;
+	new Y.RangeCursor(asYNode(node)) as unknown as C;
 
 // ── node and document internals ──────────────────────────────────────────
 
@@ -278,21 +239,6 @@ export const sequenceLength = (node: EngineNode | YNode): number =>
 /** The item a node is the value of (`_item`), in the caller's view. */
 export const itemOf = <I = StoreStruct>(node: EngineNode): I | null =>
 	node._item as unknown as I | null;
-
-/**
- * Run `f` with `node`'s renderer (vendor `_renderer`) set aside: a write
- * addresses live-content space, whatever renderer a reader installed.
- */
-export const withoutRenderer = <T>(node: EngineNode, f: () => T): T => {
-	const n = node as unknown as { _renderer: unknown };
-	const renderer = n._renderer;
-	n._renderer = null;
-	try {
-		return f();
-	} finally {
-		n._renderer = renderer;
-	}
-};
 
 /** The struct store's reads edytor makes (vendor `doc.store`). */
 export type StoreLike = {
@@ -347,6 +293,31 @@ export const onTransaction = <T>(
 	f: (tr: T) => void
 ): void => (doc as unknown as { on(e: string, f: (tr: T) => void): void }).on(event, f);
 
+/**
+ * Whether a transaction changed one of `nodes` or a node under one: its
+ * `changed` types and their ancestors (what a deep observer of `nodes`
+ * would have heard; the engine has none, fork patch YP19).
+ */
+export const changedUnder = (
+	tr: { changed: Map<unknown, unknown> },
+	nodes: readonly unknown[]
+): boolean => {
+	for (const type of tr.changed.keys())
+		for (
+			let t = type as { _item: { parent: unknown } | null } | null;
+			t;
+			t = t._item?.parent as never
+		)
+			if (nodes.includes(t)) return true;
+	return false;
+};
+
+/** A doc's event registry (vendor `on`/`off`). */
+type Events = {
+	on(event: string, f: (...args: never[]) => void): void;
+	off(event: string, f: (...args: never[]) => void): void;
+};
+
 /** The steps of a history's undo stack (or its redo stack), in the caller's view. */
 export const stepsOf = <S>(stack: YUndoManager['undoStack']): S[] => stack as unknown as S[];
 
@@ -382,18 +353,52 @@ export const engineOps = (Y: EngineApi) => {
 		cleanStart: <I = StoreStruct>(tr: unknown, client: number, clock: number): I =>
 			Y.getItemCleanStart(tr as Tr, Y.createID(client, clock)) as unknown as I,
 		/**
-		 * Re-create deleted `item` as the engine's undo does (`redoItem`): its
-		 * copy, or `null` when it cannot come back.
+		 * Re-create deleted `item` (`redoItem`, fork patch YP18): its copy, or
+		 * `null` when it cannot come back. `items` are re-created with it (a
+		 * parent among them first); an attr does not come back over a later
+		 * write unless `skipped` (the step's inserts) or `deletedByHistory`
+		 * holds that write.
 		 */
-		redo: <I = StoreStruct>(tr: unknown, item: I, items: Set<I>, um: YUndoManager): I | null =>
+		redo: <I = StoreStruct>(
+			tr: unknown,
+			item: I,
+			items: Set<I>,
+			skipped: IdSetLike = Y.createIdSet() as unknown as IdSetLike,
+			deletedByHistory?: (id: { client: number; clock: number }) => boolean
+		): I | null =>
 			Y.redoItem(
 				tr as Tr,
 				item as unknown as Item,
 				items as unknown as Set<Item>,
-				Y.createIdSet(),
-				false,
-				um
+				skipped as unknown as V,
+				deletedByHistory as never
 			) as unknown as I | null,
+		/** Merge id sets into a new one. */
+		merge: (sets: IdSetLike[]): IdSetOf =>
+			Y.mergeIdSets(sets as unknown as V[]) as unknown as IdSetOf,
+		/** Whether a store struct is an item (not a GC or a Skip). */
+		isItem: (struct: unknown): struct is StoreStruct => struct instanceof Y.Item,
+		/** Whether `item` sits in `node`'s subtree. */
+		inside: (node: EngineNode, item: StoreStruct): boolean =>
+			Y.isParentOf(asYNode(node), item as unknown as Item),
+		/** Keep `item` (and its parents) from collection (`keepItem`). */
+		keep: (item: StoreStruct): void => Y.keepItem(item as unknown as Item, true),
+		/** The newest copy a local undo or redo made of `item` (its `redone` chain), split there, inside `tr`. */
+		latest: (tr: unknown, item: StoreStruct): StoreStruct => {
+			if (!item.redone) return item;
+			const store = (tr as { doc: { store: unknown } }).doc.store;
+			const { item: copy, diff } = Y.followRedone(store as never, item.id as never);
+			return (diff > 0
+				? Y.getItemCleanStart(tr as Tr, Y.createID(copy.id.client, copy.id.clock + diff))
+				: copy) as unknown as StoreStruct;
+		},
+		/** Delete `item` inside `tr`. */
+		remove: (tr: unknown, item: StoreStruct): void => (item as unknown as Item).delete(tr as Tr),
+		/** Listen to a doc event (vendor `on`/`off`), with the caller's view of its arguments. */
+		on: (doc: EngineDoc, event: string, f: (...args: never[]) => void): void =>
+			(doc as unknown as Events).on(event, f),
+		off: (doc: EngineDoc, event: string, f: (...args: never[]) => void): void =>
+			(doc as unknown as Events).off(event, f),
 		/**
 		 * Integrate a new item holding `content` right after `left` (its
 		 * origin: `left`'s last id) in `parent`, written by `client` at

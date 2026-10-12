@@ -92,7 +92,10 @@ test.describe('V5 classifier — F-S10 (after settle the DOM caret is the model 
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const text = edytor.root.children[0].firstText;
-			edytor.doc.transact(() => text.formatAt(0, 2, { bold: true }), 'remote-peer');
+			edytor.doc.transact(
+				() => edytor.facade.formatRange(text.parent.id, text.segStart, 2, { bold: true }),
+				'remote-peer'
+			);
 		});
 		await expect
 			.poll(() => page.locator('[data-edytor-text="true"]').first().locator('strong, b').count())

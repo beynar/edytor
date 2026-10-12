@@ -16,7 +16,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	canonicalTree,
 	findDomTextNode,
@@ -25,6 +24,8 @@ import {
 	setNativeSelection,
 	textNodeOf
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -122,7 +123,7 @@ const texts = (edytor: Edytor) =>
 		(block.content ?? []).map((part) => ('text' in part ? part.text : `[${part.type}]`)).join('')
 	);
 const selected = (edytor: Edytor) => {
-	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+	const { startText, endText, yStart, yEnd, isCollapsed } = selectionState(edytor);
 	if (!startText || !endText || isCollapsed) return null;
 	return [
 		{ block: startText.parent.id, offset: startText.segStart + yStart },
@@ -297,7 +298,7 @@ describe('dragging selected text moves it (one step)', () => {
 		const operations = seen.map((s) => s.operation);
 		expect(operations[0]).toBe('moveText');
 		expect(seen[0]!.effect).toBeDefined();
-		expect(operations).toContain('deleteContentAtRange');
+		expect(operations).toContain('deleteText');
 		expect(operations).toContain('insertText');
 		// Every hook ran before the document changed.
 		const steps = seen.slice(0, operations.lastIndexOf('insertText') + 1);
@@ -308,7 +309,7 @@ describe('dragging selected text moves it (one step)', () => {
 	it('a veto of its deletion step keeps everything', async () => {
 		const veto: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'deleteContentAtRange') prevent();
+				if (operation === 'deleteText') prevent();
 			}
 		});
 		const view = await mount([p('a', 'one two three')], { plugins: [veto] });

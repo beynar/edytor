@@ -152,7 +152,7 @@ class ArchV2Peer implements ContractPeer {
 		const siblings = this.ed.childrenIds(parent).filter((id: string) => id !== block);
 		const index = before === null ? siblings.length : siblings.indexOf(before);
 		if (index < 0) throw new Error(`Contract move: ${before} is not a child of ${parent}`);
-		return this.edit(() => this.ed.moveBlock(block, { parent, index }));
+		return this.edit(() => this.ed.moveBlocks([block], { parent, index }));
 	}
 
 	mark(block: string, from: number, to: number, k: string, value: string | boolean | null) {

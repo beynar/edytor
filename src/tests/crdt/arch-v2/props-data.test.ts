@@ -13,6 +13,7 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate } from './replica-harness.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {
@@ -109,7 +110,7 @@ describe('block data: per-leaf last writer wins', () => {
 	it('a whole replace removes the keys it saw; a concurrent key under them is kept', () => {
 		settled(
 			converge(seed, 2, ([a, b]) => {
-				a.ed.setBlockData('A', { z: 1 });
+				a.ed.patchData('A', [{ path: [], value: { z: 1 } }]);
 				b.ed.patchData('A', [{ path: ['meta', 'b'], value: 2 }]);
 			}),
 			(o) => expect(dataOf(o)).toEqual({ z: 1, meta: { b: 2 } })
@@ -135,7 +136,7 @@ describe('block data: per-leaf last writer wins', () => {
 		const document = createDocument({ value: { children: [{ id: 'A', type: 'p' }] } });
 		const ed = document.facade;
 		ed.patchData('A', [{ path: ['__proto__', 'polluted'], value: 'local' }]);
-		const node = ed.model.blockNodeOf(document.doc, 'A');
+		const node = blockNodeOf(document.doc, 'A');
 		document.doc.transact(() => {
 			node.setAttr('d/__proto__/hostile', true);
 			node.setAttr('d/constructor/prototype/hostile', true);
@@ -153,7 +154,7 @@ describe('block data: per-leaf last writer wins', () => {
 		const ed = document.facade;
 		const before = document.encode();
 		expect(ed.patchData('A', [{ path: ['a'], value: 1 }]).status).toBe('noop');
-		expect(ed.setBlockData('A', { a: 1 }).status).toBe('noop');
+		expect(ed.patchData('A', [{ path: [], value: { a: 1 } }]).status).toBe('noop');
 		expect(document.encode()).toEqual(before);
 		expect(ed.patchData('A', [{ path: 'a', value: 1 }]).status).toBe('refused');
 		expect(ed.patchData('A', [{ path: [], value: 3 }]).status).toBe('refused');
@@ -161,82 +162,16 @@ describe('block data: per-leaf last writer wins', () => {
 	});
 });
 
-describe('legacy whole-data blocks', () => {
-	const legacy = () => {
+describe('a whole-data attribute (before 0.1.0-next.6)', () => {
+	it('is not read: the leaves are the only format', () => {
 		const document = createDocument({ value: { children: [{ id: 'A', type: 'p' }] } });
-		const node = document.facade.model.blockNodeOf(document.doc, 'A');
-		// Written as a pre-next.6 replica did, outside this view's history.
-		document.doc.transact(() => node.setAttr('data', { a: 1, m: { x: 1 } }), 'legacy');
-		return { document, ed: document.facade, node };
-	};
-
-	it('read unchanged', () => {
-		const { ed } = legacy();
-		expect(ed.blockDataOf('A')).toEqual({ a: 1, m: { x: 1 } });
-		expect(ed.toJSON().children[0].data).toEqual({ a: 1, m: { x: 1 } });
-	});
-
-	it('a set writes its leaf over the attr, which stays', () => {
-		const { ed, node } = legacy();
-		ed.patchData('A', [{ path: ['m', 'y'], value: 2 }]);
-		ed.patchData('A', [{ path: ['a'], value: 5 }]);
-		expect(ed.blockDataOf('A')).toEqual({ a: 5, m: { x: 1, y: 2 } });
-		expect(node.getAttr('data')).toEqual({ a: 1, m: { x: 1 } });
-		expect(leavesOf(node)).toEqual({ 'd/a': 5, 'd/m/y': 2 });
-	});
-
-	it('a key under a value that shadows the attr’s object never shows the object again', () => {
-		const { ed } = legacy();
-		ed.patchData('A', [{ path: ['m'], value: 5 }]);
-		expect(ed.blockDataOf('A')).toEqual({ a: 1, m: 5 });
-		ed.patchData('A', [{ path: ['m', 'q'], value: 1 }]);
-		expect(ed.blockDataOf('A')).toEqual({ a: 1, m: { q: 1 } });
-	});
-
-	it('a delete, or an object over an object, explodes it into leaves; undo restores it exactly', () => {
-		for (const patch of [
-			{ path: ['a'] },
-			{ path: ['m'], value: { y: 2 } },
-			{ path: [], value: { z: 1 } }
-		]) {
-			const { document, ed, node } = legacy();
-			const before = ed.blockDataOf('A');
-			const after = { ...before };
-			if (patch.path.length === 0) Object.keys(after).forEach((k) => delete after[k]);
-			if (patch.value === undefined) delete after.a;
-			Object.assign(
-				after,
-				patch.path.length ? (patch.value ? { m: patch.value } : {}) : patch.value
-			);
-			ed.patchData('A', [patch]);
-			expect(ed.blockDataOf('A')).toEqual(after);
-			expect(node.getAttr('data')).toBeUndefined();
-			document.history.undo();
-			expect(node.getAttr('data')).toEqual({ a: 1, m: { x: 1 } });
-			expect(leavesOf(node)).toEqual({});
-			document.history.redo();
-			expect(ed.blockDataOf('A')).toEqual(after);
-		}
-	});
-
-	it('two peers’ first writes of different keys are both kept', () => {
-		const seed = seedUpdate([{ id: 'A', text: 'a' }]);
-		const base = replica('base', seed, 2 ** 30);
-		const node = base.ed.model.blockNodeOf(base.doc, 'A');
-		base.doc.transact(() => node.setAttr('data', { a: 1, b: 1 }), 'legacy');
-		const legacySeed = Y.encodeStateAsUpdate(base.doc);
-		for (const [ada, bob] of [
-			[2 ** 29, 2 ** 29 + 1],
-			[2 ** 29 + 1, 2 ** 29]
-		]) {
-			const [a, b] = [replica('A', legacySeed, ada), replica('B', legacySeed, bob)];
-			a.ed.patchData('A', [{ path: ['a'], value: 2 }]);
-			b.ed.patchData('A', [{ path: ['b'], value: 2 }]);
-			a.receiveAll(b.log);
-			b.receiveAll(a.log);
-			for (const r of [a, b]) expect(r.ed.blockDataOf('A')).toEqual({ a: 2, b: 2 });
-			expect([...a.problems, ...b.problems]).toEqual([]);
-		}
+		const ed = document.facade;
+		const node = blockNodeOf(document.doc, 'A');
+		document.doc.transact(() => node.setAttr('data', { a: 1 }), 'legacy');
+		expect(ed.blockDataOf('A') ?? {}).toEqual({});
+		ed.patchData('A', [{ path: ['b'], value: 2 }]);
+		expect(ed.blockDataOf('A')).toEqual({ b: 2 });
+		expect(leavesOf(node)).toEqual({ 'd/b': 2 });
 	});
 });
 
@@ -292,7 +227,9 @@ describe('inline atom data', () => {
 
 	it('setInlineData replaces the whole value; an absent atom is refused', () => {
 		const document = loadDocument(seedUpdate(seed));
-		expect(document.facade.setInlineData('A', 'm1', { z: 1 }).status).toBe('applied');
+		expect(
+			document.facade.patchData({ block: 'A', atom: 'm1' }, [{ path: [], value: { z: 1 } }]).status
+		).toBe('applied');
 		expect(document.facade.contentItems('A')[1].data).toEqual({ z: 1 });
 		expect(
 			document.facade.patchData({ block: 'A', atom: 'nope' }, [{ path: ['a'], value: 1 }]).status

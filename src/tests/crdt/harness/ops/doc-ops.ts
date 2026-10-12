@@ -30,6 +30,8 @@ import {
 	opTarget,
 	deadCause
 } from './model-ops.js';
+import { tables as tableOps } from '../table-ops.js';
+import { blockNodeOf } from '../../../../lib/crdt/placement/model.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -183,8 +185,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	const tableKinds = new Set([...tables].flatMap(([table, k]) => [table, k.row, k.cell]));
 	/** A live block of a table's kind the table rules hide: its text is hidden with it (`table.cell`). */
 	const tableHidden = (peer: Peer, id: string) =>
-		tableKinds.has(ed(peer).model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
-		ed(peer).runsView.dissolved(id);
+		tableKinds.has(blockNodeOf(peer.doc, id)?.getAttr('type')) && ed(peer).runsView.dissolved(id);
 
 	const islandKinds = new Map(
 		Object.entries(roles?.defaultChild ?? {})
@@ -223,7 +224,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			...(tables.size > 0 && {
 				tables,
 				withdrawn: (peer, id) => {
-					const node = ed(peer).model.blockNodeOf(peer.doc, id);
+					const node = blockNodeOf(peer.doc, id);
 					return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
 				},
 				tableOf: (peer, id) => {
@@ -254,31 +255,37 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 						const col = (n: number) => (n >> 3) % Math.max(1, width + 1);
 						switch (pick % 7) {
 							case 0:
-								return ok(f.insertTableRow(table, at(pick)));
+								return ok(tableOps(f).insertTableRow(table, at(pick)));
 							case 1:
-								return rows.length > 0 && ok(f.deleteTableRows([rows[at(pick) % rows.length].id]));
+								return (
+									rows.length > 0 &&
+									ok(tableOps(f).deleteTableRows([rows[at(pick) % rows.length].id]))
+								);
 							case 2:
-								return ok(f.insertTableColumn(table, col(pick)));
+								return ok(tableOps(f).insertTableColumn(table, col(pick)));
 							case 3:
-								return width > 0 && ok(f.deleteTableColumn(table, col(pick) % width));
+								return width > 0 && ok(tableOps(f).deleteTableColumn(table, col(pick) % width));
 							case 4:
 								return (
 									width > 1 &&
-									ok(f.moveTableColumn(table, col(pick) % width, (col(pick) + 1) % width))
+									ok(tableOps(f).moveTableColumn(table, col(pick) % width, (col(pick) + 1) % width))
 								);
 							case 5:
 								return (
 									rows.length > 1 &&
 									ok(
-										f.moveTableRows([rows[at(pick) % rows.length].id], (at(pick) + 1) % rows.length)
+										tableOps(f).moveTableRows(
+											[rows[at(pick) % rows.length].id],
+											(at(pick) + 1) % rows.length
+										)
 									)
 								);
 							default: {
 								for (const row of rows) {
 									const pad = row.cells.indexOf(null);
-									if (pad >= 0) return ok(f.fillTableCell(row.id, grid.columns[pad]));
+									if (pad >= 0) return ok(tableOps(f).fillTableCell(row.id, grid.columns[pad]));
 								}
-								return ok(f.insertTableRow(table, rows.length));
+								return ok(tableOps(f).insertTableRow(table, rows.length));
 							}
 						}
 					})
@@ -289,11 +296,11 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
 
-		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlock(dest, spec))),
+		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlocks(dest, [spec]))),
 		// The adapters' `deleteBlock` is the whole-subtree delete (the model's op): explicit since promotion became the default.
 		deleteBlock: (peer, id) =>
 			peer.transact(() => ok(ed(peer).deleteBlock(id, { keepChildren: false }))),
-		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlock(id, dest))),
+		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlocks([id], dest))),
 		moveBlocks: (peer, ids, dest) => peer.transact(() => ok(ed(peer).moveBlocks(ids, dest))),
 		nestBlock: (peer, id, newParentId) =>
 			peer.transact(() => ok(ed(peer).nestBlock(id, newParentId))),
@@ -308,9 +315,9 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		deleteText: (peer, id, offset, length) =>
 			peer.transact(() => ok(ed(peer).deleteText(id, offset, length))),
 		setMark: (peer, id, offset, length, name, value) =>
-			peer.transact(() => ok(ed(peer).setMark(id, offset, length, name, value))),
+			peer.transact(() => ok(ed(peer).formatRange(id, offset, length, { [name]: value }))),
 		unsetMark: (peer, id, offset, length, name) =>
-			peer.transact(() => ok(ed(peer).unsetMark(id, offset, length, name))),
+			peer.transact(() => ok(ed(peer).formatRange(id, offset, length, { [name]: null }))),
 		insertInline: (peer, id, offset, atom) =>
 			peer.transact(() => ok(ed(peer).insertInline(id, offset, atom))),
 		removeInline: (peer, id, inlineId) =>
@@ -331,10 +338,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			if (layoutKinds.size === 0) return expected;
 			const f = ed(peer);
 			for (const id of [...expected])
-				if (
-					layoutKinds.has(f.model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
-					f.runsView.dissolved(id)
-				)
+				if (layoutKinds.has(blockNodeOf(peer.doc, id)?.getAttr('type')) && f.runsView.dissolved(id))
 					expected.delete(id);
 			return expected;
 		},

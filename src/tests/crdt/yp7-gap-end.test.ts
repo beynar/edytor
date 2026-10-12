@@ -9,9 +9,12 @@
  * Differential oracle (the YP4 method, `marker-seed.test.ts` / `search-marker-format`):
  * the pre-P7 engine is materialized from the vendored tree with the YP7 hunks
  * stripped; identical op programs over every existing public write path
- * (insert with and without formats, delete, format, multi-op deltas, inline
+ * (insert, delete, mark, inline
  * nodes, undo/redo, remote apply) must produce byte-identical stores and
  * identical renders after EVERY operation. YP7 adds a path; it must change none.
+ *
+ * Since YP19 the engine's only format items are paired marks (YP13): the rows
+ * build their gaps with `mark`.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,6 +22,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
+import { toDelta } from './harness/delta.js';
+import { undoManagerOf } from './harness/undo.js';
+import { installNodeReads } from './harness/node-reads.js';
 
 /** Red on the reference (no YP7): `it.fails` in the tests-first commit. */
 const row = it;
@@ -60,7 +66,7 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 			const doc = mkDoc(1);
 			const t = doc.get('t');
 			t.insert(0, 'hello world tail');
-			t.format(6, 5, { b: true }); // [b:true]world[b:null]
+			t.mark(6, 5, 'b', true, 0, 0); // [b:true]world[end]
 			t.delete(6, 5); // tombstones between ' ' and ' tail'
 			const before = items(t);
 			const clock = doc.store.getClock(1);
@@ -81,11 +87,10 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 	);
 
 	row(
-		'passes two live same-key format items with different values (the F1 gap) and takes the fold',
+		'passes two live same-key mark operations with different values (the F1 gap) and takes the fold',
 		() => {
-			// Two formatters leave `[b:true] … [b:null][b:'x'] …` style items in one
-			// gap once the text between them is deleted.
-			// (the delete must not see the formats, or its cleanup removes them).
+			// Two writers mark the same key over parts of a range a third deletes:
+			// their four mark items end up in one gap.
 			const a = mkDoc(10);
 			const b = mkDoc(20);
 			const c = mkDoc(30);
@@ -93,8 +98,8 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 			sync(a, b);
 			sync(a, c);
 			a.get('t').delete(6, 5);
-			b.get('t').format(6, 2, { b: true }); // 'wo'
-			c.get('t').format(8, 3, { b: 'x' }); // 'rld'
+			b.get('t').mark(6, 2, 'b', true, 0, 0); // 'wo'
+			c.get('t').mark(8, 3, 'b', 'x', 0, 0); // 'rld'
 			sync(a, b);
 			sync(a, c);
 			sync(a, b);
@@ -102,31 +107,16 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 			const liveFormats = items(t).filter((i) => i.live && i.kind === 'ContentFormat');
 			expect(liveFormats.length).toBeGreaterThanOrEqual(2);
 			const nFormats = formatCount(t);
-			// The public insert with {} stops before the first live format item whose
-			// value differs — inside the gap (the F1 counterexample).
-			const probe = mkDoc(40);
-			Y.applyUpdate(probe, Y.encodeStateAsUpdate(a));
-			probe.get('t').insert(6, [B], {});
-			const pub = items(probe.get('t'));
-			const pk = pub.findIndex((i) => i.kind === 'ContentAny');
-			expect(pub.slice(pk + 1).some((i) => i.live && i.kind === 'ContentFormat')).toBe(true);
-			// YP7 lands after all of them, with the formats the fold gives there.
+			// YP7 lands after all of them, with the marks the fold gives there.
 			t.insertAtGapEnd(6, [B]);
 			const after = items(t);
 			const k = after.findIndex((i) => i.kind === 'ContentAny');
 			expect(after[k + 1].live && after[k + 1].payload).toBe(' tail');
 			expect(formatCount(t)).toBe(nFormats);
-			let fold = {};
-			for (const i of after.slice(0, k)) {
-				if (!i.live || i.kind !== 'ContentFormat') continue;
-				const c = i.item.content;
-				fold = { ...fold };
-				if (c.value == null) delete fold[c.key];
-				else fold[c.key] = c.value;
-			}
-			const ops = t.toDelta().toJSON().children;
+			// every mark operation in the gap is closed before the unit: it shows none
+			const ops = toDelta(t).toJSON().children;
 			const op = ops.find((o) => Array.isArray(o.insert));
-			expect(op.format ?? {}).toEqual(fold);
+			expect(op.format ?? {}).toEqual({});
 		}
 	);
 
@@ -135,23 +125,24 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 		() => {
 			const doc = mkDoc(1);
 			const t = doc.get('t');
-			t.insert(0, 'abcdef', { i: true });
+			t.insert(0, 'abcdef');
+			t.mark(0, 6, 'i', true, 0, 0);
 			t.insertAtGapEnd(3, [B]);
-			expect(t.toDelta().toJSON().children).toEqual([
+			expect(toDelta(t).toJSON().children).toEqual([
 				{ type: 'insert', insert: 'abc', format: { i: true } },
 				{ type: 'insert', insert: [B], format: { i: true } },
 				{ type: 'insert', insert: 'def', format: { i: true } }
 			]);
 			t.insertAtGapEnd(0, [{ s: 'v', n: 2 }]);
-			// index 0 sits after the opening format item (the end of the gap)
-			expect(t.toDelta().toJSON().children[0]).toEqual({
+			// index 0 sits after the opening mark item (the end of the gap)
+			expect(toDelta(t).toJSON().children[0]).toEqual({
 				type: 'insert',
 				insert: [{ s: 'v', n: 2 }],
 				format: { i: true }
 			});
 			t.insertAtGapEnd(t.length, [{ s: 'w', n: 3 }]);
-			// the closing format item precedes the end of the gap → unformatted
-			expect(t.toDelta().toJSON().children.at(-1)).toEqual({
+			// the closing mark item precedes the end of the gap → unmarked
+			expect(toDelta(t).toJSON().children.at(-1)).toEqual({
 				type: 'insert',
 				insert: [{ s: 'w', n: 3 }]
 			});
@@ -175,7 +166,7 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 				a.get('t').insertAtGapEnd(3, [{ s: 'x', n: 1 }]);
 				b.get('t').insertAtGapEnd(3, [{ s: 'y', n: 1 }]);
 				sync(a, b);
-				expect(a.get('t').toDelta().toJSON()).toEqual(b.get('t').toDelta().toJSON());
+				expect(toDelta(a.get('t')).toJSON()).toEqual(toDelta(b.get('t')).toJSON());
 				expect(Y.encodeStateVector(a)).toEqual(Y.encodeStateVector(b));
 				// both boundaries sit after the tombstones, before 'lo… '→' world' content
 				expect(
@@ -225,9 +216,14 @@ const program = (E, seed, steps) => {
 	};
 	const a = mk(4242);
 	const b = mk(4343);
-	const um = new E.UndoManager(a.get('t'), { captureTimeout: 0 });
+	const um = new (E.UndoManager ?? undoManagerOf(E))(a.get('t'), { captureTimeout: 0 });
 	const snaps = [];
-	const marks = [{ b: true }, { b: 'x' }, { b: null }, { i: true }, {}];
+	const marks = [
+		['b', true],
+		['b', 'x'],
+		['b', null],
+		['i', true]
+	];
 	for (let s = 0; s < steps; s++) {
 		const doc = r() < 0.7 ? a : b;
 		const t = doc.get('t');
@@ -236,10 +232,12 @@ const program = (E, seed, steps) => {
 		const at = Math.floor(r() * (len + 1));
 		const n = Math.min(len - at, 1 + Math.floor(r() * 4));
 		if (k === 0 || len === 0) t.insert(at, 'xyzw'.slice(0, 1 + Math.floor(r() * 4)));
-		else if (k === 1) t.insert(at, 'ab', marks[Math.floor(r() * marks.length)]);
+		else if (k === 1) t.insert(at, 'ab');
 		else if (k === 2 && n > 0) t.delete(at, n);
-		else if (k === 3 && n > 0) t.format(at, n, marks[Math.floor(r() * marks.length)]);
-		else if (k === 4) t.insert(at, [new E.Node('inline')]);
+		else if (k === 3 && n > 0) {
+			const [key, value] = marks[Math.floor(r() * marks.length)];
+			t.mark(at, n, key, value, Math.floor(r() * 2), Math.floor(r() * 2));
+		} else if (k === 4) t.insert(at, [new E.Node('inline')]);
 		else if (k === 5) t.insert(at, [{ any: s }]);
 		else if (k === 6 && doc === a) um.undo();
 		else if (k === 7 && doc === a) um.redo();
@@ -247,7 +245,7 @@ const program = (E, seed, steps) => {
 		snaps.push([
 			Buffer.from(E.encodeStateAsUpdate(a)).toString('base64'),
 			Buffer.from(E.encodeStateAsUpdate(b)).toString('base64'),
-			JSON.stringify(a.get('t').toDelta().toJSON())
+			JSON.stringify(toDelta(a.get('t')).toJSON())
 		]);
 	}
 	return snaps;
@@ -274,6 +272,7 @@ describe('YP7 differential — no existing public path changes a byte', () => {
 	it('identical stores and renders after EVERY operation, 40 programs × 120 ops', async () => {
 		const { index } = materializeBaseline();
 		const YB = await import(/* @vite-ignore */ index);
+		installNodeReads(YB.Node);
 		for (let seed = 1; seed <= 40; seed++) {
 			const patched = program(Y, seed, 120);
 			const base = program(YB, seed, 120);

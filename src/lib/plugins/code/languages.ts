@@ -14,7 +14,6 @@ import { jsx } from '@tanstack/highlight/languages/jsx';
 import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { englishLabels, type CodeLabels, type PartialLabels } from '$lib/labels.js';
 import type { Snippet } from 'svelte';
 import type { CodeHeader } from './header.svelte.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
@@ -37,135 +36,71 @@ export type CodeLanguage = {
 	load?: () => Promise<readonly LanguageDefinition[]>;
 };
 
+/** The grammars more than one language loads. */
+const css = () => import('@tanstack/highlight/languages/css');
+const ts = () => import('@tanstack/highlight/languages/ts');
+const html = () => import('@tanstack/highlight/languages/html');
 const scripts = () =>
-	Promise.all([
-		import('@tanstack/highlight/languages/css'),
-		import('@tanstack/highlight/languages/js'),
-		import('@tanstack/highlight/languages/ts')
-	]).then(([{ css }, { js }, { ts }]) => [css, js, ts]);
+	Promise.all([css(), import('@tanstack/highlight/languages/js'), ts()]).then(
+		([{ css }, { js }, { ts }]) => [css, js, ts]
+	);
 
-/** A markup grammar with the style and script grammars it embeds. */
-const markup = (grammar: () => Promise<LanguageDefinition>) => () =>
-	Promise.all([grammar(), scripts()]).then(([own, embedded]) => [own, ...embedded]);
+/**
+ * A listed language: its lines are tokenized with `grammar` (its id unless
+ * named), the definition the module `load` imports exports by that name; a
+ * markup grammar (`embeds`) also loads the style and script grammars it embeds.
+ */
+const language = (
+	id: string,
+	label: string,
+	load: () => Promise<object>,
+	grammar = id,
+	embeds = false
+): CodeLanguage => ({
+	id,
+	label,
+	grammar,
+	load: () =>
+		Promise.all([load(), embeds ? scripts() : []]).then(([module, embedded]) => [
+			(module as Record<string, LanguageDefinition>)[grammar]!,
+			...embedded
+		])
+});
 
 /** The default languages, after Notion's list, sorted by label (Plain text first). */
 export const CODE_LANGUAGES: readonly CodeLanguage[] = [
 	{ id: 'plaintext', label: 'Plain text' },
-	{
-		id: 'bash',
-		label: 'Bash',
-		grammar: 'shell',
-		load: () => import('@tanstack/highlight/languages/shell').then((m) => [m.shell])
-	},
-	{
-		id: 'cpp',
-		label: 'C++',
-		grammar: 'cpp',
-		load: () => import('@tanstack/highlight/languages/cpp').then((m) => [m.cpp])
-	},
-	{
-		id: 'css',
-		label: 'CSS',
-		grammar: 'css',
-		load: () => import('@tanstack/highlight/languages/css').then((m) => [m.css])
-	},
-	{
-		id: 'diff',
-		label: 'Diff',
-		grammar: 'diff',
-		load: () => import('@tanstack/highlight/languages/diff').then((m) => [m.diff])
-	},
-	{
-		id: 'docker',
-		label: 'Docker',
-		grammar: 'dockerfile',
-		load: () => import('@tanstack/highlight/languages/dockerfile').then((m) => [m.dockerfile])
-	},
-	{
-		id: 'go',
-		label: 'Go',
-		grammar: 'go',
-		load: () => import('@tanstack/highlight/languages/go').then((m) => [m.go])
-	},
-	{
-		id: 'html',
-		label: 'HTML',
-		grammar: 'html',
-		load: markup(() => import('@tanstack/highlight/languages/html').then((m) => m.html))
-	},
+	language('bash', 'Bash', () => import('@tanstack/highlight/languages/shell'), 'shell'),
+	language('cpp', 'C++', () => import('@tanstack/highlight/languages/cpp')),
+	language('css', 'CSS', css),
+	language('diff', 'Diff', () => import('@tanstack/highlight/languages/diff')),
+	language(
+		'docker',
+		'Docker',
+		() => import('@tanstack/highlight/languages/dockerfile'),
+		'dockerfile'
+	),
+	language('go', 'Go', () => import('@tanstack/highlight/languages/go')),
+	language('html', 'HTML', html, 'html', true),
 	{ id: 'javascript', label: 'JavaScript', grammar: 'jsx', load: async () => [jsx] },
-	{
-		id: 'json',
-		label: 'JSON',
-		grammar: 'json',
-		load: () => import('@tanstack/highlight/languages/json').then((m) => [m.json])
-	},
-	{
-		id: 'markdown',
-		label: 'Markdown',
-		grammar: 'markdown',
-		load: () => import('@tanstack/highlight/languages/markdown').then((m) => [m.markdown])
-	},
-	{
-		id: 'mermaid',
-		label: 'Mermaid',
-		grammar: 'mermaid',
-		load: () => import('@tanstack/highlight/languages/mermaid').then((m) => [m.mermaid])
-	},
-	{
-		id: 'php',
-		label: 'PHP',
-		grammar: 'php',
-		load: () => import('@tanstack/highlight/languages/php').then((m) => [m.php])
-	},
-	{
-		id: 'python',
-		label: 'Python',
-		grammar: 'python',
-		load: () => import('@tanstack/highlight/languages/python').then((m) => [m.python])
-	},
-	{
-		id: 'sql',
-		label: 'SQL',
-		grammar: 'sql',
-		load: () => import('@tanstack/highlight/languages/sql').then((m) => [m.sql])
-	},
-	{
-		id: 'svelte',
-		label: 'Svelte',
-		grammar: 'svelte',
-		load: markup(() => import('@tanstack/highlight/languages/svelte').then((m) => m.svelte))
-	},
-	{
-		id: 'toml',
-		label: 'TOML',
-		grammar: 'toml',
-		load: () => import('@tanstack/highlight/languages/toml').then((m) => [m.toml])
-	},
-	{
-		id: 'typescript',
-		label: 'TypeScript',
-		grammar: 'ts',
-		load: () => import('@tanstack/highlight/languages/ts').then((m) => [m.ts])
-	},
-	{
-		id: 'vue',
-		label: 'Vue',
-		grammar: 'vue',
-		load: markup(() => import('@tanstack/highlight/languages/vue').then((m) => m.vue))
-	},
-	{
-		id: 'xml',
-		label: 'XML',
-		grammar: 'html',
-		load: () => import('@tanstack/highlight/languages/html').then((m) => [m.html])
-	},
-	{
-		id: 'yaml',
-		label: 'YAML',
-		grammar: 'yaml',
-		load: () => import('@tanstack/highlight/languages/yaml').then((m) => [m.yaml])
-	}
+	language('json', 'JSON', () => import('@tanstack/highlight/languages/json')),
+	language('markdown', 'Markdown', () => import('@tanstack/highlight/languages/markdown')),
+	language('mermaid', 'Mermaid', () => import('@tanstack/highlight/languages/mermaid')),
+	language('php', 'PHP', () => import('@tanstack/highlight/languages/php')),
+	language('python', 'Python', () => import('@tanstack/highlight/languages/python')),
+	language('sql', 'SQL', () => import('@tanstack/highlight/languages/sql')),
+	language(
+		'svelte',
+		'Svelte',
+		() => import('@tanstack/highlight/languages/svelte'),
+		'svelte',
+		true
+	),
+	language('toml', 'TOML', () => import('@tanstack/highlight/languages/toml')),
+	language('typescript', 'TypeScript', ts, 'ts'),
+	language('vue', 'Vue', () => import('@tanstack/highlight/languages/vue'), 'vue', true),
+	language('xml', 'XML', html, 'html'),
+	language('yaml', 'YAML', () => import('@tanstack/highlight/languages/yaml'))
 ];
 
 /**
@@ -218,28 +153,22 @@ export const tokenizeCode = (code: string, language: CodeLanguage | undefined): 
 };
 
 export type CodePluginOptions = {
-	/** The languages a code block may be in, in the header's order. Default `CODE_LANGUAGES`. */
+	/** The languages a code block may be in, in the header's order, with their names. Default `CODE_LANGUAGES`. */
 	languages?: readonly CodeLanguage[];
 	/** The language of a code block whose `data.language` is unset. Default `'javascript'`. */
 	defaultLanguage?: string;
 	/**
-	 * The words the code block shows (its menu row, header, a language's
-	 * label by id), over the English ones.
-	 */
-	labels?: PartialLabels<'code'>;
-	/** The slash menu's keywords of the code command (`block.code`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
-	/**
-	 * Replace a code block's header (the language's button and Copy): it
-	 * renders above the code, in the block's non-editable part. Put
-	 * `{@attach header.button}` on the element that opens the language list.
+	 * A code block's header (the language's button and Copy) and its words: it renders
+	 * above the code, in the block's non-editable part (without it, no
+	 * header). Put `{@attach header.button}` on the element that opens the
+	 * language list.
 	 */
 	header?: Snippet<[CodeHeader]>;
 	/**
-	 * Replace the language list: it renders under the header's button while
-	 * `menu.open` is set. Put `{@attach menu.keys}` on its search field,
-	 * `{@attach menu.popup}` on the list, and spread `item.option` (or
-	 * `menu.option(index)`) on each row of `menu.items`. The first code
+	 * The language list: it renders under the header's button while
+	 * `menu.open` is set (without it, nothing shows). Put `{@attach menu.keys}` on its search field,
+	 * `{@attach menu.popup}` on the list, and `{@attach item.option}` on each
+	 * row of `menu.items` (its highlight from `item.selected`). The first code
 	 * plugin listed in a view owns its list.
 	 */
 	menu?: Snippet<[LanguageMenu]>;
@@ -248,7 +177,6 @@ export type CodePluginOptions = {
 export type CodeSettings = {
 	languages: readonly CodeLanguage[];
 	defaultLanguage: string;
-	labels: CodeLabels;
 	/** The app's header markup, if any. */
 	header?: Snippet<[CodeHeader]>;
 	/** The app's language list markup, if any. */
@@ -257,13 +185,8 @@ export type CodeSettings = {
 
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	languages: CODE_LANGUAGES,
-	defaultLanguage: 'javascript',
-	labels: englishLabels.code
+	defaultLanguage: 'javascript'
 };
-
-/** A language's label as shown: the labels' `languages` entry for its id, else its own. */
-export const languageLabel = (language: CodeLanguage, { labels }: CodeSettings) =>
-	labels.languages[language.id] ?? language.label;
 
 /** Each view's code options, for its code blocks' header (which reads them through its view). */
 export const codeSettings = new WeakMap<Edytor, CodeSettings>();

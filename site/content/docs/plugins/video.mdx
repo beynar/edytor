@@ -4,13 +4,14 @@ description: The video plugin adds Notion's video block, a video file in the bro
 icon: video
 ---
 
-`videoPlugin` adds Notion's video block: an "Embed a video" panel until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
+`createVideoPlugin()` adds Notion's video block: an "Embed a video" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createVideoPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createVideoPlugin, createUploadsPlugin } from 'edytor';
 
-	const video = createVideoPlugin({
+	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
+	const uploads = createUploadsPlugin({
 		upload: async (file) => {
 			const body = new FormData();
 			body.append('file', file);
@@ -20,14 +21,14 @@ icon: video
 	});
 </script>
 
-<Edytor plugins={[video, slashMenuPlugin]} />
+<Edytor plugins={[uploads, createVideoPlugin()]} />
 ```
 
-The slash menu then lists "Video" under `Media`. `videoPlugin` is the plugin without `upload`: links only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
+A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
 
 ## Options
 
-`createVideoPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="video/*"`) and taking pasted and dropped video files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (video, upload), `keywords` the slash keywords of `block.video`, and `empty` (a `Snippet<[MediaEmptyController]>`) replaces the empty block's markup ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createVideoPlugin()` takes no options. The empty block is drawn by the view's media empty plugin ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)); with the uploads plugin listed, it has an Upload (`accept="video/*"`) and pasted and dropped video files become video blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

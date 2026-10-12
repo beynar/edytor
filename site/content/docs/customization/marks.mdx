@@ -138,7 +138,7 @@ Each mark you set is one operation over its range, with a timestamp later than e
 A comment-like mark (one per thread) uses a key of its own per thread: `comment:<id>`. Each is a separate mark, so two overlapping comments never cut each other short, and the key reads the `comment` mark record (its tag, snippet, edge and `copy`). The [comments plugin](/docs/plugins/comments) anchors its threads this way:
 
 ```ts title="comment.ts" check
-edytor.document.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
+edytor.document.formatRange(blockId, 4, 9, { 'comment:c1': { id: 'c1' } });
 ```
 
 ## Toggling marks from code
@@ -162,13 +162,11 @@ export const toggleMark = (edytor: EdytorInstance, mark: string, value?: string)
 	richTextOperations(edytor).setMarkAtRange(mark, value);
 ```
 
-Underneath, `text.markText({ mark, value, toggle, start, end })` formats `start` to `end` of one text segment (offsets inside that segment). With `toggle: true` it removes the mark when every part of the range already has it, and sets it otherwise. A `value` of `null` removes the mark. `text.removeMarksFromText({ start, end })` removes every mark.
-
-Each call is a `markText` operation that plugins see in `onBeforeOperation`.
+Underneath, a mark is the `formatRange` operation: `edytor.formatRange(id, offset, length, { [mark]: value })` sets `mark` over a range of block `id` (block offsets), and a `value` of `null` removes it; `edytor.clearMarks(id, offset, length)` removes every mark. Each is an operation plugins see in `onBeforeOperation`. The toggle (remove the mark when every part of the range has it, set it otherwise) is `richTextOperations(edytor).setMarkAtRange(mark)`'s.
 
 ## Pending marks
 
-At a collapsed caret there is no text to format. `markText` with `start` equal to `end` stages the mark instead: the next characters typed at that caret take it. This is what <kbd>Mod</kbd> + <kbd>B</kbd> does before you type.
+At a collapsed caret there is no text to format: `setMarkAtRange` stages the mark instead, and the next characters typed at that caret take it. This is what <kbd>Mod</kbd> + <kbd>B</kbd> does before you type.
 
 Staged marks are `edytor.selection.pending`, the full set of marks the next insertion carries (`null` for a mark switched off). Set them directly with `edytor.selection.stage(marks)`, or clear them with `edytor.selection.stage(undefined)`. Moving the caret clears them; typing at the caret consumes them.
 

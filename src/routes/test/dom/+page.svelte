@@ -1,30 +1,40 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
-	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 	import type { Plugin } from '$lib/plugins.js';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
-	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
-	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
-	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-	import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
+	import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
+	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
-	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
-	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
+	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
+	import {
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		bookmarkPlugin,
+		codePlugin,
+		embedPlugin,
+		equation,
+		file,
+		findPlugin,
+		image,
+		imagePlugin,
+		mediaEmptyPlugin,
+		imageToolbarPlugin,
+		marquee,
+		mention,
+		pageLink,
+		richTextPlugin,
+		calloutIconsPlugin,
+		slashMenuPlugin,
+		suggestionsPlugin,
+		suggestionBarPlugin,
+		tablePlugin,
+		toolbarPlugin
+	} from '../../chrome/plugins.js';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
 		IndexeddbPersistence,
@@ -34,7 +44,6 @@
 	} from '$lib/crdt/protocol.js';
 	import { Y } from '$lib/crdt/engine.js';
 	import { createDocument } from '$lib/crdt/index.js';
-	import { bindMigration } from '$lib/crdt/migration/migrate.js';
 	import {
 		GENERATION_KEY,
 		GENERATION_RECORD,
@@ -504,12 +513,19 @@
 	};
 
 	/**
-	 * The `image` scenario's upload (WU-21): the file back as an inline image,
-	 * after a short wait, so a spec sees the placeholder, then the image.
+	 * The `image` scenario's uploader (WU-21, `media.files`): an image back as
+	 * an inline image after a short wait, so a spec sees the placeholder, then
+	 * the image; any other file a local `blob:` URL after a short wait, its
+	 * progress reported half way.
 	 */
-	const uploadingImagePlugin = createImagePlugin({
-		upload: (file) =>
+	const uploadsPlugin = createUploadsPlugin({
+		upload: (file, report) =>
 			new Promise((resolve, reject) => {
+				if (!file.type.startsWith('image/')) {
+					report.progress(0.5);
+					setTimeout(() => resolve(URL.createObjectURL(file)), 150);
+					return;
+				}
 				const reader = new FileReader();
 				reader.onload = () => setTimeout(() => resolve(String(reader.result)), 150);
 				reader.onerror = () => reject(reader.error);
@@ -517,20 +533,8 @@
 			})
 	});
 
-	/**
-	 * The `image` scenario's file upload (`media.files`): a local `blob:` URL
-	 * after a short wait, its progress reported half way.
-	 */
-	const uploadingFilePlugin = createFilePlugin({
-		upload: (file, report) =>
-			new Promise((resolve) => {
-				report.progress(0.5);
-				setTimeout(() => resolve(URL.createObjectURL(file)), 150);
-			})
-	});
-
 	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
-	const triggerMentions = createMentionPlugin({
+	const triggerMentions = mention({
 		items: (query) =>
 			[
 				{ id: 'u1', label: 'Ada Lovelace' },
@@ -538,7 +542,7 @@
 				{ id: 'u3', label: 'Grace Hopper' }
 			].filter((person) => person.label.toLowerCase().includes(query.toLowerCase()))
 	});
-	const triggerPages = createPageLinkPlugin({
+	const triggerPages = pageLink({
 		search: (query) =>
 			new Promise((resolve) =>
 				setTimeout(
@@ -555,14 +559,14 @@
 		href: (page) => `/pages/${page.id}`
 	});
 	// KaTeX from the CDN, the default (the Playwright fixture serves it offline).
-	const equationPlugin = createEquationPlugin();
+	const equationPlugin = equation();
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
-	const marqueePlugin = createMarqueePlugin({ container: '[data-testid="editor-shell"]' });
-	const emojiRules: Plugin = () => ({
-		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
-	});
+	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
+	const emojiRules: Plugin = (edytor) =>
+		withRulesAndTriggers(edytor, {}, { inputRules: [{ find: /:smile:$/, replace: () => '😄' }] });
 
 	const plugins = $derived([
+		...(data.handles ? [blockHandlesPlugin] : []),
 		...(data.find ? [findPlugin] : []),
 		...(data.marquee ? [marqueePlugin] : []),
 		...(data.scenario === 'table' ? [tablePlugin, ...(data.polish ? [] : [blockMenuPlugin])] : []),
@@ -571,7 +575,7 @@
 		...(data.polish
 			? [
 					blockMenuPlugin,
-					tocPlugin,
+					createTocPlugin(),
 					createPagePlugin({
 						open: (pageId, { newTab }) =>
 							Object.assign(window, {
@@ -582,18 +586,23 @@
 					})
 				]
 			: []),
-		arrowMovePlugin,
-		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
-		...(data.scenario === 'image' ? [uploadingFilePlugin] : []),
+		createArrowMovePlugin(),
+		...(data.scenario === 'image' ? [uploadsPlugin] : []),
+		imagePlugin,
+		mediaEmptyPlugin,
+		imageToolbarPlugin,
+		...(data.scenario === 'image' ? [file()] : []),
 		codePlugin,
-		markdownShortcutsPlugin,
+		createMarkdownShortcutsPlugin(),
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of
 		// the fixture's `@` (an empty atom at once).
 		...(data.triggers ? [triggerMentions, triggerPages, emojiRules] : [mentionPlugin]),
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
-		...(data.columns ? [columnsPlugin] : []),
+		suggestionBarPlugin,
+		...(data.columns ? [createColumnsPlugin()] : []),
+		calloutIconsPlugin,
 		richTextPlugin,
 		propsPlugin
 	]);
@@ -601,8 +610,6 @@
 		IndexeddbPersistence,
 		clearDocument,
 		storeState,
-		/** The v13 → v14 migrator, so specs can drive it from two tabs of one origin (F-T16). */
-		migration: bindMigration(Y),
 		/**
 		 * Persist `doc` directly into the room's IndexedDB store — bypasses
 		 * the application-schema boundary (`storeState` refuses to snapshot
@@ -613,7 +620,7 @@
 		 * Collaboration-DST probes: state-vector diffing lets the multi-peer
 		 * runner capture each peer's locally-authored update after an
 		 * action, and `dumpDocument` projects the full convergent state
-		 * (canonical value + attribution + lineage ring) for exact
+		 * (canonical value + attribution) for exact
 		 * cross-peer comparison — no testid serialization shortcuts.
 		 */
 		stateVector: (doc: YDoc) => Y.encodeStateVector(doc),
@@ -651,7 +658,6 @@
 			};
 			const value = document.facade.toJSON();
 			const blocks: Record<string, unknown> = {};
-			const lineage: Record<string, unknown> = {};
 			const live = new Set<string>();
 			const walk = (children: CrdtJSONBlock[]) => {
 				for (const child of children) {
@@ -665,14 +671,13 @@
 									lastChangedBy: attribution.lastChangedBy
 								}
 							: null;
-						lineage[child.id] = document.attribution.history(child.id) ?? null;
 					}
 					if (child.children) walk(child.children);
 				}
 			};
 			walk(value.children);
 			// Attribution records survive their block's deletion — enumerate
-			// them directly so a deleted block's ring and stamps enter the
+			// them directly so a deleted block's stamps enter the
 			// comparison (live-tree walks can't reach them). Each entry is
 			// tagged `deleted` + its incarnation stamp.
 			for (const rec of blockRecordsOf(
@@ -687,7 +692,6 @@
 					contributors: attribution ? [...attribution.contributors].sort() : [],
 					lastChangedBy: attribution?.lastChangedBy
 				};
-				lineage[rec.id] = rec.lineage ?? null;
 			}
 			// The capturing peer's own model-side selection — per-peer by
 			// nature, so the runner excludes it from the convergence
@@ -696,7 +700,9 @@
 			// with in-range offsets. Text lengths ride along so the check
 			// needs no model access.
 			const owner = edytor?.document === document ? edytor : undefined;
-			const selectionState = owner?.selection?.state ?? null;
+			const selectionState = owner
+				? { ...owner.selection.textRange(), isCollapsed: owner.selection.projection.isCollapsed }
+				: null;
 			const selectionValue = owner?.selection.value;
 			// The endpoints' relative anchors in document order (`end` only for a range).
 			const [startAnchor, endAnchor] =
@@ -708,9 +714,7 @@
 				: [];
 			const hasSelection =
 				selectionState !== null &&
-				(selectionState.startText !== null ||
-					selectionState.startBlock !== null ||
-					selectedBlockIds.length > 0);
+				(selectionState.startText !== null || selectedBlockIds.length > 0);
 			// Per-block first/last EDITABLE text identity.
 			// `firstEditableText`/`lastEditableText` descend past noneditable
 			// children and skip container phantom slots — the returned text
@@ -838,7 +842,6 @@
 			return {
 				value,
 				blocks,
-				lineage,
 				blockTexts,
 				textContents,
 				textOwners,
@@ -848,9 +851,8 @@
 				selection: hasSelection
 					? {
 							kind: selectedBlockIds.length > 0 ? ('block' as const) : ('text' as const),
-							startBlockId:
-								selectionState.startText?.parent?.id ?? selectionState.startBlock?.id ?? null,
-							endBlockId: selectionState.endText?.parent?.id ?? selectionState.endBlock?.id ?? null,
+							startBlockId: selectionState.startText?.parent?.id ?? null,
+							endBlockId: selectionState.endText?.parent?.id ?? null,
 							startTextId: selectionState.startText?.id ?? null,
 							endTextId: selectionState.endText?.id ?? null,
 							// The endpoint's relative anchor — re-resolving it on the
@@ -1134,18 +1136,15 @@
 			};
 		}
 
+		const range = instance.selection.textRange();
 		return {
-			startBlockPath: instance.selection.state.startBlock?.path ?? null,
-			endBlockPath: instance.selection.state.endBlock?.path ?? null,
-			startTextPath: instance.selection.state.startText
-				? getPartPath(instance.selection.state.startText)
-				: null,
-			endTextPath: instance.selection.state.endText
-				? getPartPath(instance.selection.state.endText)
-				: null,
-			yStart: instance.selection.state.yStart,
-			yEnd: instance.selection.state.yEnd,
-			isCollapsed: instance.selection.state.isCollapsed,
+			startBlockPath: range.startText?.parent.path ?? null,
+			endBlockPath: range.endText?.parent.path ?? null,
+			startTextPath: range.startText ? getPartPath(range.startText) : null,
+			endTextPath: range.endText ? getPartPath(range.endText) : null,
+			yStart: range.yStart,
+			yEnd: range.yEnd,
+			isCollapsed: instance.selection.projection.isCollapsed,
 			selectedBlockPaths: Array.from(instance.selection.selectedBlocks).map((block) => block.path),
 			focusedBlockPaths: Array.from(instance.selection.focusedBlocks).map((block) => block.path)
 		};
@@ -1153,13 +1152,13 @@
 
 	const scenario = $derived(data.scenario);
 	const value = $derived(getScenarioValue(data.scenario, data.empty, data.dstDocument));
-	// Collaboration-DST injection: `?actor=`/`?lineagedepth=` make the page
-	// OWN the document so each browser peer gets a deterministic local actor
-	// and an enabled lineage ring — the props `createDocument` can't reach
-	// through the plain `{value}` mount path. Without either param the view
-	// stays on the internal-document path (`document` prop stays undefined).
+	// Collaboration-DST injection: `?actor=` makes the page OWN the document
+	// so each browser peer gets a deterministic local actor — the prop
+	// `createDocument` can't reach through the plain `{value}` mount path.
+	// Without it the view stays on the internal-document path (`document`
+	// prop stays undefined).
 	const injectedDocument = untrack(() =>
-		data.actor === null && data.lineagedepth === undefined
+		data.actor === null
 			? undefined
 			: createDocument({
 					// With a sync factory attached the doc must stay PENDING
@@ -1173,8 +1172,7 @@
 					...(collabSync
 						? {}
 						: { value: getScenarioValue(data.scenario, data.empty, data.dstDocument) }),
-					...(data.actor !== null ? { actor: { id: data.actor, name: data.actor } } : {}),
-					...(data.lineagedepth !== undefined ? { lineage: { depth: data.lineagedepth } } : {})
+					...(data.actor !== null ? { actor: { id: data.actor, name: data.actor } } : {})
 				})
 	);
 	const secondaryValue = $derived({
@@ -1206,14 +1204,13 @@
 		const routeHotKeys: Record<string, HotKey> = {};
 
 		const insertProbeText = (edytor: EdytorContext, value: string) => {
-			const text = edytor.selection.state.startText;
-			const offset = edytor.selection.state.yStart;
+			const { startText: text, yStart: offset } = edytor.selection.textRange();
 			if (!text) {
 				return;
 			}
 
-			text.insertText({ value, start: offset, end: offset });
-			edytor.selection.setAtTextOffset(text, offset + value.length);
+			edytor.insertText(text.parent.id, text.segStart + offset, value);
+			edytor.selection.selectText(text, offset + value.length);
 		};
 
 		if (data.enterHotkey) {
@@ -1327,9 +1324,8 @@
 	>
 		<Edytor
 			bind:edytor
-			{plugins}
+			plugins={[() => ({ placeholder }), ...plugins]}
 			defaultPlugins={false}
-			blockHandles={data.handles}
 			document={injectedDocument}
 			{value}
 			{readonly}
@@ -1341,16 +1337,14 @@
 			{hotkeys}
 			sync={collabSync}
 			class="outline-none"
-			{placeholder}
 		/>
 	</div>
 	{#if data.secondary}
 		<div data-testid="secondary-editor-shell" dir={direction}>
 			<Edytor
 				bind:edytor={secondaryEdytor}
-				{plugins}
+				plugins={[() => ({ placeholder: 'Second editor' }), ...plugins]}
 				defaultPlugins={false}
-				blockHandles={data.handles}
 				value={secondaryValue}
 				{translate}
 				{spellcheck}
@@ -1358,7 +1352,6 @@
 				{autocomplete}
 				{autocapitalize}
 				class="outline-none"
-				placeholder="Second editor"
 			/>
 		</div>
 		<pre data-testid="secondary-value">{serializedSecondaryValue}</pre>

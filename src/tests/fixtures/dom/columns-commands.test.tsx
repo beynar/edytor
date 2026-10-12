@@ -10,7 +10,6 @@
  * them. Expected states are hand-authored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { dispatchDomBeforeInput, flushDomUpdates } from '../../dom/test.utils.js';
 import {
@@ -25,6 +24,8 @@ import {
 	renderColumns,
 	tree
 } from './columns.helpers.js';
+import { selectionState } from '../../selection.js';
+import { slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -48,7 +49,7 @@ const empties = (n: number) => Array.from({ length: n }, () => ['column', ['para
 
 /** The caret's block sits in the first column of a layout, at offset 0. */
 const inFirstColumn = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	const item = startBlock?.parent;
 	return {
 		kind: startBlock?.type,

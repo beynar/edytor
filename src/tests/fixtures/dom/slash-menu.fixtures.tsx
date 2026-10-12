@@ -2,14 +2,13 @@
 import { expect } from 'vitest';
 
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates
 } from '../../dom/test.utils.js';
+import { richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 const slashMenuPlugins = [richTextPlugin, mentionPlugin, slashMenuPlugin];
 

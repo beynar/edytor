@@ -13,15 +13,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import {
-	createRichTextPlaceholder,
-	createRichTextPlugin,
-	richTextPlaceholder,
-	richTextPlugin
-} from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchCopy,
@@ -31,6 +25,14 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { customPicker } from '../../dom/CustomCalloutPicker.svelte';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	calloutIcons,
+	calloutIconsPlugin,
+	richText as createRichTextPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -44,7 +46,7 @@ const empty = (
 
 const render = (
 	children: JSONBlock[],
-	plugins: Plugin[] = [richTextPlugin],
+	plugins: Plugin[] = [calloutIconsPlugin, richTextPlugin],
 	options: { readonly?: boolean } = {}
 ) => renderDomEdytor(empty, { plugins, value: { children }, ...options });
 
@@ -56,7 +58,7 @@ const outline = (block: JSONBlock): Outline => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return [startBlock?.parent?.id ?? null, startBlock?.index, yStart, isCollapsed];
 };
 const typeText = async (editor: HTMLElement, value: string) => {
@@ -78,7 +80,7 @@ const press = async (element: Element) => {
 };
 const atEnd = async (edytor: Edytor, id: string) => {
 	const text = edytor.idToBlock.get(id)!.firstText!;
-	edytor.selection.setAtTextOffset(text, text.length);
+	edytor.selection.selectText(text, text.length);
 	await flushDomUpdates();
 };
 const enter = (editor: HTMLElement) =>
@@ -170,9 +172,9 @@ describe('body.open: a toggle this view creates opens', () => {
 	it('`> ` typed on a new line makes an open toggle; Enter after its title goes into the body', async () => {
 		const { edytor, editor } = await render(
 			[{ id: 'a', type: 'paragraph', content: [] }],
-			[markdownShortcutsPlugin, richTextPlugin]
+			[createMarkdownShortcutsPlugin(), richTextPlugin]
 		);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 0);
 		await flushDomUpdates();
 		await typeText(editor, '> ');
 		expect(doc(edytor)).toEqual(['toggle']);
@@ -186,7 +188,7 @@ describe('body.open: a toggle this view creates opens', () => {
 
 	it('the toggle command (slash menu, Turn into) opens the toggle it makes', async () => {
 		const { edytor } = await render([{ id: 'a', type: 'paragraph', content: [{ text: 'title' }] }]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 2);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 2);
 		await flushDomUpdates();
 		await edytor.runCommand('block.toggle');
 		await flushDomUpdates();
@@ -204,7 +206,7 @@ describe('body.open: a toggle this view creates opens', () => {
 			}
 		]);
 		expect((nodeOf(edytor, 't') as HTMLDetailsElement).open).toBe(false);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('t')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('t')!.firstText!, 0);
 		await flushDomUpdates();
 		await edytor.runCommand('block.toggle-heading2');
 		await flushDomUpdates();
@@ -266,7 +268,7 @@ describe('callout: an icon, a title and a content', () => {
 
 	it('Enter in the middle of its title moves the rest into its content', async () => {
 		const { edytor, editor } = await render(callout());
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('c')!.firstText!, 2);
+		edytor.selection.selectText(edytor.idToBlock.get('c')!.firstText!, 2);
 		await flushDomUpdates();
 		await enter(editor);
 		expect(doc(edytor)).toEqual([['callout "no"', ['paragraph "te"']], 'paragraph "after"']);
@@ -277,11 +279,12 @@ describe('callout: an icon, a title and a content', () => {
 			'Callout title'
 		);
 		expect(
-			createRichTextPlaceholder({ placeholders: { callout: 'Titre' } })({
-				type: 'callout',
-				data: {},
-				focused: true
-			} as never)
+			richTextPlaceholder(
+				{ type: 'callout', data: {}, focused: true } as never,
+				{
+					labels: { richText: { placeholders: { callout: 'Titre' } } }
+				} as never
+			)
 		).toBe('Titre');
 	});
 
@@ -299,7 +302,7 @@ describe('callout: an icon, a title and a content', () => {
 		]);
 		// A block selection is exactly its members (`sel.blocks.exact`): the callout and its content.
 		const c = edytor.idToBlock.get('c')!;
-		edytor.selection.selectBlocks(c, c.children[0]!);
+		selectBlocks(edytor, c, c.children[0]!);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(editor);
 		const html = clipboardData['text/html']!;
@@ -319,7 +322,7 @@ describe('callout: an icon, a title and a content', () => {
 
 	it('a pasted callout with an empty title keeps its first paragraph as content', async () => {
 		const { edytor, editor } = await render([{ id: 'p', type: 'paragraph', content: [] }]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('p')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('p')!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchClipboardPaste(editor, {
 			'text/html': '<div data-edytor-callout="💡"><p></p><p>body</p></div>',
@@ -371,7 +374,7 @@ describe('callout.icon: the icon picker', () => {
 		expect(active().getAttribute('aria-checked')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowRight' });
 		expect(active()).toBe(choices()[1]);
-		expect(active().hasAttribute('data-active')).toBe(true);
+		expect(active().getAttribute('data-selected')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowDown' });
 		expect(active()).toBe(choices()[9]);
 		await dispatchDomKeyDown(menu()!, { key: 'Escape' });
@@ -407,14 +410,15 @@ describe('callout.icon: the icon picker', () => {
 		expect(picker()).toBeNull();
 	});
 
-	it('createRichTextPlugin({ callout }) sets the default icon and the choices', async () => {
-		const plugin = createRichTextPlugin({ callout: { icon: '📌', icons: ['📌', '✅', '❗'] } });
+	it('createRichTextPlugin({ callout }) sets the default icon, the picker plugin the choices', async () => {
+		const plugin = createRichTextPlugin({ callout: { icon: '📌' } });
+		const icons = calloutIcons({ icons: ['📌', '✅', '❗'] });
 		const { edytor } = await render(
 			[
 				{ id: 'c', type: 'callout', content: [{ text: 'note' }] },
 				{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }
 			],
-			[plugin]
+			[icons, plugin]
 		);
 		// No icon of its own: the view's default.
 		expect(iconButton(edytor).textContent?.trim()).toBe('📌');
@@ -422,7 +426,7 @@ describe('callout.icon: the icon picker', () => {
 		expect(choices().map((choice) => choice.textContent?.trim())).toEqual(['📌', '✅', '❗']);
 		await dispatchDomKeyDown(menu()!, { key: 'Escape' });
 		// A new callout takes the default icon.
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('p')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('p')!.firstText!, 0);
 		await flushDomUpdates();
 		await edytor.runCommand('block.callout');
 		await flushDomUpdates();
@@ -431,9 +435,13 @@ describe('callout.icon: the icon picker', () => {
 	});
 
 	it('the block menu of a callout opens the picker (the keyboard way)', async () => {
-		const { edytor, editor } = await render(callout(), [blockMenuPlugin, richTextPlugin]);
+		const { edytor, editor } = await render(callout(), [
+			blockMenuPlugin,
+			calloutIconsPlugin,
+			richTextPlugin
+		]);
 		const block = edytor.idToBlock.get('c')!;
-		edytor.selection.selectBlocks(block);
+		selectBlocks(edytor, block);
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor: block.node } })
 		);
@@ -446,10 +454,8 @@ describe('callout.icon: the icon picker', () => {
 	});
 
 	it("an app's `callout.picker` snippet replaces the markup, with the controller's keys and rows", async () => {
-		const plugin = createRichTextPlugin({
-			callout: { icons: ['🅰️', '🅱️'], picker: customPicker }
-		});
-		const { edytor } = await render(callout(), [plugin]);
+		const plugin = calloutIcons({ icons: ['🅰️', '🅱️'], picker: customPicker });
+		const { edytor } = await render(callout(), [plugin, richTextPlugin]);
 		await press(iconButton(edytor));
 		const custom = document.querySelector<HTMLElement>('[data-testid="custom-picker"]')!;
 		expect(custom).not.toBeNull();

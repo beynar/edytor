@@ -1,14 +1,11 @@
 import * as binary from 'lib0-v14/binary'
 import * as decoding from 'lib0-v14/decoding'
 import * as encoding from 'lib0-v14/encoding'
-import * as f from 'lib0-v14/function'
-import * as string from 'lib0-v14/string'
 
-import { readIdSet, writeIdSet } from './ids.js'
+import { readIdSet } from './ids.js'
 
 import { createID } from './ID.js'
-import { UpdateEncoderV1, UpdateEncoderV2 } from './UpdateEncoder.js'
-import { UpdateDecoderV1, UpdateDecoderV2 } from './UpdateDecoder.js'
+import { UpdateDecoder } from './UpdateDecoder.js'
 import { GC } from '../structs/GC.js'
 import { Item } from '../structs/Item.js'
 import {
@@ -17,7 +14,7 @@ import {
 import { Skip } from '../structs/Skip.js'
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  */
 function * lazyStructReaderGenerator (decoder) {
   const numOfStateUpdates = decoding.readVarUint(decoder.restDecoder)
@@ -62,7 +59,7 @@ function * lazyStructReaderGenerator (decoder) {
 
 export class LazyStructReader {
   /**
-   * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+   * @param {UpdateDecoder} decoder
    * @param {boolean} filterSkips
    */
   constructor (decoder, filterSkips) {
@@ -91,16 +88,9 @@ export class LazyStructReader {
 /**
  * @param {Uint8Array} update
  */
-export const decodeUpdate = (update) => decodeUpdateV2(update, UpdateDecoderV1)
-
-/**
- * @param {Uint8Array} update
- * @param {typeof UpdateDecoderV2 | typeof UpdateDecoderV1} [YDecoder]
- *
- */
-export const decodeUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
+export const decodeUpdate = (update) => {
   const structs = []
-  const updateDecoder = new YDecoder(decoding.createDecoder(update))
+  const updateDecoder = new UpdateDecoder(decoding.createDecoder(update))
   const lazyDecoder = new LazyStructReader(updateDecoder, false)
   for (let curr = lazyDecoder.curr; curr !== null; curr = lazyDecoder.next()) {
     structs.push(curr)
@@ -113,7 +103,7 @@ export const decodeUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
 
 export class LazyStructWriter {
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {import('./UpdateEncoder.js').UpdateEncoder} encoder
    */
   constructor (encoder) {
     this.currClient = 0
@@ -229,36 +219,3 @@ export const finishLazyStructWriting = (lazyWriter) => {
     encoding.writeUint8Array(restEncoder, partStructs.restEncoder)
   }
 }
-
-/**
- * @param {Uint8Array} update
- * @param {function(Item|GC|Skip):Item|GC|Skip} blockTransformer
- * @param {typeof UpdateDecoderV2 | typeof UpdateDecoderV1} YDecoder
- * @param {typeof UpdateEncoderV2 | typeof UpdateEncoderV1 } YEncoder
- */
-export const convertUpdateFormat = (update, blockTransformer, YDecoder, YEncoder) => {
-  const updateDecoder = new YDecoder(decoding.createDecoder(update))
-  const lazyDecoder = new LazyStructReader(updateDecoder, false)
-  const updateEncoder = new YEncoder()
-  const lazyWriter = new LazyStructWriter(updateEncoder)
-  for (let curr = lazyDecoder.curr; curr !== null; curr = lazyDecoder.next()) {
-    writeStructToLazyStructWriter(lazyWriter, blockTransformer(curr), 0, 0)
-  }
-  finishLazyStructWriting(lazyWriter)
-  const ds = readIdSet(updateDecoder)
-  writeIdSet(updateEncoder, ds)
-  return updateEncoder.toUint8Array()
-}
-
-/**
- * @typedef {Object} ObfuscatorOptions
- * @property {boolean} [ObfuscatorOptions.formatting=true]
- * @property {boolean} [ObfuscatorOptions.subdocs=true]
- * @property {boolean} [ObfuscatorOptions.name=true] Whether to obfuscate nodeName / hookName
- */
-
-/**
- * @param {Uint8Array} update
- */
-export const convertUpdateFormatV2ToV1 = update => convertUpdateFormat(update, f.id, UpdateDecoderV2, UpdateEncoderV1)
-

@@ -61,10 +61,9 @@ describe('H6 · outbound chunking', () => {
 		// Offline: ten blocks of 4 MB each.
 		for (let i = 0; i < 10; i++) {
 			a.transact(() =>
-				a.facade.insertBlock(
-					{ parent: null, index: i + 1 },
+				a.facade.insertBlocks({ parent: null, index: i + 1 }, [
 					E.toBlockSpec(para(`b${i}`, noise(4_000_000, i + 1)))
-				)
+				])
 			);
 		}
 		expect(provider.saved).toBe(false);

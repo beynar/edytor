@@ -14,7 +14,7 @@ import {
 	createIndexeddbSync,
 	createWebsocketSync,
 	clearDocument,
-	richTextPlugin,
+	createRichTextPlugin,
 	type DocumentActor,
 	type DocumentReadiness,
 	type EdytorDocument,
@@ -43,16 +43,14 @@ node.setAttr('type', 'root');
 const child = new Y.Node('paragraph');
 node.insert(0, [child]);
 child.insert(0, 'typed');
-const d = child.delta.toJSON();
+const d: string[] = [...child.attrKeys()];
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const um: Y.UndoManager = new Y.UndoManager(doc);
-const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
-const json = Y.relativePositionToJSON(rpos);
+const at: Y.ID | null = Y.idAtIndex(child, 1);
+const json = at === null ? null : Y.indexOfId(doc, at);
 void d;
 void doc2;
-void um;
 void json;
 
 // ── public binding surface types ─────────────────────────────────────────
@@ -65,14 +63,12 @@ const v: number | undefined = ed.schemaVersion();
 const undo = ed.createUndoManager({ captureTimeout: 0 });
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: SyncProtocol = crdt.sync;
 void ids;
 void v;
 void undo;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // ── the real consumer story must be fully typed ──────────────────────────
@@ -82,7 +78,7 @@ const storyDoc: bindings.YDoc = crdt.createDoc();
 const storyAwareness: bindings.Awareness = new crdt.Awareness(storyDoc);
 const storyEd = crdt.doc.create(storyDoc as unknown as bindings.EngineDoc);
 storyEd.init();
-storyEd.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+storyEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 storyEd.insertText('b1', 0, 'typed');
 storyEd.formatRange('b1', 0, 5, { bold: true });
 const storyJson: ReturnType<typeof storyEd.toJSON> = storyEd.toJSON();
@@ -121,7 +117,7 @@ const IdbProvider: typeof IndexeddbPersistence = IndexeddbPersistence;
 const WsProvider: typeof WebsocketProvider = WebsocketProvider;
 const clearDoc: typeof clearDocument = clearDocument;
 const store: typeof storeState = storeState;
-const plugins: Plugin[] = [richTextPlugin];
+const plugins: Plugin[] = [createRichTextPlugin()];
 void idbSync;
 void wsSync;
 void IdbProvider;
@@ -146,10 +142,9 @@ const rootDoc: EdytorDocument = createDocument({
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
 const rootProjected: ProjectedDoc = rootDoc.project();
 rootDoc.transact(() => rootDoc.insertText(rootProjected.children[0]!.id, 0, '!'));
-rootDoc.insertBlock(
-	{ parent: null, index: 1 },
+rootDoc.insertBlocks({ parent: null, index: 1 }, [
 	bindings.toBlockSpec(rootDoc.blockJSON('root-p1'), { freshIds: true })
-);
+]);
 rootDoc.history.undo();
 const rootAttribution: DocumentAttribution = rootDoc.attribution;
 const rootUpdate: Uint8Array = rootDoc.encode();
@@ -158,12 +153,10 @@ const rootAttached: EdytorDocument = attachDocument(doc);
 
 // U2: the run vocabulary carries no per-item attribution — `ContentRun`
 // stays nameable; `document.attribution` exposes block records + the
-// actor dictionary + the `legacy()` read over pre-existing `a/` records.
+// actor dictionary.
 const rootContentRun: ContentRun = { kind: 'text', text: 'x' };
-const rootLegacy = rootAttribution.legacy();
 const rootBlockAttr = rootAttribution.block(rootProjected.children[0]!.id);
 void rootContentRun;
-void rootLegacy;
 void rootBlockAttr;
 void rootReadiness;
 void rootAttribution;

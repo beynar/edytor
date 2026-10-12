@@ -189,7 +189,7 @@ export class Writer {
 				const block = this.pick();
 				if (!block) return 'noop';
 				const index = Math.floor(this.random() * this.list().length);
-				const status = run(() => f.moveBlock(block.id, { parent: null, index }));
+				const status = run(() => f.moveBlocks([block.id], { parent: null, index }));
 				this.listedAt = -Infinity;
 				return status;
 			}

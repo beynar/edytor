@@ -8,6 +8,7 @@
 import { expect } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { readData } from '../../../lib/crdt/data.js';
+import { candidatesOf, view as modelView } from '../../../lib/crdt/placement/model.js';
 
 export const svEqual = (a: Uint8Array, b: Uint8Array) =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
@@ -37,7 +38,7 @@ export const isPlan = (x: unknown) =>
 
 /** Per-block facts read from the document (test-side; independent of the op). */
 export const facts = (ed, doc) => {
-	const v = ed.model.view(doc);
+	const v = modelView(doc);
 	const out = new Map();
 	for (const [id, rec] of v.blocks) {
 		const live = ed.isVisibleBlock(id);
@@ -51,7 +52,7 @@ export const facts = (ed, doc) => {
 			live,
 			owner: v.own.ownerOf(id),
 			meta: JSON.stringify([rec.node.getAttr('type'), readData(rec.node) ?? null]),
-			at: JSON.stringify(ed.model.candidatesOf(rec.node).map((c) => c.key)),
+			at: JSON.stringify(candidatesOf(rec.node).map((c) => c.key)),
 			text: live ? JSON.stringify([ed.contentItems(id), atoms]) : null
 		});
 	}

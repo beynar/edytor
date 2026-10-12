@@ -10,8 +10,7 @@
  * lazily the marks at the caret and the selected string — is `project(value,
  * doc)`, a pure function memoized per (value, index version).
  *
- * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; its
- * `selection.state` is a compatibility getter over the projection, and the
+ * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; the
  * presence payload is `serialize(value)`.
  */
 import type { BlockId, ContentItem } from '$lib/crdt/index.js';
@@ -336,7 +335,15 @@ export const project = (value: SelectionValue, doc: ProjectionDoc): SelectionPro
 	return projection;
 };
 
-/** Why a selection was written (the view keeps the last cause with the value). */
+/** Two projections show the same endpoints (block and offset; two unresolved ones count as the same). */
+export const sameEnds = (a: SelectionProjection, b: SelectionProjection) =>
+	[a.start, a.end].every((p, i) => {
+		const q = i ? b.end : b.start;
+		return p?.block === q?.block && p?.offset === q?.offset;
+	});
+
+/** Why a selection was written. */
+
 export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 
 const sameAnchor = (a: DocAnchor, b: DocAnchor) =>

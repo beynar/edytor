@@ -11,10 +11,10 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { flushDomUpdates } from '../../dom/test.utils.js';
 import { block, click, column, columns, p, renderColumns, selected } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, blockMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -44,7 +44,7 @@ const render = (children = [p('X', 'x', [p('X1')]), p('Y', 'y'), p('W', 'w'), p(
 
 /** Select `ids`, click the first one's grip, open Turn into. */
 const turnMenu = async (edytor: Edytor, ...ids: string[]) => {
-	edytor.selection.selectBlocks(...ids.map((id) => block(edytor, id)));
+	selectBlocks(edytor, ...ids.map((id) => block(edytor, id)));
 	await flushDomUpdates();
 	await click(grip(ids[0]!));
 	await click(document.querySelector('[data-testid="block-menu-turn"]')!);

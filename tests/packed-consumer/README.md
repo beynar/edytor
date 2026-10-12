@@ -45,7 +45,7 @@ the consumer's own `vite-plugin-svelte`, the documented bundler boundary:
   path instead (`ssr.noExternal: ['edytor']` so the bundle compiles it).
 - **Browser mount** — `vite preview` serves the built app; the repo's
   playwright drives a real browser: editable + readonly editors mount,
-  seeded paragraphs/marks render through `richTextPlugin`, a real
+  seeded paragraphs/marks render through `createRichTextPlugin()`, a real
   click+type edit reaches the model, `facade.insertText` edits reach the
   model, and svelte `unmount()` tears the tree down (zero `[data-edytor]`
   nodes left). Requires the playwright browsers used by the editor-dom
@@ -80,10 +80,10 @@ explicitly (root rejects with `ERR_UNKNOWN_FILE_EXTENSION` under node).
 ## What it proves (smoke.js, runtime)
 
 - `dist/crdt/vendor/yjs/src/index.js` ships and loads — Doc, unified
-  `Y.Node`, maintained delta, update round-trip, relative positions,
-  `UndoManager`.
+  `Y.Node`, update round-trip, relative positions (and no engine
+  `UndoManager`: the history is edytor's).
 - `edytor/crdt/edytor` assembles via `bindCrdt(Y)`: `createDoc`, `Awareness`,
-  the `EdytorDoc` facade, providers, migration, sync protocol.
+  the `EdytorDoc` facade, providers, sync protocol.
 - The real consumer story: Doc + Awareness via public exports →
   `crdt.doc.create` → `init` → `insertBlock`/`insertText`/`formatRange` →
   two docs converge via state-vector update exchange in both directions →

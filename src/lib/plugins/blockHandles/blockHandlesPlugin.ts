@@ -1,23 +1,32 @@
 import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-
 import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import { labelsWith, type BlockHandlesLabels, type PartialLabels } from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
-
-export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
+import type { Attachment } from 'svelte/attachments';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** What a `handle` snippet receives. */
 export type BlockHandleSnippetPayload = {
 	block: Block;
 	/** The block's kind as people read it ("Heading 1", its preset's label): name your controls with it. */
 	label: string;
-	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
-	grip: (node: HTMLElement) => { destroy(): void };
+	/**
+	 * The grip's attachment (`{@attach handle.grip}`): the drag source, a
+	 * click that opens the block's menu, the Alt+arrow moves
+	 * (`aria-keyshortcuts`), and the ARIA of the menu it opened
+	 * (`aria-expanded`, `aria-controls`, `aria-haspopup`).
+	 */
+	grip: Attachment<HTMLElement>;
+	/**
+	 * The `+`'s attachment (`{@attach handle.plus}`): a click calls `add`
+	 * (Alt+click with `true`) with the `+` as the anchor, a press keeps the
+	 * editor's focus, and the ARIA of the menu it opened.
+	 */
+	plus: Attachment<HTMLElement>;
 	/**
 	 * The `+`: the slash menu offers what to add below; with `true` (Alt+click)
 	 * above, or, for a block directly in a layout's column, in a new column
@@ -26,99 +35,42 @@ export type BlockHandleSnippetPayload = {
 	 * block.
 	 */
 	add: (alt?: boolean, anchor?: HTMLElement | null) => void;
-	/** Whether the block takes a `+`: always `true` (a block in a column too, as Notion). */
-	addable: boolean;
+	/**
+	 * Alt+click on the `+` adds a column right of the block's (a block
+	 * directly in a layout's column): name your `+` with it.
+	 */
+	beside: boolean;
 	readonly: boolean;
 	draggable: boolean;
-	/**
-	 * Whether the menu the `+` (`add`) or the grip (`grip`) opened is open
-	 * (reactive): their `aria-expanded`.
-	 */
-	expanded: { add: boolean; grip: boolean };
-	/**
-	 * The id of the menu the `+` or the grip opened, while it is open: their
-	 * `aria-controls`.
-	 */
-	controls: { add: string | undefined; grip: string | undefined };
-	/** The handles' words (`add(label)`, `grip(label)`, their hints). */
-	labels: BlockHandlesLabels;
 };
 
 export type BlockHandlesOptions = {
 	/** Keep the handle and its keyboard actions, but omit pointer dragging and drop targets. */
 	draggable?: boolean;
-	onActivate?: (activation: BlockHandleActivation) => void;
-	/** Replace the `+` and ⋮⋮ beside each block; placement and hover stay the plugin's. */
+	/**
+	 * The `+` and ⋮⋮ beside each block, and their words (without it, no
+	 * handle shows and no block drags); placement and hover are the plugin's.
+	 */
 	handle?: Snippet<[BlockHandleSnippetPayload]>;
-	/** The handles' accessible names and tooltips, over the English ones. */
-	labels?: PartialLabels<'blockHandles'>;
-};
-
-const handlePlugins = new WeakSet<Plugin>();
-
-/** Recognize both the default and configured handle plugins during component composition. */
-export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin);
-
-/**
- * Where a handle mounts: a block within one screen of the viewport, above or
- * below. Without layout (no `IntersectionObserver`: a DOM without a
- * renderer), every block is near.
- */
-const NEAR_SCREENS = 1;
-
-/**
- * The top-level blocks near the viewport, by a binary search over their
- * boxes (document order is vertical order at the top level): reads
- * O(log n) boxes a frame, where an observer of every block computed them all
- * after each layout change.
- */
-const nearTop = (
-	blocks: readonly string[],
-	handle: (id: string) => Block,
-	screen: number
-): readonly Block[] => {
-	const top = -NEAR_SCREENS * screen;
-	const bottom = (1 + NEAR_SCREENS) * screen;
-	// Ids, a handle only for each box read: no handle for every top-level block.
-	const box = (id: string) => handle(id).node?.getBoundingClientRect();
-	let lo = 0;
-	let hi = blocks.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		const at = box(blocks[mid]!);
-		if (!at || at.bottom < top) lo = mid + 1;
-		else hi = mid;
-	}
-	const first = lo;
-	hi = blocks.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		const at = box(blocks[mid]!);
-		if (!at || at.top <= bottom) lo = mid + 1;
-		else hi = mid;
-	}
-	return blocks.slice(first, lo).map(handle);
 };
 
 /**
  * Block handles in the overlay, created lazily: a handle mounts
- * for a block near the viewport (`nearTop` and the blocks inside them, not
- * hidden; every block without layout),
+ * for a block near the viewport (the overlay's `near` top-level blocks and
+ * the blocks inside them, not hidden; every block without layout),
  * under the pointer, selected, focused or dragged; drop targets exist only
  * during our own drag. Hover is one delegated listener on the editor and
  * one on the overlay (a block's handle keeps it hovered).
  */
-export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin => {
-	const plugin: Plugin = (edytor) => {
+export const createBlockHandlesPlugin =
+	(options: BlockHandlesOptions = {}): Plugin =>
+	(edytor) => {
 		const controller = new BlockHandleController(edytor, {
-			draggable: options.draggable !== false,
-			onActivate: options.onActivate,
-			labels: labelsWith('blockHandles', options.labels)
+			draggable: options.draggable !== false
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();
 		const hovered = new SvelteSet<string>();
-		const ids = new WeakMap<Element, string>();
 		/** Layout is computed (a browser): the near band is measured, else every block is near. */
 		const measured = typeof IntersectionObserver !== 'undefined';
 		/** The blocks the band gained, mounted after the frame's paint (`afterPaint`). */
@@ -139,15 +91,15 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		};
 		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
 		const measureNear = () => {
-			const view = edytor.node?.ownerDocument.defaultView;
-			if (!view || !edytor.root) return;
-			const tops = edytor.facade.childrenIds(null);
 			const next = new Set<string>();
 			const visit = (block: Block) => {
 				if (blocks.has(block.id) && !hidden(block)) next.add(block.id);
 				for (const child of block.children) visit(child);
 			};
-			for (const block of nearTop(tops, edytor.idToBlock.block, view.innerHeight)) visit(block);
+			for (const node of edytor.overlay.near) {
+				const block = edytor.idToBlock.get((node as HTMLElement).dataset.edytorId ?? '');
+				if (block?.node === node) visit(block);
+			}
 			return () => {
 				for (const id of near) if (!next.has(id)) near.delete(id);
 				const add = [...next].filter((id) => !near.has(id));
@@ -173,8 +125,8 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				node;
 				node = node.parentElement?.closest('[data-edytor-block="true"]')
 			) {
-				const id = ids.get(node);
-				if (id) next.add(id);
+				const id = (node as HTMLElement).dataset.edytorId ?? '';
+				if (blocks.get(id)?.node === node) next.add(id);
 			}
 			for (const id of hovered) if (!next.has(id)) hovered.delete(id);
 			for (const id of next) hovered.add(id);
@@ -194,25 +146,27 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		return {
 			onEdytorAttached: ({ node }) => {
 				const layer = edytor.overlay.layer!;
-				node.addEventListener('pointerover', hover);
-				node.addEventListener('pointerleave', unhover);
-				layer.addEventListener('pointerover', hoverOverlay);
-				layer.addEventListener('pointerleave', unhover);
+				const offPointer = all(
+					listen(node, 'pointerover', hover),
+					listen(node, 'pointerleave', unhover),
+					listen(layer, 'pointerover', hoverOverlay),
+					listen(layer, 'pointerleave', unhover)
+				);
 				const offNear = measured ? edytor.overlay.add(measureNear) : undefined;
-				const component = mount(BlockHandles, {
-					target: layer,
-					props: { edytor, controller, blocks, near, hovered, handle: options.handle }
-				});
+				const { handle } = options;
+				const component =
+					handle &&
+					mount(BlockHandles, {
+						target: layer,
+						props: { edytor, controller, blocks, near, hovered, handle }
+					});
 				return () => {
-					node.removeEventListener('pointerover', hover);
-					node.removeEventListener('pointerleave', unhover);
-					layer.removeEventListener('pointerover', hoverOverlay);
-					layer.removeEventListener('pointerleave', unhover);
+					offPointer();
 					offNear?.();
 					clearTimeout(afterPaint);
 					afterPaint = undefined;
 					gained = null;
-					void unmount(component);
+					if (component) void unmount(component);
 				};
 			},
 			onBlockAttached: ({ node, block }) => {
@@ -223,7 +177,6 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				// Notion): a block selection covering a layout stands for it.
 				const { facade } = edytor;
 				if (facade.isLayout(block.id) || facade.isLayoutItem(block.id)) return offDropTarget;
-				ids.set(node, block.id);
 				blocks.set(block.id, block);
 				if (measured) edytor.overlay.invalidate();
 				else near.add(block.id);
@@ -238,9 +191,3 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			}
 		};
 	};
-	handlePlugins.add(plugin);
-	return plugin;
-};
-
-/** Default handles for consumers that add the plugin directly. */
-export const blockHandlesPlugin = createBlockHandlesPlugin();

@@ -20,11 +20,10 @@
  * carets ride the change, as for a remote undo).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { project, textSelection, type SelectionValue } from './selection.js';
+import { project, sameEnds, textSelection, type SelectionValue } from './selection.js';
 
 type Entry = { before: SelectionValue; after?: SelectionValue };
 type StackItem = { meta: Map<string, unknown> };
-type StackEvent = { stackItem: StackItem };
 
 const KEY = 'edytor:selection';
 /** A stack item's last dispatched write was an insertion (`wrote`): typing may continue it. */
@@ -58,7 +57,7 @@ export class History {
 			this.#open = null;
 			this.#inserting = null;
 		};
-		const record = ({ stackItem }: StackEvent) => {
+		const record = ({ stackItem }: { stackItem: StackItem }) => {
 			if (um.undoing || um.redoing) {
 				// The replay's item inherits the popped item's entry.
 				const popped = um.currStackItem as StackItem | null;
@@ -75,12 +74,10 @@ export class History {
 			this.#open = { entry, gesture: this.edytor.intentSerial };
 		};
 		doc.on('beforeTransaction', begin);
-		um.on('stack-item-added', record);
-		um.on('stack-item-updated', record);
+		const off = um.observe(record);
 		this.#off = () => {
 			doc.off('beforeTransaction', begin);
-			um.off('stack-item-added', record);
-			um.off('stack-item-updated', record);
+			off();
 		};
 	};
 
@@ -103,11 +100,16 @@ export class History {
 	 * moves) restores the one the user had.
 	 */
 	began = (value: SelectionValue) => {
-		const { undoManager: um, transaction: key } = this.edytor;
-		const item = um?.undoStack.at(-1) as StackItem | undefined;
-		const entry = item && entries(item).get(key);
+		const { entry } = this.#top();
 		if (entry) entry.before = value;
 	};
+
+	/** The top undo item and this view's entry on it. */
+	#top() {
+		const { undoManager: um, transaction: key } = this.edytor;
+		const item = um?.undoStack.at(-1) as StackItem | undefined;
+		return { item, entry: item && entries(item).get(key) };
+	}
 
 	/** The dispatcher wrote in this transaction: an insertion (`inserts`) or not. */
 	wrote = (insertion: boolean) => {
@@ -123,15 +125,12 @@ export class History {
 	 * follows.
 	 */
 	continues = (value: SelectionValue) => {
-		const { undoManager: um, transaction: key, facade } = this.edytor;
-		const item = um?.undoStack.at(-1) as StackItem | undefined;
-		if (item?.meta.get(INSERTING) !== true) return false;
-		const after = (item?.meta.get(KEY) as Map<unknown, Entry> | undefined)?.get(key)?.after;
-		if (after?.kind !== 'text' || value.kind !== 'text') return false;
-		const [a, b] = [project(after, facade), project(value, facade)];
-		const at = (p: typeof a.start, q: typeof a.start) =>
-			p !== null && q !== null && p.block === q.block && p.offset === q.offset;
-		return at(a.start, b.start) && at(a.end, b.end);
+		const { item, entry } = this.#top();
+		const after = entry?.after;
+		if (item?.meta.get(INSERTING) !== true || after?.kind !== 'text' || value.kind !== 'text')
+			return false;
+		const a = project(after, this.edytor.facade);
+		return !!a.start && sameEnds(a, project(value, this.edytor.facade));
 	};
 
 	/**
@@ -141,10 +140,6 @@ export class History {
 	 */
 	replay = (command: 'undo' | 'redo'): 'refused' | 'noop' | 'applied' =>
 		!this.edytor.dispatcher.permits() ? 'refused' : this.#run(command) ? 'applied' : 'noop';
-	/** Replay the top undo item; answers whether one was replayed. */
-	undo = () => this.replay('undo') === 'applied';
-	/** Replay the top redo item; answers whether one was replayed. */
-	redo = () => this.replay('redo') === 'applied';
 
 	#run(command: 'undo' | 'redo'): boolean {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;

@@ -10,6 +10,7 @@
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 	import { gapBefore, handleSpan } from '../columns/gaps.js';
 	import { renderSkipped, rendered } from '$lib/surface/overlay.js';
+	import { getOwnRowBottom } from './geometry.js';
 
 	/**
 	 * The handles, in the overlay: one per registered movable block that
@@ -33,8 +34,8 @@
 		near: ReadonlySet<string>;
 		/** Blocks under the pointer; reactive. */
 		hovered: ReadonlySet<string>;
-		/** A custom handle (`BlockHandlesOptions.handle`). */
-		handle?: Snippet<[BlockHandleSnippetPayload]>;
+		/** The app's handle (`BlockHandlesOptions.handle`). */
+		handle: Snippet<[BlockHandleSnippetPayload]>;
 	} = $props();
 
 	/** The block whose handle holds focus: its handle stays while focused. */
@@ -85,16 +86,6 @@
 		return gapBefore(column);
 	};
 
-	/** Where a block's own row ends: where its first shown child begins, else its box's bottom. */
-	const ownRowBottom = (node: HTMLElement, rect: DOMRect) => {
-		const child = node
-			.querySelector<HTMLElement>('[data-edytor-block="true"]')
-			?.getBoundingClientRect();
-		return child && child.height > 0 && child.top >= rect.top && child.top < rect.bottom
-			? child.top
-			: rect.bottom;
-	};
-
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
 		if (block.definition.island) {
 			const header = node.querySelector<HTMLElement>(':scope > [data-edytor-void="true"]');
@@ -138,7 +129,7 @@
 			// the host's top, which is centered on the first line.
 			const span = gap ? `${handleSpan(gap, rect.left)}px` : '';
 			const row = gap
-				? `${rect.top - (center - host.offsetHeight / 2)}px ${ownRowBottom(node, rect) - rect.top}px`
+				? `${rect.top - (center - host.offsetHeight / 2)}px ${getOwnRowBottom(node, rect) - rect.top}px`
 				: '';
 			const next = shown ? `${left} ${top} ${row} ${span}` : 'none';
 			if (next === at) return;
@@ -225,10 +216,6 @@
 		padding-inline-end: 0;
 	}
 
-	[data-edytor-block-handle-host][data-over-gap='true'] :global(.edytor-block-add) {
-		width: 18px;
-	}
-
 	[data-edytor-block-handle-host][data-over-gap='true']::before {
 		content: '';
 		position: absolute;
@@ -250,5 +237,28 @@
 			opacity: 1;
 			padding-inline-end: 0;
 		}
+	}
+
+	/* Where a handle's drag lands (`DropIndicator`): the bar (4px) and the nest
+	 * backdrop, placed in the overlay and shown (`data-shown`) by the plugin;
+	 * their look is a theme's (`edytor/themes/notion.css`). */
+	:global([data-edytor-drop-indicator]),
+	:global([data-edytor-drop-backdrop]) {
+		position: absolute;
+		pointer-events: none;
+	}
+
+	:global([data-edytor-drop-indicator]) {
+		z-index: 100;
+		box-sizing: border-box;
+		height: 4px;
+	}
+
+	:global([data-edytor-drop-backdrop]) {
+		z-index: 99;
+	}
+
+	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
+		visibility: hidden;
 	}
 </style>

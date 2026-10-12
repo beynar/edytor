@@ -1,51 +1,29 @@
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Snippet } from 'svelte';
-import type { EditorCommand, Plugin } from '$lib/plugins.js';
-import type { Text } from '$lib/text/text.svelte.js';
-import {
-	BLOCK_ACTIVATE_EVENT,
-	BLOCK_ADD_EVENT,
-	type BlockAddition
-} from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import { onPress } from '$lib/events/onFocus.js';
-import SlashMenu from './SlashMenu.svelte';
-import { caretRect, placeBelow } from '../triggers/place.js';
-import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
-import type { MenuItemPayload } from '../chrome.js';
-
-/**
- * One row, for an `item` snippet: the row shape every menu shares (`item`
- * is the command, `label` its label, `run` runs it, removing the `/query`
- * first; set `id`, or spread `option`, so the keyboard's owner names the
- * highlighted row), with the command again and its icon.
- */
-export type SlashMenuItem = MenuItemPayload<EditorCommand> & {
-	/** The command (the same as `item`). */
-	command: EditorCommand;
-	/** The built-in line icon as a CSS `mask-image` value, when the command has one. */
-	icon: string | undefined;
-};
+import type { InitializedPlugin, Plugin } from '$lib/plugins.js';
+import { caretRect } from '../triggers/place.js';
+import { placeNear } from '$lib/surface/overlay.js';
+import { SlashMenuController } from './SlashMenuController.svelte.js';
+import { handleMenuEvents, mountChrome } from '../chrome.js';
+import { withTriggerMenus } from '../triggers/triggers.js';
 
 export type SlashMenuOptions = {
 	/**
-	 * Replace the whole menu; it renders while `controller.isOpen`. Keys and
-	 * placement stay the plugin's. Keep its ARIA with `{@attach
-	 * controller.popup}` on the list and `{...controller.option(index)}` on
-	 * each row; in a `+`'s menu, `{@attach controller.keys}` on your field.
+	 * The menu's markup and its words; it renders while `controller.isOpen`
+	 * (without it, nothing shows). Keys and placement stay the plugin's. Keep
+	 * its ARIA with `{@attach controller.popup}` on the list (name it) and
+	 * `{...controller.option(index)}` on each row; in a `+`'s menu (while
+	 * `controller.addition`), `{@attach controller.keys}` on the element that
+	 * holds the keyboard (your field, or the menu itself: typing then edits
+	 * the query).
 	 */
 	menu?: Snippet<[SlashMenuController]>;
-	/** Replace each row of the default menu. */
-	item?: Snippet<[SlashMenuItem]>;
-	/** The words the menu shows (its field, headings, empty state), over the English ones. */
-	labels?: PartialLabels<'slashMenu'>;
 };
 
-/** The slash menu, with your own markup through `menu` or `item` snippets. */
+/** The slash menu, drawn by your `menu` snippet. */
 export const createSlashMenuPlugin =
 	(options: SlashMenuOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new SlashMenuController(edytor, labelsWith('slashMenu', options.labels));
+		const controller = new SlashMenuController(edytor);
 
 		/**
 		 * Beside the caret (below a `+` it was opened from), kept in the
@@ -60,75 +38,47 @@ export const createSlashMenuPlugin =
 			const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
 			const box = anchor?.getBoundingClientRect();
 			const rect = box && (box.width || box.height) ? box : caretRect(edytor);
-			return rect && placeBelow(host, rect, { width: 310, height: 350 });
+			return rect && placeNear(host, rect, [310, 350]);
 		};
 
-		return {
-			hotkeys: {
-				arrowdown: ({ prevent }) => {
-					if (controller.moveSelection(1)) prevent();
-				},
-				arrowup: ({ prevent }) => {
-					if (controller.moveSelection(-1)) prevent();
-				},
-				enter: ({ prevent }) => {
-					if (controller.isOpen && controller.commands.length)
-						prevent(() => void controller.runSelected());
-				},
-				escape: ({ prevent }) => {
-					if (controller.isOpen) prevent(() => controller.dismiss());
-				}
-			},
-			onAfterOperation: (change) => {
-				if (change.operation !== 'insertText' || !('text' in change)) return;
-				controller.handleTextInsertion(
-					change.text as Text,
-					change.block as Block,
-					change.payload as TextInsertionPayload
-				);
-				edytor.overlay.invalidate();
-			},
-			onSelectionChange: () => {
-				controller.reconcileSelection();
-				edytor.overlay.invalidate();
-			},
-			onEdytorAttached: ({ node }) => {
-				// A `+` offers its block: nothing is added until a row is picked.
-				const offer = (event: Event) => {
-					event.preventDefault();
-					controller.offer((event as CustomEvent<BlockAddition>).detail);
-					edytor.overlay.invalidate();
-				};
-				const outside = (event: MouseEvent) => {
-					const target = event.target as Element | null;
+		const plugin: InitializedPlugin = {
+			onEdytorAttached: ({ node }) =>
+				handleMenuEvents(
+					edytor,
+					node,
+					// A grip's menu takes over (one menu at a time).
+					() => {
+						if (controller.addition) controller.close();
+					},
+					// A `+` offers its block: nothing is added until a row is picked.
+					(event) => {
+						event.preventDefault();
+						controller.offer(event.detail);
+						edytor.overlay.invalidate();
+					},
+					'[data-edytor-slash-menu-host]',
 					// The selection as it was; a press in the editor then places its caret.
-					if (controller.addition && !target?.closest?.('[data-edytor-slash-menu-host]'))
-						controller.dismiss(false);
-				};
-				// A grip's menu takes over (one menu at a time).
-				const activate = () => {
-					if (controller.addition) controller.close();
-				};
-				node.addEventListener(BLOCK_ADD_EVENT, offer);
-				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
-				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
-				const offPress = onPress(edytor, node.ownerDocument, outside, true);
-				const unmount = edytor.overlay.mount(
-					SlashMenu,
-					{ controller, menu: options.menu, item: options.item },
-					'edytor-slash-menu-host',
-					50,
-					positionMenu
-				);
-				return () => {
-					node.removeEventListener(BLOCK_ADD_EVENT, offer);
-					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					offPress();
-					unmount();
-				};
-			}
+					() => controller.addition && controller.dismiss(false)
+				)
 		};
+		// The `/` trigger, wired as a plugin's triggers are.
+		return withTriggerMenus(
+			edytor,
+			plugin,
+			[controller],
+			() => ({
+				move: controller.move,
+				pick: controller.commands.length ? () => void controller.runSelected() : undefined,
+				close: () => controller.dismiss()
+			}),
+			() =>
+				mountChrome(
+					edytor,
+					options.menu,
+					controller,
+					() => controller.isOpen,
+					{ name: 'edytor-slash-menu-host', zIndex: 50, measure: positionMenu },
+					() => controller.dismiss(false)
+				)
+		);
 	};
-
-/** The Notion-style slash menu. */
-export const slashMenuPlugin = createSlashMenuPlugin();

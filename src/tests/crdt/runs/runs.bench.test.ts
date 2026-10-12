@@ -15,7 +15,6 @@
  * - remote invalidation: apply a remote update → same granularity
  * - split/merge invalidation: recompute fan-out (head + sibling only)
  * - inline metadata invalidation: setInlineData → recomputes = 1
- * - delta-cache cost: live `.delta.toJSON()` vs fresh `toDelta().toJSON()`
  * - scaling: 100 / 1000 / 4000-block docs
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
@@ -231,15 +230,6 @@ describe('U05 run-view invalidation benchmarks', () => {
 			};
 		});
 
-		// ── delta cache vs fresh toDelta read cost ───────────────────────
-		bench('delta-cache read: .delta.toJSON() vs toDelta().toJSON()', () => {
-			const content = doc.get('blocks').getAttr('b300').getAttr('content');
-			return {
-				liveCache: timed(() => content.delta.toJSON(), { samples: 1000 }),
-				freshToDelta: timed(() => content.toDelta().toJSON(), { samples: 200 })
-			};
-		});
-
 		// ── scaling ──────────────────────────────────────────────────────
 		bench('scaling: cold first-read vs block count', () => {
 			return [100, 1000, 4000].map((n) => {
@@ -274,8 +264,7 @@ describe('U05 run-view invalidation benchmarks', () => {
 			workload: 'U05 run-view invalidation (maintained view over U04 ownership)',
 			caveats: [
 				'Timings are wall-clock on one machine; use for comparisons within this report.',
-				'"recomputed" counts come from view.debug — the maintained view recomputes lazily, so an invalidated block is only rebuilt on read.',
-				'v14 `.delta` is a live mutable cache — never held across the API boundary; the fresh `toDelta()` numbers show its cost.'
+				'"recomputed" counts come from view.debug — the maintained view recomputes lazily, so an invalidated block is only rebuilt on read.'
 			]
 		};
 		const stamp = meta.date.replaceAll(':', '-').replaceAll('.', '-');

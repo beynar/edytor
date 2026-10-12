@@ -633,8 +633,8 @@ describe('selection emission dedupe', () => {
 		const text = firstText(edytor);
 		onSelectionChange.mockClear();
 
-		edytor.selection.setAtTextOffset(text, 2);
-		edytor.selection.setAtTextOffset(text, 2);
+		edytor.selection.selectText(text, 2);
+		edytor.selection.selectText(text, 2);
 
 		expect(onSelectionChange).toHaveBeenCalledTimes(1);
 	});

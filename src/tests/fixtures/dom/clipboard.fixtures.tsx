@@ -9,6 +9,7 @@ import {
 	dispatchCut
 } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
+import { selectBlocks } from '../../selection.js';
 
 const readFragmentFromRecord = (clipboardData: Record<string, string>) =>
 	readEdytorClipboardFragment({
@@ -120,7 +121,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor, editor }) => {
-			edytor.selection.selectBlocks(edytor.root!.children[1]);
+			selectBlocks(edytor, edytor.root!.children[1]);
 			return dispatchCut(editor);
 		},
 		output: (
@@ -181,7 +182,7 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor, editor }) => {
 			const copyResult = await dispatchCopy(editor);
-			edytor.selection.selectBlocks(edytor.root!.children[1]);
+			selectBlocks(edytor, edytor.root!.children[1]);
 			return dispatchClipboardPaste(editor, copyResult.clipboardData);
 		},
 		output: (
@@ -209,7 +210,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor, editor }) => {
-			edytor.selection.selectBlocks(edytor.root!.children[1]);
+			selectBlocks(edytor, edytor.root!.children[1]);
 			return dispatchClipboardPaste(editor, {
 				'text/html': '<p><strong>HTML</strong></p>',
 				'text/plain': 'Plain'

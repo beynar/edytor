@@ -3,12 +3,12 @@ import { expect, vi } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runHotkey } from '../../../test.utils.js';
+import { selectionState, selectBlocks } from '../../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
 	Object.defineProperty(edytor.keymap, 'isMac', {
@@ -37,12 +37,16 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			const startText = edytor.selection.state.startText;
+			const startText = selectionState(edytor).startText;
 			if (!startText) {
 				throw new Error('Missing startText for undo/redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z');
 			await runHotkey(edytor, 'mod+shift+z');
 		},
@@ -126,7 +130,7 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: async ({ edytor }) => {
-			const startBlock = edytor.selection.state.startBlock;
+			const startBlock = selectionState(edytor).startBlock;
 			if (!startBlock) {
 				throw new Error('Missing startBlock for code suggestion test');
 			}
@@ -166,7 +170,7 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: async ({ edytor }) => {
-			const startBlock = edytor.selection.state.startBlock;
+			const startBlock = selectionState(edytor).startBlock;
 			if (!startBlock) {
 				throw new Error('Missing startBlock for suggestion clear test');
 			}
@@ -279,12 +283,16 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			const startText = edytor.selection.state.startText;
+			const startText = selectionState(edytor).startText;
 			if (!startText) {
 				throw new Error('Missing startText for redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z');
 			return runHotkey(edytor, 'ctrl+y');
 		},
@@ -304,12 +312,16 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor }) => {
 			mockApplePlatform(edytor);
-			const startText = edytor.selection.state.startText;
+			const startText = selectionState(edytor).startText;
 			if (!startText) {
 				throw new Error('Missing startText for Apple redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z', { ctrlKey: false, metaKey: true });
 			const ctrlY = await runHotkey(edytor, 'ctrl+y');
 			const modY = await runHotkey(edytor, 'mod+y', { ctrlKey: false, metaKey: true });
@@ -443,7 +455,7 @@ export const fixtures = defineFixtures([
 			if (!secondBlock) {
 				throw new Error('Missing second block for ctrl+h test');
 			}
-			edytor.selection.selectBlocks(secondBlock);
+			selectBlocks(edytor, secondBlock);
 			return runHotkey(edytor, 'ctrl+h');
 		},
 		output: (
@@ -542,7 +554,7 @@ export const fixtures = defineFixtures([
 			if (!secondBlock) {
 				throw new Error('Missing second block for ctrl+p test');
 			}
-			edytor.selection.selectBlocks(secondBlock);
+			selectBlocks(edytor, secondBlock);
 			return runHotkey(edytor, 'ctrl+p');
 		},
 		expectSelection: { selectedBlockPaths: [[0]] },
@@ -562,7 +574,7 @@ export const fixtures = defineFixtures([
 			if (!firstBlock) {
 				throw new Error('Missing first block for ctrl+n test');
 			}
-			edytor.selection.selectBlocks(firstBlock);
+			selectBlocks(edytor, firstBlock);
 			return runHotkey(edytor, 'ctrl+n');
 		},
 		expectSelection: { selectedBlockPaths: [[1]] },

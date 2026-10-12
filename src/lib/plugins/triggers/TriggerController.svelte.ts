@@ -8,7 +8,6 @@
  * first operation (one plan, one undo step). The slash menu is one
  * (`SlashMenuController`), a plugin's `triggers` are the others.
  */
-import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -17,13 +16,7 @@ import type { Trigger, TriggerContext } from '$lib/plugins.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
-import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
-
-export type TextInsertionPayload = {
-	value: string;
-	start?: number;
-	end?: number;
-};
+import { ChromeList, inPage } from '../list.svelte.js';
 
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };
@@ -32,98 +25,73 @@ export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number 
 const startsTrigger = (text: Text, offset: number) =>
 	offset === 0 || /\s/.test(text.stringContent[offset - 1] ?? '');
 
-export abstract class TextTriggerController {
+/** What `items` and `onPick` read: the trigger's block, its range in block offsets, the query. */
+const contextOf = (
+	edytor: Edytor,
+	text: Text,
+	start: number,
+	end: number,
+	query: string
+): TriggerContext => {
+	const block = text.parent;
+	return {
+		edytor,
+		block,
+		from: text.segStart + start,
+		to: text.segStart + end,
+		query,
+		caret: (offset) => void edytor.dispatcher.caret({ block, offset })
+	};
+};
+
+export abstract class TextTriggerController extends ChromeList {
 	isOpen = $state(false);
 	query = $state('');
-	selectedIndex = $state(0);
 	/** The trigger's start and the query's end, held as anchors so peers' edits move them. */
-	protected activeRange: { trigger: TextAnchor; end: TextAnchor } | null = null;
+	#activeRange: { trigger: TextAnchor; end: TextAnchor } | null = null;
 	/** A pick is running: its own selection changes close nothing. */
 	protected picking = false;
 
 	constructor(
-		protected edytor: Edytor,
+		edytor: Edytor,
 		/** The text that opens the menu. */
 		readonly char: string,
 		/** The popup's owner name (`edytor.popups`), unique per view. */
-		protected owner: string
-	) {}
+		owner: string
+	) {
+		super(
+			edytor,
+			owner,
+			'listbox',
+			(node) => this.isOpen && this.popupOf(inPage(node, this.rowId(this.index)))
+		);
+	}
 
 	/** The editor is readonly: the menu closes. */
 	get readonly() {
 		return this.edytor.readonly;
 	}
 
-	/** The listbox's element id (page-unique), for `aria-controls`. */
-	get listId() {
-		return this.edytor.popups.idOf(this.owner);
-	}
-
-	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
-	publish = (popup: Popup | null) => this.edytor.popups.set(this.owner, popup);
-
-	/**
-	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
-	 * `listbox` role and name unless it has its own, keeps the focus where it
-	 * is on a press (the editor's caret, or the menu's field), and is
-	 * published to the view's root (`edytor.popups`) while the menu is open,
-	 * with its highlighted row (`option(index)`) once that row is in the page.
-	 */
-	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.listId, 'listbox', this.listName);
-		node.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			if (!this.isOpen) return;
-			this.publish(this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex))));
-			return () => this.publish(null);
-		});
-		return () => node.removeEventListener('mousedown', keepFocus);
-	};
-
-	/**
-	 * The attributes of the row at `index`: spread them on its element
-	 * (`{...controller.option(index)}`): its id (the one the menu's keyboard
-	 * owner names), `role="option"`, `aria-selected` and `data-selected` for
-	 * the keyboard's row, which scrolls into view.
-	 */
-	option = (index: number): OptionAttributes =>
-		optionAttributes(
-			this.rowIdAt(index) ?? this.edytor.popups.idOf(`${this.owner}-option-${index}`),
-			'option',
-			index === this.selectedIndex
-		);
-
 	/** The record `popup` publishes, `active` the highlighted row's id when it is in the page. */
 	protected popupOf(active: string | undefined): Popup {
 		return { id: this.listId, haspopup: 'listbox', active };
 	}
 
-	/** The listbox's accessible name. */
-	protected abstract get listName(): string;
-	/** The element id of the row at `index`, if there is such a row. */
-	protected abstract rowIdAt(index: number): string | undefined;
-	/** The rows the keyboard moves through. */
-	protected abstract get count(): number;
 	/** Whether a trigger typed in `block` opens the menu. */
 	protected abstract admits(block: Block): boolean;
 	/** The query changed (or was set again): close the menu, or load its rows. */
 	protected abstract queried(query: string): void;
 
 	/** After an `insertText`: the trigger opens, the query grows, or the menu closes. */
-	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
-		const { state } = this.edytor.selection;
-		const start = payload.start ?? state.yStart;
-		const end = payload.end ?? state.yEnd;
+	handleTextInsertion(text: Text, block: Block, start: number, value: string) {
 		if (this.edytor.readonly) return this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		const at =
-			start === end && this.admits(block) ? this.triggerAt(text, start, payload.value) : -1;
-		if (at !== -1) this.open(text, at, start + payload.value.length);
+		const at = this.admits(block) ? this.#triggerAt(text, start, value) : -1;
+		if (at !== -1) this.open(text, at, start + value.length);
 		// Typing at the query's end extends it; typing anywhere else closes the menu.
-		else if (this.activeRange) {
+		else if (this.#activeRange) {
 			const range = this.range;
-			if (text === range?.text && start === range.queryEnd)
-				this.setEnd(text, start + payload.value.length);
+			if (text === range?.text && start === range.queryEnd) this.setEnd(text, start + value.length);
 			else this.close();
 		}
 	}
@@ -133,7 +101,7 @@ export abstract class TextTriggerController {
 	 * the trigger: its start, or -1. A trigger of several characters (`[[`)
 	 * completes with its last one.
 	 */
-	private triggerAt(text: Text, start: number, value: string) {
+	#triggerAt(text: Text, start: number, value: string) {
 		const content = text.stringContent;
 		const { char } = this;
 		for (let at = Math.max(0, start - char.length + 1); at <= start; at++) {
@@ -145,9 +113,10 @@ export abstract class TextTriggerController {
 
 	/** The caret moved: it stays after the trigger, in its text, and marks the query's end. */
 	reconcileSelection() {
-		if (!this.activeRange || this.picking) return;
+		if (!this.#activeRange || this.picking) return;
 		const range = this.range;
-		const { startText, yStart, isCollapsed } = this.edytor.selection.state;
+		const { startText, yStart } = this.edytor.selection.textRange();
+		const { isCollapsed } = this.edytor.selection.projection;
 		if (
 			range &&
 			isCollapsed &&
@@ -159,27 +128,18 @@ export abstract class TextTriggerController {
 		else this.close();
 	}
 
-	/** Move the keyboard's row (wrapping); `false` when there is nothing to move through. */
-	moveSelection(delta: number) {
-		// Nothing to move through: the arrows stay the caret's.
-		const count = this.isOpen ? this.count : 0;
-		if (!count) return false;
-		this.selectedIndex = (this.selectedIndex + delta + count) % count;
-		return true;
-	}
-
 	close() {
 		this.isOpen = false;
 		this.query = '';
-		this.selectedIndex = 0;
-		this.activeRange = null;
+		this.index = 0;
+		this.#activeRange = null;
 	}
 
 	/** The range where its anchors resolve now: one text, the trigger before the query end. */
 	protected get range(): TriggerRange | null {
 		const { selection } = this.edytor;
-		const trigger = this.activeRange && selection.resolveTextAnchor(this.activeRange.trigger);
-		const end = this.activeRange && selection.resolveTextAnchor(this.activeRange.end);
+		const trigger = this.#activeRange && selection.resolveTextAnchor(this.#activeRange.trigger);
+		const end = this.#activeRange && selection.resolveTextAnchor(this.#activeRange.end);
 		if (!trigger || !end || trigger.text !== end.text) return null;
 		if (end.offset < trigger.offset + this.char.length) return null;
 		return { text: trigger.text, triggerStart: trigger.offset, queryEnd: end.offset };
@@ -208,25 +168,17 @@ export abstract class TextTriggerController {
 			const { selection, dispatcher } = edytor;
 			const { text, triggerStart, queryEnd } = range;
 			const end = Math.min(queryEnd, text.length);
-			const block = text.parent;
-			const [from, to] = [text.segStart + triggerStart, text.segStart + end];
+			const ctx = contextOf(edytor, text, triggerStart, end, query);
+			const { block, from, to } = ctx;
 			this.close();
-			selection.setAtTextOffset(text, triggerStart);
+			selection.selectText(text, triggerStart);
 			const held = selection.value;
-			const ctx: TriggerContext = {
-				edytor,
-				block,
-				from,
-				to,
-				query,
-				caret: (offset) => void dispatcher.caret({ block, offset })
-			};
 			const removal = edytor.facade.prepare.deleteText(block.id, from, to - from);
 			const run = dispatcher.lead(removal, () => body(ctx));
 			const index = text.index;
 			// Nothing took the lead: the trigger goes on its own, unless the body declined.
 			if (!run.taken && run.out !== false && index !== -1)
-				block.deleteContentAtRange({ start: [index, triggerStart], end: [index, end] });
+				edytor.deleteText(block.id, from, to - from);
 			const kept = run.out === false || (run.taken && dispatcher.last?.status === 'refused');
 			const out = await run.out;
 			if (owns(text, held)) dispatcher.caret(text, kept ? end : triggerStart);
@@ -238,8 +190,8 @@ export abstract class TextTriggerController {
 
 	protected setEnd(text: Text, queryEnd: number) {
 		const end = this.edytor.selection.createTextAnchor(text, queryEnd, 'left');
-		if (this.activeRange && end) this.activeRange.end = end;
-		this.syncQueryFromText();
+		if (this.#activeRange && end) this.#activeRange.end = end;
+		this.#syncQueryFromText();
 	}
 
 	protected open(text: Text, triggerStart: number, queryEnd: number) {
@@ -247,24 +199,24 @@ export abstract class TextTriggerController {
 		const trigger = selection.createTextAnchor(text, triggerStart, 'right');
 		const end = selection.createTextAnchor(text, queryEnd, 'left');
 		if (!trigger || !end) return;
-		this.activeRange = { trigger, end };
+		this.#activeRange = { trigger, end };
 		this.isOpen = true;
 		this.query = '';
-		this.selectedIndex = 0;
-		this.syncQueryFromText(true);
+		this.index = 0;
+		this.#syncQueryFromText(true);
 	}
 
-	private syncQueryFromText(opened = false) {
+	#syncQueryFromText(opened = false) {
 		const range = this.range;
 		if (!range) return;
 		const { text, triggerStart, queryEnd } = range;
 		const query = text.stringContent.slice(triggerStart + this.char.length, queryEnd);
 		// A new query highlights its first match again (Notion).
-		if (query !== this.query) this.selectedIndex = 0;
+		if (query !== this.query) this.index = 0;
 		const changed = opened || query !== this.query;
 		this.query = query;
 		if (changed) this.queried(query);
-		else this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.count - 1));
+		else this.index = Math.max(0, Math.min(this.index, this.count - 1));
 	}
 }
 
@@ -296,35 +248,12 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	}
 
 	protected get count() {
-		return this.items.length;
+		return this.isOpen ? this.items.length : 0;
 	}
 
 	protected admits(block: Block) {
 		if (this.trigger.enabled) return this.trigger.enabled(block);
 		return !inCodeLines(this.edytor, block);
-	}
-
-	/** The menu's accessible name. */
-	get name() {
-		return this.trigger.name ?? this.edytor.labels.triggerMenu;
-	}
-
-	protected get listName() {
-		return this.name;
-	}
-
-	protected rowIdAt(index: number) {
-		return this.items[index] === undefined ? undefined : this.optionId(index);
-	}
-
-	/** The text shown when no row matches. */
-	get empty() {
-		return this.trigger.empty ?? this.edytor.labels.noResults;
-	}
-
-	/** The text shown while a search is pending and no row is shown. */
-	get searching() {
-		return this.trigger.searching ?? this.edytor.labels.searching;
 	}
 
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));
@@ -335,34 +264,12 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		return typeof id === 'string' || typeof id === 'number' ? String(id) : this.labelOf(item);
 	};
 
-	/**
-	 * The element id of the row at `index` (page-unique, whatever the rows'
-	 * keys or labels), for `aria-activedescendant`.
-	 */
-	optionId = (index: number) => this.edytor.popups.idOf(`${this.owner}-option-${index}`);
-
-	/** The context `items` and `onPick` read, for the current range. */
-	private context(): TriggerContext | null {
-		const range = this.range;
-		if (!range) return null;
-		const { text, triggerStart, queryEnd } = range;
-		const block = text.parent;
-		const { edytor, query } = this;
-		return {
-			edytor,
-			block,
-			from: text.segStart + triggerStart,
-			to: text.segStart + queryEnd,
-			query,
-			caret: (offset) => void edytor.dispatcher.caret({ block, offset })
-		};
-	}
-
 	protected queried(query: string) {
 		// A query that opens with whitespace is prose (`a @ b`): the menu closes.
 		if (/^\s/.test(query)) return this.close();
-		const ctx = this.context();
-		if (!ctx) return;
+		const range = this.range;
+		if (!range) return;
+		const ctx = contextOf(this.edytor, range.text, range.triggerStart, range.queryEnd, query);
 		// A pick waiting on the previous query's search is dropped with it.
 		this.#pickOnAnswer = false;
 		const request = ++this.#request;
@@ -393,7 +300,7 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		this.#pickOnAnswer = false;
 		this.items = Array.isArray(rows) ? rows : [];
 		if (!this.items.length && /\s$/.test(this.query)) return this.close();
-		this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.items.length - 1));
+		this.index = Math.max(0, Math.min(this.index, this.items.length - 1));
 		if (pick) void this.pickSelected();
 	}
 
@@ -415,7 +322,7 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 			this.#pickOnAnswer = true;
 			return Promise.resolve(undefined);
 		}
-		const item = this.items[this.selectedIndex];
+		const item = this.items[this.index];
 		return item === undefined ? Promise.resolve(undefined) : this.pick(item);
 	}
 

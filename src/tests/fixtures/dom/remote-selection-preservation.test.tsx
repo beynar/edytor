@@ -7,6 +7,7 @@ import { attachDocument } from '$lib/crdt/document.js';
 import { flushDomUpdates, renderDomEdytor, setNativeSelection } from '../../dom/test.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
+import { selectionState } from '../../selection.js';
 
 const input = (
 	<root>
@@ -46,15 +47,15 @@ describe('remote edits vs local selection', () => {
 		const { edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
 		const text = edytor.root!.children[0]!.firstText;
 		await setNativeSelection(edytor, text, 5);
-		expect(edytor.selection.state.yStart).toBe(5);
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(5);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.insertText(edytor.root!.children[0]!.id, 0, 'Say ');
 		await push();
 
-		await waitFor(() => expect(edytor.selection.state.yStart).toBe(9));
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		await waitFor(() => expect(selectionState(edytor).yStart).toBe(9));
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 		expect(window.getSelection()?.isCollapsed).toBe(true);
 	});
 
@@ -68,7 +69,7 @@ describe('remote edits vs local selection', () => {
 		await push();
 
 		// Collapsed carets bind 'left' — the remote 'X' lands after the caret.
-		await waitFor(() => expect(edytor.selection.state.yStart).toBe(5));
+		await waitFor(() => expect(selectionState(edytor).yStart).toBe(5));
 		expect(
 			edytor.value.children?.[0]?.content?.map((p) => ('text' in p ? p.text : '')).join('')
 		).toBe('HelloX world');
@@ -78,9 +79,9 @@ describe('remote edits vs local selection', () => {
 		const { edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
 		const text = edytor.root!.children[0]!.firstText;
 		await setNativeSelection(edytor, text, 2, text, 8);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
-		expect(edytor.selection.state.yStart).toBe(2);
-		expect(edytor.selection.state.yEnd).toBe(8);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
+		expect(selectionState(edytor).yStart).toBe(2);
+		expect(selectionState(edytor).yEnd).toBe(8);
 
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.insertText(edytor.root!.children[0]!.id, 0, 'Say ');
@@ -89,25 +90,25 @@ describe('remote edits vs local selection', () => {
 		// 'llo wor' stays selected — both anchors shifted +4. Before the
 		// `endPosition` anchor existed the START rode but `yEnd` stayed
 		// stale at 8.
-		await waitFor(() => expect(edytor.selection.state.yEnd).toBe(12));
-		expect(edytor.selection.state.isCollapsed).toBe(false);
-		expect(edytor.selection.state.yStart).toBe(6);
+		await waitFor(() => expect(selectionState(edytor).yEnd).toBe(12));
+		expect(selectionState(edytor).isCollapsed).toBe(false);
+		expect(selectionState(edytor).yStart).toBe(6);
 	});
 
 	it('a remote insert inside the END text shifts only the range end', async () => {
 		const { edytor } = await renderDomEdytor(twoBlocks, { autoSelectFixture: false });
 		const [start, end] = [edytor.root!.children[0]!.firstText, edytor.root!.children[1]!.firstText];
 		await setNativeSelection(edytor, start, 2, end, 4);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 
 		const { remote, push } = await createRemotePeer(edytor);
 		// Insert inside the end text BEFORE the end offset — only `yEnd` rides.
 		remote.facade.insertText(edytor.root!.children[1]!.id, 0, 'New ');
 		await push();
 
-		await waitFor(() => expect(edytor.selection.state.yEnd).toBe(8));
-		expect(edytor.selection.state.yStart).toBe(2);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		await waitFor(() => expect(selectionState(edytor).yEnd).toBe(8));
+		expect(selectionState(edytor).yStart).toBe(2);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 	});
 
 	it('collapsed caret rides a remote delete covering its atom', async () => {
@@ -121,7 +122,7 @@ describe('remote edits vs local selection', () => {
 		await push();
 
 		// Caret's atoms are gone → lands at the deletion seam (offset 0).
-		await waitFor(() => expect(edytor.selection.state.yStart).toBe(0));
+		await waitFor(() => expect(selectionState(edytor).yStart).toBe(0));
 	});
 
 	it('a range whose content a remote delete removed is a caret: a remote undo does not re-open it', async () => {
@@ -177,12 +178,12 @@ describe('remote edits vs local selection', () => {
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.deleteBlock(edytor.root!.children[1]!.id);
 		await push();
-		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
+		await waitFor(() => expect(selectionState(edytor).startText?.isInDocument).toBe(true));
 
 		// The dead wrapper is abandoned for the sibling seam: last block
 		// deleted → caret at the previous sibling's end ('First'.length).
-		expect(edytor.selection.state.startText?.parent?.isInTree).toBe(true);
-		expect(edytor.selection.state.yStart).toBe('First'.length);
+		expect(selectionState(edytor).startText?.parent?.isInTree).toBe(true);
+		expect(selectionState(edytor).yStart).toBe('First'.length);
 	});
 
 	it('remote delete of the FIRST block lands the caret at the next block start', async () => {
@@ -193,11 +194,11 @@ describe('remote edits vs local selection', () => {
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.deleteBlock(edytor.root!.children[0]!.id);
 		await push();
-		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
+		await waitFor(() => expect(selectionState(edytor).startText?.isInDocument).toBe(true));
 
 		// The block that slid into slot 0 is 'Second' — caret at its start.
-		expect(edytor.selection.state.startText?.stringContent).toBe('Second');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText?.stringContent).toBe('Second');
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	it('caret survives a remote mark applied over it (segment split)', async () => {
@@ -207,11 +208,11 @@ describe('remote edits vs local selection', () => {
 
 		const { remote, push } = await createRemotePeer(edytor);
 		// Bold 'o w' (offsets 4..7) — the caret at 5 lands inside the marked run.
-		remote.facade.setMark(edytor.root!.children[0]!.id, 4, 3, 'bold', true);
+		remote.facade.formatRange(edytor.root!.children[0]!.id, 4, 3, { bold: true });
 		await push();
 
-		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
-		expect(edytor.selection.state.yStart).toBe(5);
+		await waitFor(() => expect(selectionState(edytor).startText?.isInDocument).toBe(true));
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	it('caret follows atoms when a remote merge absorbs its block', async () => {
@@ -226,8 +227,8 @@ describe('remote edits vs local selection', () => {
 
 		await waitFor(() => expect(edytor.root!.children.length).toBe(1));
 		// 'Second' merged into 'First' → caret's atoms claimed → offset 5+3=8.
-		expect(edytor.selection.state.startText?.isInDocument).toBe(true);
-		expect(edytor.selection.state.startText?.stringContent).toBe('FirstSecond');
-		expect(edytor.selection.state.yStart).toBe(8);
+		expect(selectionState(edytor).startText?.isInDocument).toBe(true);
+		expect(selectionState(edytor).startText?.stringContent).toBe('FirstSecond');
+		expect(selectionState(edytor).yStart).toBe(8);
 	});
 });

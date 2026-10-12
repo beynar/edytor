@@ -179,10 +179,9 @@ describe('encode → loadDocument', () => {
 		// bob touches p1 and authors p3; alice deletes p2 (its record survives).
 		b.transact(() => b.facade.insertText('p1', 3, '!'));
 		b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 2 },
+			b.facade.insertBlocks({ parent: null, index: 2 }, [
 				{ id: 'p3', type: 'paragraph', content: [{ kind: 'text', text: 'three' }] }
-			)
+			])
 		);
 		a.transact(() => a.facade.deleteBlock('p2'));
 		const snap = blockattrSnapshot(a.doc);
@@ -223,7 +222,7 @@ describe('IndexedDB persistence + compaction', () => {
 		// Two attributing edits → incremental rows.
 		a.transact(() => a.facade.insertText(blockId, 2, '!'));
 		a.transact(() =>
-			a.facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' })
+			a.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }])
 		);
 		await nextTick();
 		// Force compaction: one snapshot row subsumes every update row —

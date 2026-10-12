@@ -18,8 +18,8 @@ import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -61,10 +61,9 @@ describe('UW-17 · a kind the view does not register renders as a plain block', 
 		const remoteDoc = new Y.Doc();
 		Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(remoteDoc);
-		remote.facade.insertBlock(
-			{ parent: null, index: 1 },
+		remote.facade.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'peer', type: 'widget', content: [{ kind: 'text', text: 'from a peer' }] }
-		);
+		]);
 		Y.applyUpdate(edytor.doc, Y.encodeStateAsUpdate(remoteDoc, Y.encodeStateVector(edytor.doc)));
 		await flushDomUpdates();
 		expect(blockElement(editor, 'peer')?.textContent).toBe('from a peer');
@@ -92,8 +91,8 @@ const bytesOf = (edytor: Edytor) => {
 	return () => bytes;
 };
 
-describe('UW-22 · data and type setters are commands', () => {
-	it('a readonly view refuses setData, the type setter and atom setData', async () => {
+describe('UW-22 · data and type writes are the view’s operations', () => {
+	it('a readonly view refuses a data patch, a retype and an atom patch', async () => {
 		const { edytor } = await renderDomEdytor(<root />, {
 			value: withAtom,
 			readonly: true,
@@ -104,15 +103,15 @@ describe('UW-22 · data and type setters are commands', () => {
 		// Read through a call: a direct read after `last = null` narrows to null.
 		const last = () => edytor.dispatcher.last?.status;
 
-		block.setData({ checked: true });
+		edytor.patchData('todo', [{ path: [], value: { checked: true } }]);
 		expect(last()).toBe('refused');
 		edytor.dispatcher.record(null);
 
-		block.type = 'paragraph';
+		edytor.setBlock('todo', { type: 'paragraph' });
 		expect(last()).toBe('refused');
 		edytor.dispatcher.record(null);
 
-		edytor.atomAt('todo', 'm').setData({ name: 'bob' });
+		edytor.patchData({ block: 'todo', atom: 'm' }, [{ path: [], value: { name: 'bob' } }]);
 		expect(last()).toBe('refused');
 
 		expect(bytes()).toBe(0);
@@ -126,7 +125,7 @@ describe('UW-22 · data and type setters are commands', () => {
 		const locked: Plugin = () => ({
 			onBeforeOperation: (change) => {
 				seen.push(change.operation);
-				const atom = change.operation === 'patchData' && change.payload.atom;
+				const atom = change.operation === 'patchData' && typeof change.payload[0] === 'object';
 				if (atom) change.prevent();
 			}
 		});
@@ -136,22 +135,19 @@ describe('UW-22 · data and type setters are commands', () => {
 		});
 		const block = edytor.idToBlock.block('todo');
 
-		block.setData({ checked: true });
+		edytor.patchData('todo', [{ path: [], value: { checked: true } }]);
 		expect(edytor.dispatcher.last?.status).toBe('applied');
 		expect(block.data).toEqual({ checked: true });
 
-		block.type = 'paragraph';
+		edytor.setBlock('todo', { type: 'paragraph' });
 		expect(block.type).toBe('paragraph');
 
-		edytor.atomAt('todo', 'm').setData({ name: 'bob' });
+		edytor.patchData({ block: 'todo', atom: 'm' }, [{ path: [], value: { name: 'bob' } }]);
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		expect(edytor.atomAt('todo', 'm').data).toEqual({ name: 'ann' });
 
-		expect(seen.filter((op) => op !== 'normalizeContent' && op !== 'normalizeChildren')).toEqual([
-			'patchData',
-			'setBlock',
-			'patchData'
-		]);
+		// Each command, then its planned steps as the writes they perform.
+		expect(seen).toEqual(['patchData', 'setBlock', 'setBlockType', 'patchData']);
 	});
 });
 

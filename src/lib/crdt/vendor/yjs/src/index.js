@@ -3,44 +3,30 @@
 
 // Order matters: follows internals.js ordering to avoid circular dependency issues
 
-export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, IdMap, createIdMap, createContentAttribute, ContentAttribute, encodeIdMap, insertIntoIdMap, readIdMap, writeIdMap, decodeIdMap, intersectSets, $idSet, $idMapAny } from './utils/ids.js'
+export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from './utils/ids.js'
 export { Doc } from './utils/Doc.js'
-export { $doc } from './utils/schemas.js'
-export { UpdateDecoderV1, UpdateDecoderV2 } from './utils/UpdateDecoder.js'
-export { UpdateEncoderV1, UpdateEncoderV2 } from './utils/UpdateEncoder.js'
-export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, decodeStateVector, diffUpdateV2, mergeUpdates, mergeUpdatesV2 } from './utils/encoding.js'
+export { UpdateDecoder } from './utils/UpdateDecoder.js'
+export { UpdateEncoder } from './utils/UpdateEncoder.js'
+export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from './utils/encoding.js'
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
-export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
+export { idAtIndex, indexOfId } from './utils/positions.js' // YP19
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // YP14: isKeptReplaced
-export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
-export { UndoManager } from './utils/UndoManager.js'
-export { redoItem } from './utils/UndoManager.js' // YP11
-export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from './utils/updates.js'
-export { YEvent } from './utils/YEvent.js'
-export { AbstractRenderer, $renderer } from './utils/renderer-helpers.js'
+export { Transaction, transact } from './utils/Transaction.js'
+export { redoItem, keepItem } from './utils/redo.js' // YP11, YP18
+export { decodeUpdate } from './utils/updates.js'
 export { RangeCursor } from './utils/RangeCursor.js'
-export { YNode as Node, $nodeAny } from './ynode.js'
+export { YNode as Node } from './ynode.js'
 export { AbstractStruct } from './structs/AbstractStruct.js'
 export { GC } from './structs/GC.js'
-export { Item, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from './structs/Item.js'
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType } from './structs/Item.js'
 export { Skip } from './structs/Skip.js'
-
-export * from './utils/meta.js'
 
 /**
  * @typedef {import('./utils/ids.js').ContentIds} ContentIds
  */
-/**
- * @typedef {import('./utils/ids.js').ContentMap} ContentMap
- */
 
-const glo = /** @type {any} */ (typeof globalThis !== 'undefined'
-  ? globalThis
-  : typeof window !== 'undefined'
-    ? window
-    // @ts-ignore
-    : typeof global !== 'undefined' ? global : {})
+const glo = /** @type {any} */ (globalThis) // YP18: Baseline 2024 has `globalThis`
 
 const importIdentifier = '__ $YJS14$ __'
 

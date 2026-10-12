@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import type { RenderDelta } from '$lib/surface/cells.js';
+	import { rendersMark, type RenderDelta } from '$lib/surface/cells.js';
 	import { Text } from '../text/text.svelte.js';
 	import Mark, { customAt } from './Mark.svelte';
 	import CustomMark from './CustomMark.svelte';
@@ -61,10 +61,7 @@
 
 	/** A delta's marks this view renders (an unknown mark renders its text only). */
 	const rendered = (delta: RenderDelta): RenderDelta => {
-		const known = delta.marks.filter(([name]) => {
-			const definition = edytor.marks.get(name);
-			return Boolean(definition?.snippet || definition?.tag);
-		});
+		const known = delta.marks.filter(([name]) => rendersMark(edytor.marks, name));
 		return known.length === delta.marks.length ? delta : { text: delta.text, marks: known };
 	};
 	const shown = $derived(empty ? FILLER : deltas);

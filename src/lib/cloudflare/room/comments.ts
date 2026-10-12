@@ -91,7 +91,7 @@ export class RoomComments {
 		return this.room.options.comments !== false;
 	}
 
-	private ensure() {
+	#ensure() {
 		if (this.ready) return;
 		const { sql, tables } = this.room;
 		sql.exec(
@@ -192,7 +192,7 @@ export class RoomComments {
 	list(): CommentSnapshot {
 		if (!this.enabled) return { seq: 0, threads: [] };
 		return noTimers(() => {
-			this.ensure();
+			this.#ensure();
 			const { sql, tables } = this.room;
 			const comments = new Map<string, ThreadComment[]>();
 			for (const row of sql
@@ -270,7 +270,7 @@ export class RoomComments {
 		const room = this.room;
 		if (!this.enabled) return { status: 'refused', reason: 'missing', message: 'no comments' };
 		const outcome = noTimers((): CommentOutcome => {
-			this.ensure();
+			this.#ensure();
 			const { sql, tables } = room;
 			const thread = validCommentId(request.thread) ? this.read(request.thread) : null;
 			const threads =
@@ -295,7 +295,7 @@ export class RoomComments {
 			if (decided.status !== 'applied') return decided;
 			this.store(decided.change);
 			this.broadcast(decided.change);
-			if (decided.change.type === 'removed') this.removeAnchors(decided.change.thread.id);
+			if (decided.change.type === 'removed') this.#removeAnchors(decided.change.thread.id);
 			room.log({
 				edytor: 'comment',
 				type: decided.change.type,
@@ -316,7 +316,7 @@ export class RoomComments {
 	}
 
 	/** A removed thread's anchor: its marks leave the document, as one room transaction. */
-	private removeAnchors(id: string) {
+	#removeAnchors(id: string) {
 		const room = this.room;
 		if (room.live === null || room.busy) return;
 		try {
@@ -325,7 +325,7 @@ export class RoomComments {
 			const mark = `${COMMENT_MARK}:${id}`;
 			room.transact((facade) => {
 				for (const run of [...runs].reverse())
-					facade.unsetMark(run.block, run.offset, run.length, mark);
+					facade.formatRange(run.block, run.offset, run.length, { [mark]: null });
 			});
 		} catch (error) {
 			room.log({ edytor: 'fault', reason: 'internal', detail: `comment anchor: ${String(error)}` });

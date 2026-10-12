@@ -39,9 +39,11 @@
  * measures the WORKING-TREE TypeScript, not a stale `dist/` build.
  */
 import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
+import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { statsOf } from './stats.js';
+import { toDelta } from '../../src/tests/crdt/harness/delta.js';
 
 const req = createRequire(import.meta.url);
 const vitestDir = req.resolve('vitest/package.json').replace(/\/package\.json$/, '');
@@ -180,7 +182,7 @@ const fragmentedDoc = (n, cycles) => {
 		ed.insertText(id, 0, textOf(20));
 		ed.deleteText(id, 0, 20);
 		if (c % 4 === 0) {
-			ed.insertBlock({ parent: null, index: 0 }, { id: `tmp${c}`, type: 'paragraph' });
+			ed.insertBlocks({ parent: null, index: 0 }, [{ id: `tmp${c}`, type: 'paragraph' }]);
 			ed.deleteBlock(`tmp${c}`);
 		}
 	}
@@ -541,8 +543,7 @@ const ops = () => {
 		delete: lane(f, (ed, id) => ed.deleteText(id, 10, 8)),
 		'paste-text': lane(f, (ed, id) => ed.insertText(id, 10, textOf(500))),
 		'paste-subtree': lane(f, (ed, id) =>
-			ed.insertBlock(
-				{ parent: null, index: 0 },
+			ed.insertBlocks({ parent: null, index: 0 }, [
 				{
 					id: 'paste',
 					type: 'section',
@@ -552,7 +553,7 @@ const ops = () => {
 						content: [{ kind: 'text', text: textOf(80) }]
 					}))
 				}
-			)
+			])
 		),
 		format: lane(f, (ed, id) => ed.formatRange(id, 5, 25, { bold: true })),
 		note: 'single ops on a 1,000-block doc; delete removes 8 chars, paste-text inserts 500, paste-subtree a 6-block section, format bolds 20 chars.'
@@ -568,7 +569,7 @@ const moves = () => {
 				const { doc, ed } = specDoc(groupSpec(100));
 				return { doc, ed, targetId: 'b10' };
 			},
-			(ed, id) => ed.moveBlock(id, { parent: null, index: 60 })
+			(ed, id) => ed.moveBlocks([id], { parent: null, index: 60 })
 		),
 		'group-5': lane(
 			() => {
@@ -595,7 +596,7 @@ const moves = () => {
 			// `children` takes only nestedSpec's INNER chain (d1…d19 > leaf), so
 			// the move resolved against a missing parent and recorded 0 bytes.
 			// 'd19' is the deepest attached section (nest>d1>…>d19>leaf).
-			(ed, id) => ed.moveBlock(id, { parent: 'd19', index: 0 })
+			(ed, id) => ed.moveBlocks([id], { parent: 'd19', index: 0 })
 		),
 		note: 'placement-attribute moves; reparent drops a root block into the deepest section of a 20-deep chain.'
 	};
@@ -653,7 +654,7 @@ const anchors = () => {
 };
 
 /**
- * Selective undo — Y.UndoManager over the registry scope. Per sample: seed
+ * Selective undo — the harness UndoManager over the registry scope. Per sample: seed
  * a doc, perform K tracked ops, undo the LAST one (selective = the undo
  * step rewrites exactly that transaction's items, not a replay).
  */
@@ -664,7 +665,7 @@ const undo = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc, ed } = f.restore();
 		const targetId = f.targetId;
-		const um = new Y14.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
 		for (let k = 0; k < K; k++) ed.insertText(targetId, caret(k), 'y');
 		// useEvents: um.undo() calls module-level transact() — the doc.transact
 		// method wrap can't see it (this was the zero write/commit attribution).
@@ -985,9 +986,10 @@ const rangeReads = () => {
 			firstReadMs.push(first);
 			searchMarkers += text._searchMarker?.length ?? 0;
 			// Pre-WU8 reference: each of those reads materialized the whole
-			// 100k backing text through toDelta().toJSON() — once per slice.
+			// 100k backing text through toDelta().toJSON() — once per slice
+			// (the engine's delta read went with YP16: the test port renders it).
 			const d0 = performance.now();
-			text.toDelta().toJSON();
+			toDelta(text).toJSON();
 			toDeltaRefMs.push(performance.now() - d0);
 		}
 		doc.destroy();
@@ -1059,7 +1061,7 @@ const memory = async () => {
 	// die when it returns, and the following tick drops them off the stack.
 	const liveDelta = await (async () => {
 		const { doc, ed } = snap(flatDoc(1000)).restore();
-		const um = new Y14.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
 		for (let k = 0; k < 200; k++) {
 			ed.insertText('b500', 10, 'q');
 			if (k % 2) um.undo();

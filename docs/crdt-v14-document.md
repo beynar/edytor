@@ -195,7 +195,6 @@ document.attribution.block(blockId);
 document.attribution.actorOf(document.clientID); // 'user-42' (this replica's actor)
 document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
 document.attribution.setProfile({ name: 'Ada L.' }); // republish the u/<actor> profile
-document.attribution.legacy(); // merged ContentMap over pre-existing a/ records, or null
 ```
 
 Ordinary editing writes **no per-edit attribution** (U2): a keystroke is
@@ -206,10 +205,9 @@ scope), `lastChangedBy` (LWW on the block node, inside undo scope). The
 replicated `u/`/`c/` actor dictionary travels inside `encode()` output.
 
 Documents saved by pre-U2 builds keep their `a/` per-edit records
-verbatim — preserved through `encode()`/sync and decoded on demand by
-`attribution.legacy()` (a `ContentMap`; for a rendered history view pass
-your own `AbstractRenderer` over it to `toDelta({renderer})` — the fork
-ships no concrete renderer since UPSTREAM.md YP8). This build never appends `a/` records; old
+verbatim — preserved through `encode()`/sync; nothing reads them (the
+`attribution.legacy()` decoder went with the engine's delta layer and
+content-map codec, UPSTREAM.md YP16). This build never appends `a/` records; old
 replicas that still do merge cleanly. Full contract:
 `src/lib/crdt/attribution/attribution.ts` + the U2 ledger entry.
 
@@ -246,92 +244,6 @@ later block created under the recycled id overwrites `createdBy` and
 clears the dead contributor set — attribution belongs to the live block,
 never to the ghost.
 
-#### Opt-in: per-block lineage ring (`lineage.depth`)
-
-`createDocument`/`loadDocument`/`attachDocument` accept
-`lineage: { depth }` (default off — `0`/absent performs **zero** lineage
-writes and stays byte-identical to the unattributed schema). With
-`depth > 0`, every block's `b/<id>` record carries a bounded ring of
-displaced-state checkpoints:
-
-```ts
-const document = createDocument({ actor, lineage: { depth: 20 } });
-document.attribution.history(blockId);
-// [{ actor, by, seq, time, block }] — oldest → newest, ≤ depth,
-//  undefined when the block carries no record
-```
-
-An entry lands when a write **displaces** the block's current
-`lastChangedBy` owner — i.e. the first time actor B edits a block last
-touched by actor A, the pre-write subtree is captured as
-`{actor: 'a', by: 'b', block: <JSONBlock snapshot>}`. Same-actor edits
-append nothing: the ring stores transitions, not keystrokes, so cost is
-paid only on genuine handoffs. Destructive events capture
-unconditionally (the same-actor rule would drop the only recovery copy):
-
-- `deleteBlock` — the deleted subtree lands on the orphaned record,
-  which stays readable via `history()` ("restore what X deleted");
-- `mergeBlocks`/`mergeBackward`/`mergeForward` — the absorbed block's
-  final state lands on its own record, the survivor's displaced state
-  on its ring;
-- `undo()`/`redo()` via the facade's undo manager — every touched
-  block's pre-replay state is captured before the replay runs.
-
-`block` is a canonical `JSONBlock` (the `toJSON` subtree shape: `type`,
-`id`, `data`, un-tagged `content`, `children`) captured **before** the
-displacing write, inside the same transaction — a refused or no-op
-write appends nothing. Restoring an entry is an ordinary edit:
-
-```ts
-const entry = document.attribution.history(id)!.at(-1)!;
-document.transact(() => {
-	document.facade.setBlock(id, {
-		content: (entry.block.content ?? []).map((c) =>
-			'text' in c
-				? { kind: 'text', text: c.text, marks: c.marks }
-				: {
-						kind: 'inline',
-						id: c.id!,
-						type: c.type,
-						data: c.data
-					}
-		)
-	});
-});
-```
-
-The restore itself lands a new entry (the state it displaced), so
-recovery is non-destructive by construction. Boundaries:
-
-- **Incarnation-scoped** — the ring lives on the `b/<id>` record, which
-  is stamped to the block's node item; undo/redo resurrection follows
-  the `redone` line and keeps the ring, while an unrelated reuse of the
-  id can never inherit it (facade `insertBlock` refuses registry ids
-  outright, live or deleted).
-- **Convergent cap** — entries are replicated list items appended under
-  the op's transaction. Each entry carries its writer's depth (`d`) and
-  THE retention bound is `max(d)` over surviving entries — one
-  watermark applied identically on append (same-tx trim), on receive
-  (`afterTransaction` repair for rings pushed over-cap by concurrent
-  appends under partition), and on read (`history()`). A shallow
-  replica therefore can never evict a deeper writer's surviving history
-  on any path — not on receipt, not on its own next append — and the
-  bound shrinks only once the deepest entries have themselves aged out.
-  `depth` is therefore a LIVE-entry bound, not a storage bound: trimmed
-  entries leave tombstone structs (~45–100B per handoff measured) that
-  only compaction can reclaim.
-- **`seq` is not an id** — it is the ring position at append; trimming
-  rewinds the counter and concurrent replicas can assign the same
-  position. Treat array order as the truth, never `seq` equality.
-- **Snapshot-safe** — `history()` deep-copies every entry; mutating a
-  returned `block` cannot corrupt replicated state.
-- **No attribution recursion** — ring writes live on the `blockattr`
-  root outside undo scope, and capture runs only from facade ops/`undo()`
-  — a lineage write never triggers another lineage write.
-- **Not a timeline** — the ring records "the last N displaced states",
-  not every edit. Deep point-in-time needs the engine snapshot path
-  (`snapshot`/`createDocFromSnapshot`), which `gc` retention governs.
-
 ### Actors and presence
 
 `actor: { id, name?, color? }` is the **durable** author identity —
@@ -343,12 +255,12 @@ carets read. With no actor supplied the document mints an opaque
 
 ```svelte
 <script lang="ts">
-	import { Edytor, createDocument, richTextPlugin } from 'edytor';
+	import { Edytor, createDocument, createRichTextPlugin } from 'edytor';
 
 	const document = createDocument({
 		value: { children: [{ type: 'paragraph', content: [{ text: 'shared' }] }] }
 	});
-	const plugins = [richTextPlugin];
+	const plugins = [createRichTextPlugin()];
 </script>
 
 <Edytor {document} {plugins} />

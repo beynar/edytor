@@ -10,6 +10,7 @@
  * and the caret rides its characters. Expected trees and carets are
  * hand-written from the contract.
  */
+import { siblingSlot } from '$lib/session/handles.js';
 import { describe, expect, it } from 'vitest';
 import { tick } from 'svelte';
 import { Y } from '$lib/crdt/engine.js';
@@ -24,6 +25,7 @@ import {
 	setNativeSelection,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 type Peer = Awaited<ReturnType<typeof renderDomEdytor>>;
 
@@ -66,7 +68,7 @@ const p = (text: string): CanonicalBlock => ({
 });
 
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return {
 		block: startText?.parent.id,
 		offset: yStart,
@@ -79,7 +81,9 @@ describe('hist.undo.withdraw — through two mounted views', () => {
 	it('A adds a block, B types in it, A undoes: the block stays with B’s text and B’s caret', async () => {
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await replicaOf(a);
-		a.edytor.root!.children[0]!.insertBlockAfter({ block: { id: 'n', type: 'paragraph' } });
+		a.edytor.insertBlocks(siblingSlot(a.edytor.root!.children[0]!), [
+			{ id: 'n', type: 'paragraph' }
+		]);
 		await flushDomUpdates();
 		await deliver(a, b);
 		const n = b.edytor.idToBlock.get('n')!;
@@ -95,7 +99,9 @@ describe('hist.undo.withdraw — through two mounted views', () => {
 	it('control: nothing foreign in it, A’s undo removes the added block', async () => {
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await replicaOf(a);
-		a.edytor.root!.children[0]!.insertBlockAfter({ block: { id: 'n', type: 'paragraph' } });
+		a.edytor.insertBlocks(siblingSlot(a.edytor.root!.children[0]!), [
+			{ id: 'n', type: 'paragraph' }
+		]);
 		await flushDomUpdates();
 		await deliver(a, b);
 		await undo(a);

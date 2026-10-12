@@ -275,8 +275,6 @@
 	height: 24px;
 	border-radius: 6px;
 	background: currentColor;
-	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 8.8h7a.5.5 0 0 1 .4.8l-3.5 4.7a.5.5 0 0 1-.8 0L8.1 9.6a.5.5 0 0 1 .4-.8z'/%3E%3C/svg%3E")
-		center / 24px no-repeat;
 	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 8.8h7a.5.5 0 0 1 .4.8l-3.5 4.7a.5.5 0 0 1-.8 0L8.1 9.6a.5.5 0 0 1 .4-.8z'/%3E%3C/svg%3E")
 		center / 24px no-repeat;
 	transform: rotate(-90deg);
@@ -342,9 +340,16 @@
 .edytor-notion [data-edytor-callout-title] {
 	font-weight: 600;
 }
-/* The icon button: a soft hover, as Notion's. */
+/* The icon button reads as the icon, with a soft hover, as Notion's. */
 .edytor-notion button[data-edytor-callout-icon] {
+	padding: 0;
+	border: 0;
 	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 18px;
+	cursor: pointer;
 	transition: background-color 120ms ease-in;
 }
 .edytor-notion button[data-edytor-callout-icon]:hover,
@@ -377,6 +382,7 @@
 	padding: 3px 2px;
 	color: var(--notion-text-secondary);
 	font-weight: 400;
+	cursor: pointer;
 }
 .edytor-notion [data-edytor-empty-body]:hover {
 	border-radius: 4px;
@@ -412,62 +418,6 @@
 	flex-direction: column;
 	gap: 8px;
 }
-.edytor-notion [data-edytor-image-add],
-.edytor-notion [data-edytor-image-placeholder] {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	width: 100%;
-	padding: 12px 36px 12px 12px;
-	border-radius: 6px;
-	background: rgba(33, 27, 23, 0.04);
-	color: var(--notion-text-secondary);
-	font: inherit;
-	font-size: 14px;
-	text-align: left;
-	cursor: pointer;
-	transition: background-color 80ms ease;
-}
-.edytor-notion [data-edytor-image-placeholder] {
-	cursor: default;
-}
-.edytor-notion [data-edytor-image-add]:hover {
-	background: rgba(33, 27, 23, 0.07);
-}
-.edytor-notion [data-edytor-image-form] {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-}
-.edytor-notion [data-edytor-image-form] input:not([type='file']) {
-	flex: 1;
-	min-width: 200px;
-	height: 32px;
-	padding: 0 10px;
-	border-radius: 6px;
-	background: rgba(242, 241, 238, 0.6);
-	box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
-	font: inherit;
-	font-size: 14px;
-	outline: 0;
-}
-.edytor-notion [data-edytor-image-form] button,
-.edytor-notion [data-edytor-image-upload] {
-	height: 32px;
-	padding: 0 12px;
-	border-radius: 6px;
-	background: var(--notion-blue);
-	color: #fff;
-	font-size: 14px;
-	font-weight: 500;
-	line-height: 32px;
-	cursor: pointer;
-}
-.edytor-notion [data-edytor-image-form] small {
-	flex-basis: 100%;
-	color: #cf5148;
-}
 .edytor-notion [data-edytor-type='image'] figcaption {
 	padding: 6px 2px 2px;
 	color: var(--notion-text-secondary);
@@ -498,8 +448,6 @@
 	flex-direction: column;
 	gap: 8px;
 }
-.edytor-notion [data-edytor-media-add],
-.edytor-notion [data-edytor-media-placeholder],
 .edytor-notion [data-edytor-embed-unsupported] a,
 .edytor-notion [data-edytor-file] a {
 	display: flex;
@@ -525,47 +473,9 @@
 	color: var(--notion-text-secondary);
 	font-size: 12px;
 }
-.edytor-notion [data-edytor-media-placeholder] {
-	cursor: default;
-}
-.edytor-notion [data-edytor-media-add]:hover,
 .edytor-notion [data-edytor-embed-unsupported] a:hover,
 .edytor-notion [data-edytor-file] a:hover {
 	background: rgba(33, 27, 23, 0.07);
-}
-.edytor-notion [data-edytor-media-form] {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-}
-.edytor-notion [data-edytor-media-form] input:not([type='file']) {
-	flex: 1;
-	min-width: 200px;
-	height: 32px;
-	padding: 0 10px;
-	border-radius: 6px;
-	background: rgba(242, 241, 238, 0.6);
-	box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
-	font: inherit;
-	font-size: 14px;
-	outline: 0;
-}
-.edytor-notion [data-edytor-media-form] button,
-.edytor-notion [data-edytor-media-upload] {
-	height: 32px;
-	padding: 0 12px;
-	border-radius: 6px;
-	background: var(--notion-blue);
-	color: #fff;
-	font-size: 14px;
-	font-weight: 500;
-	line-height: 32px;
-	cursor: pointer;
-}
-.edytor-notion [data-edytor-media-form] small {
-	flex-basis: 100%;
-	color: #cf5148;
 }
 .edytor-notion [data-edytor-bookmark] a {
 	display: flex;
@@ -641,16 +551,139 @@
 }
 
 /* ── Code ───────────────────────────────────────────────────────────── */
+/* A warm gray panel with room at its top for the app's header (the
+   language's button, Copy), placed over it; `--edytor-code-background`
+   and `--edytor-code-color` set the panel and its text. */
 .edytor-notion [data-edytor-type='code'] {
+	position: relative;
 	margin: 4px 0;
 	padding: 34px 16px 32px 32px;
 	border-radius: 10px;
-	background: var(--notion-code-panel);
+	background: var(--edytor-code-background, var(--notion-code-panel));
+	color: var(--edytor-code-color, var(--notion-text));
+}
+.edytor-notion [data-edytor-code-header] {
+	position: absolute;
+	top: 6px;
+	left: 10px;
+	right: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 }
 .edytor-notion [data-edytor-type='codeLine'] {
 	margin: 0;
 	padding: 0;
 	border-radius: 0;
+}
+.edytor-notion pre.th-code {
+	margin: 0;
+	color: inherit;
+	font-family: var(--notion-mono);
+	font-size: 85%;
+	line-height: 1.5;
+	text-align: left;
+	hyphens: none;
+}
+[data-edytor]:is(.edytor-notion, .edytor-notion *) pre.th-code code {
+	padding: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+}
+/* Notion's light syntax theme: Prism's palette, each colour darkened to a
+   4.5:1 contrast on the panel (WCAG AA), over TanStack Highlight's classes. */
+.edytor-notion :is(.th-comment, .th-meta) {
+	color: #63717f;
+}
+.edytor-notion :is(.th-keyword, .th-link) {
+	color: #0077aa;
+}
+.edytor-notion :is(.th-string, .th-attr, .th-selector, .th-inserted) {
+	color: #527a00;
+}
+.edytor-notion :is(.th-function, .th-type) {
+	color: #c2415c;
+}
+.edytor-notion :is(.th-number, .th-literal, .th-tag, .th-property, .th-deleted) {
+	color: #990055;
+}
+.edytor-notion .th-variable {
+	color: #9b6300;
+}
+.edytor-notion .th-operator {
+	color: #916737;
+}
+
+/* ── Equations ──────────────────────────────────────────────────────── */
+.edytor-notion [data-edytor-equation] {
+	padding: 4px 0;
+	border-radius: 4px;
+	text-align: center;
+	cursor: pointer;
+}
+.edytor-notion [data-edytor-equation]:hover,
+.edytor-notion [data-edytor-equation][data-editing='true'] {
+	background: rgba(55, 53, 47, 0.06);
+}
+.edytor-notion [data-edytor-inline-equation] {
+	border-radius: 3px;
+	cursor: pointer;
+}
+.edytor-notion [data-edytor-inline-equation]:is([data-editing='true'], [data-selected='true']) {
+	background: var(--notion-block-selection);
+}
+.edytor-notion [data-edytor-equation-placeholder] {
+	color: rgba(55, 53, 47, 0.5);
+}
+.edytor-notion [data-edytor-equation] [data-edytor-equation-placeholder] {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 4px;
+	background: rgba(242, 241, 238, 0.6);
+	text-align: left;
+}
+.edytor-notion [data-edytor-equation-icon] {
+	margin-right: 4px;
+	font-style: italic;
+}
+.edytor-notion :is([data-edytor-equation-error], [data-edytor-equation-source]) {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.9em;
+	white-space: pre-wrap;
+}
+.edytor-notion [data-edytor-equation-error] {
+	color: #d44c47;
+}
+
+/* ── Tables: Notion's simple table ──────────────────────────────────── */
+.edytor-notion [data-edytor-table] {
+	--edytor-table-border-color: var(--edytor-table-border, rgb(233, 233, 231));
+	padding-inline: 0;
+}
+.edytor-notion [data-edytor-table] [data-edytor-table-grid] {
+	border-top: 1px solid var(--edytor-table-border-color);
+	border-left: 1px solid var(--edytor-table-border-color);
+}
+.edytor-notion [data-edytor-table-row] {
+	margin: 0;
+	padding: 0;
+	border-radius: 0;
+}
+.edytor-notion :is([data-edytor-table-cell], [data-edytor-table-pad]) {
+	min-height: 33px;
+	margin: 0;
+	padding: 7px 9px;
+	border-radius: 0;
+	border-right: 1px solid var(--edytor-table-border-color);
+	border-bottom: 1px solid var(--edytor-table-border-color);
+}
+/* A header row's or header column's cells: Notion's gray, a little bolder. */
+.edytor-notion [data-edytor-table-cell][data-edytor-table-header='true'] {
+	background: var(--edytor-table-header-background, rgb(247, 246, 243));
+	font-weight: 600;
 }
 
 /* ── Marks ──────────────────────────────────────────────────────────── */
@@ -695,13 +728,22 @@
 	background: var(--notion-page, #fff);
 }
 
-/* ── Columns: one highlight over a layout a block selection stands for ── */
+/* ── Columns ────────────────────────────────────────────────────────── */
+/* A column's first and last blocks sit flush with the layout's edges. */
+.edytor-notion [data-edytor-column] > [data-edytor-children] > [data-edytor-block]:first-child {
+	margin-top: 0;
+}
+.edytor-notion [data-edytor-column] > [data-edytor-children] > [data-edytor-block]:last-child {
+	margin-bottom: 0;
+}
+/* One highlight over a layout a block selection stands for. */
 .edytor-notion [data-edytor-block][data-edytor-columns][data-edytor-selected] {
 	background: transparent;
 }
 .edytor-notion
 	[data-edytor-block][data-edytor-columns]
 	> [data-edytor-children][data-edytor-columns-selected] {
+	border-radius: 4px;
 	background: var(--notion-block-selection);
 }
 .edytor-notion
@@ -760,22 +802,27 @@
 .edytor-notion [data-edytor-type='page'] {
 	margin: 1px 0;
 }
-.edytor-notion [data-edytor-page-link] {
+.edytor-notion :where([data-edytor-page]) > [data-edytor-page-link] {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	width: 100%;
+	margin: 0;
 	padding: 3px 2px;
+	border: 0;
 	border-radius: 4px;
+	background: none;
 	color: inherit;
+	font: inherit;
+	text-align: start;
 	text-decoration: none;
 	cursor: pointer;
 	transition: background-color 20ms ease-in;
 }
-.edytor-notion [data-edytor-page-link]:hover {
+.edytor-notion :where([data-edytor-page]) > [data-edytor-page-link]:hover {
 	background: var(--notion-hover);
 }
-.edytor-notion [data-edytor-page-link]:disabled {
+.edytor-notion :where([data-edytor-page]) > [data-edytor-page-link]:disabled {
 	cursor: default;
 }
 .edytor-notion [data-edytor-page-icon] {
@@ -783,8 +830,6 @@
 	width: 20px;
 	height: 20px;
 	background: var(--notion-text-secondary);
-	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.35' stroke-linejoin='round'%3E%3Cpath d='M11.5 2.5H6A1.5 1.5 0 0 0 4.5 4v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5z'/%3E%3Cpath d='M11.5 2.5v4h4M7.5 10.5h5M7.5 13.5h5'/%3E%3C/svg%3E")
-		center / 20px no-repeat;
 	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.35' stroke-linejoin='round'%3E%3Cpath d='M11.5 2.5H6A1.5 1.5 0 0 0 4.5 4v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5z'/%3E%3Cpath d='M11.5 2.5v4h4M7.5 10.5h5M7.5 13.5h5'/%3E%3C/svg%3E")
 		center / 20px no-repeat;
 }
@@ -802,6 +847,10 @@
 .edytor-notion [data-edytor-toc-entry] {
 	display: block;
 	width: 100%;
+	margin: 0;
+	border: 0;
+	background: none;
+	font: inherit;
 	padding: 6px 2px;
 	padding-inline-start: calc(2px + var(--edytor-toc-depth, 0) * var(--edytor-nest-indent));
 	border-radius: 4px;
@@ -818,7 +867,115 @@
 	color: var(--notion-placeholder);
 }
 .edytor-notion [data-edytor-toc-empty] {
+	margin: 0;
 	padding: 3px 2px;
 	color: var(--notion-text-secondary);
 	font-size: 14px;
+}
+
+/* ── Mentions and page links (atoms in a line) ──────────────────────── */
+.edytor-notion .edytor-mention {
+	color: var(--notion-text-secondary);
+	font-weight: 500;
+}
+.edytor-notion .edytor-page-link .title {
+	border-bottom: 1px solid rgba(55, 53, 47, 0.25);
+	font-weight: 500;
+}
+.edytor-notion .edytor-page-link .icon {
+	margin-right: 2px;
+}
+.edytor-notion :is(.edytor-mention, .edytor-page-link)[data-selected='true'] {
+	border-radius: 3px;
+	background: var(--notion-block-selection);
+}
+
+/* ── Visual cues in the overlay ─────────────────────────────────────── */
+/*
+ * The plugins place these and say when they show (`data-shown`,
+ * `data-dragging`, `:hover`); the look is here. The overlay is the editor's
+ * next sibling, so each rule reaches it whether the class is on an element
+ * around the editor or on the editor itself.
+ */
+/* A block drag's drop line: Notion's plain 4px bar. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-drop-indicator] {
+	background: var(--edytor-drop-indicator-color, rgba(35, 131, 226, 0.43));
+}
+/* The nest backdrop: the future parent's own row, softly tinted, fading in and out.
+ * One plain colour: lightningcss rewrites light-dark() into variables it only
+ * defines beside a `color-scheme`, voiding the background. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-drop-backdrop] {
+	border-radius: 4px;
+	background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
+	opacity: 0;
+	transition:
+		opacity 120ms ease,
+		visibility 120ms ease;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-drop-backdrop][data-shown='true'] {
+	opacity: 1;
+}
+/* A table grip's drop line and a column band's guide: Notion's blue. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-table-drop] {
+	border-radius: 2px;
+	background: var(--edytor-table-drop-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-table-resize]::after {
+	background: var(--edytor-table-resize-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-table-resize]:focus-visible {
+	outline: none;
+}
+/* A layout gap's band: a thin gray rule on hover, blue from the keyboard and while it drags. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-column-resize]::after {
+	background: var(--edytor-columns-resize-color, rgba(55, 53, 47, 0.16));
+	opacity: 0;
+	transition:
+		opacity 80ms ease,
+		visibility 80ms ease;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after {
+	opacity: 1;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:focus-visible {
+	outline: none;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:focus-visible::after {
+	opacity: 1;
+	background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-column-resize-guide] {
+	background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
+}
+/* An image's resize handles: Notion's dark pill with a light ring. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-image-resize]::after {
+	border-radius: 20px;
+	background: var(--edytor-image-handle-color, rgba(15, 15, 15, 0.6));
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+	opacity: 0.8;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	:is([data-edytor-image-resize]:hover, [data-edytor-image-resize][data-dragging='true'])::after {
+	opacity: 1;
+}
+/* Other users: a caret, a tinted range and a name pill in each one's colour. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-selection] {
+	background: var(--edytor-remote-color);
+	opacity: 0.18;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-cursor] {
+	border-radius: 999px;
+	background: var(--edytor-remote-color);
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-cursor-label] {
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--edytor-remote-color);
+	color: white;
+	font: 500 11px/1.4 sans-serif;
 }

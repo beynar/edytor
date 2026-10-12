@@ -25,6 +25,7 @@ import {
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import type { BeforeInputCommand } from '$lib/events/beforeInputCommands.js';
+import { selectionState } from '../../selection.js';
 
 export const SCHEDULE_SEED = {
 	children: [
@@ -193,7 +194,7 @@ export const runSchedule = async (
 			// Per-command effect oracle — independent of convergence and
 			// repeatability. A no-op command implementation fails HERE.
 			expect(canonicalTree(actor.edytor)).toEqual(expected.tree);
-			expect(actor.edytor.selection.state.yStart).toBe(expected.caret);
+			expect(selectionState(actor.edytor).yStart).toBe(expected.caret);
 
 			// Per-step delivery coin — withheld deliveries accumulate
 			// through the partition window into real divergence.

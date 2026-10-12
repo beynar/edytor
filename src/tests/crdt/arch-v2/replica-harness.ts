@@ -30,6 +30,7 @@ import {
 	storedParentOf,
 	succeeds
 } from '../harness/ops/model-ops.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 export const crdt = bindCrdt(Y);
 
@@ -388,7 +389,7 @@ export const wellFormed = (
 		withdrawn:
 			doc &&
 			((id: string) => {
-				const node = ed.model.blockNodeOf(doc, id);
+				const node = blockNodeOf(doc, id);
 				return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
 			})
 	});

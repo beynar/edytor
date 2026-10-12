@@ -1,12 +1,16 @@
 <script lang="ts">
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createSlashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+	import { createBlockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import { createToolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { createEmbedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createImageToolbarPlugin } from '$lib/plugins/image/toolbar.svelte.js';
+	import { createMediaEmptyPlugin } from '$lib/plugins/media/MediaEmpty.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { createSuggestionBarPlugin } from '$lib/plugins/suggestions/SuggestionBars.svelte';
 	import { createTablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { createCodePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
@@ -16,8 +20,7 @@
 		BlockMenuController,
 		CodeHeader,
 		EquationEditor,
-		ImageControls,
-		ImageEmptyController,
+		ImageToolbar,
 		LanguageMenu,
 		MediaEmptyController,
 		MentionItem,
@@ -48,6 +51,7 @@
 		{ id: 'grace', label: 'Grace Hopper' }
 	];
 	const plugins = [
+		createBlockHandlesPlugin({ handle }),
 		createSlashMenuPlugin({ menu: slashMenu }),
 		createToolbarPlugin({ toolbar: bar, card: linkCard }),
 		createBlockMenuPlugin({ menu: blockMenu }),
@@ -56,9 +60,13 @@
 				people.filter((person) => person.label.toLowerCase().includes(query.toLowerCase())),
 			menu: mentionMenu
 		}),
-		createEmbedPlugin({ menu: pasteMenu, empty: mediaEmpty }),
-		createImagePlugin({ toolbar: imageToolbar, empty: imageEmpty }),
-		createSuggestionsPlugin({ bar: suggestionBar }),
+		createEmbedPlugin({ menu: pasteMenu }),
+		createImagePlugin(),
+		createImageToolbarPlugin({ toolbar: imageToolbar }),
+		// One snippet for every empty image and media block, by its kind.
+		createMediaEmptyPlugin({ empty: anyEmpty }),
+		createSuggestionsPlugin(),
+		createSuggestionBarPlugin({ bar: suggestionBar }),
 		createTablePlugin({ grip: tableGrip, menu: tableMenu, add: tableAdd }),
 		createCodePlugin({ header: codeHeader, menu: languageMenu }),
 		createEquationPlugin({ katex: false, panel: equationPanel })
@@ -66,37 +74,23 @@
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
-{#snippet handle({
-	block,
-	label,
-	grip,
-	add,
-	readonly,
-	expanded,
-	controls,
-	labels
-}: BlockHandleSnippetPayload)}
+{#snippet handle({ block, label, grip, plus, readonly }: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
 			type="button"
 			class="custom-handle"
 			data-testid="custom-add"
 			data-block-id={block.id}
-			aria-label={labels.add(label)}
-			aria-expanded={expanded.add ? 'true' : undefined}
-			aria-controls={controls.add}
-			onmousedown={keep}
-			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
+			aria-label={`Add a block below ${label}`}
+			{@attach plus}>+</button
 		>
 		<button
 			type="button"
 			class="custom-handle"
 			data-testid="custom-grip"
 			data-block-id={block.id}
-			use:grip
-			aria-label={labels.grip(label)}
-			aria-expanded={expanded.grip ? 'true' : undefined}
-			aria-controls={controls.grip}>⠿</button
+			aria-label={`${label} block`}
+			{@attach grip}>⠿</button
 		>
 	{/if}
 {/snippet}
@@ -108,6 +102,7 @@
 		data-testid="custom-table-grip"
 		data-kind={payload.kind}
 		data-index={payload.index}
+		aria-label={payload.kind === 'row' ? 'Row options' : 'Column options'}
 		{@attach payload.grip}>{payload.kind === 'row' ? '⋮' : '⋯'}</button
 	>
 {/snippet}
@@ -116,17 +111,19 @@
 	<div
 		class="custom-table-menu"
 		data-testid="custom-table-menu"
+		aria-label={chrome.menu?.kind === 'column' ? 'Column options' : 'Row options'}
 		{@attach chrome.popup}
 		{@attach chrome.keys}
 	>
 		{#each chrome.items as item (item.item.id)}
 			<button
 				type="button"
-				{...item.option}
+				data-selected={item.selected}
+				{@attach item.option}
 				data-testid="custom-table-row"
 				data-row={item.item.id}
 				onmousemove={item.select}
-				onclick={item.run}>{item.label}</button
+				onclick={item.run}>{item.item.id}</button
 			>
 		{/each}
 	</div>
@@ -138,7 +135,7 @@
 		class="custom-table-add"
 		data-testid="custom-table-add"
 		data-kind={payload.kind}
-		aria-label={payload.label}
+		aria-label={payload.kind === 'row' ? 'Add a row' : 'Add a column'}
 		onclick={payload.add}>+</button
 	>
 {/snippet}
@@ -146,8 +143,11 @@
 {#snippet codeHeader(header: CodeHeader)}
 	<div data-testid="custom-code-header">
 		{#if header.editable}
-			<button type="button" data-testid="custom-code-language" {@attach header.button}
-				>{header.label}</button
+			<button
+				type="button"
+				data-testid="custom-code-language"
+				aria-label="Code language: {header.label}"
+				{@attach header.button}>{header.label}</button
 			>
 		{:else}
 			<span data-testid="custom-code-language">{header.label}</span>
@@ -156,8 +156,7 @@
 			type="button"
 			data-testid="custom-code-copy"
 			onmousedown={keep}
-			onclick={() => void header.copy()}
-			>{header.copied ? header.labels.copied : header.labels.copy}</button
+			onclick={() => void header.copy()}>{header.copied ? 'Copied' : 'Copy'}</button
 		>
 	</div>
 {/snippet}
@@ -166,22 +165,25 @@
 	<div class="custom-language-menu" data-testid="custom-language-menu">
 		<input
 			data-testid="custom-language-field"
-			placeholder={menu.labels.search}
+			aria-label="Code language"
+			placeholder="Search"
 			value={menu.query}
 			oninput={(event) => menu.search(event.currentTarget.value)}
 			{@attach menu.keys}
 		/>
-		<ul {@attach menu.popup}>
+		<ul aria-label="Code language" {@attach menu.popup}>
 			{#each menu.items as item (item.item.id)}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<li
-					{...item.option}
+					data-selected={item.selected}
+					{@attach item.option}
 					data-testid="custom-language-row"
 					data-language={item.item.id}
 					data-current={item.current}
 					onmousemove={item.select}
 					onclick={item.run}
 				>
-					{item.label}
+					{item.item.label}
 				</li>
 			{/each}
 		</ul>
@@ -193,18 +195,16 @@
 		class="custom-equation-panel"
 		data-testid="custom-equation-panel"
 		role="dialog"
-		aria-label={editor.labels.editor}
+		aria-label="Equation"
 	>
 		<input
 			data-testid="custom-equation-field"
-			aria-label={editor.labels.editor}
+			aria-label="Equation"
 			value={editor.expression}
 			oninput={(event) => editor.set(event.currentTarget.value)}
 			{@attach editor.field}
 		/>
-		<button type="button" onmousedown={keep} onclick={() => editor.close()}
-			>{editor.labels.done}</button
-		>
+		<button type="button" onmousedown={keep} onclick={() => editor.close()}>Done</button>
 	</div>
 {/snippet}
 
@@ -213,7 +213,7 @@
 		{#if menu.addition}
 			<input
 				data-testid="custom-slash-field"
-				aria-label={menu.labels.filterLabel}
+				aria-label="Filter block commands"
 				role="combobox"
 				aria-expanded="true"
 				aria-controls={menu.listId}
@@ -222,12 +222,14 @@
 				{@attach menu.keys}
 			/>
 		{/if}
-		<ul {@attach menu.popup}>
+		<ul aria-label="Block commands" {@attach menu.popup}>
 			{#each menu.commands as command, index (command.id)}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<li
-					{...menu.option(index)}
+					data-selected={menu.index === index}
+					{@attach menu.option(index)}
 					data-testid="custom-slash-row"
-					onmousemove={() => (menu.selectedIndex = index)}
+					onmousemove={() => (menu.index = index)}
 					onclick={() => void menu.run(command)}
 				>
 					{command.label}
@@ -241,7 +243,7 @@
 	<div class="custom-block-menu" data-testid="custom-block-menu" data-edytor-block-menu>
 		<input
 			data-testid="custom-block-menu-field"
-			aria-label={menu.labels.searchLabel}
+			aria-label="Search actions"
 			value={menu.query}
 			oninput={(event) => menu.search(event.currentTarget.value)}
 			{@attach menu.keys}
@@ -250,11 +252,12 @@
 			{#each menu.rows as row, index (`${'field' in row ? 'color' : 'value' in row ? 'kind' : 'action'}:${row.id}`)}
 				<button
 					type="button"
-					{...menu.option(index)}
+					data-selected={menu.index === index}
+					{@attach menu.option(index)}
 					data-testid="custom-block-menu-row"
 					onclick={() => {
-						menu.selectedIndex = index;
-						menu.runSelected();
+						menu.index = index;
+						menu.run(row);
 					}}>{row.label}</button
 				>
 			{/each}
@@ -264,10 +267,11 @@
 				{#each menu.flyoutRows as row, index (row.id)}
 					<button
 						type="button"
-						{...menu.option(index, true)}
+						data-selected={menu.flyoutIndex === index}
+						{@attach menu.option(index, true)}
 						onclick={() => {
 							menu.flyoutIndex = index;
-							menu.runFlyout();
+							menu.run(row);
 						}}>{row.label}</button
 					>
 				{/each}
@@ -291,11 +295,11 @@
 			<button
 				type="button"
 				data-testid="custom-toolbar-link"
-				onclick={() => toolbar.togglePanel('link')}>{toolbar.labels.link}</button
+				onclick={() => toolbar.togglePanel('link')}>Link</button
 			>
 		</div>
 		{#if toolbar.panel === 'link'}
-			<label for={toolbar.linkFieldId}>{toolbar.labels.linkUrl}</label>
+			<label for={toolbar.linkFieldId}>Link URL</label>
 			<input
 				data-testid="custom-toolbar-link-field"
 				value={toolbar.linkUrl}
@@ -307,16 +311,23 @@
 {/snippet}
 
 {#snippet linkCard(toolbar: ToolbarController)}
-	<div data-testid="custom-link-card" role="toolbar" aria-label={toolbar.labels.card}>
+	<div data-testid="custom-link-card" role="toolbar" aria-label="Link">
 		<span>{toolbar.hoveredHref}</span>
-		<button type="button" onclick={() => toolbar.removeHovered()}>{toolbar.labels.remove}</button>
+		<button type="button" onclick={() => toolbar.removeHovered()}>Remove</button>
 	</div>
 {/snippet}
 
 {#snippet mentionMenu(menu: TriggerMenuController<MentionItem>)}
 	<ul data-testid="custom-mention-menu" {@attach menu.popup}>
 		{#each menu.items as person, index (person.id)}
-			<li {...menu.option(index)} onclick={() => void menu.pick(person)}>{person.label}</li>
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+			<li
+				data-selected={menu.index === index}
+				{@attach menu.option(index)}
+				onclick={() => void menu.pick(person)}
+			>
+				{person.label}
+			</li>
 		{/each}
 	</ul>
 {/snippet}
@@ -324,20 +335,26 @@
 {#snippet pasteMenu(menu: UrlPasteController)}
 	<ul data-testid="custom-paste-menu" {@attach menu.popup}>
 		{#each menu.open?.options ?? [] as option, index (option.id)}
-			<li {...menu.option(index)} data-option={option.id} onclick={() => menu.pick(option)}>
-				{option.label}
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+			<li
+				data-selected={menu.index === index}
+				{@attach menu.option(index)}
+				data-option={option.id}
+				onclick={() => menu.pick(option)}
+			>
+				{option.id}
 			</li>
 		{/each}
 	</ul>
 {/snippet}
 
-{#snippet imageToolbar(controls: ImageControls)}
+{#snippet imageToolbar(controls: ImageToolbar)}
 	<div data-testid="custom-image-toolbar" {@attach controls.bar}>
 		<button type="button" data-testid="custom-image-left" onclick={() => controls.align('left')}
-			>{controls.labels.alignLeft}</button
+			>Align left</button
 		>
 		<button type="button" data-testid="custom-image-alt" onclick={controls.toggleAlt}
-			>{controls.labels.alt}</button
+			>Alt text</button
 		>
 		{#if controls.editing === controls.box?.id}
 			<input
@@ -350,12 +367,16 @@
 	</div>
 {/snippet}
 
-{#snippet imageEmpty(empty: ImageEmptyController)}
+{#snippet anyEmpty(empty: MediaEmptyController)}
+	{#if empty.kind === 'image'}{@render imageEmpty(empty)}{:else}{@render mediaEmpty(empty)}{/if}
+{/snippet}
+
+{#snippet imageEmpty(empty: MediaEmptyController)}
 	<div data-testid="custom-image-empty" data-readonly={empty.readonly}>
 		{#if !empty.readonly}
 			<input
 				data-testid="custom-image-empty-field"
-				aria-label={empty.labels.link}
+				aria-label="Image link"
 				bind:value={empty.draft}
 				{@attach empty.field}
 			/>
@@ -368,7 +389,7 @@
 	<div data-testid="custom-media-empty" data-kind={empty.kind}>
 		<input
 			data-testid="custom-media-empty-field"
-			aria-label={empty.kindLabels.placeholder}
+			aria-label="Paste the link…"
 			bind:value={empty.draft}
 			{@attach empty.field}
 		/>
@@ -376,16 +397,14 @@
 	</div>
 {/snippet}
 
-{#snippet suggestionBar({ suggestion, accept, labels }: SuggestionBarPayload)}
+{#snippet suggestionBar({ suggestion, accept }: SuggestionBarPayload)}
 	<div data-testid="custom-suggestion-bar">
-		<span>{suggestion.label ?? labels.suggestion}</span>
-		<button type="button" data-testid="custom-suggestion-accept" onclick={accept}
-			>{labels.accept}</button
-		>
+		<span>{suggestion.label ?? 'Suggestion'}</span>
+		<button type="button" data-testid="custom-suggestion-accept" onclick={accept}>Accept</button>
 	</div>
 {/snippet}
 
-<Edytor bind:edytor {plugins} {value} blockHandles={{ handle }} aria-label="Custom chrome" />
+<Edytor bind:edytor {plugins} {value} aria-label="Custom chrome" />
 
 <style>
 	.custom-handle {

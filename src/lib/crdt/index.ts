@@ -24,9 +24,9 @@
  *   (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `JSONDoc`,
  *   …), the provider/sync contract (`EdytorSync`), `Awareness`, the
  *   admission errors a load throws, the attribution read surface
- *   (`DocumentAttribution`), and migration.
+ *   (`DocumentAttribution`).
  * - **Composition** — `bindCrdt(Y)` for consumers that inject the engine
- *   themselves (node/SSR-side provider stacks, migration tooling,
+ *   themselves (node/SSR-side provider stacks,
  *   alternate engine instances) plus the engine typings that contract
  *   needs.
  *
@@ -125,13 +125,13 @@ export type {
 	JSONInlineBlock,
 	SerializableContent
 } from '../utils/json.js';
-/** Canonical JSON → the `BlockSpec` `facade.insertBlock` takes (ids kept or minted). */
+/** Canonical JSON → the `BlockSpec` `facade.insertBlocks` takes (ids kept or minted). */
 export { toBlockSpec } from '../utils/json.js';
 
 // ── 2 · The document's vocabulary ──────────────────────────────────────
 //
 // Types a consumer meets while driving the document's operations
-// (`DocumentOperations`: `document.insertBlock(…)`, a room's `transact`) — block specs, destinations, projected
+// (`DocumentOperations`: `document.insertBlocks(…)`, a room's `transact`) — block specs, destinations, projected
 // trees, change notifications — plus the engine-object types the
 // document's own members are typed as (`document.doc: YDoc`,
 // `document.history: YUndoManager`).
@@ -150,6 +150,7 @@ export {
 } from './edytor-doc.js';
 export {
 	DOCUMENT_OPERATIONS,
+	DOCUMENT_WRITES,
 	type DocumentOperations,
 	type DocumentReads,
 	type DocumentWrites
@@ -168,10 +169,8 @@ export {
 	type ProjectedDoc
 } from './placement/model.js';
 
-export { type DocBlock } from './nodes.js';
-
-// `ContentRun` — the maintained-runs item the view layer's delta
-// serialization speaks (`text/deltas.ts`). Part of the public
+// `ContentRun` — the maintained-runs item the view layer's text values
+// read (`segmentJSON`, `session/handles.ts`). Part of the public
 // model→render vocabulary.
 export { type ContentRun } from './text/runs.js';
 
@@ -221,9 +220,9 @@ export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //
 // `document.attribution` hands back a `DocumentAttribution` — compact
-// per-block records, the replicated actor dictionary, and `legacy()`
-// over pre-existing per-edit records. The types are the public read
-// vocabulary; ordinary editing writes no per-edit attribution.
+// per-block records and the replicated actor dictionary. The types are
+// the public read vocabulary; ordinary editing writes no per-edit
+// attribution.
 
 export {
 	type DocumentAttribution,
@@ -234,29 +233,11 @@ export {
 
 // Compact per-BLOCK attribution read vocabulary (`b/<blockId>`
 // records + the block-node `l` attr — see `attribution/block.ts`).
-// `document.attribution.block(id)` / `facade.blockAttribution(id)` /
-// `DocBlock.attribution` are the read entry points.
+// `document.attribution.block(id)` / `document.blockAttribution(id)`
+// are the read entry points.
 export { type ActorId, type BlockAttribution } from './attribution/index.js';
 
-// ── 6 · Migration ──────────────────────────────────────────────────────
-//
-// v13 → v14 one-way import: `isLegacyDoc` detects a v13-era layout, the
-// `Migration` surface (via `bindCrdt(Y).migration` or `bindMigration`)
-// rebuilds an admitted document whose `MigrateResult.update` restores
-// through `loadDocument`. Runbook: `docs/crdt-v14-migration.md`.
-
-export { isLegacyDoc } from './migration/legacy-schema.js';
-
-export {
-	type Migration,
-	type MigrationStatus,
-	type MigrationRecord,
-	type MigrationPhase,
-	type MigrateResult,
-	type MigrateOptions
-} from './migration/migrate.js';
-
-// ── 7 · Composition — injecting the engine ─────────────────────────────
+// ── 6 · Composition — injecting the engine ─────────────────────────────
 //
 // `bindCrdt(Y)` is the supported one-shot entry for consumers that take
 // the engine themselves (the documented node/SSR path):
@@ -271,36 +252,43 @@ export {
 //
 // Everything `bindCrdt` composes is also available pre-bound through the
 // document factories above — reach for `bindCrdt` when the caller needs
-// the raw provider/migration/sync stacks on a doc it owns, not for
+// the raw provider/sync stacks on a doc it owns, not for
 // ordinary document work. `EngineApi`/`EngineDoc`/`YDoc` and friends are
 // the typings that injection contract speaks.
 
-import { bindGenerations } from './migration/generation.js';
 import type { EngineApi, YDoc } from './engine-api.js';
 import { Awareness as _Awareness } from './protocols/awareness.js';
 import { bindAdmission } from './admission.js';
 import { bindAttribution } from './attribution/index.js';
 import { bindEdytorDoc } from './edytor-doc.js';
-import { bindProviders } from './providers/index.js';
-import { bindMigration } from './migration/migrate.js';
+import {
+	bindProviders,
+	documentSnapshot,
+	lastUpdated,
+	prefetchWith,
+	type PrefetchOptions
+} from './providers/index.js';
 import { bindSync } from './protocols/sync.js';
 
 export const bindCrdt = (Y: EngineApi) => {
 	const doc = bindEdytorDoc(Y);
+	const providers = bindProviders(Y);
 	return {
 		/** Create a v14 edytor document — `new Y.Doc(opts)` on the bound engine, with the document's rules (`doc.newDoc`). */
 		createDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc => doc.newDoc(opts),
 		/** Engine-free — same class for every engine instance. */
 		Awareness: _Awareness,
 		doc,
-		providers: bindProviders(Y),
-		migration: bindMigration(Y),
-		/** The generation cutover (4 → 5): a generation-4 state read as JSON. */
-		generations: bindGenerations(Y),
+		providers: {
+			...providers,
+			prefetch: (options: PrefetchOptions) => prefetchWith(Y, providers, options),
+			lastUpdated,
+			documentSnapshot
+		},
 		sync: bindSync(Y),
 		/** The document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),
-		/** Bind the attribution service to this engine — actor dictionary + legacy `a/` reads + block attribution (documents attach it automatically). */
+		/** Bind the attribution service to this engine — actor dictionary + block attribution (documents attach it automatically). */
 		attribution: bindAttribution(Y)
 	};
 };
@@ -311,7 +299,6 @@ export type {
 	EngineApi,
 	EngineDoc,
 	EngineNode,
-	EngineDeepEvent,
 	EngineTransaction,
 	EngineItemRef,
 	YNode,

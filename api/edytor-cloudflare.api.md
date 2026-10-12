@@ -64,10 +64,6 @@ export declare class AttachedDocument {
     } | {
         kind: 'restored';
         records: number;
-    } | {
-        kind: 'converted';
-        from: number;
-        records: number;
     };
     private readonly room;
     constructor(ctx: DurableObjectState, options?: AttachRoomOptions);
@@ -1053,12 +1049,6 @@ export type RoomLogEntry = {
     reason: 'storage' | 'internal';
     detail: string;
 } | {
-    edytor: 'convert';
-    from: number;
-    to: number;
-    blocks: number;
-    bytes: number;
-} | {
     edytor: 'move';
     moveId: string;
     role: 'out' | 'in';
@@ -1162,7 +1152,6 @@ export type StoredRecord = {
     kind: RowKind;
     record: number;
     bytes: Uint8Array<ArrayBuffer>;
-    v2: boolean;
 };
 ```
 
@@ -1375,6 +1364,14 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
+```
+
+#### crdt/doc/content.d.ts#NewInline
+
+```ts
+export type NewInline = Omit<InlineSpec, 'id'> & {
+    id?: string;
+};
 ```
 
 #### crdt/doc/types.d.ts#AnchorAffinity
@@ -1634,53 +1631,6 @@ export type FlowView = RangeView & {
 };
 ```
 
-#### crdt/nodes.d.ts#DocBlock
-
-```ts
-export type DocBlock = {
-    readonly id: BlockId;
-    readonly document: DocumentOperations;
-    readonly attribution: BlockAttribution | undefined;
-    readonly items: readonly ContentItem[];
-    readonly length: number;
-    readonly runs: readonly ContentRun[];
-    childIds(): BlockId[];
-    insertText(offset: number, text: string, marks?: Record<string, unknown>): OpResult;
-    deleteText(offset: number, length: number): OpResult;
-    format(offset: number, length: number, marks: Record<string, unknown>): OpResult;
-    setMark(offset: number, length: number, name: string, value: unknown): OpResult;
-    unsetMark(offset: number, length: number, name: string): OpResult;
-    clearMarks(offset: number, length: number): OpResult;
-    insertInline(offset: number, spec: InlineSpec): OpResult;
-    removeInline(inlineId: string): OpResult;
-    setInlineData(inlineId: string, data: Record<string, unknown>): OpResult;
-    insertChild(index: number, spec: BlockSpec): OpResult;
-    moveTo(dest: {
-        parent: NodeRef;
-        index: number;
-    }): OpResult;
-    nestUnder(parent: DocBlock | BlockId): OpResult;
-    unNest(): OpResult;
-    split(offset: number, newId: BlockId, tail?: SplitTail): OpResult;
-    mergeBackward(): OpResult;
-    mergeForward(): OpResult;
-    mergeFrom(other: DocBlock | BlockId): OpResult;
-    delete(opts?: {
-        keepChildren?: boolean;
-    }): OpResult;
-    setType(type: string): OpResult;
-    setData(data: Record<string, unknown>): OpResult;
-    set(value: Parameters<DocumentWrites['setBlock']>[1]): OpResult;
-    duplicate(freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-};
-```
-
-#### crdt/nodes.d.ts#NodeRef
-
-```ts
-export type NodeRef = DocBlock | BlockId | null;
-```
-
 #### crdt/operations.d.ts#DocumentOperations
 
 ```ts
@@ -1691,7 +1641,6 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
     apply(plan: Prepared): OpResult;
     compose(...parts: Prepared[]): Prepared;
     transact<R>(fn: () => R, origin?: unknown): R;
-    block(id: BlockId): DocBlock;
     onChange(listener: (change: DocChange) => void): () => void;
     readonly version: number;
 }
@@ -1768,9 +1717,7 @@ export interface DocumentReads {
 
 ```ts
 export interface DocumentWrites {
-    insertBlock(dest: Destination, spec: JSONBlock | BlockSpec): OpResult;
     insertBlocks(dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]): OpResult;
-    moveBlock(id: BlockId, dest: Destination): OpResult;
     moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
     nestBlock(id: BlockId, parent: BlockId): OpResult;
     unNestBlock(id: BlockId): OpResult;
@@ -1792,29 +1739,18 @@ export interface DocumentWrites {
     setBlock(id: BlockId, value: {
         type?: string;
         data?: Record<string, unknown>;
-        content?: ContentItem[];
-        children?: BlockSpec[];
+        content?: (ContentItem | JSONText | JSONInlineBlock)[];
+        children?: (BlockSpec | JSONBlock)[];
     }): OpResult;
     setBlockType(id: BlockId, type: string): OpResult;
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
-    setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
-    duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-    insertTableRow(table: BlockId, index: number): OpResult;
-    deleteTableRows(rows: readonly BlockId[]): OpResult;
-    insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
-    deleteTableColumn(table: BlockId, column: string | number): OpResult;
-    moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
-    moveTableRows(rows: readonly BlockId[], to: number): OpResult;
-    fillTableCell(row: BlockId, column: string | number): OpResult;
+    duplicateBlock(id: BlockId, freshId?: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
-    setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
-    unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
     clearMarks(id: BlockId, offset: number, length: number): OpResult;
-    insertInline(id: BlockId, offset: number, atom: InlineSpec): OpResult;
+    insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
     removeInline(id: BlockId, inlineId: string): OpResult;
-    setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
     deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
     replaceRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
     insertFlow(target: FlowTarget, flow: Flow, view?: FlowView): OpResult;

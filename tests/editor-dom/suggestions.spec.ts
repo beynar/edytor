@@ -59,7 +59,7 @@ test.describe('suggestions', () => {
 		const before = (await line.boundingBox())!;
 		await page.mouse.click(before.x + 4, before.y + before.height / 2);
 		await expect
-			.poll(() => inPage(page, (edytor) => edytor.selection.state.startBlock?.id))
+			.poll(() => inPage(page, (edytor) => edytor.selection.textRange().startText?.parent?.id))
 			.toBe('e');
 		await inPage(page, (edytor) =>
 			edytor.suggestions.add({ replace: ['e'] }, [

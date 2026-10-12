@@ -15,6 +15,7 @@ import {
 	setNativeSelection,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /**
  * U11 canaries for the headless command lane. Each case mutates the real
@@ -103,7 +104,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		// 'c' sits at offset 2 — via the production format path.
 		const text = edytor.root!.children[0]!.firstText!;
 		expect(text.stringContent).toBe('abcef');
-		text.formatAt(2, 1, { bold: null });
+		edytor.formatRange(text.parent.id, text.segStart + 2, 1, { bold: null });
 		await flushDomUpdates();
 		expect(() => assertCanonicalTree(edytor, contract)).toThrow();
 	});
@@ -147,11 +148,11 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		);
 		await flushDomUpdates();
 		await tick();
-		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
+		await waitFor(() => expect(selectionState(b.edytor).startText?.isInDocument).toBe(true));
 
 		// The recovery contract: B's caret lands on the sibling that slid
 		// into the dead slot — 'cc'@0, collapsed, on a LIVE text.
-		const s = b.edytor.selection.state;
+		const s = selectionState(b.edytor);
 		expect(s.startText?.stringContent).toBe('cc');
 		expect(s.yStart).toBe(0);
 		expect(s.isCollapsed).toBe(true);
@@ -174,7 +175,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		);
 		await flushDomUpdates();
 		await tick();
-		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
-		expect(b.edytor.selection.state.isCollapsed).toBe(true);
+		await waitFor(() => expect(selectionState(b.edytor).startText?.isInDocument).toBe(true));
+		expect(selectionState(b.edytor).isCollapsed).toBe(true);
 	});
 });

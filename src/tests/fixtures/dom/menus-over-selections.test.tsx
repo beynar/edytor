@@ -9,11 +9,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
 	BLOCK_ACTIVATE_EVENT,
 	BlockHandleController
@@ -25,6 +20,14 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockHandlesPlugin,
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -71,7 +74,7 @@ describe('the toolbar Turn into over several blocks (SW-menus-1)', () => {
 		const view = await render([toolbarPlugin], [p('a'), p('b', [p('b1')]), p('c'), p('d')]);
 		const { edytor } = view;
 		const [a, c] = [edytor.idToBlock.get('a')!, edytor.idToBlock.get('c')!];
-		edytor.selection.setAtRange(a.firstText!, 0, c.firstText!, 1);
+		edytor.selection.selectText(a.firstText!, 0, c.firstText!, 1);
 		await flushDomUpdates();
 
 		await turn(view, 'Bulleted list');
@@ -86,7 +89,7 @@ describe('the toolbar Turn into over several blocks (SW-menus-1)', () => {
 			['bulleted-list-item', []],
 			['paragraph', []]
 		]);
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['a', 0, 'c', 1]);
 
 		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
@@ -102,7 +105,7 @@ describe('the toolbar Turn into over several blocks (SW-menus-1)', () => {
 describe('the slash menu highlight as the query changes (SW-menus-2)', () => {
 	it('returns to the first match when the query narrows, as in Notion', async () => {
 		const { edytor, editor } = await render([slashMenuPlugin], [p('a')]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		await type(editor, ' /');
 		for (let i = 0; i < 3; i++) await dispatchDomKeyDown(document, { key: 'ArrowDown' });
@@ -120,12 +123,12 @@ describe('the slash menu highlight as the query changes (SW-menus-2)', () => {
 	it('keeps the highlight while the caret moves without changing the query', async () => {
 		const { edytor, editor } = await render([slashMenuPlugin], [p('a')]);
 		const text = edytor.idToBlock.get('a')!.firstText!;
-		edytor.selection.setAtTextOffset(text, 1);
+		edytor.selection.selectText(text, 1);
 		await flushDomUpdates();
 		await type(editor, ' /head');
 		await dispatchDomKeyDown(document, { key: 'ArrowDown' });
 		// The same caret written again (a selection change that keeps the query).
-		edytor.selection.setAtTextOffset(text, text.length);
+		edytor.selection.selectText(text, text.length);
 		await flushDomUpdates();
 		expect(
 			document.querySelector('[data-testid="slash-menu-item"][data-selected="true"]')?.textContent
@@ -182,7 +185,7 @@ describe('a handle drag over a selection holding a parent and its child (SW-menu
 	it('drags the selected blocks without their selected descendants', async () => {
 		const { edytor } = await render([], [p('a'), p('b', [p('b1')]), p('c'), p('d')]);
 		const [b, b1, c] = ['b', 'b1', 'c'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.selection.selectBlocks(b!, b1!, c!);
+		selectBlocks(edytor, b!, b1!, c!);
 		await flushDomUpdates();
 		const controller = new BlockHandleController(edytor, { draggable: true });
 		expect(controller.dragBlocks(c!).map((block) => block.id)).toEqual(['b', 'c']);
@@ -193,7 +196,7 @@ describe('a handle drag over a selection holding a parent and its child (SW-menu
 describe('a menu open when the editor turns readonly (SW-menus-5)', () => {
 	it('the slash menu hides, and Enter no longer runs its command', async () => {
 		const { edytor, editor } = await render([slashMenuPlugin], [p('a')]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 1);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
 		await type(editor, ' /h2');
 		expect(document.querySelector('[data-testid="slash-menu"]')).not.toBeNull();
@@ -207,7 +210,7 @@ describe('a menu open when the editor turns readonly (SW-menus-5)', () => {
 	it('the toolbar hides, and shows again over the same selection when editable', async () => {
 		const { edytor } = await render([toolbarPlugin], [p('abc')]);
 		const text = edytor.idToBlock.get('abc')!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 2);
+		edytor.selection.selectText(text, 0, text, 2);
 		await flushDomUpdates();
 		const bar = () => document.querySelector('[data-testid="selection-toolbar"]');
 		expect(bar()).not.toBeNull();
@@ -243,7 +246,7 @@ describe('the block menu over a block selection (SW-menus-6)', () => {
 			[p('a'), p('b'), p('c'), p('d')]
 		);
 		const { edytor } = view;
-		edytor.selection.selectBlocks(edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
 		await flushDomUpdates();
 		await click(document.querySelector('[data-testid="block-handle"][data-block-id="b"]')!);
 		return view;
@@ -269,7 +272,7 @@ describe('the block menu over a block selection (SW-menus-6)', () => {
 		const view = await setup();
 		await click(document.querySelector('[data-testid="block-menu-delete"]')!);
 		expect(ids(view)).toEqual(['c', 'd']);
-		const { startBlock, yStart } = view.edytor.selection.state;
+		const { startBlock, yStart } = selectionState(view.edytor);
 		expect([startBlock?.id, yStart]).toEqual(['c', 0]);
 		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
 		expect(ids(view)).toEqual(['a', 'b', 'c', 'd']);
@@ -320,14 +323,14 @@ describe('the toolbar mark buttons show the marks the selection holds (SW-menus-
 		const text = edytor.idToBlock.get('x')!.firstText!;
 		const pressed = (mark: string) =>
 			document.querySelector(`[data-testid="toolbar-${mark}"]`)?.getAttribute('aria-pressed');
-		edytor.selection.setAtRange(text, 0, text, 4);
+		edytor.selection.selectText(text, 0, text, 4);
 		await flushDomUpdates();
 		expect([pressed('bold'), pressed('italic')]).toEqual(['true', 'false']);
 		// Partly bold: not pressed (the button bolds the whole range).
-		edytor.selection.setAtRange(text, 0, text, 7);
+		edytor.selection.selectText(text, 0, text, 7);
 		await flushDomUpdates();
 		expect(pressed('bold')).toBe('false');
-		edytor.selection.setAtRange(text, 0, text, 4);
+		edytor.selection.selectText(text, 0, text, 4);
 		await flushDomUpdates();
 		await click(document.querySelector('[data-testid="toolbar-bold"]')!);
 		expect(pressed('bold')).toBe('false');
@@ -341,7 +344,7 @@ describe('a kind command over several blocks (SW-menus-8)', () => {
 	it('Mod+Alt+1 over a block selection turns every selected block into a heading, one undo step', async () => {
 		const view = await render([], [p('a'), p('b'), p('c')]);
 		const { edytor } = view;
-		edytor.selection.selectBlocks(edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: '1', code: 'Digit1', ctrlKey: true, altKey: true });
 		expect(types(view)).toEqual([
@@ -358,7 +361,7 @@ describe('a kind command over several blocks (SW-menus-8)', () => {
 		const view = await render([], [p('a'), p('b'), p('c')]);
 		const { edytor } = view;
 		const [a, b] = [edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!];
-		edytor.selection.setAtRange(a.firstText!, 0, b.firstText!, 1);
+		edytor.selection.selectText(a.firstText!, 0, b.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: '5', code: 'Digit5', ctrlKey: true, altKey: true });
 		expect(types(view).map(([type]) => type)).toEqual([
@@ -366,7 +369,7 @@ describe('a kind command over several blocks (SW-menus-8)', () => {
 			'bulleted-list-item',
 			'paragraph'
 		]);
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['a', 0, 'b', 1]);
 	});
 });

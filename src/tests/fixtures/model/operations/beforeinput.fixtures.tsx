@@ -1,10 +1,11 @@
 /** @jsxImportSource ../../../jsx */
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runBeforeInput } from '../../../test.utils.js';
+import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
+import { selectionState } from '../../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 export const fixtures = defineFixtures([
 	defineModelOperationFixture({
@@ -127,7 +128,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			edytor.selection.state.startText?.markText({ mark: 'bold', toggle: true });
+			richTextOperations(edytor).setMarkAtRange('bold');
 			await runBeforeInput(edytor, { inputType: 'insertText', data: '@' });
 			return runBeforeInput(edytor, { inputType: 'insertText', data: 'x' });
 		},

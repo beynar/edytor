@@ -172,7 +172,10 @@ test.describe('browser clipboard behavior', () => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const block = edytor.root.children[0];
 			// A block selection is exactly its members: the nested block is selected too.
-			edytor.selection.selectBlocks(block, ...block.children);
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [block, ...block.children].map((block) => block.id)
+			});
 			return [block.id, block.children[0].id];
 		});
 		const copyResult = await dispatchClipboardEvent(page, 'copy');
@@ -208,7 +211,10 @@ test.describe('browser clipboard behavior', () => {
 		await waitForEditorReady(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(edytor.root.children[1]);
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [edytor.root.children[1]].map((block) => block.id)
+			});
 		});
 		const cutResult = await dispatchClipboardEvent(page, 'cut');
 		expect(cutResult.defaultPrevented).toBe(true);
@@ -284,7 +290,10 @@ test.describe('browser clipboard behavior', () => {
 		const copyResult = await dispatchClipboardEvent(page, 'copy');
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(edytor.root.children[1]);
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [edytor.root.children[1]].map((block) => block.id)
+			});
 		});
 		await dispatchPaste(page, { data: copyResult.clipboardData });
 
@@ -373,7 +382,7 @@ test.describe('browser clipboard behavior', () => {
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const leading = edytor.root.children[0].content[0];
-			edytor.transact(() => leading.insertAt(0, '\n'));
+			edytor.transact(() => edytor.facade.insertText(leading.parent.id, leading.segStart, '\n'));
 		});
 		// Pin the model caret and paste in one synchronous task: the paste
 		// pipeline reads `selection.state`, and a queued selectionchange

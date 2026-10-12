@@ -39,14 +39,13 @@
  *   read-only view a foreign annotation wrapper stays and a damaged identity
  *   attribute is healed.
  */
+import { siblingSlot } from '$lib/session/handles.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import {
 	dispatchComposition,
@@ -61,6 +60,8 @@ import { suggestEnd } from '../../test.utils.js';
 import { fold, foldPlugin } from '../../dom/R6FoldKind.svelte';
 import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;
@@ -438,7 +439,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		const truth = await autocorrectThen(
 			edytor,
 			() => {
-				remote.facade.moveBlock(id, { parent: null, index: 0 });
+				remote.facade.moveBlocks([id], { parent: null, index: 0 });
 				remote.deliver();
 			},
 			{ index: 1 }
@@ -667,9 +668,9 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 			while (root.firstChild !== second) root.removeChild(root.firstChild!);
 			expect(await settled(edytor)).toEqual([]);
 			expect(first.isConnected).toBe(true);
-			edytor.root!.children[1]!.insertBlockAfter({
-				block: { id: 'third', type: 'paragraph', content: [{ text: 'ef' }] }
-			});
+			edytor.insertBlocks(siblingSlot(edytor.root!.children[1]!), [
+				{ id: 'third', type: 'paragraph', content: [{ text: 'ef' }] }
+			]);
 			expect(await settled(edytor)).toEqual([]);
 			// The root renders its blocks in cell order, then the render anchor.
 			expect(
@@ -693,7 +694,7 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 			remote.deliver();
 			await flushDomUpdates();
 			expect(edytor.surface.epoch).toBeGreaterThan(epoch);
-			expect(edytor.selection.state.yStart).toBe(6);
+			expect(selectionState(edytor).yStart).toBe(6);
 		}
 	);
 });
@@ -796,7 +797,7 @@ describe('F-I22 — Android types natively into an empty block', () => {
 			expect(modelText(edytor, 0)).toBe('ab');
 			expect(await settled(edytor)).toEqual([]);
 			expect(domText(edytor, 0)).toBe('ab');
-			expect(edytor.selection.state.yStart).toBe(2);
+			expect(selectionState(edytor).yStart).toBe(2);
 		} finally {
 			restore();
 		}

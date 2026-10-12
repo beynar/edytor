@@ -68,7 +68,7 @@ test.describe('blurred editor programmatic update behavior', () => {
 			}
 
 			edytor.doc.transact(() => {
-				text.insertAt(text.length, '!');
+				edytor.facade.insertText(text.parent.id, text.segStart + text.length, '!');
 			}, 'remote-programmatic-update');
 		});
 
@@ -106,14 +106,14 @@ test.describe('blurred editor programmatic update behavior', () => {
 
 		await page.evaluate(async () => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			const text = edytor?.selection?.state?.startText;
-			const offset = edytor?.selection?.state?.yStart;
+			const text = edytor?.selection?.textRange()?.startText;
+			const offset = edytor?.selection?.textRange()?.yStart;
 			if (!edytor || !text || typeof offset !== 'number') {
 				throw new Error('Missing cached editor selection');
 			}
 
 			edytor.node.focus();
-			await edytor.selection.setAtTextOffset(text, offset);
+			await edytor.selection.selectText(text, offset);
 		});
 		await page.keyboard.type('X');
 

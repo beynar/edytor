@@ -4,51 +4,60 @@ description: The file plugin adds Notion's file block, an attachment uploaded th
 icon: paperclip
 ---
 
-`filePlugin` adds Notion's file block: an empty panel until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+`createFilePlugin()` adds Notion's file block: an empty panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createFilePlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createFilePlugin, createUploadsPlugin } from 'edytor';
 
-	const file = createFilePlugin({
-		upload: async (picked) => {
+	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
+	const uploads = createUploadsPlugin({
+		upload: async (file) => {
 			const body = new FormData();
-			body.append('file', picked);
+			body.append('file', file);
 			const response = await fetch('/api/uploads', { method: 'POST', body });
 			return (await response.json()).url;
 		}
 	});
 </script>
 
-<Edytor plugins={[file, slashMenuPlugin]} />
+<Edytor plugins={[uploads, createFilePlugin()]} />
 ```
 
-The slash menu then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only.
 
 ## Options
 
-`createFilePlugin(options)` takes a `MediaPluginOptions` (shared with [video](/docs/plugins/video) and [audio](/docs/plugins/audio)):
+`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
 
 <TypeTable
   type={{
-    upload: {
-      type: "(file: File) => Promise<string>",
-      description: "Upload a file and answer its URL (`report.progress(fraction)` draws the block's bar). Adds an Upload button to the empty block and takes pasted and dropped files no other kind takes. Without it, files are linked only.",
-    },
-    labels: {
-      type: "PartialLabels<'media'>",
-      description: "The empty panel's words (file, upload) and the size format (fileSize), over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.file); they replace the command's own.",
-    },
-    empty: {
-      type: "Snippet<[MediaEmptyController]>",
-      description: "Replaces an empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder). See Menus and handles.",
+    row: {
+      type: "Snippet<[FileRowPayload]>",
+      description: "The row of a file block with a source, replacing Notion's (a paperclip, the name and the size). The first file plugin listed in a view gives it.",
     },
   }}
 />
+
+`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
+
+```svelte title="Files.svelte" check
+<script lang="ts">
+	import { Edytor, createFilePlugin, type FileRowPayload } from 'edytor';
+
+	const files = createFilePlugin({ row });
+</script>
+
+{#snippet row(file: FileRowPayload)}
+	<a class="attachment" href={file.src} {@attach file.link}>
+		<span>{file.name}</span>
+		{#if file.sizeLabel}<small>{file.sizeLabel}</small>{/if}
+	</a>
+{/snippet}
+
+<Edytor plugins={[files]} />
+```
+
 
 ## The kind
 
@@ -73,6 +82,5 @@ The block is void like the [image](/docs/plugins/image), and its only text is th
 | `[data-edytor-file]`        | The link's wrapper              |
 | `[data-edytor-file-name]`   | The name                        |
 | `[data-edytor-file-size]`   | The size (`5 B`, `1.2 MB`)      |
-| `[data-edytor-media-upload]` | The empty panel's Upload button |
 
-The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).
+The row's look (its shade, the hover, the muted size) is the [Notion theme](/docs/customization/styling#notion-theme)'s. The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

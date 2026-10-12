@@ -13,7 +13,10 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  */
 
 type Edytor = {
-	selection: { state: { startBlock?: { id: string }; yStart: number; isCollapsed: boolean } };
+	selection: {
+		textRange: () => { startText: { parent: { id: string } } | null; yStart: number };
+		projection: { isCollapsed: boolean };
+	};
 	facade: {
 		tableGrid: (id: string) => { columns: string[]; rows: { cells: (string | null)[] }[] } | null;
 		blockText: (id: string) => string;
@@ -37,7 +40,12 @@ const grid = (page: Page) =>
 
 const caret = (page: Page) =>
 	page.evaluate(() => {
-		const { state } = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection;
+		const view = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection;
+		const state = {
+			...view.textRange(),
+			startBlock: view.textRange().startText?.parent,
+			isCollapsed: view.projection.isCollapsed
+		};
 		return { block: state.startBlock?.id ?? null, offset: state.yStart };
 	});
 

@@ -44,17 +44,13 @@ const declares = (member: string) =>
 const WIRE = [
 	'GENERATION',
 	'GENERATION_RECORD',
-	'STORED_GENERATION_RECORD',
-	'STORAGE_FORMAT',
 	'PROTOCOL_VERSION',
-	'PREVIOUS_SCHEMA',
 	'META_KEY',
 	'CLOSE',
 	'MAX_FRAME_BYTES',
 	'frame',
 	'generationWord',
 	'readProtocolVersion',
-	'isPreviousGenerationRecord',
 	'GenerationMismatchError',
 	'messageSync',
 	'messageAwareness',
@@ -74,7 +70,6 @@ const WIRE = [
 	'ChunkLimitError',
 	'applyAwarenessUpdate',
 	'encodeAwarenessUpdate',
-	'modifyAwarenessUpdate',
 	'readAwarenessEntries',
 	'writeAwarenessEntries',
 	'createDecoder',
@@ -195,10 +190,15 @@ describe('declarations', () => {
 			'capturePointerDragStart',
 			'handleTripleClick',
 			'mint',
-			'observed'
+			'observed',
+			'textRange',
+			'textAt',
+			'selectText',
+			'selectLines',
+			'voidField'
 		])
 			expect(selection, member).not.toMatch(declares(member));
-		for (const member of ['select', 'setAtTextOffset', 'selectedMembers', 'state'])
+		for (const member of ['select', 'setCaret', 'caret', 'projection', 'value', 'selectedMembers'])
 			expect(selection, member).toMatch(declares(member));
 		const block = declaration('edytor', 'Block');
 		for (const member of ['attach', 'firstEditableText'])

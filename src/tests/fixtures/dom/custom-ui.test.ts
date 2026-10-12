@@ -9,7 +9,6 @@ import CustomUi from '../../dom/CustomUi.svelte';
 import CustomChrome from '../../dom/CustomChrome.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { englishLabels } from '$lib/labels.js';
 import {
 	dispatchClipboardPaste,
 	dispatchDomBeforeInput,
@@ -17,6 +16,7 @@ import {
 	flushDomUpdates,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 const setup = async (children = [{ id: 'a', type: 'paragraph', content: [{ text: 'hello' }] }]) => {
 	let edytor: Edytor | undefined;
@@ -56,7 +56,7 @@ describe('UI snippets', () => {
 		const { edytor, editor } = await setup([
 			{ id: 'a', type: 'paragraph', content: [{ text: '' }] }
 		]);
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '/' });
 		const rows = all('custom-slash');
 		expect(rows.map((r) => r.textContent)).toContain('Heading 1');
@@ -68,7 +68,7 @@ describe('UI snippets', () => {
 	it('a toolbar snippet shows over a selection and formats it', async () => {
 		const { edytor } = await setup();
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 5);
+		edytor.selection.selectText(text, 0, text, 5);
 		await flushDomUpdates();
 		await click(all('custom-toolbar')[0]!.querySelector('button')!);
 		expect(edytor.value.children?.[0]?.content).toEqual([{ text: 'hello', marks: { bold: true } }]);
@@ -143,7 +143,7 @@ describe('custom snippets with the attachments', () => {
 			await dispatchDomBeforeInput(editor, { inputType: 'insertText', data });
 	};
 	const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+		edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 		await flushDomUpdates();
 	};
 	/** The overlay measures in its next frame. */
@@ -174,7 +174,7 @@ describe('custom snippets with the attachments', () => {
 		const listbox = named(editor.getAttribute('aria-controls'));
 		expect(listbox?.closest('[data-testid="custom-slash-menu"]')).not.toBeNull();
 		expect(listbox?.getAttribute('role')).toBe('listbox');
-		expect(listbox?.getAttribute('aria-label')).toBe(englishLabels.slashMenu.list);
+		expect(listbox?.getAttribute('aria-label')).toBe('Block commands');
 		expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
 		const options = all('custom-slash-row');
 		expect(options.every((option) => option.getAttribute('role') === 'option')).toBe(true);
@@ -277,12 +277,12 @@ describe('custom snippets with the attachments', () => {
 	it('the toolbar: named by the root, reached with Alt+F10, one tab stop, Escape returns', async () => {
 		const { edytor, editor } = await chrome([p('a', 'hello')]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		const toolbar = named(editor.getAttribute('aria-controls'));
 		expect(toolbar).toBe(one('custom-toolbar'));
 		expect(toolbar?.getAttribute('role')).toBe('toolbar');
-		expect(toolbar?.getAttribute('aria-label')).toBe(englishLabels.toolbar.bar);
+		expect(toolbar?.hasAttribute('aria-label')).toBe(false);
 		expect(toolbar?.hasAttribute('data-edytor-toolbar-bar')).toBe(true);
 		expect(editor.getAttribute('aria-keyshortcuts')).toBe('Alt+F10');
 
@@ -305,7 +305,7 @@ describe('custom snippets with the attachments', () => {
 	it('the toolbar: the link field takes the focus when opened, Enter links the selection', async () => {
 		const { edytor, editor } = await chrome([p('a', 'hello')]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(editor, {
 			key: 'k',
@@ -345,7 +345,7 @@ describe('custom snippets with the attachments', () => {
 		const listbox = named(editor.getAttribute('aria-controls'));
 		expect(listbox).toBe(one('custom-mention-menu'));
 		expect(listbox?.getAttribute('role')).toBe('listbox');
-		expect(listbox?.getAttribute('aria-label')).toBe(englishLabels.mention.menu);
+		expect(listbox?.hasAttribute('aria-label')).toBe(false);
 		const options = [...listbox!.querySelectorAll('[role="option"]')];
 		expect(options.map((option) => option.textContent)).toEqual([
 			'Ada Lovelace',
@@ -394,7 +394,7 @@ describe('custom snippets with the attachments', () => {
 		await frame();
 		const toolbar = one('custom-image-toolbar')!;
 		expect(toolbar.getAttribute('role')).toBe('toolbar');
-		expect(toolbar.getAttribute('aria-label')).toBe(englishLabels.image.toolbar);
+		expect(toolbar?.hasAttribute('aria-label')).toBe(false);
 		expect(document.querySelector('[data-edytor-image-toolbar]')).toBe(toolbar);
 		await click(one('custom-image-left')!);
 		expect(edytor.facade.blockDataOf('img')).toEqual({ src, align: 'left' });
@@ -438,14 +438,12 @@ describe('custom snippets with the attachments', () => {
 		});
 	});
 
-	it('a suggestion `bar` reads the plugin’s words from its payload', async () => {
+	it('a suggestion `bar` writes its own words', async () => {
 		const { edytor } = await chrome([p('a')]);
 		edytor.suggestions.add({ after: 'a' }, [{ type: 'paragraph', content: [{ text: 'more' }] }]);
 		await flushDomUpdates();
-		expect(one('custom-suggestion-bar')?.textContent).toContain(
-			englishLabels.suggestions.suggestion
-		);
-		expect(one('custom-suggestion-accept')?.textContent).toBe(englishLabels.suggestions.accept);
+		expect(one('custom-suggestion-bar')?.textContent).toContain('Suggestion');
+		expect(one('custom-suggestion-accept')?.textContent).toBe('Accept');
 		await click(one('custom-suggestion-accept')!);
 		expect(edytor.value.children?.map((block) => block.content)).toEqual([
 			[{ text: 'a' }],
@@ -455,8 +453,8 @@ describe('custom snippets with the attachments', () => {
 
 	it('a handle: its `+` and grip name the menu they opened from the payload (`expanded`, `controls`)', async () => {
 		const { editor } = await chrome([p('a'), p('b')]);
-		expect(plus('a').getAttribute('aria-label')).toBe(englishLabels.blockHandles.add('Text'));
-		expect(grip('a').getAttribute('aria-label')).toBe(englishLabels.blockHandles.grip('Text'));
+		expect(plus('a').getAttribute('aria-label')).toBe('Add a block below Text');
+		expect(grip('a').getAttribute('aria-label')).toBe('Text block');
 		expect(plus('a').hasAttribute('aria-controls')).toBe(false);
 		await click(plus('a'));
 		const list = named(plus('a').getAttribute('aria-controls'));
@@ -517,17 +515,18 @@ describe('custom snippets with the attachments', () => {
 			expect(grip.closest('[data-edytor-table-grip-host="row"]')).not.toBeNull();
 			expect(grip.dataset.index).toBe('0');
 			expect(grip.getAttribute('draggable')).toBe('true');
-			expect(grip.getAttribute('aria-label')).toBe(englishLabels.table.rowMenu);
+			// Named by the app's markup, never by the package.
+			expect(grip.getAttribute('aria-label')).toBe('Row options');
 			expect(grip.getAttribute('aria-haspopup')).toBe('menu');
 			expect(grip.getAttribute('aria-expanded')).toBe('false');
-			expect(tableGrip('column')?.getAttribute('aria-label')).toBe(englishLabels.table.columnMenu);
+			expect(tableGrip('column')?.getAttribute('aria-label')).toBe('Column options');
 
 			await click(grip);
 			const menu = one('custom-table-menu')!;
 			expect(menu.closest('[data-edytor-table-menu-host]')).not.toBeNull();
 			expect(document.activeElement).toBe(menu);
 			expect(menu.getAttribute('role')).toBe('menu');
-			expect(menu.getAttribute('aria-label')).toBe(englishLabels.table.rowMenu);
+			expect(menu.getAttribute('aria-label')).toBe('Row options');
 			expect(menu.dataset.edytorTableMenu).toBe('row');
 			expect(named(editor.getAttribute('aria-controls'))).toBe(menu);
 			expect(editor.getAttribute('aria-haspopup')).toBe('menu');
@@ -588,7 +587,7 @@ describe('custom snippets with the attachments', () => {
 			await key(column, { key: 'ArrowDown' });
 			const menu = one('custom-table-menu')!;
 			expect(menu.dataset.edytorTableMenu).toBe('column');
-			expect(menu.getAttribute('aria-label')).toBe(englishLabels.table.columnMenu);
+			expect(menu.getAttribute('aria-label')).toBe('Column options');
 			expect(document.activeElement).toBe(menu);
 			// Move left: the second column becomes the first.
 			const at = rows().findIndex((row) => row.dataset.row === 'move-left');
@@ -607,8 +606,8 @@ describe('custom snippets with the attachments', () => {
 			const adds = all('custom-table-add');
 			expect(adds.map((add) => add.dataset.kind)).toEqual(['row', 'column']);
 			expect(adds.map((add) => add.getAttribute('aria-label'))).toEqual([
-				englishLabels.table.addRow,
-				englishLabels.table.addColumn
+				'Add a row',
+				'Add a column'
 			]);
 			expect(document.querySelector('[data-edytor-table-add]')).toBeNull();
 			await click(adds[0]!);
@@ -638,7 +637,7 @@ describe('custom snippets with the attachments', () => {
 			expect(button().textContent).toBe('SQL');
 			expect(button().getAttribute('aria-haspopup')).toBe('listbox');
 			expect(button().getAttribute('aria-expanded')).toBe('false');
-			expect(button().getAttribute('aria-label')).toBe(`${englishLabels.code.language}: SQL`);
+			expect(button().getAttribute('aria-label')).toBe('Code language: SQL');
 
 			await click(button());
 			// Placed under the button in the overlay's next frame.
@@ -649,7 +648,7 @@ describe('custom snippets with the attachments', () => {
 			expect(field.getAttribute('aria-expanded')).toBe('true');
 			const list = named(field.getAttribute('aria-controls'));
 			expect(list?.getAttribute('role')).toBe('listbox');
-			expect(list?.getAttribute('aria-label')).toBe(englishLabels.code.language);
+			expect(list?.getAttribute('aria-label')).toBe('Code language');
 			expect(named(editor.getAttribute('aria-controls'))).toBe(list);
 			expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
 			expect(button().getAttribute('aria-expanded')).toBe('true');
@@ -675,7 +674,7 @@ describe('custom snippets with the attachments', () => {
 
 		it('opened by the keys, Escape gives them back to the button and writes nothing', async () => {
 			const { edytor, editor } = await chrome(code());
-			edytor.selection.setAtTextOffset(edytor.idToBlock.get('l0')!.firstText!, 1);
+			edytor.selection.selectText(edytor.idToBlock.get('l0')!.firstText!, 1);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(editor, { key: 'F10', code: 'F10', altKey: true });
 			expect(document.activeElement).toBe(button());
@@ -737,7 +736,7 @@ describe('custom snippets with the attachments', () => {
 
 		it('Enter on the selected equation opens it again; Escape closes it', async () => {
 			const { edytor, editor } = await chrome(equation());
-			edytor.selection.selectBlocks(edytor.idToBlock.get('eq')!);
+			selectBlocks(edytor, edytor.idToBlock.get('eq')!);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(editor, { key: 'Enter' });
 			await frame();

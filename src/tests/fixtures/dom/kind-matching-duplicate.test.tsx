@@ -9,9 +9,6 @@ import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { rowOf } from '$lib/kinds.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { notePlugin } from '../../dom/NoteKind.svelte';
 import {
@@ -20,6 +17,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { blockMenuPlugin, richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -60,7 +59,7 @@ describe('the current kind is the closest preset', () => {
 		const { edytor } = await render([toolbarPlugin], blocks);
 		const labelOf = async (id: string) => {
 			const text = edytor.idToBlock.get(id)!.firstText!;
-			edytor.selection.setAtRange(text, 0, text, text.length);
+			edytor.selection.selectText(text, 0, text, text.length);
 			await flushDomUpdates();
 			return document.querySelector('.toolbar-type')?.firstChild?.textContent;
 		};
@@ -103,7 +102,7 @@ describe('duplicate', () => {
 		const { edytor } = await render([], source);
 		edytor.undoManager.stopCapturing();
 		const before = edytor.undoManager.undoStack.length;
-		const copy = edytor.idToBlock.get('src')!.duplicateBlock();
+		const copy = edytor.idToBlock.get(edytor.duplicateBlock('src').ids[0]!);
 		await flushDomUpdates();
 
 		const [original, duplicate] = canonicalTree(edytor, true);
@@ -128,13 +127,13 @@ describe('duplicate', () => {
 
 	it('Mod+D duplicates the caret block and keeps the caret in the copy', async () => {
 		const { edytor } = await render([blockMenuPlugin], source);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('src')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('src')!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'd', ctrlKey: true });
 		const ids = canonicalTree(edytor, true).map((b) => b.id);
 		expect(ids).toHaveLength(2);
 		expect(ids[0]).toBe('src');
-		expect(edytor.selection.state.startBlock?.id).toBe(ids[1]);
+		expect(selectionState(edytor).startBlock?.id).toBe(ids[1]);
 	});
 });
 

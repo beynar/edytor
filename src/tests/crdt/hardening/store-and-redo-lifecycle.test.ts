@@ -95,14 +95,14 @@ describe('gateH-R3 — nested redo + post-dispose repair', () => {
 		ed.init({
 			content: [{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] }]
 		});
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		return { doc, ed };
 	};
 
 	test('ed.transact(() => um.redo()) — same origin bypass on the redo path', () => {
 		const { ed } = seedSplit();
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		um.undo(); // plain — repaired
 		expect(ed.blockText('b')).toBe('hello ');
 		expect(ed.blockText('tail')).toBe('world');
@@ -118,7 +118,7 @@ describe('gateH-R3 — nested redo + post-dispose repair', () => {
 	test('undo after the LAST facade dispose → repair listener detached, state stays broken', () => {
 		const { doc, ed } = seedSplit();
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		ed.dispose(); // last facade → repair listener detached
 		um.undo(); // UndoManager instance still held by caller
 		const bText = ed.blockText('b');
@@ -136,7 +136,7 @@ describe('gateH-R3 — nested redo + post-dispose repair', () => {
 		ed.dispose();
 		const ed2 = E.create(doc);
 		const um2 = ed2.createUndoManager({ captureTimeout: 0 });
-		ed2.block('tail').deleteText(0, 5);
+		ed2.deleteText('tail', 0, 5);
 		um2.undo();
 		console.log(
 			`[r3-ream] b=${JSON.stringify(ed2.blockText('b'))} tail=${JSON.stringify(ed2.blockText('tail'))}`
@@ -157,10 +157,10 @@ describe('gateH-bonus — rehome rank stress', () => {
 		// blocks to root index 0 in reverse order.
 		const ids = edA.childrenIds(null);
 		for (let i = ids.length - 1; i >= 0; i--) {
-			edA.moveBlock(ids[i], { parent: null, index: 0 });
+			edA.moveBlocks([ids[i]], { parent: null, index: 0 });
 		}
 		for (let i = 0; i < 10; i++) {
-			edA.insertBlock({ parent: null, index: 0 }, { id: `n${i}`, type: 'paragraph' });
+			edA.insertBlocks({ parent: null, index: 0 }, [{ id: `n${i}`, type: 'paragraph' }]);
 		}
 		const orderA = edA.childrenIds(null);
 		// Converge to a second replica and compare ORDER (not bytes).

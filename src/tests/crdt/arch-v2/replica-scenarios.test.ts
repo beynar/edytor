@@ -275,7 +275,7 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 			pair([{ id: 'p', text: 'abc' }], (a, b) => {
 				b.receiveAll(
 					a.capture(() =>
-						a.ed.insertBlock({ parent: null, index: 1 }, { id: 'n', type: 'paragraph' })
+						a.ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'n', type: 'paragraph' }])
 					)
 				);
 				a.receiveAll(b.capture(() => b.ed.insertText('n', 0, 'peer text')));
@@ -460,8 +460,8 @@ describe('7. marks', () => {
 	it('7a overlapping formats with different values converge', () => {
 		one(
 			converge([{ id: 'p', text: 'abcdefgh' }], 2, ([a, b]) => {
-				a.ed.setMark('p', 0, 5, 'color', 'red');
-				b.ed.setMark('p', 3, 5, 'color', 'blue');
+				a.ed.formatRange('p', 0, 5, { color: 'red' });
+				b.ed.formatRange('p', 3, 5, { color: 'blue' });
 			})
 		);
 	});
@@ -469,7 +469,7 @@ describe('7. marks', () => {
 	it('7b bold a whole word ‖ the peer types inside the word → every character of the word is bold', () => {
 		for (const o of one(
 			converge([{ id: 'p', text: 'bold' }], 2, ([a, b]) => {
-				a.ed.setMark('p', 0, 4, 'bold', true);
+				a.ed.formatRange('p', 0, 4, { bold: true });
 				b.ed.insertText('p', 2, 'X');
 			})
 		)) {
@@ -495,10 +495,9 @@ describe('9. promote children — deleting a parent promotes its children', () =
 		for (const o of one(
 			converge(family, 2, ([a, b]) => {
 				a.ed.deleteBlocks(['P']);
-				b.ed.insertBlock(
-					{ parent: 'P', index: 1 },
+				b.ed.insertBlocks({ parent: 'P', index: 1 }, [
 					{ id: 'D', type: 'paragraph', content: [{ kind: 'text', text: 'new child' }] }
-				);
+				]);
 			})
 		)) {
 			// As native: C and D promoted and kept, in P's order.
@@ -510,10 +509,9 @@ describe('9. promote children — deleting a parent promotes its children', () =
 		for (const o of one(
 			converge(family, 2, ([a, b]) => {
 				a.ed.deleteBlock('P', { keepChildren: true });
-				b.ed.insertBlock(
-					{ parent: 'P', index: 1 },
+				b.ed.insertBlocks({ parent: 'P', index: 1 }, [
 					{ id: 'D', type: 'paragraph', content: [{ kind: 'text', text: 'new child' }] }
-				);
+				]);
 			})
 		)) {
 			expect(tree(o.ed)).toBe('C:"child" D:"new child" N:"next"');
@@ -524,7 +522,7 @@ describe('9. promote children — deleting a parent promotes its children', () =
 		for (const o of one(
 			converge(family, 2, ([a, b]) => {
 				a.ed.deleteBlocks(['P', 'C']);
-				b.ed.moveBlock('N', { parent: 'P', index: 0 });
+				b.ed.moveBlocks(['N'], { parent: 'P', index: 0 });
 			})
 		)) {
 			expect(tree(o.ed)).toBe('N:"next"');
@@ -584,7 +582,7 @@ describe('split after move (single user, review-probes/split-moved)', () => {
 				{ id: 'A', text: 'a' },
 				{ id: 'P', text: 'abcd' }
 			],
-			(ed) => ed.moveBlock('P', { parent: null, index: 0 }),
+			(ed) => ed.moveBlocks(['P'], { parent: null, index: 0 }),
 			'P:"ab" N:"cd" A:"a"'
 		],
 		[
@@ -593,7 +591,7 @@ describe('split after move (single user, review-probes/split-moved)', () => {
 				{ id: 'P', text: 'abcd' },
 				{ id: 'A', text: 'a' }
 			],
-			(ed) => ed.moveBlock('P', { parent: null, index: 2 }),
+			(ed) => ed.moveBlocks(['P'], { parent: null, index: 2 }),
 			'A:"a" P:"ab" N:"cd"'
 		],
 		[
@@ -602,7 +600,7 @@ describe('split after move (single user, review-probes/split-moved)', () => {
 				{ id: 'Q', text: 'q', children: [{ id: 'C', text: 'c' }] },
 				{ id: 'P', text: 'abcd' }
 			],
-			(ed) => ed.moveBlock('P', { parent: 'Q', index: 0 }),
+			(ed) => ed.moveBlocks(['P'], { parent: 'Q', index: 0 }),
 			'Q:"q"[P:"ab",N:"cd",C:"c"]'
 		]
 	] as const;
@@ -810,10 +808,9 @@ describe('promoted blocks keep no container-only kind (rescore low)', () => {
 		{ id: 'N', text: 'n' }
 	];
 	const addLine = (ed) =>
-		ed.insertBlock(
-			{ parent: 'C', index: 1 },
+		ed.insertBlocks({ parent: 'C', index: 1 }, [
 			{ id: 'L2', type: 'codeLine', content: [{ kind: 'text', text: 'b' }] }
-		);
+		]);
 
 	it('delete the code block ‖ the peer adds a code line → both lines display as paragraphs', () => {
 		for (const o of one(
@@ -879,7 +876,7 @@ describe('promoted blocks keep no container-only kind (rescore low)', () => {
 
 	it('RW-01 move the promoted line → it stays a paragraph', () => {
 		for (const o of one(
-			promotedThen(code, (ed) => ed.moveBlock('L2', { parent: null, index: 0 }))
+			promotedThen(code, (ed) => ed.moveBlocks(['L2'], { parent: null, index: 0 }))
 		)) {
 			expect(tree(o.ed)).toBe('L2:"b" L1:"a" N:"n"');
 			expect(typed(o.ed)).toBe('L2:paragraph L1:paragraph N:paragraph');
@@ -888,7 +885,7 @@ describe('promoted blocks keep no container-only kind (rescore low)', () => {
 
 	for (const [name, edit] of Object.entries({
 		retype: (ed) => ed.setBlockType('L2', 'heading'),
-		move: (ed) => ed.moveBlock('L2', { parent: null, index: 0 })
+		move: (ed) => ed.moveBlocks(['L2'], { parent: null, index: 0 })
 	})) {
 		it(`RW-01 ${name} the promoted line, then undo it and the delete → both code lines are back`, () => {
 			for (const o of one(
@@ -1016,10 +1013,9 @@ describe('promoted blocks keep no container-only kind (rescore low)', () => {
 				2,
 				([a, b]) => {
 					a.ed.deleteBlocks(['P']);
-					b.ed.insertBlock(
-						{ parent: 'P', index: 1 },
+					b.ed.insertBlocks({ parent: 'P', index: 1 }, [
 						{ id: 'H', type: 'heading', content: [{ kind: 'text', text: 'h' }] }
-					);
+					]);
 				},
 				{ semantics }
 			)

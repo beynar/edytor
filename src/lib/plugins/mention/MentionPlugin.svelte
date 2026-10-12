@@ -1,13 +1,10 @@
+<svelte:options runes />
+
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
-	import type {
-		InlineBlockSnippetPayload,
-		Plugin,
-		TriggerContext,
-		TriggerItemPayload
-	} from '$lib/plugins.js';
+	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { withRulesAndTriggers } from '../triggers/triggers.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -32,148 +29,70 @@
 		) => readonly MentionItem[] | Promise<readonly MentionItem[]>;
 		/** The character that opens the menu (default `@`). */
 		char?: string;
-		/** Replace each row of the menu. */
-		item?: Snippet<[TriggerItemPayload<MentionItem>]>;
 		/**
-		 * Replace the whole menu; it renders while `controller.isOpen`, at the
-		 * caret. Keep its ARIA with `{@attach controller.popup}` on the list and
+		 * The menu's markup and its words; it renders while `controller.isOpen`,
+		 * at the caret (without it, nothing shows). Keep its ARIA with `{@attach
+		 * controller.popup}` on the list (name it) and
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[TriggerMenuController<MentionItem>]>;
-		/** The words the menu shows and says, over the English ones. */
-		labels?: PartialLabels<'mention'>;
 	};
-
-	/** An avatar's URL when it is one an `img` may load (http, https, a data image), else nothing. */
-	const avatarOf = (src: unknown) =>
-		typeof src === 'string' && /^(https?:|data:image\/)/i.test(src.trim()) ? src : undefined;
 
 	/**
 	 * People mentions, as in Notion: `@` opens a menu of the people your app's
 	 * `items(query)` answers; picking one replaces `@query` with a `mention`
 	 * atom (`{ id, label }`) and puts the caret after it, in one undo step.
 	 */
-	export const createMentionPlugin = (options: MentionPluginOptions): Plugin => {
-		const labels = labelsWith('mention', options.labels);
-		return () => ({
-			inlineBlocks: {
-				mention: {
-					snippet: mention,
-					plain: (data) => {
-						const label = (data as Partial<MentionData> | undefined)?.label;
-						return typeof label === 'string' && label ? `@${label}` : '@';
-					}
-				}
-			},
-			triggers: [
+	export const createMentionPlugin =
+		(options: MentionPluginOptions): Plugin =>
+		(edytor) =>
+			withRulesAndTriggers(
+				edytor,
 				{
-					char: options.char ?? '@',
-					name: labels.menu,
-					empty: labels.noResults,
-					searching: labels.searching,
-					items: (query, ctx) => options.items(query, ctx),
-					label: (person: MentionItem) => person.label,
-					key: (person: MentionItem) => person.id,
-					item: options.item ?? row,
-					menu: options.menu,
-					onPick: (person: MentionItem, { block, from, caret }) => {
-						const data: MentionData = { id: person.id, label: person.label };
-						const after = block.addInlineBlock({ offset: from, block: { type: 'mention', data } });
-						if (after) caret(from + 1);
-						return !!after;
+					inlineBlocks: {
+						mention: {
+							snippet: mention,
+							plain: (data) => {
+								const label = (data as Partial<MentionData> | undefined)?.label;
+								return typeof label === 'string' && label ? `@${label}` : '@';
+							}
+						}
 					}
+				},
+				{
+					triggers: [
+						{
+							char: options.char ?? '@',
+							items: (query, ctx) => options.items(query, ctx),
+							label: (person: MentionItem) => person.label,
+							key: (person: MentionItem) => person.id,
+							menu: options.menu,
+							onPick: (person: MentionItem, { edytor, block, from, caret }) => {
+								const data: MentionData = { id: person.id, label: person.label };
+								const written =
+									edytor.insertInline(block.id, from, { type: 'mention', data }).status ===
+									'applied';
+								if (written) caret(from + 1);
+								return written;
+							}
+						}
+					]
 				}
-			]
-		});
-	};
+			);
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}
 	<span
 		class="edytor-mention"
-		class:selected={block.selected}
+		data-selected={block.selected ? 'true' : undefined}
 		data-edytor-mention
 		data-mention-id={block.data.id}>@{block.data.label ?? ''}</span
 	>
 {/snippet}
 
-{#snippet row({ item, option, run, select }: TriggerItemPayload<MentionItem>)}
-	<button
-		type="button"
-		class="edytor-mention-row"
-		{...option}
-		data-testid="trigger-menu-item"
-		onmousemove={select}
-		onclick={run}
-	>
-		<span class="avatar" aria-hidden="true">
-			{#if avatarOf(item.avatar)}
-				<img src={avatarOf(item.avatar)} alt="" />
-			{:else}
-				{item.label.trim().charAt(0).toUpperCase()}
-			{/if}
-		</span>
-		<span class="name">{item.label}</span>
-		{#if item.description}<span class="description">{item.description}</span>{/if}
-	</button>
-{/snippet}
-
 <style>
+	/* One unit, on one line; its look is a theme's. */
 	.edytor-mention {
-		color: rgba(55, 53, 47, 0.65);
-		font-weight: 500;
-		white-space: nowrap;
-	}
-	.edytor-mention.selected {
-		border-radius: 3px;
-		background: rgba(35, 131, 226, 0.14);
-	}
-	.edytor-mention-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		min-height: 32px;
-		padding: 4px 8px;
-		border: 0;
-		border-radius: 6px;
-		background: none;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.edytor-mention-row[data-selected='true'] {
-		background: rgba(33, 27, 23, 0.06);
-	}
-	.avatar {
-		display: grid;
-		flex: none;
-		place-items: center;
-		width: 20px;
-		height: 20px;
-		overflow: hidden;
-		border-radius: 50%;
-		background: rgba(84, 72, 49, 0.12);
-		font-size: 11px;
-		font-weight: 600;
-	}
-	.avatar img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-	.name {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.description {
-		margin-left: auto;
-		overflow: hidden;
-		color: #73726e;
-		font-size: 12px;
-		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 </style>

@@ -33,8 +33,8 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning) and YP9–YP14
-global.d.ts upstream global.d.ts, plus patches YP1 and YP8
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager) and YP19 (only what edytor calls)
+global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
 UPSTREAM.md this file
@@ -520,7 +520,7 @@ Oracle: `src/tests/crdt/yp9-yp10-engine.test.ts` — the raw program in every
 delivery order, the facade program the fuzz found in every order, and the
 stripped tree (the YP9 hunks removed) stays pending on A3, B1, A1, A2.
 
-### YP10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`)
+### YP10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`) — REMOVED by YP19 (no cleanup)
 
 Reason: `cleanupYTextAfterTransaction` deletes the format items a remote
 change made redundant in a new transaction with the `null` origin — the
@@ -543,7 +543,9 @@ partial delete or full delete over A's bold run, A's undo stack is unchanged,
 one undo removes A's last edit, and the peers still converge; the stripped
 tree (the YP10 hunks removed) puts the cleanup on the stack.
 
-### YP11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`)
+### YP11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`) — the hooks REMOVED by YP18
+
+Since YP18 the undo manager is edytor's own and calls these rules directly; the fork keeps only the `redoItem` export. The record below is the patch as it stood.
 
 Reason: the engine's undo re-creates deleted content as COPIES and records no
 writer for a delete. Two peers that delete the same character concurrently and
@@ -582,7 +584,9 @@ upstream suite pass unchanged.
 
 Vendor delta: +9 xloc in `src/` (census `--vendor`: 5,769 → 5,778).
 
-### YP12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`)
+### YP12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`) — REMOVED by YP18
+
+Since YP18 the withdraw rule is a step of edytor's own undo manager. The record below is the patch as it stood.
 
 Reason: the engine undoes an insert by deleting the inserted items, and a
 deleted type deletes everything inside it. Undoing a block's creation
@@ -691,6 +695,279 @@ Oracle: `src/tests/crdt/placement/same-id-concurrent.test.ts` (the losing text s
 on every replica and after a reload; two fuzzes), the upstream suite
 unchanged.
 
+### YP15 — no lib0 `logging` nor `environment` in the engine, no development freeze (`src/utils/UndoManager.js`, `src/ynode.js`, `src/utils/Transaction.js`, `src/structs/Item.js`)
+
+Reason: the engine's three messages printed through `lib0/logging` and its
+development check read `lib0/environment` (`getVariable('node_env')`),
+which brought both modules (their colour, parameter and storage readers)
+into every app that ships edytor, for three lines of output and one
+boolean, and that boolean's freeze cannot hold edytor's values.
+
+Patch (lines marked `// YP15`): the "Not same Y.Doc" and "Invalid access"
+warnings are `console.warn`, the client-id change notice `console.log`
+(unstyled). `ContentAny` no longer deep-freezes its values in development
+mode (`isDevMode`, the `node_env` variable, and the `lib0/object` import
+go): edytor stores `Uint8Array` records (text delete marks, restorations)
+there, and `Object.freeze` refuses a typed array with elements, so a
+development process (`NODE_ENV=development`) threw on the first text
+delete.
+
+Oracle: the upstream suite unchanged; `pnpm test:crdt` (with the freeze
+on, every text delete in the unit lane throws `Cannot freeze array buffer
+views with elements`).
+
+### YP16 — no delta layer: the writes call the cursor helpers, the reads walk the items (`src/ynode.js`, `src/utils/*`, `src/index.js`)
+
+Reason: every app shipped lib0's `delta` (28 KB minified) and `schema`
+(5.4 KB, with `logging` → `dom`) because every engine write went through
+`applyDelta(delta.create()…)`, and the `$type` schema tags were set at load.
+Edytor never read a delta at run time (one migration read of `node.delta`,
+now an item walk). The engine built alone went from 130.9 KB min / 39.2 KB
+gzip to 77.2 / 23.6; an app bundle (`scripts/bundle-size.mjs`) from 749.7 to
+695.9 KB min (minimal) and from 959.6 to 905.8 (every plugin). Vendored execution lines (`node scripts/xloc.mjs
+src/lib/crdt/vendor --vendor`) 5,969 → 5,029, 29 → 27 files. Approved
+removal of public raw-engine API (`edytor/crdt`), listed in the site's
+migration page.
+
+Patch (the new code is delimited by `// YP16 begin` / `// YP16 end` in
+`ynode.js`):
+
+- `YNode#insert`/`delete`/`format`/`setAttr`/`deleteAttr`/`clearAttrs` call
+  the helpers `applyDelta` called (`insertContent`, `insertContentHelper`,
+  `deleteText`, `ItemTextListPosition#formatText`, `nodeMapSet`,
+  `nodeMapDelete`) with the op sequence the builder produced for them: a
+  positioning retain (`cursorAt`, which carries YP4's marker seed and the
+  plant after the retain), the op, the final plant; an empty insert, a
+  `length <= 0` delete or format, and a format with no key are no-ops, as
+  the empty deltas were; a deleted node takes no write. Formats are resolved
+  the way the builder resolved them (an insert's `null`/`undefined` values
+  dropped, `{}` → none; a format's `null` values kept as removals).
+- A detached node keeps `_prelim = { runs, attrs }`: the content runs in the
+  normal form the pre-integration delta had (adjacent runs of one kind and
+  equal formats merged, deletes and formats applied to them) and the attrs in
+  first-write order (`null` for a removal, the slot kept), replayed at
+  `_integrate` with one cursor, then the attrs — the order `applyDelta`
+  applied the composed delta in. A write past a detached node's content
+  throws at the write (the composed delta threw when the node integrated).
+- Reads: `toArray` (and `toJSON`, `toString`, `map`, `forEach`), `clone`
+  and the equality trait read the content as runs (`readRuns`: live items,
+  formats folded, a paired mark's winning value under its mark name), not
+  through `toDelta`.
+- Removed: `toDelta`, `toDeltaDeep`, `applyDelta`, the maintained `delta`
+  cache (`_delta`, `clearCache`), `change`, `$delta`, `static from`, the
+  `'delta'` event and its upkeep in `cleanupTransactions`, `YEvent#delta`/
+  `deltaDeep`/`getDelta`, inserting a delta as content (`YNode.from` in
+  `insertContentHelper`), the renderer (`useRenderer`, `_renderer`,
+  `AbstractRenderer`, `$renderer`, `utils/renderer-helpers.js`, the renderer
+  branches of the cursor, `deleteText`, `RangeCursor` and the relative
+  positions — `liveLength` in `transaction-helpers.js` is the one length),
+  `createAttributionFromAttributionItems`, the schemas (`$doc` → `isDoc`, a
+  prototype tag; `$nodeAny`, `$idSet`, `$idMapAny`, `utils/meta.js` with
+  `$contentIds`/`$contentMap` and the content-map codec), the IdMap family of
+  `utils/ids.js` (`IdMap`, `AttrRange(s)`, `ContentAttribute`, the codec;
+  `lib0/hash/rabin` goes with it), the `ContentMap` typedef,
+  `iterateStructsByIdSetWithoutSplits`/`iterateStructsWithoutSplits`, and
+  `lib0/logging` (`console.warn`). `RangeCursor` pieces keep their shape
+  (`deleted: false`, `attrs: null`). `intersectSets` stays exported.
+- `edytor/crdt` exports 89 → 66 names; the engine object loses
+  `createIdMap`, `insertIntoIdMap`, `createContentMap`, `decodeContentMap`
+  (their only caller, `attribution.legacy()`, is removed) and
+  `mergeUpdatesV2` (no caller).
+
+Test side: `src/tests/crdt/harness/delta.js` is the engine's `toDelta`,
+`applyDelta`, `YEvent#getDelta`/`delta`/`deltaDeep` and `YNode.from` as they
+stood before YP16, renderer-free, over the engine's internal helpers (it
+dispatches to a baseline engine's own methods); the vendored upstream suite,
+the YP4/YP5/YP7/YP11 differentials, `bench/lib/interop.mjs` and
+`bench/lib/engine-micro.mjs` read and write deltas through it. Removed with
+their subject: `IdMap.tests.js`, `schema.tests.js`, the RDT/cache tests of
+`attribution.tests.js` (`bind`, the `'delta'` channel, the cache and its
+fingerprint memos), the renderer rows of `range-cursor`,
+`search-marker-anchors` and `stream-boundary-races`, and the `Node.delta`
+pins of `runs/delta-contract`.
+
+Oracle: `src/tests/crdt/yp16-writes.test.ts` — 40 seeded programs × 120
+operations over every public write (text and array inserts with formats,
+deletes, formats with `null`/`{}` updates, attrs, `clearAttrs`,
+`push`/`unshift`, writes to detached nodes nested two deep, undo/redo,
+writes to a deleted node), gc on and off, byte-identical
+`encodeStateAsUpdate` and equal deep content after EVERY operation against
+(1) the pristine upstream engine (local writes; the fork's search markers
+off, see below) and (2) the fork as it stood before YP16 (`git archive`,
+every operation, remote exchange included). Two pre-existing differences
+from upstream, unchanged by YP16 and pinned by (2): remote integration, and
+the YP4 seeded cursor, which in one seed (an array insert with formats at a
+seeded position) places an item differently from upstream's walk (equal
+content, different bytes).
+
+### YP17 — one update encoding: upstream's v2, under the unsuffixed names (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/encoding.js`, `src/utils/updates.js`, `src/utils/Transaction.js`, `src/utils/ids.js`, `src/utils/Doc.js`, `src/index.js`, `global.d.ts`)
+
+Reason: the fork carried two update encodings (v1 and the columnar v2) and
+every producer and consumer chose one: the wire sent a SyncStep2 in v2 and
+converted it to v1 on receipt, updates in v1, the room and the browser
+store kept v1 update rows beside v2 snapshots, tagged by a storage format
+in their generation record. The engine already kept its pending structs
+and deletes in v2. One encoding is v2: smaller for any state (2,000
+blocks: 720,855 → 544,410 bytes, gzip 150,174 → 75,475) and for structural
+edits (an Enter 472 → 388), equal for a keystroke (133 / 134). Edytor's
+schema generation 6 is the cutover; nothing converts the other encoding.
+
+Patch:
+
+- `UpdateEncoderV1`/`UpdateDecoderV1` and `IdSetEncoderV1`/`IdSetDecoderV1`
+  are removed; the v2 classes are renamed `UpdateEncoder`, `UpdateDecoder`,
+  `IdSetEncoder`, `IdSetDecoder` (the `…V1 | …V2` JSDoc unions with them).
+- `applyUpdate`, `readUpdate`, `encodeStateAsUpdate`, `mergeUpdates`,
+  `diffUpdate` and `decodeUpdate` are the v2 functions (`applyUpdateV2`,
+  `readUpdateV2`, `encodeStateAsUpdateV2`, `mergeUpdatesV2`, `diffUpdateV2`,
+  `decodeUpdateV2` renamed, their encoder/decoder parameters removed);
+  `convertUpdateFormat`/`convertUpdateFormatV2ToV1` and the leftover
+  obfuscator typedef are removed. `readUpdate` is not exported.
+- `encodeStateVector`/`decodeStateVector` write and read the state vector
+  with a plain lib0 encoder (byte-identical: a state vector only ever used
+  the rest encoder); `readStateVector`, `writeStateVector`,
+  `writeDocumentStateVector` and `encodeStateVectorV2` are folded into them.
+- The `update` event carries the update in the one encoding; the `updateV2`
+  event is removed.
+- `edytor/crdt` exports `UpdateEncoder`, `UpdateDecoder` and `diffUpdate`
+  in place of the V1/V2 pairs (see `src/tests/crdt/yp8-surface.test.ts`).
+
+Interop: an upstream engine reads the fork's bytes with its `…V2`
+functions (`bench/lib/interop.mjs`, the baseline legs of
+`search-marker-format.test.ts` and `yp16-writes.test.ts` compare against
+upstream's `encodeStateAsUpdateV2`). Vendored execution lines 5,123 →
+4,872. Test side: `compatibility.tests.js` (v1 documents of Yjs 13) is
+removed; the upstream suite's helpers run every program in the one
+encoding (`testHelper.js`, `updates.tests.js`).
+
+### YP18 — no undo manager: the history is edytor's (`src/utils/UndoManager.js` → `src/utils/redo.js`, `src/index.js`, `global.d.ts`)
+
+Reason: two mechanisms layered one undo. The engine's `UndoManager` kept the
+stacks, the capture window, the scope and tracked origins, and replayed a
+step; edytor's history (`src/lib/crdt/doc/history.ts`) drove it through the
+YP11/YP12 hooks and managed its stacks from outside (the step limit and the
+release of what a dropped step kept, the purge horizon, the shared own-text
+ids, the room's restore and validation histories). Now edytor's
+`UndoManager` is the one owner: it captures and replays over the engine's
+struct primitives, and the fork keeps only those.
+
+Patch:
+
+- `utils/UndoManager.js` is removed except `redoItem` and `keepItem`, now in
+  `utils/redo.js`. `redoItem(transaction, item, redoitems, itemsToDelete,
+  deletedByHistory?)` takes a predicate (whether a step of the history
+  deletes an id) in place of `ignoreRemoteAttributeChanges` and the undo
+  manager. Gone: `UndoManager`, `StackItem`, `popStackItem`, the stack
+  events, `deleteFilter`, `captureTransaction` defaults, `addToScope`,
+  `ignoreRemoteAttributeChanges`, the YP11/YP12 hooks.
+- `index.js` exports `keepItem` and `followRedone` (edytor's history keeps
+  deleted items and follows a local copy's chain) and uses `globalThis` for
+  its duplicate-import guard (Baseline 2024).
+- `global.d.ts` loses `UndoManager` and `StackItem`.
+
+Vendored execution lines 4,872 → 4,630; an app bundle 546.4 → 545.0 KB min
+(minimal), 745.4 → 744.0 (every plugin): edytor's manager is 4.3 KB where
+the engine's (without `redoItem`) and the hooks' driver were 5.6.
+
+Test side: `src/tests/crdt/harness/undo.js` is the engine's `UndoManager`
+as it stood before YP18 (`undoManagerOf(Y)`, over the fork or a copy of its
+tree), for the upstream suite, the replica harness's `raw` adapter, the
+engine probes and the differentials. Removed with their subject:
+`yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the hooks' rows;
+the rules are the facade history's `hist.undo.*` rows) and the upstream row
+on `ignoreRemoteAttributeChanges`.
+
+### YP19 — the engine ships what edytor calls: no plain formats, no observers, no subdocuments, no relative-position objects (`src/ynode.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/utils/Transaction.js`, `src/utils/transaction-helpers.js`, `src/utils/encoding.js`, `src/utils/ids.js`, `src/utils/StructStore.js`, `src/utils/positions.js` (new), `src/index.js`, `global.d.ts`)
+
+Reason: YP8 pruned the declarations nothing reaches, but a class ships
+every method, and the reachable functions still carried paths edytor never
+takes. Two ways of doing one thing each: plain format items beside the
+paired marks (YP13), type observers and deep events beside the document's
+transaction events, `RelativePosition`/`AbsolutePosition` objects and their
+JSON form beside edytor's anchors (an item id and a side), a subdocument
+lifecycle and load/sync promises beside edytor's document readiness. The
+fork keeps one of each. An app bundle: 488.1 → 471.8 KB min (minimal),
+703.3 → 687.0 (every plugin); the engine's share 60.7 → 45.2 KB.
+
+Patch:
+
+- **Formats.** The only format items are paired marks (`mark`). Gone: the
+  plain-format writes (`YNode#format`, `insert`'s format argument,
+  `ItemTextListPosition#formatText`, `insertFormats`,
+  `insertNegatedFormats`, `minimizeFormatChanges`, `updateMarkerFormats`,
+  `insertContent`/`insertContentHelper`, `equalFormats`), the formatting
+  cleanups (`cleanupYTextFormatting`, `cleanupYTextAfterTransaction`,
+  `cleanupFormattingGap`, `cleanupContextlessFormattingGap`,
+  `Doc#cleanupFormatting`, `Transaction#_needFormattingCleanup`,
+  `YNode#_hasFormatting`) and with them YP10. A plain format item a peer
+  writes integrates and is inert: no cursor folds it
+  (`updateCurrentFormats` folds paired marks only), no read shows it.
+- **One sequence write.** `YNode#insert(index, content)` places as
+  `insertInGap` does (YP13); the positioning step of a delete is
+  `ItemTextListPosition#advance` (walk `length` live units, past the deleted
+  items around them). Without marks in the gap both place exactly where the
+  old formatted walk did: the YP16 differential (local programs, search
+  markers on and off) stays byte-identical to upstream and to the fork
+  before YP16.
+- **No observers.** `observe`/`observeDeep`/`unobserve*`, `YEvent`,
+  `EventHandler.js`, `callTypeObservers`, `_callObserver`,
+  `Transaction#changedParentTypes`, the `beforeObserverCalls` and
+  `afterTransactionCleanup` events are gone. A commit emits `commit`
+  (new), then `afterTransaction`, each listener run even if another throws;
+  a remote transaction still clears the search markers of the types it
+  changed. edytor's index folds on `commit` when the registry or a node under
+  it changed (`changedUnder` in `crdt/structs.ts`, what the deep observer of
+  the registry heard); the history captures a transaction by the same test
+  over its scope.
+- **No subdocuments, no load state.** `ContentDoc`, `createContentDocFromDoc`,
+  `Doc#load`/`getSubdocs`/`getSubdocGuids`/`toJSON`, `guid`,
+  `collectionid`, `meta`, `autoLoad`, `shouldLoad`, `isLoaded`,
+  `isSynced`, `whenLoaded`, `whenSynced`, the `load`/`sync`/`subdocs`
+  events, `Transaction#subdocs*`, `beforeState`/`afterState`, `meta`,
+  `cleanUps`; `Doc` takes `{ gc, gcFilter }`.
+- **Contents.** `ContentJSON`, `ContentEmbed` and `ContentDoc` are gone;
+  their refs (2, 5, 9) are refused on decode like GC (0) and Skip (10), so an
+  update holding one is malformed.
+- **Positions.** `utils/RelativePosition.js` is replaced by
+  `utils/positions.js`: `idAtIndex(node, index, assoc)` (the unit a position
+  binds, `null` at an end) and `indexOfId(doc, id, assoc)` (`{ type, index }`
+  or `null`), the marker-assisted walks unchanged, no redone-chain option.
+- **Node.** `YNode` is no `ObservableV2` (nothing listened to a node's
+  `destroy`); gone: `parent`, `clone`, `clearAttrs`, `hasAttr`, `getAttrs`,
+  `push`, `unshift`, `get`, `slice`, `toArray`, `toJSON`, `toString`, `map`,
+  `forEach`, `attrValues`, `attrEntries`, `attrSize`, the equality trait,
+  `typeListGet`/`typeListSlice`, `nodeMapGet(All)`/`nodeMapHas`,
+  `createMapIterator`, the premature-access warning. `attrKeys` is a
+  generator. A detached node's pending content is plain runs (no formats).
+- **Ids, store.** `IdSet#forEach`/`covers`/`coveredLength`/`slice`, the
+  equality trait, `MaybeIdRange`, `equalIdSets`, `StructStore#get`/
+  `getIndex`.
+- `readUpdate` runs through `transact(doc, …, origin, false)` (a top-level
+  apply is non-local from `beforeTransaction` on; a nested one is forced
+  non-local, as before).
+
+Test side: `src/tests/crdt/harness/node-reads.js` installs the renderings and
+conveniences the tests read state through (`toJSON`, `toString`, `toArray`,
+`get`, `slice`, `getAttrs`, `hasAttr`, the attr iterators, `map`,
+`forEach`, `push`, `unshift`, `clone`, `clearAttrs`, `parent`) on the node's
+prototype, from `src/tests/setup/engine-reads.ts` in every vitest lane (and
+on a stripped copy's node where a differential loads one). The harness's
+`applyDelta` writes a formatted op as paired mark operations (an insert takes
+exactly its formats, a retain sets the keys it names); the raw adapter marks
+with `mark`; the harness's pre-YP18 `UndoManager` derives
+`changedParentTypes` from `changed`. Removed with their subject: the
+upstream tests of observers and events, subdocuments, relative positions,
+plain formatting and its cleanup (`y-text`, `y-map`, `y-array`, `doc`,
+`delta`, `undo-redo`, `attribution`, `IdSet`, `y-xml`;
+`relativePositions.tests.js` whole), `src/tests/crdt/runs/delta-contract.test.ts`
+(the deep observer as the index's payload), the YP10 discriminating row, the
+`yp16-writes` exchange runs (the removed cleanup split the items a remote
+delete set reached) and the `seed-86` crash artifact (its crash site was the
+cleanup's delete-set walk). Ported: `v14-smoke` (marks, the `commit` event,
+`idAtIndex`/`indexOfId`), the YP7 rows (gaps built with marks), the marker
+probes (planting through `findMarker`), `testStructReferences`,
+`testKeyEncoding`. Upstream suite: 197 → 126 tests.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so
@@ -719,7 +996,7 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP14 hunks
+# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP16 hunks
 # (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +
@@ -742,12 +1019,15 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **216 pass / 6 skipped / 0 failed** since YP8 (was 325/6
+- `pnpm test:crdt` — **120 pass / 6 skipped / 0 failed** since YP19 (196/6
+  since YP16, 216/6 since YP8, 325/6
   before; upstream standard tier; the 6 skips are upstream's own
   `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random
   stress tests).
 - `pnpm test:crdt:extensive` (`PRODUCTION=1`) — 331 pass before YP8 (~200 s;
-  includes the 30 000-op randomized stress test); 222 tests since YP8.
+  includes the 30 000-op randomized stress test); 222 tests since YP8, 202
+  since YP16 (`IdMap.tests.js`, `schema.tests.js` and the RDT tests of
+  `attribution.tests.js` went with their subject).
 - Reproduce a seed: `YJS_TEST_SEED=<n> pnpm test:crdt`.
 - Vitest runs each test once; upstream's `runTests` repeats `testRepeat*`
   cases for `--repetition-time` ms — that repetition loop is not replicated.

@@ -16,6 +16,7 @@ vi.mock('../../../lib/crdt/rand.js', async (load) => {
 import { hash53 } from '../../../lib/crdt/rand.js';
 import { Y } from '../../../lib/crdt/engine.js';
 import { replica, seedUpdate } from './replica-harness.js';
+import { UndoManager } from '../harness/undo.js';
 
 afterEach(() => {
 	stub.writer = 0;
@@ -43,12 +44,11 @@ describe('UW-31: a derived own-text writer is a 53-bit id', () => {
 		const a = replica('A', seed, 20);
 		const b = replica('B', seed, 30);
 		// A raw registry history (no P12 withdraw): the undo deletes the blocks outright.
-		const um = new Y.UndoManager(a.doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(a.doc.get('blocks'), { captureTimeout: 0 });
 		tails.forEach((tail, i) =>
-			a.ed.insertBlock(
-				{ parent: null, index: 1 + i },
+			a.ed.insertBlocks({ parent: null, index: 1 + i }, [
 				{ id: `P${i}`, type: 'paragraph', content: [{ kind: 'text', text: 'Hello world' }] }
-			)
+			])
 		);
 		b.receiveAll(a.log);
 		tails.forEach((tail, i) => {

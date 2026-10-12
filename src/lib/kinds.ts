@@ -1,8 +1,9 @@
 import type { Block } from './block/block.svelte.js';
+import { blockSelection } from '$lib/session/selection.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
-import { dispatchPlan, prepareSet } from './block/block.utils.js';
+import { siblingSlot } from './session/handles.js';
 import { id } from './utils.js';
 import { getSelectionBlocks } from './selection/replaceSelection.js';
 import { hidden } from './selection/visibility.js';
@@ -124,28 +125,16 @@ export const wrappable = (edytor: Edytor, blocks: Block[], kind?: string, column
 /**
  * Wrap `blocks` in a new layout of `columns` items (default one per block),
  * at the first one's place (`layout.wrap`, Notion's Turn into N columns): the
- * blocks one per item, then one empty block per further item; one plan, one
- * undo step; hooks see `wrapBlocks`. The blocks stay selected. Answers
- * whether it applied.
+ * blocks one per item, then one empty block per further item; the document's
+ * `wrapInLayout`, one undo step. The blocks stay selected. Answers whether
+ * it applied.
  */
 export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string, columns?: number) => {
-	const [first] = blocks;
-	if (!first) return false;
-	const applied = dispatchPlan(
-		first,
-		'wrapBlocks',
-		{ blocks, kind, columns },
-		(p) =>
-			edytor.facade.prepare.wrapInLayout(
-				p.blocks.map((block) => block.id),
-				p.kind,
-				p.columns
-			),
-		lineage(first.parent)
-	);
-	if (!applied) return false;
+	if (!blocks.length) return false;
+	const ids = blocks.map((block) => block.id);
+	if (edytor.wrapInLayout(ids, kind, columns).status !== 'applied') return false;
 	const live = blocks.flatMap((block) => edytor.idToBlock.get(block.id) ?? []);
-	edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+	edytor.selection.select(blockSelection(live.sort(edytor.compareBlocks).map((block) => block.id)));
 	return true;
 };
 
@@ -225,17 +214,14 @@ export const placing = (
 	const bare = !document.rendersContent(value.type) && !value.children?.length;
 	const tail = bare ? [{ id: next, type: facade.defaultChild(parent) }] : [];
 	const specs = [...(after ? [value] : []), ...tail].map((b) => jsonBlockToSpec(b));
+	const set = () => facade.prepare.setBlock(block.id, payload);
 	if (facade.virtual() === block.id)
 		return tail.length
 			? facade.prepare.insertBlocks({ parent: null, index: 0 }, [jsonBlockToSpec(value), ...specs])
-			: prepareSet.call(block, { value: payload });
+			: set();
 	const lift = facade.prepare.liftOut(block.id, value.type, { keep: after, after: specs });
-	return after ? lift : facade.compose(lift, prepareSet.call(block, { value: payload }));
+	return after ? lift : facade.compose(lift, set());
 };
-
-/** `block` and its ancestors: the blocks a placement may change the children of. */
-export const lineage = (block: Block | undefined): Block[] =>
-	block ? [block, ...lineage(block.parent)] : [];
 
 /**
  * Convert `block` to a row's kind as one command. With `caret` (by default
@@ -254,7 +240,7 @@ export const lineage = (block: Block | undefined): Block[] =>
 export const convertToKind = (
 	edytor: Edytor,
 	block: Block | null | undefined,
-	row: KindRow,
+	row: Pick<KindRow, 'value' | 'replaces'>,
 	caret = row.replaces
 ) => {
 	if (!block?.convertible) return false;
@@ -266,32 +252,30 @@ export const convertToKind = (
 	else if (holder?.isContainer && value.type === holder.definition.itemKind)
 		value.type = edytor.defaultChild(holder);
 	const after = row.replaces && !holdsNothing(edytor, block);
-	const [next, touched] = [id('b'), lineage(block)];
-	// The kind as hooks leave it: placed, normalized by its kind, and given the caret.
+	const next = id('b');
+	// The kind as hooks leave it (the plan prepared last is theirs): placed and given the caret.
 	let kind: Partial<JSONBlock> & { id: string } = { ...value, id: id('b') };
-	const converted = (payload: Partial<JSONBlock>) => {
-		kind = { ...payload, id: after ? (payload.id ?? kind.id) : block.id };
-		edytor.idToBlock.get(kind.id)?.normalizeContent();
-	};
-	if (after)
-		dispatchPlan(
-			block,
-			'insertBlockAfter',
-			{ block: kind as JSONBlock },
-			(p) => placing(block, { ...p.block, id: p.block.id ?? kind.id }, true, next),
-			touched,
-			(p) => converted(p.block)
-		);
-	else
-		dispatchPlan(
-			block,
-			'setBlock',
-			{ value },
-			(p) => placing(block, p.value, false, next),
-			touched,
-			(p) => converted(p.value)
-		);
-	if (edytor.dispatcher.last?.status !== 'applied') return false;
+	const { dispatcher } = edytor;
+	const result = after
+		? dispatcher.plan(
+				'insertBlocks',
+				[siblingSlot(block), [kind as JSONBlock]] as const,
+				([, [spec]]) => {
+					kind = { ...(spec as JSONBlock), id: spec?.id ?? kind.id };
+					return placing(block, kind, true, next);
+				},
+				block
+			)
+		: dispatcher.plan(
+				'setBlock',
+				[block.id, value] as const,
+				([, payload]) => {
+					kind = { ...(payload as Partial<JSONBlock>), id: block.id };
+					return placing(block, payload as Partial<JSONBlock>, false, next);
+				},
+				block
+			);
+	if (result.status !== 'applied') return false;
 	const landing = edytor.idToBlock.get(next);
 	if (caret || after || landing) {
 		const at = landing ?? edytor.idToBlock.get(kind.id);
@@ -331,7 +315,9 @@ export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: Kind
 	if (selection.kind === 'blocks') {
 		const ids = new Set([...selection.ids, ...converted.map((block) => block.id)]);
 		const live = [...ids].flatMap((id) => edytor.idToBlock.get(id) ?? []);
-		edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+		edytor.selection.select(
+			blockSelection(live.sort(edytor.compareBlocks).map((block) => block.id))
+		);
 	} else edytor.selection.select(selection);
 	return applied.some(Boolean);
 };
@@ -351,12 +337,12 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	// Asked of the view given (a `+`'s menu asks it of the block it adds).
 	isEnabled: (view = edytor) =>
 		row.replaces
-			? Boolean(view.selection.state.startBlock?.convertible)
+			? Boolean(view.selection.textRange().startText?.parent.convertible)
 			: convertedBlocks(getSelectionBlocks(view)).length > 0,
 	run: () => {
 		const blocks = row.replaces ? [] : getSelectionBlocks(edytor);
 		return blocks.length > 1 || (blocks[0] && !blocks[0].convertible)
 			? convertBlocks(edytor, blocks, row)
-			: convertToKind(edytor, edytor.selection.state.startBlock, row);
+			: convertToKind(edytor, edytor.selection.textRange().startText?.parent, row);
 	}
 });

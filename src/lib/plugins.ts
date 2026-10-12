@@ -6,15 +6,15 @@ import type { Text } from './text/text.svelte.js';
 import type { TextTransform } from './surface/cells.js';
 import type { SerializableContent } from './utils/json.js';
 import type { HotKey, HotKeyCombination } from './session/keymap.js';
-import type { TextOperations } from './text/text.utils.js';
-import type { BlockOperations } from './block/block.utils.js';
+import type { DocumentWrites } from './crdt/operations.js';
+import type { ResolvedAt } from './session/suggestions.svelte.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { DocChange, PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
 import type { Prevent } from './utils.js';
-import type { MenuItemPayload } from './plugins/chrome.js';
 import type { TriggerMenuController } from './plugins/triggers/TriggerController.svelte.js';
+import type { KindUpload } from './plugins/uploads.svelte.js';
 
 /** What a placeholder function receives: the empty block's declared values. */
 export type PlaceholderView = {
@@ -24,8 +24,8 @@ export type PlaceholderView = {
 	empty: boolean;
 };
 
-/** An empty block's placeholder text: one string, or one per block (`null`: none). */
-export type Placeholder = string | ((view: PlaceholderView) => string | null);
+/** An empty block's placeholder text: one string, or one per block of the view (`null`: none). */
+export type Placeholder = string | ((view: PlaceholderView, edytor: Edytor) => string | null);
 
 /**
  * Represents the payload for mark snippets with generic serializable content.
@@ -47,12 +47,12 @@ export type { Prevent };
 export type BlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: D;
+	readonly data: Readonly<D>;
 	readonly selected: boolean;
 	readonly focused: boolean;
 	/**
-	 * The block's id-only handle (its getters, reactive in a template, and
-	 * its commands); `undefined` in a suggestion's preview, which is no block
+	 * The block's id-only, read-only handle (its getters, reactive in a
+	 * template); `undefined` in a suggestion's preview, which is no block
 	 * of the document.
 	 */
 	readonly handle: Block | undefined;
@@ -76,11 +76,74 @@ export type BlockSnippetPayload<D = Record<string, any>> = {
 };
 
 /**
- * Represents the payload for change operations on blocks and text.
- * Combines both text operations and block operations with prevention capability.
+ * The view's commands that are no single document write, each one prepared
+ * plan of them, with their payloads: a hook sees each by its name, then its
+ * planned steps as the writes they perform.
  */
-export type ChangePayload = {
+export interface Commands {
+	/** A suggestion placed in the document (`edytor.suggestions`, `suggestion.accept()`). */
+	acceptSuggestion: {
+		suggestion: { id: string; at: ResolvedAt; content: readonly JSONBlock[] };
+	};
+	/**
+	 * Find and replace (`plugins/find`): each match's text replaced by
+	 * `replacement`, one plan, one undo step.
+	 */
+	replaceMatches: {
+		matches: { block: string; offset: number; length: number }[];
+		replacement: string;
+	};
+	/**
+	 * A comment thread's anchor (`plugins/comments`): its `comment:<thread>`
+	 * mark over each run of the text it was made on, one plan, one undo step.
+	 */
+	addComment: {
+		thread: string;
+		runs: { block: string; offset: number; length: number }[];
+	};
+	/**
+	 * A text range dragged inside the editor and dropped at `to` (block
+	 * offsets): its content placed at `to`, then the range deleted — or,
+	 * with `copy` (Alt), only placed. Both are prepared before any write:
+	 * hooks see the placement's planned steps and the deletion's, and a
+	 * veto or a refusal of either writes nothing.
+	 */
+	moveText: {
+		from: { start: { block: string; offset: number }; end: { block: string; offset: number } };
+		to: { block: string; offset: number };
+		copy: boolean;
+	};
+	/**
+	 * A closing marker typed after marked-up text (`**bold**`): the mark
+	 * set, the markers removed; `value` typed at `start` of the text.
+	 */
+	inlineMarkdown: { value: string; start: number; end: number };
+	/** A divider at the caret: its steps are the conversion, insertion or split it plans. */
+	insertDivider: Record<string, never>;
+	/** A table's row at `index`, one empty cell per column (`table.insert-row`). */
+	insertTableRow: { index: number };
+	/** A table's rows, with their cells (`table.delete-row`). */
+	deleteTableRows: { rows: Block[] };
+	/** A table's column at `index`, an empty cell in every row (`table.insert-column`). */
+	insertTableColumn: { index: number; width?: number };
+	/** A table's column, by id or position, with its cells (`table.delete-column`). */
+	deleteTableColumn: { column: string | number };
+	/** A table's column moved to position `to` (`table.move-column`). */
+	moveTableColumn: { column: string | number; to: number };
+	/** A table's rows moved to position `to` among its rows (`table.move-row`). */
+	moveTableRows: { rows: Block[]; to: number };
+	/** The cell a row shows none of in `column`, created (`table.pad`). */
+	fillTableCell: { row: string; column: string | number };
+}
+
+/** A change a hook sees: its operation, its payload, the block (and text) it is about. */
+type Change<K, P> = {
+	operation: K;
+	payload: P;
+	/** The block the operation names first (the root for none). */
 	block: Block;
+	/** The text segment at the offset a text write names. */
+	text?: Text;
 	/**
 	 * Veto the operation (and, with `cb`, run that in its place): records the
 	 * veto and returns, so the hook runs to its end; the first call decides.
@@ -88,24 +151,21 @@ export type ChangePayload = {
 	prevent: Prevent;
 	/**
 	 * The prepared command's effect (blocks created, removed, merged, moved,
-	 * retyped, text ranges written), on a command that is one document plan — a hook can refuse a command by what it would do.
+	 * retyped, text ranges written) — a hook can refuse a command by what it
+	 * would do. Its planned steps are shown after it, each as the write it
+	 * performs.
 	 */
 	effect?: PlanEffect;
-} & (
-	| {
-			[K in keyof TextOperations]: {
-				operation: K;
-				text: Text;
-				payload: TextOperations[K];
-			};
-	  }[keyof TextOperations]
-	| {
-			[K in keyof BlockOperations]: {
-				operation: K;
-				payload: BlockOperations[K];
-			};
-	  }[keyof BlockOperations]
-);
+};
+
+/**
+ * What `onBeforeOperation` receives: a document write under its name with
+ * its arguments (`payload`: `Parameters<DocumentWrites[K]>`), or a view
+ * command with its payload (`Commands`); `operation` narrows `payload`.
+ */
+export type ChangePayload =
+	| { [K in keyof DocumentWrites]: Change<K, Parameters<DocumentWrites[K]>> }[keyof DocumentWrites]
+	| { [K in keyof Commands]: Change<K, Commands[K]> }[keyof Commands];
 
 /**
  * What `onAfterOperation` receives: a {@link ChangePayload} without
@@ -195,16 +255,6 @@ export type TriggerContext = TextRuleContext & {
 };
 
 /**
- * One row of a trigger's menu, for an `item` snippet: the row shape every
- * menu shares (`label` is `label(item)`; set `id`, or spread `option`, so
- * the editor names the highlighted row), and `pick`, the same as `run`.
- */
-export type TriggerItemPayload<T = unknown> = MenuItemPayload<T> & {
-	/** Pick it (the same as `run`). */
-	pick: () => void;
-};
-
-/**
  * A character typed at a text's start or after whitespace opens a menu at
  * the caret (`@` for people, `[[` for pages); the text typed after it is
  * the query. Picking a row replaces the trigger and its query (`onPick`).
@@ -227,21 +277,13 @@ export type Trigger<T = any> = {
 	label?: (item: T) => string;
 	/** A row's key, which keeps its markup across queries: default its `id`, else its label. Two rows may share one. */
 	key?: (item: T) => string;
-	/** Replace each row's markup. */
-	item?: Snippet<[TriggerItemPayload<T>]>;
 	/**
-	 * Replace the whole menu; it renders while `controller.isOpen`, placed at
-	 * the caret. Its keys stay the editor's; keep its ARIA with `{@attach
-	 * controller.popup}` on the list and `{...controller.option(index)}` on
-	 * each row.
+	 * The menu's markup and its words; it renders while `controller.isOpen`,
+	 * placed at the caret (without it, nothing shows). Its keys stay the
+	 * editor's; keep its ARIA with `{@attach controller.popup}` on the list
+	 * (name it with `aria-label`) and `{...controller.option(index)}` on each row.
 	 */
 	menu?: Snippet<[TriggerMenuController<T>]>;
-	/** The menu's accessible name (default: the view's `labels.triggerMenu`, `Suggestions`). */
-	name?: string;
-	/** The text shown when no row matches (default: the view's `labels.noResults`, `No results`). */
-	empty?: string;
-	/** The text shown while a search is pending and no row is shown (default: the view's `labels.searching`, `Searching…`). */
-	searching?: string;
 	/** Whether the menu may open in `block` (default: a block that is not void and not in a code block). */
 	enabled?: (block: Block) => boolean;
 };
@@ -255,10 +297,6 @@ export type PluginDefinitions = {
 	inlineBlocks?: Record<string, InlineBlockDefinition | Snippet<[InlineBlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	commands?: EditorCommand[];
-	/** Text typed at the caret that a rule replaces (markdown, `:smile:` → 😄). */
-	inputRules?: InputRule[];
-	/** Characters that open a menu of rows at the caret (`@` mentions). */
-	triggers?: Trigger[];
 };
 
 /**
@@ -273,9 +311,8 @@ export type PluginOperations = {
 	/** Called before an operation is executed */
 	onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
 	/**
-	 * Called after an operation is executed: `dispatcher.last.status` is set
-	 * (its `value`, what a handle mutator returns, is recorded after this
-	 * hook); `operation` narrows `payload`.
+	 * Called after an operation is executed: `dispatcher.last.status` is set;
+	 * `operation` narrows `payload`.
 	 */
 	onAfterOperation?: (payload: AfterOperationPayload) => void;
 	/** Called when the editor value changes: the same `JSONDoc` shape `<Edytor value>` takes. */
@@ -409,6 +446,12 @@ export type BlockDefinition = {
 	 */
 	rendersContent?: boolean;
 	/**
+	 * The files the kind takes (the image's `image/*`, the file block's any):
+	 * with the uploads plugin listed, an empty block's Upload sends one and a
+	 * pasted or dropped file becomes a block of this kind (`media.files`).
+	 */
+	upload?: KindUpload;
+	/**
 	 * A list-like kind (Notion's bullets, numbers, to-dos, toggles): Enter at
 	 * the start or end of a non-empty block opens another block of this kind
 	 * (with its first preset's data), and Enter in an empty one ends the run —
@@ -489,15 +532,17 @@ export type BlockDefinition = {
 	/** Called when the block is deselected */
 	onDeselect?: (payload: { block: Block }) => void;
 	/** Normalize block content
-	 * Called at the end of the transaction of each operation on the block: the
-	 * block is an id-only handle whose reads show the operation's writes.
-	 * If you return a function, it runs in the same transaction.
+	 * Called at the end of the transaction of each operation that wrote the
+	 * block's content: the block is an id-only handle whose reads show the
+	 * operation's writes. If you return a function, it runs in the same
+	 * transaction (its writes are the view's operations).
 	 */
 	normalizeContent?: (payload: { block: Block }) => (() => void) | void;
 	/** Normalize block children
-	 * Called at the end of the transaction of each operation on the block: the
-	 * block is an id-only handle whose reads show the operation's writes.
-	 * If you return a function, it runs in the same transaction.
+	 * Called at the end of the transaction of each operation that changed the
+	 * block's children: the block is an id-only handle whose reads show the
+	 * operation's writes. If you return a function, it runs in the same
+	 * transaction (its writes are the view's operations).
 	 */
 	normalizeChildren?: (payload: { block: Block }) => (() => void) | void;
 };
@@ -506,7 +551,7 @@ export type BlockDefinition = {
 export type InlineBlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: D;
+	readonly data: Readonly<D>;
 	readonly selected: boolean;
 	/** The atom's id-only handle; a suggested atom has none. */
 	readonly handle: InlineBlock | undefined;

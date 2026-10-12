@@ -1,20 +1,12 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import { iconOf } from '../icons.js';
-	import type { ImageAlign } from './image.js';
 	import type { ImageControls } from './controls.svelte.js';
 
 	/**
 	 * The image chrome (`ImageControls`), in the overlay: a resize handle on
-	 * each side of the hovered image (Notion's pill, at mid-height), and a
-	 * toolbar at its top right: the three alignments and the alt text field
-	 * (a `toolbar` snippet replaces both, placed there). A press on the
-	 * toolbar keeps the editor's focus; the alt field takes it. The toolbar's
-	 * role and marks (`bar`) and the alt field's keys and focus (`altField`)
-	 * are the controller's attachments, a custom `toolbar`'s too.
+	 * each side of the hovered image (Notion's pill, at mid-height). The
+	 * toolbar is the image toolbar plugin's.
 	 */
-	let { controls, toolbar }: { controls: ImageControls; toolbar?: Snippet<[ImageControls]> } =
-		$props();
+	let { controls }: { controls: ImageControls } = $props();
 
 	// The view turning readonly mid-drag drops the preview at once.
 	$effect(() => {
@@ -26,13 +18,6 @@
 		controls.invalidate();
 	});
 
-	const labels = $derived(controls.labels);
-	const aligns: { align: ImageAlign; label: string }[] = $derived([
-		{ align: 'left', label: labels.alignLeft },
-		{ align: 'center', label: labels.alignCenter },
-		{ align: 'right', label: labels.alignRight }
-	]);
-	const keep = (event: MouseEvent) => event.preventDefault();
 	/** The handle's hit box: 16px wide, inside the image's edge. */
 	const HANDLE = 16;
 </script>
@@ -50,70 +35,9 @@
 				style:height="{box.height}px"
 				data-dragging={controls.drag ? 'true' : undefined}
 				data-selecting={controls.selecting ? 'true' : undefined}
-				onpointerdown={(event) => controls.start(event, side)}
-				onmousedown={(event) => controls.mousedown(event, side)}
+				{@attach controls.band.press((event) => controls.start(event, side))}
 			></div>
 		{/each}
-		{#if !controls.drag && toolbar}
-			<div
-				data-edytor-image-toolbar-slot
-				style:left="{box.x + box.width - 6}px"
-				style:top="{box.y + 6}px"
-				data-selecting={controls.selecting ? 'true' : undefined}
-			>
-				{@render toolbar(controls)}
-			</div>
-		{:else if !controls.drag}
-			<div
-				data-edytor-image-toolbar
-				role="toolbar"
-				aria-label={labels.toolbar}
-				style:left="{box.x + box.width - 6}px"
-				style:top="{box.y + 6}px"
-				data-selecting={controls.selecting ? 'true' : undefined}
-				{@attach controls.bar}
-			>
-				{#each aligns as { align, label } (align)}
-					<button
-						type="button"
-						data-edytor-image-align={align}
-						aria-label={label}
-						title={label}
-						aria-pressed={box.align === align}
-						onmousedown={keep}
-						onclick={() => controls.align(align)}
-						><span aria-hidden="true" style:mask-image={iconOf(`image.align-${align}`)}
-						></span></button
-					>
-				{/each}
-				<button
-					type="button"
-					data-edytor-image-alt-toggle
-					aria-label={labels.alt}
-					title={labels.alt}
-					aria-expanded={controls.editing === box.id}
-					onmousedown={keep}
-					onclick={controls.toggleAlt}
-					><span aria-hidden="true" style:mask-image={iconOf('image.alt')}></span></button
-				>
-			</div>
-			{#if controls.editing === box.id}
-				<div
-					data-edytor-image-alt-panel
-					style:left="{box.x + box.width - 6}px"
-					style:top="{box.y + 40}px"
-				>
-					<input
-						data-edytor-image-alt
-						aria-label={labels.alt}
-						placeholder={labels.altPlaceholder}
-						value={controls.alt}
-						oninput={(event) => controls.setAlt(event.currentTarget.value)}
-						{@attach controls.altField}
-					/>
-				</div>
-			{/if}
-		{/if}
 	{/if}
 </div>
 
@@ -129,7 +53,8 @@
 		pointer-events: none;
 	}
 
-	/* Notion's handle: a dark pill with a light ring, at mid-height, inside the edge. */
+	/* The handle's pill: at mid-height, inside the edge. Painted by a theme
+	 * (`edytor/themes/notion.css`: Notion's dark pill with a light ring). */
 	[data-edytor-image-resize]::after {
 		content: '';
 		position: absolute;
@@ -138,91 +63,5 @@
 		width: 6px;
 		height: min(48px, 50%);
 		transform: translateY(-50%);
-		border-radius: 20px;
-		background: var(--edytor-image-handle-color, rgba(15, 15, 15, 0.6));
-		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
-		opacity: 0.8;
-	}
-
-	[data-edytor-image-resize]:hover::after,
-	[data-edytor-image-resize][data-dragging='true']::after {
-		opacity: 1;
-	}
-
-	/* A custom toolbar's place: the image's top right, sized to its markup. */
-	[data-edytor-image-toolbar-slot] {
-		position: absolute;
-		width: max-content;
-		transform: translateX(-100%);
-	}
-
-	[data-edytor-image-toolbar] {
-		position: absolute;
-		display: flex;
-		gap: 2px;
-		/* The layer has no width: size to the buttons, not to it. */
-		width: max-content;
-		padding: 2px;
-		transform: translateX(-100%);
-		border-radius: 6px;
-		background: var(--edytor-image-toolbar-background, #fff);
-		box-shadow:
-			0 0 0 1px rgba(15, 15, 15, 0.05),
-			0 3px 6px rgba(15, 15, 15, 0.1);
-		font-size: 13px;
-	}
-
-	[data-edytor-image-toolbar] button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		border: 0;
-		border-radius: 4px;
-		background: transparent;
-		color: rgba(55, 53, 47, 0.65);
-		cursor: pointer;
-	}
-
-	[data-edytor-image-toolbar] button:hover,
-	[data-edytor-image-toolbar] button[aria-pressed='true'],
-	[data-edytor-image-toolbar] button[aria-expanded='true'] {
-		background: rgba(55, 53, 47, 0.08);
-		color: rgb(55, 53, 47);
-	}
-
-	[data-edytor-image-toolbar] button span {
-		width: 18px;
-		height: 18px;
-		background: currentColor;
-		mask-size: contain;
-		mask-repeat: no-repeat;
-	}
-
-	[data-edytor-image-alt-panel] {
-		position: absolute;
-		width: 240px;
-		padding: 4px;
-		transform: translateX(-100%);
-		border-radius: 6px;
-		background: var(--edytor-image-toolbar-background, #fff);
-		box-shadow:
-			0 0 0 1px rgba(15, 15, 15, 0.05),
-			0 3px 6px rgba(15, 15, 15, 0.1);
-	}
-
-	[data-edytor-image-alt] {
-		box-sizing: border-box;
-		width: 100%;
-		height: 28px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 4px;
-		background: rgba(242, 241, 238, 0.6);
-		box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
-		font: inherit;
-		outline: 0;
 	}
 </style>

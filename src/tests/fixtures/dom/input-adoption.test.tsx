@@ -26,8 +26,9 @@ import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (flipped to `it` by I2). */
 const row = it;
@@ -211,7 +212,7 @@ describe('F-I20 — the adoption diff prefers the attempt target (BI-8)', () => 
 					</root>
 				);
 				const block = firstBlock(edytor);
-				expect(edytor.selection.state.yStart).toBe(3);
+				expect(selectionState(edytor).yStart).toBe(3);
 				const remote = peer(edytor);
 				// A remote caret right after the bold l: it follows that atom.
 				const remoteCaret = remote.facade.anchorAt(block.id, 3)!;
@@ -248,7 +249,7 @@ describe('F-I20 — the adoption diff prefers the attempt target (BI-8)', () => 
 					</root>
 				);
 				const block = firstBlock(edytor);
-				expect([edytor.selection.state.yStart, edytor.selection.state.yEnd]).toEqual([0, 4]);
+				expect([selectionState(edytor).yStart, selectionState(edytor).yEnd]).toEqual([0, 4]);
 				const remote = peer(edytor);
 				// A remote caret inside the second word: `foo f|oo`.
 				const remoteCaret = remote.facade.anchorAt(block.id, 5)!;
@@ -279,8 +280,8 @@ describe('adoption runs through the dispatcher', () => {
 		return () => ({
 			onBeforeOperation: ({ operation, payload, prevent }) => {
 				if (operation !== 'insertText') return;
-				const { value, start, end } = payload as { value: string; start: number; end: number };
-				log.push(`${value}@${start}-${end}`);
+				const [, offset, value] = payload;
+				log.push(`${value}@${offset}`);
 				if (veto) prevent();
 			}
 		});
@@ -306,7 +307,7 @@ describe('adoption runs through the dispatcher', () => {
 		);
 		await typeNatively(edytor);
 		expect(firstText(edytor).stringContent).toBe('hexllo');
-		expect(log).toEqual(['x@2-2']);
+		expect(log).toEqual(['x@2']);
 	});
 
 	row('a hook vetoes the adoption: the text re-renders from the model', async () => {
@@ -318,7 +319,7 @@ describe('adoption runs through the dispatcher', () => {
 			{ plugins: [hooked(log, true), richTextPlugin, mentionPlugin] }
 		);
 		await typeNatively(edytor);
-		expect(log).toEqual(['x@2-2']);
+		expect(log).toEqual(['x@2']);
 		expect(firstText(edytor).stringContent).toBe('hello');
 		expect(domText(edytor)).toBe('hello');
 	});

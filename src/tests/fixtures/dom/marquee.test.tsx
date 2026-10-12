@@ -16,11 +16,12 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { createMarqueePlugin, marqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import type { MarqueeBoxPayload } from '$lib/plugins/marquee/MarqueeController.svelte.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { marquee as createMarqueePlugin, marqueePlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -96,7 +97,7 @@ const render = async (children: JSONBlock[], plugins: Plugin[] = [], readonly = 
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [...plugins, columnsPlugin, richTextPlugin],
+			plugins: [...plugins, createColumnsPlugin(), richTextPlugin],
 			value: { children },
 			autoSelectFixture: false,
 			blockHandles: false,
@@ -248,7 +249,7 @@ describe('which blocks a rectangle selects (sel.marquee.blocks)', () => {
 describe('the gesture (sel.marquee)', () => {
 	it('Shift or Mod at the press adds to the block selection there was', async () => {
 		const { edytor } = await render([p('A'), p('B'), p('C'), p('D')], [marqueePlugin]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('A')!);
+		selectBlocks(edytor, edytor.idToBlock.get('A')!);
 		press(edytor, 40, row(2), { shiftKey: true });
 		await move(150, row(3));
 		expect(selected(edytor)).toEqual(['A', 'C', 'D']);
@@ -263,7 +264,7 @@ describe('the gesture (sel.marquee)', () => {
 
 	it('without a modifier the rectangle replaces the selection', async () => {
 		const { edytor } = await render([p('A'), p('B'), p('C')], [marqueePlugin]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('A')!);
+		selectBlocks(edytor, edytor.idToBlock.get('A')!);
 		press(edytor, 40, row(2));
 		await move(150, row(2) + 5);
 		expect(selected(edytor)).toEqual(['C']);
@@ -426,7 +427,7 @@ describe('the gesture (sel.marquee)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [marqueePlugin, columnsPlugin, richTextPlugin],
+				plugins: [marqueePlugin, createColumnsPlugin(), richTextPlugin],
 				value: { children: [p('A'), p('B')] },
 				autoSelectFixture: false
 			}

@@ -349,7 +349,7 @@ export const INSTALL_HOOKS = () => {
 	const txCtor = ed.transaction?.constructor;
 	const rotCtor = ed.remoteOnlyTransaction?.constructor;
 	const docTx = ed.document?.transaction;
-	const UmCtor = Y.UndoManager;
+	const UmCtor = ed.undoManager?.constructor;
 	const classify = (origin, local) => {
 		if (local === false) return 'remote-apply';
 		if (origin === null || origin === undefined) return 'local-untyped';
@@ -530,7 +530,7 @@ export const INSTALL_HOOKS = () => {
 	const txRecs = new WeakMap(); // engine Transaction → record entry
 	const emitStack = []; // [{name, txr}]
 	const txOf = (name, args) => {
-		if (name === 'update' || name === 'updateV2') return args?.[3];
+		if (name === 'update') return args?.[3];
 		if (name === 'afterAllTransactions' || name === 'beforeAllTransactions') return null;
 		return args?.[0];
 	};
@@ -858,7 +858,7 @@ export const INSTALL_HOOKS = () => {
 		insertText: (a) => ed.facade.insertText(a[0], a[1], a[2]),
 		deleteText: (a) => ed.facade.deleteText(a[0], a[1], a[2]),
 		formatRange: (a) => ed.facade.formatRange(a[0], a[1], a[2], a[3]),
-		setMark: (a) => ed.facade.setMark(a[0], a[1], a[2], a[3], a[4]),
+		setMark: (a) => ed.facade.formatRange(a[0], a[1], a[2], { [a[3]]: a[4] }),
 		splitBlock: (a) => ed.facade.splitBlock(a[0], a[1], a[2]),
 		undo: () => ed.undoManager.undo(),
 		redo: () => ed.undoManager.redo()

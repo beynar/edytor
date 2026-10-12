@@ -1,107 +1,12 @@
 <script module lang="ts">
-	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
-	import MediaEmpty from './MediaEmpty.svelte';
-	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
-	import {
-		claimed,
-		escapeHtml,
-		mediaLabels,
-		mediaEmpty,
-		mediaSourceOf,
-		safeMediaSrc,
-		mediaUploads,
-		type MediaPluginOptions
-	} from './media.js';
-
-	const uploadOf = new WeakMap<Edytor, MediaPluginOptions['upload']>();
-
-	const videoLink = (block: Block | undefined, value: string) => {
-		const src = safeMediaSrc(value);
-		if (!block || !src) return false;
-		block.data.src = src;
-		return true;
-	};
+	import type { Plugin } from '$lib/plugins.js';
+	import { sourcePlugin } from './SourceBlock.svelte';
 
 	/**
 	 * Notion's video block: a video file (an `http(s)` link, or an upload
 	 * through `upload`) in the browser's player, with an editable caption.
-	 * A YouTube or Vimeo link is an embed (`embedPlugin`). Void: its only
+	 * A YouTube or Vimeo link is an embed (`createEmbedPlugin()`). Void: its only
 	 * text is the caption.
 	 */
-	export const createVideoPlugin =
-		(options: MediaPluginOptions = {}): Plugin =>
-		(edytor) => {
-			// First wins, as for the kind: a second listing never replaces it.
-			const first = !!edytor && !uploadOf.has(edytor);
-			if (first) uploadOf.set(edytor, options.upload);
-			const onPaste = first ? mediaUploads(edytor, 'video', options.upload) : undefined;
-			const labels = labelsWith('media', options.labels);
-			mediaLabels.video.claim(edytor, labels);
-			mediaEmpty.claim(edytor, 'video', options.empty);
-			return {
-				...(onPaste ? { onPaste } : {}),
-				blocks: {
-					video: {
-						...mediaKinds.video,
-						snippet: video,
-						element: 'figure',
-						presets: [
-							{
-								label: labels.video.label,
-								icon: '🎬',
-								keywords: keywordsOf('block.video', ['movie', 'mp4', 'clip'], options.keywords),
-								group: 'Media'
-							}
-						],
-						html: (block, caption) => {
-							const src = safeMediaSrc(block.data?.src);
-							const media = src ? `<video src="${escapeHtml(src)}" controls></video>` : '';
-							return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-						},
-						// A `video` (bare, or in a `figure`) with a safe `src` or `source`.
-						parse: (el) => {
-							const src = mediaSourceOf(claimed(el, 'video'));
-							return src ? { src } : undefined;
-						}
-					}
-				}
-			};
-		};
-
-	/** The video block, links only. */
-	export const videoPlugin = createVideoPlugin();
+	export const createVideoPlugin = (): Plugin => sourcePlugin('video', ['movie', 'mp4', 'clip']);
 </script>
-
-{#snippet video({ block, content }: BlockSnippetPayload<{ src?: string }>)}
-	{@const src = safeMediaSrc(block.data.src)}
-	{#if src}
-		<div use:block.void data-edytor-video>
-			<!-- svelte-ignore a11y_media_has_caption -->
-			<video
-				{src}
-				controls
-				preload="metadata"
-				playsinline
-				draggable="false"
-				style="display: block; width: 100%"
-			></video>
-		</div>
-	{:else}
-		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty
-				block={block.handle}
-				kind="video"
-				icon="🎬"
-				accept="video/*"
-				upload={block.handle && uploadOf.get(block.handle.edytor)}
-				link={(value) => videoLink(block.handle, value)}
-			/>
-		</div>
-	{/if}
-	<!-- The core renders the kind's <figure> around this markup. -->
-	<!-- svelte-ignore a11y_figcaption_parent -->
-	<figcaption>{@render content()}</figcaption>
-{/snippet}

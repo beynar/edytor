@@ -11,7 +11,7 @@ Most apps never import the CRDT engine: `createDocument`, the sync factories and
 | Import | Contents | Runs in |
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, plugins, the document API with its errors and JSON types, and the sync factories. | A Svelte bundler |
-| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the document's full vocabulary, `bindCrdt`, attribution and migration. No Svelte. | Browser, Node, SSR, Workers |
+| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the document's full vocabulary, `bindCrdt` and attribution. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/protocol` | The wire vocabulary: `bindCrdt`, frames, message types, codecs, generation records, the admission gates, the raw provider classes. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/crdt` | The CRDT engine itself: edytor's fork of Yjs v14. Import it as a namespace. | Anywhere |
 | `edytor/cloudflare` | `DocumentRoom`, `attachRoom(this, options)` (a document in your own Durable Object) and `routeDocumentSocket`. See [the server](/docs/server/quick-start). | Cloudflare Workers |
@@ -36,19 +36,34 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 }
 ```
 
-`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [importing v13 documents](/docs/reference/v13-import)), and you should not install `yjs` next to it expecting the two to share documents.
+`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it, and you should not install `yjs` next to it expecting the two to share documents.
 
 **What it ships:**
 
-- documents (`Doc`), nodes, transactions and `UndoManager`;
-- the V1 and V2 update codecs: `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, `diffUpdateV2`, `encodeStateVector`, `decodeStateVector` and their V2 forms;
-- relative positions in JSON form (`createRelativePositionFromTypeIndex`, `relativePositionToJSON`, `createRelativePositionFromJSON`, `createAbsolutePositionFromRelativePosition`);
-- id sets and id maps with their codecs, and `RangeCursor`;
-- the renderer interface (`AbstractRenderer`, `$renderer`) for a renderer you write yourself.
+- documents (`Doc`), nodes and transactions;
+- one update encoding (the columnar one upstream Yjs calls v2): `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `diffUpdate`, `decodeUpdate`, `UpdateEncoder`, `UpdateDecoder`, `encodeStateVector`, `decodeStateVector`;
+- positions as ids: `idAtIndex(node, index, assoc)` (the id a position binds) and `indexOfId(doc, id, assoc)` (its live index and node);
+- id sets with their codec, and `RangeCursor`.
 
-**What was pruned:** the concrete renderers, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
+A node's writes are its methods (`insert`, `delete`, `mark`, `setAttr`, `deleteAttr`); its attributes read with `getAttr`, `forEachAttr` and `attrKeys`, its content with `new Y.RangeCursor(node).read(from, to)`, the pieces of a range with their marks. A mark is a paired operation, `mark(index, length, name, value, startSide, endSide)` (`value` `null` removes it; each side, `0` or `1`, decides whether an insert at that edge lands inside). A commit is told by the document's events: `commit` (once per transaction, with `transaction.changed`), then `afterTransaction`; nodes have no observers.
 
-**What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
+```ts title="src/lib/read.ts" check
+import * as Y from 'edytor/crdt';
+
+export function boldText(node: Y.Node): string[] {
+  const out: string[] = [];
+  for (const piece of new Y.RangeCursor(node).read(0, node.length)) {
+    if (piece.formats?.bold === true && piece.content instanceof Y.ContentString) {
+      out.push(piece.content.str.slice(piece.offset, piece.offset + piece.len));
+    }
+  }
+  return out;
+}
+```
+
+**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the v1 update encoding, the undo manager, the update logging and obfuscation helpers, relative-position objects, id-set algebra beyond the basics, the content-id helpers, plain formats and their cleanup, observers and events on nodes, subdocuments and the load state, the JSON, embed and subdocument contents, and a node's renderings (`toJSON`, `toString`, `toArray`). Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
+
+**What was added:** the struct primitives edytor's own undo manager replays a step with (`redoItem`, `keepItem`, `followRedone`). The history is edytor's (`document.history`): it decides how deleted text comes back and keeps a block a peer wrote into when its creation is undone, which is what makes [concurrent undo](/docs/collaboration/concurrent-editing) behave.
 
 The fork also lets a document keep the node a concurrent write of the same map key replaced, with its subtree (`doc.keepReplaced`, a predicate, `null` by default). Every edytor document carries edytor's rule (two writers creating one block id at once keep both texts): the documents `createDocument`, `attachDocument` and `bindCrdt(Y).createDoc()` give you, and any document a facade binds. The engine's class default stays `null`, so another document of the same engine in your app keeps the upstream behavior. A document must carry the rule before it integrates edytor content: build it with `createDoc()` rather than `new Y.Doc()` followed by `Y.applyUpdate`.
 
@@ -60,7 +75,7 @@ The same document surface as `edytor`, safe to import in Node, SSR and Workers:
 import { createDocument, loadDocument, attachDocument, bindCrdt } from 'edytor/crdt/edytor';
 ```
 
-It exports the document factories and errors (`SchemaMismatchError`, `UnsupportedDocError`, `SyncRefusedError`, …), the document vocabulary types (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `OpResult`, `DocAnchor`, `JSONDoc`, …), the block roles (`defaultSemantics`, `semanticsOf`), `Awareness`, the sync types, attribution, `isLegacyDoc` and `bindCrdt`. The document factories are already bound to the engine: you do not need `bindCrdt` to create, load or edit documents.
+It exports the document factories and errors (`SchemaMismatchError`, `UnsupportedDocError`, `SyncRefusedError`, …), the document vocabulary types (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `OpResult`, `DocAnchor`, `JSONDoc`, …), the block roles (`defaultSemantics`, `semanticsOf`), `Awareness`, the sync types, attribution and `bindCrdt`. The document factories are already bound to the engine: you do not need `bindCrdt` to create, load or edit documents.
 
 ## `edytor/protocol`
 
@@ -74,7 +89,7 @@ import { IndexeddbPersistence, inspectAdmission } from 'edytor/protocol';
 
 ## `bindCrdt(Y)`
 
-`bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes, migration or the sync protocol on documents you manage yourself.
+`bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes or the sync protocol on documents you manage yourself.
 
 ```ts title="src/lib/local.ts" check
 import * as Y from 'edytor/crdt';
@@ -93,7 +108,6 @@ await provider.whenSynced;
 | `Awareness` | The presence class. |
 | `.doc` | The document-model layer over a raw doc: `create(doc, config?)` returns a bare facade with no history and no attribution, plus `init`, `seed`, `restore`, `isInitialized`, `schemaVersion`, `checkSchema`, `assertSchema` and the schema constants. |
 | `.providers` | `IndexeddbPersistence`, `WebsocketProvider`, `createIndexeddbSync`, `createWebsocketSync`, `clearDocument`, `storeState`. |
-| `.migration` | `migrate`, `status`, `waitForSettled`, `rollback`. See [importing v13 documents](/docs/reference/v13-import). |
 | `.sync` | The sync protocol readers and writers, `applyRemote`, `lacks`, `writeSaved`, `readSaved`. See [the protocol](/docs/server/protocol). |
 | `.admission` | `admitUpdate(update, name?)`: decode bytes onto a scratch document, check them, and return the document, or throw. |
 | `.attribution` | The attribution service that documents attach automatically. |
@@ -107,7 +121,6 @@ await provider.whenSynced;
 | Persist or sync a raw doc outside the document API | `bindCrdt(Y).providers`, or the provider classes of `edytor/protocol`. |
 | Store, merge or inspect updates on a server | `edytor/crdt` (`mergeUpdates`, `encodeStateVector`, …) with `bindCrdt(Y).sync`. |
 | Run the collaboration server | `edytor/cloudflare`, or `edytor/protocol` ([the protocol](/docs/server/protocol)) for another platform. |
-| Import v13 documents | `bindCrdt(Y).migration`. |
 
 :::warning
 Do not create an `EdytorDocument` (`createDocument`, `loadDocument`, `attachDocument`) on the document a sync server holds; it would record the server as an author. See [the protocol](/docs/server/protocol#never-attach-a-document-on-the-server).

@@ -1,56 +1,66 @@
 /**
  * The v14 IndexedDB container — one owner for the store names, the row
- * codec (v1 update rows, v2 snapshot rows: `room.store.v2`), the open, the non-creating probe and the ONE verify-or-stamp rule,
- * shared by the provider and the migrator. Rows are append-only for every
+ * codec (every row an update in the engine's one encoding, a snapshot
+ * gzip-compressed where that makes it smaller), the open, the non-creating
+ * probe and the ONE verify-or-stamp rule. Rows are append-only for every
  * writer (a provider's compaction appends its snapshot before deleting the
  * rows it subsumes).
  */
-import * as idb from 'lib0-v14/indexeddb';
 import {
 	GENERATION_KEY,
 	GenerationMismatchError,
-	isGenerationRecord,
-	STORED_GENERATION_RECORD
+	GENERATION_RECORD,
+	isGenerationRecord
 } from '../protocols/envelope.js';
 import { gunzip, packed } from '../storage.js';
 
 export const UPDATES = 'updates';
 export const CUSTOM = 'custom';
 
-/** Open (creating when absent) a container with its two stores. */
+/** A request's result, as a promise (its failure as an `Error`). */
+export const rtop = <T>(request: IDBRequest<T>): Promise<T> =>
+	new Promise((resolve, reject) => {
+		request.onerror = () => reject(new Error(String(request.error)));
+		request.onsuccess = () => resolve(request.result);
+	});
+
+/** The stores `names` of one read-write transaction on `db`. */
+export const storesOf = (db: IDBDatabase, names: string[]): IDBObjectStore[] => {
+	const transaction = db.transaction(names, 'readwrite');
+	return names.map((name) => transaction.objectStore(name));
+};
+
+/** The greatest key of `store` (`null` when it is empty). */
+export const lastKey = (store: IDBObjectStore): Promise<IDBValidKey | null> =>
+	rtop(store.openKeyCursor(null, 'prev')).then((cursor) => cursor?.key ?? null);
+
+/** Open (creating when absent) a container with its two stores; it closes when another version opens. */
 export const openContainer = (dbName: string): Promise<IDBDatabase> =>
-	idb.openDB(dbName, (db) => idb.createStores(db, [[UPDATES, { autoIncrement: true }], [CUSTOM]]));
+	new Promise((resolve, reject) => {
+		const request = indexedDB.open(dbName);
+		request.onupgradeneeded = () => {
+			request.result.createObjectStore(UPDATES, { autoIncrement: true });
+			request.result.createObjectStore(CUSTOM);
+		};
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			const db = request.result;
+			db.onversionchange = () => db.close();
+			resolve(db);
+		};
+	});
 
 /** A row is the update's bytes in a buffer of their own. */
 export const encodeRow = (update: Uint8Array): ArrayBuffer => update.slice().buffer;
 
-export const decodeRow = (row: unknown): Uint8Array => {
-	if (row instanceof ArrayBuffer) return new Uint8Array(row);
-	if (row instanceof Uint8Array) return row;
-	throw new TypeError('Stored Yjs update is not binary data');
-};
+/** A snapshot row: the document's state, gzip-compressed where that makes it smaller. */
+export const snapshotRow = async (update: Uint8Array): Promise<ArrayBuffer> =>
+	encodeRow(await packed(update));
 
-/**
- * A snapshot row (storage `'v2'`): the document in the v2 encoding,
- * gzip-compressed where the platform has `CompressionStream` (and that
- * makes it smaller). Update rows stay v1 `ArrayBuffer`s. A build from
- * before the v2 snapshots reads such a row as no update at all (`decodeRow` throws),
- * so it fails to load the store instead of misreading it.
- */
-export type SnapshotRow = { v2: ArrayBuffer };
-
-export const snapshotRow = async (updateV2: Uint8Array): Promise<SnapshotRow> => ({
-	v2: (await packed(updateV2)).slice().buffer
-});
-
-/** A stored row as the update to apply: `{ v2 }` for a snapshot row (inflated). */
-export const readRow = async (row: unknown): Promise<Uint8Array | { v2: Uint8Array }> => {
-	if (typeof row === 'object' && row !== null && 'v2' in row) {
-		const bytes = (row as SnapshotRow).v2;
-		if (!(bytes instanceof ArrayBuffer)) throw new TypeError('Stored snapshot is not binary data');
-		return { v2: await gunzip(new Uint8Array(bytes)) };
-	}
-	return decodeRow(row);
+/** A stored row as the update to apply (a compressed snapshot inflated). */
+export const readRow = async (row: unknown): Promise<Uint8Array> => {
+	if (!(row instanceof ArrayBuffer)) throw new TypeError('Stored Yjs update is not binary data');
+	return gunzip(new Uint8Array(row));
 };
 
 /**
@@ -64,9 +74,9 @@ export const verifyOrStamp = async (
 	updates: IDBObjectStore,
 	custom: IDBObjectStore
 ): Promise<void> => {
-	const found = await idb.get(custom, GENERATION_KEY);
-	if (found === undefined && (await idb.count(updates)) === 0) {
-		await idb.rtop(custom.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY));
+	const found = await rtop(custom.get(GENERATION_KEY));
+	if (found === undefined && (await rtop(updates.count())) === 0) {
+		await rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
 	} else if (!isGenerationRecord(found)) {
 		throw new GenerationMismatchError(name, found);
 	}

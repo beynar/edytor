@@ -19,9 +19,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { dispatchCopy, dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import {
 	block,
@@ -35,6 +33,11 @@ import {
 	selected,
 	tree
 } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
+import {
+	blockHandlesPlugin,
+	blockMenu as createBlockMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -114,10 +117,10 @@ const dragAfter = async (edytor: Edytor, source: string, target: string) => {
 const linked: string[] = [];
 const menu = createBlockMenuPlugin({ linkTo: (b) => `#${b.id}` });
 const render = (children = contractDoc()) =>
-	renderColumns(children, [blockHandlesPlugin, menu, arrowMovePlugin]);
+	renderColumns(children, [blockHandlesPlugin, menu, createArrowMovePlugin()]);
 
 const selectAll = async (edytor: Edytor, ...ids: string[]) => {
-	edytor.selection.selectBlocks(...ids.map((id) => block(edytor, id)));
+	selectBlocks(edytor, ...ids.map((id) => block(edytor, id)));
 	await flushDomUpdates();
 };
 

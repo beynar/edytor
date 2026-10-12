@@ -9,8 +9,8 @@
  */
 import type { RenderedNode } from './jsx/types.js';
 import { Edytor } from '../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
+import { jsonContentToItems } from '$lib/utils/json.js';
 import { expect } from 'vitest';
 import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
@@ -19,8 +19,10 @@ import { mentionPlugin } from './atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
-import type { Awareness, YDoc } from '$lib/crdt/index.js';
+import type { Awareness, OpResult, YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
+import { selectionState } from './selection.js';
+import { richTextPlugin } from '../routes/chrome/plugins.js';
 
 type CursorPosition = {
 	path: number[];
@@ -50,6 +52,8 @@ export type SelectionExpectation = {
 export type OperationResultExpectation =
 	| { kind: 'void' }
 	| { kind: 'null' }
+	/** An operation's `OpResult` status. */
+	| { kind: 'applied' | 'noop' | 'refused' }
 	| { kind: 'block'; path: number[]; type?: string }
 	| { kind: 'text'; path: number[]; content?: string }
 	| { kind: 'inline-block'; path: number[]; type?: string }
@@ -95,6 +99,28 @@ const getAncestorBlockByDefinition = (
 	}
 
 	return null;
+};
+
+/**
+ * Insert content before part `index` of `block` (a text segment or an inline
+ * atom): each entry is a text's runs or an atom, as JSON. A raw document
+ * write, for fixtures.
+ */
+export const insertParts = (
+	block: Block,
+	index: number,
+	parts: (JSONText[] | JSONInlineBlock)[]
+): void => {
+	if (block.isRoot) return;
+	const { facade: document, idToBlock } = block.edytor;
+	let at = idToBlock.parts(block.id)[index]?.start ?? document.displayLength(block.id);
+	for (const item of jsonContentToItems(parts.flat())) {
+		if (item.kind === 'inline') document.insertInline(block.id, at++, item);
+		else if (item.text) {
+			document.insertText(block.id, at, item.text, item.marks);
+			at += item.text.length;
+		}
+	}
 };
 
 export const findCursorPosition = (doc: JSONDoc) => {
@@ -379,7 +405,7 @@ export const createTestEdytor = (
 		const { path: endPath, offset: endOffset } = end ?? { path: startPath, offset: startOffset };
 		const { text: startText } = findBlockAndTextAtFixturePath(edytor, value, startPath);
 		const { text: endText } = findBlockAndTextAtFixturePath(edytor, value, endPath);
-		edytor.selection.setAtRange(startText, startOffset, endText, endOffset);
+		edytor.selection.selectText(startText, startOffset, endText, endOffset);
 	}
 
 	return { edytor, expect: expectEdytorValue(edytor) };
@@ -533,7 +559,7 @@ export const findBlockAndTextAtPath =
 	};
 
 export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) => {
-	const { state } = edytor.selection;
+	const state = selectionState(edytor);
 
 	if (expected.startBlockPath) {
 		expect(state.startBlock?.path).toEqual(expected.startBlockPath);
@@ -586,11 +612,37 @@ export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) 
 	}
 };
 
+/** An operation's answer (`OpResult`). */
+const isOpResult = (value: unknown): value is OpResult =>
+	typeof value === 'object' && value !== null && 'status' in value && 'ids' in value;
+
 export const expectOperationResult = (
-	result: Block | Text | InlineBlock | Block[] | readonly [Text | null, number] | null | void,
-	expected: OperationResultExpectation
+	answer:
+		| OpResult
+		| Block
+		| Text
+		| InlineBlock
+		| Block[]
+		| readonly [Text | null, number]
+		| null
+		| void,
+	expected: OperationResultExpectation,
+	edytor?: Edytor
 ) => {
+	// An operation's result: its status, or the blocks it names (`ids`) as handles.
+	let result = answer;
+	if (isOpResult(answer)) {
+		if (expected.kind === 'applied' || expected.kind === 'noop' || expected.kind === 'refused')
+			return expect(answer.status).toBe(expected.kind);
+		if (expected.kind === 'null') return expect(answer.status).toBe('refused');
+		const blocks = answer.ids.map((id) => edytor!.idToBlock.get(id));
+		result = expected.kind === 'blocks' ? (blocks as Block[]) : blocks[0];
+	}
 	switch (expected.kind) {
+		case 'applied':
+		case 'noop':
+		case 'refused':
+			throw new Error(`Expected an OpResult, got ${String(answer)}`);
 		case 'void':
 			expect(result).toBeUndefined();
 			return;
@@ -753,7 +805,8 @@ export const runHotkey = async (
 						preventDefault() {
 							this.defaultPrevented = true;
 						},
-						stopPropagation() {}
+						stopPropagation() {},
+						composedPath: (): EventTarget[] => []
 					};
 
 					return fallbackEvent as KeyboardEvent;

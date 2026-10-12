@@ -24,10 +24,10 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 
 import * as selection from '$lib/session/selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const S = () => selection;
 
@@ -305,41 +305,33 @@ describe('V1/V2 — every writer commits a value; the state is its projection', 
 		const sel = edytor.selection;
 		expect(sel.value).toEqual(noSelection);
 
-		sel.setAtTextOffset(text(edytor, 'a'), 3);
+		sel.selectText(text(edytor, 'a'), 3);
 		const caret = edytor.facade.anchorAt('a', 3, 'left');
 		expect(sel.value).toEqual(textSelection(caret));
 
-		sel.setAtRange(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1, {
-			isReversed: true
-		});
+		sel.selectText(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1, true);
 		// reversed: the anchor is the end (bound left), the focus the start (bound right)
 		expect(sel.value).toEqual(
 			textSelection(edytor.facade.anchorAt('b', 3, 'left'), edytor.facade.anchorAt('a', 1, 'right'))
 		);
 
-		sel.selectBlocks(edytor.idToBlock.get('b'));
+		sel.select(blockSelection(['b']));
 		expect(sel.value).toEqual(blockSelection(['b']));
 
 		sel.selectInlineBlock(edytor.idToBlock.get('b').content[1]);
 		expect(sel.value).toEqual(atomSelection('b', 'm1'));
 	});
 
-	row('the state is the projection of the value on the shared fields', () => {
+	row('the text range is the projection of the value, lowered to text segments', () => {
 		const { project } = S();
 		const edytor = view();
 		const sel = edytor.selection;
-		sel.setAtRange(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1);
+		sel.selectText(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1);
 		const v = project(sel.value, edytor.facade);
-		const s = sel.state;
+		const s = sel.textRange();
 		expect(v.start).toEqual({ block: 'a', offset: s.startText.segStart + s.yStart });
 		expect(v.end).toEqual({ block: 'b', offset: s.endText.segStart + s.yEnd });
-		// D3: the state keeps the wrapper fields; content and marks are the projection's.
-		expect([v.isCollapsed, v.isReversed, v.blocks, v.isBlockSpanning]).toEqual([
-			s.isCollapsed,
-			s.isReversed,
-			s.blocks.map((b) => b.id),
-			s.isBlockSpanning
-		]);
+		expect(s.texts.map((part) => part.parent.id)).toEqual(['a', 'b', 'b']);
 		expect(sel.projection).toBe(v);
 	});
 });

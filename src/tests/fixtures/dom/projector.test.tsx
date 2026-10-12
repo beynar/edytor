@@ -36,9 +36,6 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -46,6 +43,8 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since V4. */
 const row = it;
@@ -153,8 +152,8 @@ describe('F-S1 — the later of two requested writes wins (W1)', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		void edytor.selection.setAtTextOffset(text, 4);
-		void edytor.selection.setAtRange(text, 2, text, 6);
+		void edytor.selection.selectText(text, 4);
+		void edytor.selection.selectText(text, 2, text, 6);
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 2, end: 6, isCollapsed: false });
 		expect(domRange(text.node!)).toEqual({ anchor: 2, focus: 6, anchorIsText: true });
@@ -167,8 +166,8 @@ describe('F-S1 — the later of two requested writes wins (W1)', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		void edytor.selection.setAtRange(text, 2, text, 6);
-		void edytor.selection.setAtTextOffset(text, 4);
+		void edytor.selection.selectText(text, 2, text, 6);
+		void edytor.selection.selectText(text, 4);
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 4, end: 4, isCollapsed: true });
 		expect(domRange(text.node!)).toEqual({ anchor: 4, focus: 4, anchorIsText: true });
@@ -381,7 +380,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 						armed = false;
 						const log = edytor.root!.children[1]!.firstText!;
 						edytor.dispatcher.run('insertText', () =>
-							log.insertText({ value: '!', start: log.length, end: log.length })
+							edytor.insertText(log.parent.id, log.segStart + log.length, '!')
 						);
 					}
 				}
@@ -410,10 +409,11 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 			// Contract (anchor contract, "deleted atoms resolve to the gap where
 			// they lived"): the caret sits in `hello wo|rld`, bound left to the
 			// `o`. A peer deletes `llo wor` (display 2..9) out of the italic text,
-			// so the local apply is followed by the engine's formatting cleanup —
-			// a second transaction opened while the apply still commits. The DOM
-			// still shows the old text there; nothing may be minted from it. The
-			// caret follows its anchor to the gap: `he|ld`, offset 2.
+			// and a listener of the apply's commit opens a second transaction
+			// while the apply still commits (as a provider's or the history's
+			// follow-up write does). The DOM still shows the old text there;
+			// nothing may be minted from it. The caret follows its anchor to the
+			// gap: `he|ld`, offset 2.
 			const { edytor } = await renderDomEdytor(
 				<root>
 					<paragraph>
@@ -427,11 +427,18 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 			edytor.doc.on('beforeTransaction', (transaction: { origin: unknown }) =>
 				origins.push(transaction.origin)
 			);
+			const nested = Symbol('nested');
+			const follow = (transaction: { origin: unknown }) => {
+				if (transaction.origin !== 'peer') return;
+				edytor.doc.off('afterTransaction', follow);
+				edytor.doc.transact(() => {}, nested);
+			};
+			edytor.doc.on('afterTransaction', follow);
 			const remote = peer(edytor);
 			remote.facade.deleteText(first!.id, 2, 7);
 			await remote.push();
 			// The fixture exercises the nested transaction the row names.
-			expect(origins.map(String)).toEqual(['peer', 'Symbol(yjs.formatting-cleanup)']);
+			expect(origins).toEqual(['peer', nested]);
 			expect(edytor.value.children![0]!.content).toEqual([
 				{ text: 'held', marks: { italic: true } }
 			]);
@@ -456,7 +463,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 					hook.push((edytor.doc as unknown as { _transaction: unknown })._transaction !== null);
 					const log = edytor.root!.children[1]!.firstText!;
 					edytor.dispatcher.run('insertText', () =>
-						log.insertText({ value: '!', start: log.length, end: log.length })
+						edytor.insertText(log.parent.id, log.segStart + log.length, '!')
 					);
 				}
 			}
@@ -574,7 +581,7 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 	const programs: [string, (edytor: Edytor, editor: HTMLElement) => unknown][] = [
 		[
 			'a caret write',
-			(edytor) => edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 2)
+			(edytor) => edytor.selection.selectText(edytor.root!.children[1]!.firstText!, 2)
 		],
 		[
 			'typing',
@@ -585,7 +592,7 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 		[
 			'a block-set delete',
 			async (edytor, editor) => {
-				edytor.selection.selectBlocks(edytor.root!.children[1]!);
+				selectBlocks(edytor, edytor.root!.children[1]!);
 				await flushDomUpdates();
 				return dispatchDomKeyDown(editor, { key: 'Backspace', code: 'Backspace' });
 			}

@@ -60,8 +60,8 @@ const enterWalk = (steps) => {
 		// Enter in the line: a split at its middle; at its end or start: a new line beside it.
 		if (kind < 0.4 && length > 1) ok(ed.splitBlock(id, length >> 1, nid));
 		else if (kind < 0.8)
-			ok(ed.insertBlock({ parent, index: index + 1 }, { id: nid, type: 'paragraph' }));
-		else ok(ed.insertBlock({ parent, index, before: true }, { id: nid, type: 'paragraph' }));
+			ok(ed.insertBlocks({ parent, index: index + 1 }, [{ id: nid, type: 'paragraph' }]));
+		else ok(ed.insertBlocks({ parent, index, before: true }, [{ id: nid, type: 'paragraph' }]));
 		ok(ed.insertText(nid, 0, `typed ${i}`));
 	}
 	return measure(document);
@@ -122,7 +122,7 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 			const nid = `I${i}`;
 			const { parent, index } = ed.positionOf(last);
 			// Enter at the end of the newest line: a new line after it.
-			ok(ed.insertBlock({ parent, index: index + 1 }, { id: nid, type: 'paragraph' }));
+			ok(ed.insertBlocks({ parent, index: index + 1 }, [{ id: nid, type: 'paragraph' }]));
 			ok(ed.insertText(nid, 0, `item ${i}`));
 			const key = rnd();
 			if (key < 0.35) ok(ed.nestBlock(nid, last));
@@ -147,14 +147,15 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 			const { index } = ed.positionOf(id);
 			const up = rnd() < 0.5;
 			if (up ? index === 0 : index === order.length - 1) continue;
-			ok(ed.moveBlock(id, { parent: null, index: up ? index - 1 : index + 1 }));
+			ok(ed.moveBlocks([id], { parent: null, index: up ? index - 1 : index + 1 }));
 		}
 		const { rank, bytes } = measure(document);
-		// Measured: 23 characters (one rank of two segments, 32 in the format
-		// before P7; the others one, 13), 69,229 bytes (16, 70,647 before P7;
-		// 151,975 before the history kept 200 steps, P6; before FX-04: 32;
-		// wave 13's source-ranked moves: 10 MB).
-		expect(rank).toBeLessThanOrEqual(24);
+		// Measured: 25 characters (one rank of two segments; 23 before schema
+		// 6, whose seed writer ids differ; 32 in the format before P7; the
+		// others one, 13), 69,229 bytes (16, 70,647 before P7; 151,975 before
+		// the history kept 200 steps, P6; before FX-04: 32; wave 13's
+		// source-ranked moves: 10 MB).
+		expect(rank).toBeLessThanOrEqual(25);
 		expect(bytes).toBeLessThanOrEqual(75_000);
 	});
 });

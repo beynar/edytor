@@ -8,20 +8,23 @@ import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { DOC_DATA_ROOT, TYPE } from '../schema.js';
 import {
+	blockNodeOf,
 	displayParentOf,
 	displaySlotOf,
+	isLive,
 	isLiveIn,
+	positionInView,
+	positionOf as modelPositionOf,
 	type BlockId,
 	type ContentItem,
 	type Destination,
-	type ModelView,
-	type PlacementModel
+	type ModelView
 } from '../placement/model.js';
-import { DEAD, ownedLength, type TextEngine } from '../text/model.js';
+import { DEAD, findAtom, ownedLength } from '../text/model.js';
 import type { DisplayRoles, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
 import { itemIds, readData } from '../data.js';
-import { unlistedOrder } from '../tables.js';
+import { columnIds, listedColumns, unlistedOrder } from '../tables.js';
 import { cloneJsonSafe, type JSONBlock } from '../../utils/json.js';
 import { ref } from './plan.js';
 import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
@@ -30,8 +33,6 @@ import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
 export type DocBase = {
 	Y: EngineApi;
 	doc: EngineDoc;
-	M: PlacementModel;
-	T: TextEngine;
 	/** The doc's index (`text/runs.ts`): the one owner of derived state. */
 	runsView: RunView;
 	/** The role table the display and every guard ask of a block's shown kind. */
@@ -44,22 +45,22 @@ export type DocBase = {
 
 /** The reads of the facade over `c.doc`. */
 export const docReads = (c: DocBase) => {
-	const { doc, M, T, runsView, roles } = c;
+	const { doc, runsView, roles } = c;
 
 	/** The node a data patch writes: block `id`, its atom `inlineId`, or the document's data root. */
 	const dataNode = (id?: BlockId, inlineId?: string): EngineNode | undefined =>
 		id === undefined
 			? doc.get(DOC_DATA_ROOT)
 			: inlineId === undefined
-				? (M.blockNodeOf(doc, id) ?? undefined)
-				: (T.findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
+				? (blockNodeOf(doc, id) ?? undefined)
+				: (findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
 
 	/** The one serializer: `id`'s subtree in the public `JSONBlock` shape. */
 	const blockJSON = (id: BlockId): JSONBlock => {
 		const type = blockTypeOf(id);
 		// A registered block always has a type once its updates are all in:
 		// `''` is the absent-id shape, or an out-of-order delivery's transient.
-		if (DEV && type === undefined && M.blockNodeOf(doc, id) !== null && !holdsPending(doc))
+		if (DEV && type === undefined && blockNodeOf(doc, id) !== null && !holdsPending(doc))
 			throw new Error(`[edytor-doc] block ${id} has no type`);
 		const block: JSONBlock = {
 			type: type ?? '',
@@ -80,12 +81,12 @@ export const docReads = (c: DocBase) => {
 	// ── reads ────────────────────────────────────────────────────────
 
 	const blockTypeOf = (id: BlockId): string | undefined => {
-		const t = runsView.displayType(id) ?? M.blockNodeOf(doc, id)?.getAttr(TYPE);
+		const t = runsView.displayType(id) ?? blockNodeOf(doc, id)?.getAttr(TYPE);
 		return typeof t === 'string' ? t : undefined;
 	};
 
 	const blockDataOf = (id: BlockId): Record<string, unknown> | undefined => {
-		const node = M.blockNodeOf(doc, id);
+		const node = blockNodeOf(doc, id);
 		const d = node && readData(node);
 		// `cloneJsonSafe`: the read path stays total even when the stored
 		// attr holds a non-JSON value that bypassed boundary validation
@@ -110,7 +111,7 @@ export const docReads = (c: DocBase) => {
 	const childrenIds = (parent: BlockId | null): BlockId[] =>
 		(view().kids.get(parent) ?? []).map((k) => k.id);
 
-	const positionOf = (id: BlockId): Destination | null => M.positionOf(doc, id);
+	const positionOf = (id: BlockId): Destination | null => modelPositionOf(doc, id);
 
 	/** Index path from the root (`[i, j, …]`), or null when hidden/absent. */
 	const pathOf = (id: BlockId): number[] | null => {
@@ -118,7 +119,7 @@ export const docReads = (c: DocBase) => {
 		const path: number[] = [];
 		let cur: BlockId | null = id;
 		while (cur !== null) {
-			const pos = M.positionInView(v, cur);
+			const pos = positionInView(v, cur);
 			if (!pos) return null;
 			path.unshift(pos.index);
 			cur = pos.parent;
@@ -172,18 +173,26 @@ export const docReads = (c: DocBase) => {
 		const parent = positionOf(id)?.parent;
 		return parent != null && isLines(parent);
 	};
+	/** The child kind `role` gives `id`'s kind: a layout's item kind, a table's row kind. */
+	const childKindOf =
+		(role: 'layout' | 'table') =>
+		(id: BlockId): string | undefined => {
+			const type = blockTypeOf(id);
+			return type === undefined ? undefined : roles[role](type);
+		};
+	/** `id` is of its parent's `kindOf` kind, directly in it (a column, a row). */
+	const childOf =
+		(kindOf: (id: BlockId) => string | undefined) =>
+		(id: BlockId): boolean => {
+			const parent = positionOf(id)?.parent;
+			return parent != null && blockTypeOf(id) === kindOf(parent);
+		};
 	/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
-	const itemKindOf = (id: BlockId): string | undefined => {
-		const type = blockTypeOf(id);
-		return type === undefined ? undefined : roles.layout(type);
-	};
+	const itemKindOf = childKindOf('layout');
 	/** `id` is a layout (`layout.*`). */
 	const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
 	/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
-	const isLayoutItem = (id: BlockId): boolean => {
-		const parent = positionOf(id)?.parent;
-		return parent != null && blockTypeOf(id) === itemKindOf(parent);
-	};
+	const isLayoutItem = childOf(itemKindOf);
 	/** `id` is a layout or holds one in its shown subtree (`layout.nest`). */
 	const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
 	/** `id` is a layout item or sits inside one. */
@@ -193,10 +202,7 @@ export const docReads = (c: DocBase) => {
 	// ── tables (`table.*`) ────────────────────────────────────────────
 
 	/** The row kind of `id` when it is a table (its role says `table`): its default child. */
-	const rowKindOf = (id: BlockId): string | undefined => {
-		const type = blockTypeOf(id);
-		return type === undefined ? undefined : roles.table(type);
-	};
+	const rowKindOf = childKindOf('table');
 	/** `id` is a table (`table.*`). */
 	const isTable = (id: BlockId): boolean => rowKindOf(id) !== undefined;
 	/** `type` is a row kind of a table kind the roles declare (`tableRow`). */
@@ -210,10 +216,7 @@ export const docReads = (c: DocBase) => {
 			return row !== undefined && roles.defaultChild(row) === type;
 		});
 	/** `id` is a table's row: of its table's row kind, directly in it. */
-	const isTableRow = (id: BlockId): boolean => {
-		const parent = positionOf(id)?.parent;
-		return parent != null && blockTypeOf(id) === rowKindOf(parent);
-	};
+	const isTableRow = childOf(rowKindOf);
 	/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
 	const isTableCell = (id: BlockId): boolean => {
 		const row = positionOf(id)?.parent;
@@ -234,18 +237,15 @@ export const docReads = (c: DocBase) => {
 	 * (its cells show in their own order, `table.columns`).
 	 */
 	const tableColumns = (table: BlockId): { id: string; width?: number }[] | null => {
-		const columns = blockDataOf(table)?.columns;
-		if (!Array.isArray(columns)) return null;
-		const seen = new Set<string>();
-		const out: { id: string; width?: number }[] = [];
-		for (const c of columns) {
-			const id = (c as { id?: unknown } | null)?.id;
-			if (typeof id !== 'string' || seen.has(id)) continue;
-			seen.add(id);
-			const width = (c as { width?: unknown }).width;
-			out.push(typeof width === 'number' && Number.isFinite(width) ? { id, width } : { id });
-		}
-		return out;
+		const data = blockDataOf(table);
+		const ids = columnIds(data);
+		return (
+			ids &&
+			listedColumns(data)!.map((id) => {
+				const width = (data!.columns as { width?: unknown }[])[ids.indexOf(id)].width;
+				return typeof width === 'number' && Number.isFinite(width) ? { id, width } : { id };
+			})
+		);
 	};
 	/**
 	 * `table` as a grid (`table.pad`): its column ids in order and each shown
@@ -339,19 +339,18 @@ export const docReads = (c: DocBase) => {
 	 * absent/deleted blocks. This is the transaction-aware counterpart
 	 * of the commit-synced {@link runsView} read surface.
 	 *
-	 * The range reader emits BORROWED `marks`/`data` (cursor format
-	 * state / the replicated inline attr) — every item's payload is
-	 * swapped for the view's canonical frozen instance before it crosses
-	 * the public boundary, so callers can't mutate engine state through
-	 * the snapshot. Item wrappers and the array stay fresh and mutable.
+	 * The items are the block's maintained runs: their payloads are the
+	 * index's canonical frozen instances (`===` the ones `runs` publishes),
+	 * so callers can't mutate engine state through the snapshot. Item
+	 * wrappers and the array stay fresh and mutable.
 	 */
 	const contentItems = (id: BlockId): ContentItem[] => runsView.contentItems(id);
 
 	/** Registry membership — the block exists (may be delete-marked or merged away). */
-	const hasBlock = (id: BlockId): boolean => M.blockNodeOf(doc, id) !== null;
+	const hasBlock = (id: BlockId): boolean => blockNodeOf(doc, id) !== null;
 
-	/** The one liveness answer (`M.isLive`): `id` renders in `project()`. O(depth). */
-	const live = (id: BlockId): boolean => M.isLive(doc, id);
+	/** The one liveness answer (`isLive`): `id` renders in `project()`. O(depth). */
+	const live = (id: BlockId): boolean => isLive(doc, id);
 	/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
 	const contentTarget = (id: BlockId): boolean =>
 		live(id) && view().blocks.get(id)?.claimsNode !== undefined;
@@ -381,7 +380,6 @@ export const docReads = (c: DocBase) => {
 		isLayoutItem,
 		holdsLayout,
 		insideItem,
-		rowKindOf,
 		isTable,
 		isRowKind,
 		isCellKind,

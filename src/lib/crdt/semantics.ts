@@ -90,16 +90,15 @@ const frozen = <T>(value: T): T => {
 	return value;
 };
 
-/** `richTextPlugin`'s structural rows (its other kinds are plain). */
+/** `createRichTextPlugin()`'s structural rows (its other kinds are plain). */
 export const richTextKinds = frozen({
 	divider: { void: true, rendersContent: false },
-	horizontalRule: { void: true, rendersContent: false },
 	'ordered-list': { rendersContent: false, defaultChild: 'list-item' },
 	'unordered-list': { rendersContent: false, defaultChild: 'list-item' }
 } satisfies Record<string, KindSemantics>);
 
 /**
- * `richTextPlugin`'s mark edges: where a concurrent insert at each end
+ * `createRichTextPlugin()`'s mark edges: where a concurrent insert at each end
  * of a mark lands. A link grows at its start only (typing after it
  * stays out of it unless from inside the anchor); the others are inclusive.
  */
@@ -116,17 +115,17 @@ export const commentMarks = frozen({
 	comment: { edge: 'exclusive' }
 } satisfies Record<string, { edge: MarkEdge }>);
 
-/** `codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
+/** `createCodePlugin()`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
 export const codeKinds = frozen({
 	code: { island: true, lines: true, rendersContent: false, defaultChild: 'codeLine' }
 } satisfies Record<string, KindSemantics>);
 
-/** `imagePlugin`'s structural rows: void, its only text is the caption. */
+/** `createImagePlugin()`'s structural rows: void, its only text is the caption. */
 export const imageKinds = frozen({ image: { void: true } } satisfies Record<string, KindSemantics>);
 
 /**
- * The media plugins' structural rows (`embedPlugin`, `bookmarkPlugin`,
- * `filePlugin`, `videoPlugin`, `audioPlugin`): void like the image, their
+ * The media plugins' structural rows (`createEmbedPlugin()`, `createBookmarkPlugin()`,
+ * `createFilePlugin()`, `createVideoPlugin()`, `createAudioPlugin()`): void like the image, their
  * only text is the caption.
  */
 export const mediaKinds = frozen({
@@ -196,6 +195,7 @@ export const tableKinds = frozen({
  * `table`, `atomic`, `rendersContent`, `defaultChild`), and a bare snippet is a
  * plain kind. To add kinds to a bundled config, use {@link mergeSemantics}.
  */
+/* @__NO_SIDE_EFFECTS__ */
 export const semanticsOf = (...tables: Record<string, KindRecord>[]) => {
 	const semantics = {
 		roles: {} as Record<string, BlockRole>,
@@ -341,27 +341,31 @@ export const semanticsMismatch = (ours: Record<string, string>, theirs: unknown)
 };
 
 /** `config` with a mark-edge table, frozen. */
+/* @__NO_SIDE_EFFECTS__ */
 const withMarks = <C extends object>(config: C, marks: Record<string, { edge: MarkEdge }>) =>
 	frozen(Object.assign({}, config, { marks }));
 
-/** `richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
-export const richTextSemantics = withMarks(semanticsOf(richTextKinds), richTextMarks);
-/** `codePlugin`'s block roles. */
-export const codeSemantics = semanticsOf(codeKinds);
-/** `imagePlugin`'s block roles. */
-export const imageSemantics = semanticsOf(imageKinds);
+/** `createRichTextPlugin()`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
+export const richTextSemantics = /* @__PURE__ */ withMarks(
+	/* @__PURE__ */ semanticsOf(richTextKinds),
+	richTextMarks
+);
+/** `createCodePlugin()`'s block roles. */
+export const codeSemantics = /* @__PURE__ */ semanticsOf(codeKinds);
+/** `createImagePlugin()`'s block roles. */
+export const imageSemantics = /* @__PURE__ */ semanticsOf(imageKinds);
 /** The media plugins' block roles (embed, bookmark, file, video, audio). */
-export const mediaSemantics = semanticsOf(mediaKinds);
+export const mediaSemantics = /* @__PURE__ */ semanticsOf(mediaKinds);
 /** The columns plugin's block roles (a layout of columns). */
-export const layoutSemantics = semanticsOf(layoutKinds);
+export const layoutSemantics = /* @__PURE__ */ semanticsOf(layoutKinds);
 /** The page plugin's block role (a link to another document). */
-export const pageSemantics = semanticsOf(pageKinds);
+export const pageSemantics = /* @__PURE__ */ semanticsOf(pageKinds);
 /** The table of contents plugin's block role. */
-export const tocSemantics = semanticsOf(tocKinds);
+export const tocSemantics = /* @__PURE__ */ semanticsOf(tocKinds);
 /** The table plugin's block roles (a table of rows of cells). */
-export const tableSemantics = semanticsOf(tableKinds);
+export const tableSemantics = /* @__PURE__ */ semanticsOf(tableKinds);
 /** The equation plugin's block role. */
-export const equationSemantics = semanticsOf(equationKinds);
+export const equationSemantics = /* @__PURE__ */ semanticsOf(equationKinds);
 /**
  * The rich-text, code, image, media, columns, page, table of contents,
  * table and equation plugins' block roles together (and the rich-text and
@@ -388,8 +392,7 @@ export const defaultSemantics = withMarks(
 
 /**
  * The facade configuration (`EdytorDocConfig`) a document with no view
- * reads `semantics` with — the room's, and a generation cutover's
- * (`migration/generation.ts`): roles, default children, content-less kinds
+ * reads `semantics` with — the room's: roles, default children, content-less kinds
  * and mark edges, each answered only for a kind the tables name.
  */
 export const facadeConfigOf = (semantics: DocumentSemanticsConfig) => {

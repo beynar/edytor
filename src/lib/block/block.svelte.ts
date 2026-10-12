@@ -1,54 +1,9 @@
 import { Text } from '../text/text.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
-import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
-import {
-	batch,
-	removeInlineBlock,
-	addChildBlock,
-	insertBlockAfter,
-	insertBlockBefore,
-	mergeBlockBackward,
-	mergeBlockForward,
-	nestBlock,
-	removeBlock,
-	setBlock,
-	splitBlock,
-	prepareSplit,
-	duplicateBlock,
-	prepareDuplicate,
-	prepareSet,
-	prepareMove,
-	prepareMoves,
-	prepareInsertAfter,
-	prepareInsertBefore,
-	prepareRemove,
-	prepareMergeBackward,
-	prepareMergeForward,
-	prepareUnNest,
-	prepareNest,
-	prepareRemoveInline,
-	preparePatch,
-	patchData,
-	prepareDeleteRange,
-	addChildBlocks,
-	pushContentIntoBlock,
-	unNestBlock,
-	moveBlock,
-	moveBlocks,
-	normalizeContent,
-	addInlineBlock,
-	textAfterAtom,
-	blockOf,
-	deleteContentAtRange,
-	normalizeChildren,
-	type BlockOperations
-} from './block.utils.js';
-import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
-import { InlineBlock } from './inlineBlock.svelte.js';
-import type { DocBlock } from '$lib/crdt/index.js';
-import { revealed } from '$lib/selection/replaceSelection.js';
-import { propsProxy } from '$lib/session/props.js';
+import type { InlineBlock } from './inlineBlock.svelte.js';
+import type { Owned } from '$lib/surface/attributes.js';
 
 /** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
 export const voidChrome = (node: HTMLElement) => {
@@ -58,9 +13,10 @@ export const voidChrome = (node: HTMLElement) => {
 };
 
 /**
- * An id-only block handle: every getter reads the document index
- * (transaction-aware), every mutator issues a command. The view keeps one per
- * id (`edytor.idToBlock`); `node` is the element the core renders for it.
+ * An id-only, read-only block handle: every getter reads the document index
+ * (transaction-aware). Writes are the view's operations, with the block's id
+ * (`edytor.splitBlock(block.id, …)`). The view keeps one handle per id
+ * (`edytor.idToBlock`); `node` is the element the core renders for it.
  *
  * A reactive reader (a template, a `$derived`, an `$effect`) of a getter
  * depends on the cells the answer comes from (this block's, its parent's,
@@ -92,11 +48,6 @@ export class Block {
 		const cells = this.edytor.cells;
 		if (id === 'root') void cells?.rootIds;
 		else cells?.get(id);
-	}
-
-	/** The typed document node — `null` for the root. */
-	get model(): DocBlock | null {
-		return this.isRoot ? null : this.edytor.facade.block(this.id);
 	}
 
 	/** The display parent (the root for a top-level block); none for the root or a dead block. */
@@ -134,26 +85,15 @@ export class Block {
 		this.#track();
 		return this.edytor.facade.blockTypeOf(this.id) ?? '';
 	}
-	/** Retype the block — the `setBlock` command (readonly, hooks, `dispatcher.last`). */
-	set type(value: string) {
-		this.setBlock({ value: { type: value } });
-	}
 
-	#data?: { version: number; value: Record<string, unknown> };
-	#props?: Record<string, any>;
+	#data?: { version: number; value: Record<string, any> };
 	/**
-	 * The block's `data` as a live proxy (`session/props.ts`): reads follow the
-	 * document (reactive through the block's cell), writes are `patchData`
-	 * commands. The root's is the document's data (`edytor.data`).
+	 * The block's `data`, read-your-writes; a reactive reader depends on the
+	 * block's cell. The root's is the document's data (`edytor.data`). Write
+	 * it with `edytor.patchData(block.id, patches)`.
 	 */
-	get data(): Record<string, any> {
-		return (this.#props ??= propsProxy(
-			() => (this.isRoot ? this.edytor.docData() : this.#current()),
-			(ops) => this.patchData({ ops }),
-			(path) => this.edytor.facade.dataItemIds(this.isRoot ? null : this.id, path)
-		));
-	}
-	#current() {
+	get data(): Readonly<Record<string, any>> {
+		if (this.isRoot) return this.edytor.docData();
 		const { facade, cells } = this.edytor;
 		cells?.get(this.id);
 		const version = facade.version;
@@ -165,15 +105,6 @@ export class Block {
 	get definition(): BlockDefinition {
 		return this.edytor.definitionOf(this.type);
 	}
-
-	/**
-	 * Replace the block's `data` — a `patchData` command of its root (readonly,
-	 * hooks, `dispatcher.last`); `block.model.setData` is the raw document write.
-	 */
-	setData = (data: Record<string, unknown>): void => {
-		// Non-JSON values are coerced at the document boundary (`sanitizeWireJson`).
-		this.patchData({ ops: [{ path: [], value: data }] });
-	};
 
 	get selected() {
 		return this.edytor.selection.isSelected(this);
@@ -202,29 +133,29 @@ export class Block {
 
 	/** @internal */
 	get firstEditableText(): Text | undefined {
-		// Only a RENDERED text part is editable — a container's phantom
-		// content slot holds a Text with no `node`. Scan ALL children: the
-		// first child can be noneditable (a void divider) while a later
-		// child owns the text the caret must land in.
-		const own = this.content.find(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
-		if (own) return own;
-		for (const child of this.children) {
-			const text = child.firstEditableText;
-			if (text) return text;
-		}
-		return undefined;
+		return this.#editable(false);
 	}
 
 	/** @internal */
 	get lastEditableText(): Text | undefined {
-		const own = this.content.findLast(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
+		return this.#editable(true);
+	}
+
+	/**
+	 * The first (or `last`) editable text of the block's own content, else
+	 * of its subtree. Only a RENDERED text part is editable — a container's
+	 * phantom content slot holds a Text with no `node`. Every child is
+	 * scanned: the first can be noneditable (a void divider) while a later
+	 * one owns the text the caret must land in.
+	 */
+	#editable(last: boolean): Text | undefined {
+		const rendered = (part: Text | InlineBlock): part is Text =>
+			part instanceof Text && part.node != null;
+		const own = last ? this.content.findLast(rendered) : this.content.find(rendered);
 		if (own) return own;
-		for (let i = this.children.length - 1; i >= 0; i--) {
-			const text = this.children[i]!.lastEditableText;
+		const children = this.children;
+		for (const child of last ? children.reverse() : children) {
+			const text = child.#editable(last);
 			if (text) return text;
 		}
 		return undefined;
@@ -380,47 +311,6 @@ export class Block {
 		return this.rendersContent ? this.content.findLast((p) => p instanceof Text) : undefined;
 	}
 
-	addChildBlock = batch('addChildBlock', addChildBlock);
-	addChildBlocks = batch('addChildBlocks', addChildBlocks);
-	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
-	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
-	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
-	duplicateBlock = batch('duplicateBlock', duplicateBlock, prepareDuplicate, blockOf);
-	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
-	unNestBlock = revealed(batch('unNestBlock', unNestBlock, prepareUnNest));
-	mergeBlockBackward = batch(
-		'mergeBlockBackward',
-		mergeBlockBackward,
-		prepareMergeBackward,
-		blockOf
-	);
-	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward, blockOf);
-	nestBlock = revealed(batch('nestBlock', nestBlock, prepareNest));
-	setBlock = batch('setBlock', setBlock, prepareSet);
-	moveBlock = revealed(batch('moveBlock', moveBlock, prepareMove));
-	moveBlocks = revealed(batch('moveBlocks', moveBlocks, prepareMoves));
-	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
-	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
-	patchData = batch('patchData', patchData, preparePatch);
-	#addInline = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
-	/**
-	 * Insert an inline atom: at `offset` of the block's content (block
-	 * offsets, an inline atom counting 1; a caret's), or at `index` of the
-	 * text segment `text`. One `addInlineBlock` operation (its payload names
-	 * the segment). Answers the text segment right after the atom, where a
-	 * caret goes (`null` when it was not written, `undefined` when refused).
-	 */
-	addInlineBlock = (
-		payload: BlockOperations['addInlineBlock'] | { offset: number; block: JSONInlineBlock }
-	) => {
-		if (!('offset' in payload)) return this.#addInline(payload);
-		const at = this.textAtOffset(Math.max(0, payload.offset));
-		return at ? this.#addInline({ index: at.offset, text: at.text, block: payload.block }) : null;
-	};
-	normalizeContent = batch('normalizeContent', normalizeContent);
-	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
-
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
 	void = voidChrome;
 
@@ -447,57 +337,6 @@ export class Block {
 		return hit;
 	};
 
-	// ── JSON insertion (specs are data; `new Block({block})` is gone) ──
-
-	/**
-	 * Insert children at `index`: a JSON spec is created (its id kept, minted
-	 * when missing); a block handle moves there with its identity. A raw
-	 * write for the editor's own commands: nothing on a view whose dispatcher
-	 * refuses writes (readonly, a read-only document).
-	 * @internal
-	 */
-	insertChildren = (index: number, blocks: (JSONBlock | Block)[]): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const { facade } = this.edytor;
-		const parent = this.isRoot ? null : this.id;
-		blocks.forEach((block, k) => {
-			if (block instanceof Block) block.model?.moveTo({ parent: this.model, index: index + k });
-			else facade.insertBlock({ parent, index: index + k }, jsonBlockToSpec(block));
-		});
-	};
-
-	/**
-	 * Delete `length` visible children from `index`, each with its subtree (a
-	 * document delete). Raw, as `insertChildren`.
-	 * @internal
-	 */
-	deleteChildren = (index: number, length = 1): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
-		for (const id of ids.slice(index, index + length).reverse())
-			this.edytor.facade.block(id).delete({ keepChildren: false });
-	};
-
-	/**
-	 * Insert content before part `index` (a text segment or an inline atom):
-	 * each entry is a text's runs or an atom, as JSON. Raw, as `insertChildren`.
-	 * @internal
-	 */
-	insertParts = (index: number, parts: (JSONText[] | JSONInlineBlock)[]): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const model = this.model;
-		if (!model) return;
-		const all = this.edytor.idToBlock.parts(this.id);
-		let at = all[index]?.start ?? model.length;
-		for (const item of jsonContentToItems(parts.flat())) {
-			if (item.kind === 'inline') model.insertInline(at++, item);
-			else if (item.text) {
-				model.insertText(at, item.text, item.marks);
-				at += item.text.length;
-			}
-		}
-	};
-
 	/** The declared view state (`open` on a `details`) the block's last element held. */
 	#viewState: [string, string][] = [];
 
@@ -507,14 +346,14 @@ export class Block {
 	 * view state: an open toggle stays open.
 	 * @internal
 	 */
-	attach = (node: HTMLElement) => {
+	attach = (node: HTMLElement, owned?: () => Owned) => {
 		const names = this.definition.viewState ?? [];
 		const read = (from: HTMLElement): [string, string][] =>
 			names.flatMap((name) => (from.hasAttribute(name) ? [[name, from.getAttribute(name)!]] : []));
 		for (const [name, value] of this.node ? read(this.node) : this.#viewState)
 			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
-		const release = this.edytor.surface.register(node, 'block', this.id);
+		const release = this.edytor.surface.register(node, 'block', this.id, undefined, owned);
 		// Its attributes follow its own selected and focused membership.
 		this.edytor.selection.keep(this);
 		// A block laid out again with no commit moves the chrome beside it (the overlay measures).

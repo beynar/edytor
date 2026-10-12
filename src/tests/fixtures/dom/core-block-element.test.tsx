@@ -17,9 +17,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createRawSnippet } from 'svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import {
 	dispatchDomBeforeInput,
@@ -27,6 +25,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r5`); green since R5. */
 const row = it;
@@ -183,7 +182,7 @@ describe('R5 — the core renders the block element', () => {
 			}
 		);
 		const block = edytor.idToBlock.get('t')!;
-		block.setBlock({ value: { data: { tag: 'aside' } } });
+		edytor.setBlock(block.id, { data: { tag: 'aside' } });
 		await flushDomUpdates();
 		const element = editor.querySelector('[data-edytor-id="t"]');
 		expect(element?.tagName).toBe('ASIDE');
@@ -198,7 +197,7 @@ describe('R5 — the core renders the block element', () => {
 		);
 		const heading = edytor.root!.children[0]!;
 		const element = editor.querySelector(`[data-edytor-id="${heading.id}"]`);
-		heading.setBlock({ value: { data: { level: 'h2' } } });
+		edytor.setBlock(heading.id, { data: { level: 'h2' } });
 		await flushDomUpdates();
 		expect(editor.querySelector(`[data-edytor-id="${heading.id}"]`)).toBe(element);
 		expect(element?.querySelector(':scope > h2')?.contains(heading.firstText!.node!)).toBe(true);
@@ -315,11 +314,11 @@ describe('R5 — pending marks live in the selection value (L4)', () => {
 		);
 		const text = edytor.root!.children[0]!.firstText!;
 		await dispatchDomKeyDown(document, { key: 'b', code: 'KeyB', metaKey: true });
-		await edytor.selection.setAtTextOffset(text, 5);
+		await edytor.selection.selectText(text, 5);
 		const kept = edytor.selection.value;
 		expect(kept.kind === 'text' ? kept.pending : undefined).toEqual({ bold: true });
 
-		await edytor.selection.setAtTextOffset(text, 2);
+		await edytor.selection.selectText(text, 2);
 		const moved = edytor.selection.value;
 		expect(moved.kind === 'text' ? moved.pending : 'none').toBeUndefined();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });

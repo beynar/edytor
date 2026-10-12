@@ -20,7 +20,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { BAND } from '$lib/plugins/columns/gaps.js';
 import {
@@ -31,6 +30,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { block, column, columns, contractDoc, p } from './columns.helpers.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -449,7 +449,7 @@ describe('resizing from the keyboard', () => {
 
 	it('the layout holding the caret shows its bands; a focused band stays when the pointer leaves', async () => {
 		const { edytor, editor } = await render(contractDoc());
-		edytor.selection.setAtTextOffset(block(edytor, 'B').firstText!, 0);
+		edytor.selection.selectText(block(edytor, 'B').firstText!, 0);
 		await flushDomUpdates();
 		layout(edytor);
 		edytor.overlay.invalidate();
@@ -457,7 +457,7 @@ describe('resizing from the keyboard', () => {
 		await flushDomUpdates();
 		expect(strips()).toHaveLength(1);
 
-		edytor.selection.setAtTextOffset(block(edytor, 'P').firstText!, 0);
+		edytor.selection.selectText(block(edytor, 'P').firstText!, 0);
 		await hover(edytor, 'A');
 		strips()[0]!.focus();
 		await flushDomUpdates();

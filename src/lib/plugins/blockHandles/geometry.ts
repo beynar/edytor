@@ -18,8 +18,8 @@ export type DropPlacement = {
 export const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
 	position === 'left' || position === 'right';
 
-export const getOwnRowBottom = (node: HTMLElement) => {
-	const rect = node.getBoundingClientRect();
+/** Where a block's own row ends: where its first shown child begins, else its box's (`rect`) bottom. */
+export const getOwnRowBottom = (node: HTMLElement, rect = node.getBoundingClientRect()) => {
 	// Block nodes wrap their children in the DOM; the parent's placement
 	// bands belong to its own row, ending where the first child begins.
 	const firstChild = node.querySelector<HTMLElement>('[data-edytor-block="true"]');
@@ -43,12 +43,15 @@ export const ownRow = (node: HTMLElement) => {
 	);
 };
 
-/** The first line of a block's own text (not a child's), or the block's box. */
-export const ownTextRow = (node: HTMLElement) => {
-	const text = Array.from(node.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).find(
+/** The first element matching `selector` in a block's own markup (not a child's). */
+const own = (node: HTMLElement, selector: string) =>
+	Array.from(node.querySelectorAll(selector)).find(
 		(element) => element.closest('[data-edytor-block="true"]') === node
 	);
-	const row = text?.getClientRects()[0];
+
+/** The first line of a block's own text (not a child's), or the block's box. */
+export const ownTextRow = (node: HTMLElement) => {
+	const row = own(node, '[data-edytor-text="true"]')?.getClientRects()[0];
 	return row && row.height > 0 ? row : node.getBoundingClientRect();
 };
 
@@ -72,10 +75,7 @@ export const nestIndent = (node: HTMLElement) => {
  * there goes inside the block.
  */
 export const overEmptyBody = (node: HTMLElement, y: number) => {
-	const hint = Array.from(node.querySelectorAll('[data-edytor-empty-body]')).find(
-		(element) => element.closest('[data-edytor-block="true"]') === node
-	);
-	const rect = hint?.getBoundingClientRect();
+	const rect = own(node, '[data-edytor-empty-body]')?.getBoundingClientRect();
 	return !!rect && rect.height > 0 && y >= rect.top && y <= rect.bottom;
 };
 

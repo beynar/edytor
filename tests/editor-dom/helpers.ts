@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
 type PageIssues = {
@@ -186,18 +187,18 @@ export const readSelection = (page: Page) =>
 		};
 
 		return {
-			startBlockPath: edytor.selection.state.startBlock?.path ?? null,
-			endBlockPath: edytor.selection.state.endBlock?.path ?? null,
-			startTextPath: edytor.selection.state.startText
-				? getPartPath(edytor.selection.state.startText)
+			startBlockPath: edytor.selection.textRange().startText?.parent?.path ?? null,
+			endBlockPath: edytor.selection.textRange().endText?.parent.path ?? null,
+			startTextPath: edytor.selection.textRange().startText
+				? getPartPath(edytor.selection.textRange().startText)
 				: null,
-			endTextPath: edytor.selection.state.endText
-				? getPartPath(edytor.selection.state.endText)
+			endTextPath: edytor.selection.textRange().endText
+				? getPartPath(edytor.selection.textRange().endText)
 				: null,
-			yStart: edytor.selection.state.yStart,
-			yEnd: edytor.selection.state.yEnd,
-			isCollapsed: edytor.selection.state.isCollapsed,
-			isReversed: edytor.selection.state.isReversed,
+			yStart: edytor.selection.textRange().yStart,
+			yEnd: edytor.selection.textRange().yEnd,
+			isCollapsed: edytor.selection.projection.isCollapsed,
+			isReversed: edytor.selection.projection.isReversed,
 			selectedBlockPaths: Array.from(edytor.selection.selectedBlocks).map(
 				(block: any) => block.path
 			),
@@ -956,12 +957,12 @@ export const dispatchPasteAtCaret = async (
 		}
 
 		const part = edytor.root?.children[blockIndex]?.content?.[contentIndex];
-		if (typeof part?.insertAt !== 'function' || typeof part?.stringContent !== 'string') {
+		if (typeof part?.getMarksAtRange !== 'function' || typeof part?.stringContent !== 'string') {
 			throw new Error(
 				`content[${contentIndex}] of block ${blockIndex} is not a Text (got ${part?.constructor?.name})`
 			);
 		}
-		edytor.selection.setAtTextOffset(part, yStart);
+		edytor.selection.selectText(part, yStart);
 
 		const event = new Event('paste', {
 			bubbles: true,
@@ -1229,4 +1230,19 @@ export const dragTo = async (page: Page, x: number, y: number) => {
 		const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
 		return !record.__dragStarted || Math.abs((record.__dragY ?? -Infinity) - y) <= 1;
 	}, y);
+};
+
+/**
+ * Load the Notion theme and put its class on the editor itself (the theme's
+ * documented alternative to an element around it): for a row that reads a
+ * look, which is the theme's, never a plugin's.
+ */
+export const notionTheme = async (page: Page) => {
+	await page.addStyleTag({
+		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
+	});
+	await page
+		.locator('[data-edytor]')
+		.first()
+		.evaluate((node) => node.classList.add('edytor-notion'));
 };

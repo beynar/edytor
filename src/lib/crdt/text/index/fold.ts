@@ -4,19 +4,20 @@
  * pending part of every transaction whose commit fold has not run.
  */
 import { readData } from '../../data.js';
-import type { EngineDeepEvent, EngineNode } from '../../engine-api.js';
+import { Y } from '../../engine.js';
+import type { EngineNode } from '../../engine-api.js';
 import { LIVE_WRITERS, baseIdOf, incarnationId } from '../../incarnations.js';
 import { type BlockId, candidatesOf } from '../../placement/model.js';
 import { CONTENT, NONCE, hasDeleteMark, isNodeLike } from '../../schema.js';
 import {
 	type IdSetLike,
 	type StoreStruct,
+	changedUnder,
 	engineOps,
 	itemOf,
 	queuedTransactions,
 	sequenceLength,
-	walkIdSetRanges,
-	walkIdSetStructs
+	walkIdSet
 } from '../../structs.js';
 import { DEAD, isBoundary } from '../model.js';
 import {
@@ -40,6 +41,7 @@ import {
 	ENTRY_FACET,
 	type Facet,
 	facetOf,
+	checksOf,
 	indexChecks,
 	sameShape,
 	typeAttr
@@ -60,7 +62,6 @@ export const indexFold = (
 		IndexCache
 ) => {
 	const {
-		Y,
 		doc,
 		registry,
 		dataRoot,
@@ -120,7 +121,7 @@ export const indexFold = (
 			if (ins === undefined || del === undefined) return (built = null);
 			const out = new Map<EngineNode, TextEdits>();
 			const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
-				walkIdSetRanges(Y, doc, idSet, (s, from, to) => {
+				walkIdSet(Y, doc, idSet, (s, from, to) => {
 					const parent = s.parent as EngineNode;
 					if (s.parentSub !== null || !isNodeLike(parent)) return;
 					let e = out.get(parent);
@@ -434,7 +435,7 @@ export const indexFold = (
 		if (shells.size > 0)
 			settle(ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)], ctx);
 		for (const b of ctx.invalidated) dirty.add(b);
-		if (indexChecks.on) ix.checks!.check();
+		if (indexChecks.on) checksOf(ix).check();
 		if (derived) ix.version++;
 		if (ix.reporting) {
 			for (const id of touched.keys()) candidates.add(id);
@@ -489,8 +490,8 @@ export const indexFold = (
 			if (subs === undefined) changed.set(s.parent, (subs = new Set()));
 			subs.add(s.parentSub);
 		};
-		walkIdSetStructs(Y, doc, ins, note);
-		walkIdSetStructs(Y, doc, del, note);
+		walkIdSet(Y, doc, ins, note);
+		walkIdSet(Y, doc, del, note);
 		fold(changed, makeEditIndex(ins, del));
 		return true;
 	};
@@ -516,9 +517,12 @@ export const indexFold = (
 				lengthOf(tr.insertSet) + lengthOf(tr.deleteSet) !== (cursors.get(tr)?.mark ?? 0)
 		);
 
-	/** The commit: fold `transaction.changed` once (the report publishes from `update`). */
-	const onCommit = (e: EngineDeepEvent): void => {
-		const tr = e.transaction as Tx;
+	/**
+	 * The commit of a transaction that changed the registry or a node under
+	 * it: fold `transaction.changed` once (the report publishes from `update`).
+	 */
+	const onCommit = (tr: Tx): void => {
+		if (!changedUnder(tr as { changed: Map<unknown, unknown> }, [registry])) return;
 		let [ins, del] = [tr.insertSet, tr.deleteSet];
 		// The writes a read folded already moved the rows: only the rest
 		// are edits now (the facets fold again, idempotent).

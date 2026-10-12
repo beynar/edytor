@@ -11,10 +11,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { converge, tree } from './replica-harness.js';
 import { createDocument, defaultSemantics } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const M = bindModel(Y);
 
@@ -130,7 +129,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				([a]) => {
 					expect(typed(a.ed)).toBe('T:table[R1:row[c1:cell,c2:cell]]');
 					const cell = { id: 'c3', type: 'cell', content: [{ kind: 'text', text: '3' }] };
-					expect(a.ed.insertBlock({ parent: 'R1', index: 2 }, cell).status).toBe('applied');
+					expect(a.ed.insertBlocks({ parent: 'R1', index: 2 }, [cell]).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -147,7 +146,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				([a]) => {
 					expect(typed(a.ed)).toBe('K:callout[H:heading,P:paragraph[Q:paragraph]]');
 					const spec = { id: 'Z', type: 'paragraph', content: [{ kind: 'text', text: 'z' }] };
-					expect(a.ed.insertBlock({ parent: 'P', index: 1 }, spec).status).toBe('applied');
+					expect(a.ed.insertBlocks({ parent: 'P', index: 1 }, [spec]).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -166,7 +165,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 					const cell = { id: 'c3', type: 'cell', content: [{ kind: 'text', text: '3' }] };
 					a.receiveAll(
 						b.capture(() =>
-							expect(b.ed.insertBlock({ parent: 'R1', index: 2 }, cell).status).toBe('applied')
+							expect(b.ed.insertBlocks({ parent: 'R1', index: 2 }, [cell]).status).toBe('applied')
 						)
 					);
 					expect(a.undo()).not.toBe(undefined);
@@ -187,9 +186,9 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				semantics
 			}
 		)[0].ed;
-		expect(ed.insertBlock({ parent: 'L1', index: 0 }, { id: 'X', type: 'codeLine' }).status).toBe(
-			'refused'
-		);
+		expect(
+			ed.insertBlocks({ parent: 'L1', index: 0 }, [{ id: 'X', type: 'codeLine' }]).status
+		).toBe('refused');
 	});
 
 	it('`lines` without `island` or a `defaultChild` warns in development (it does nothing)', () => {
@@ -274,7 +273,7 @@ describe('XW-08: a retype reports the kinds it derives for promoted and stray li
 					const views = [mirror(a.ed), mirror(b.ed)];
 					const del = a.capture(() => a.ed.deleteBlocks(['C']));
 					const add = b.capture(() =>
-						expect(b.ed.insertBlock({ parent: 'C', index: 1 }, line('L2', 'b')).status).toBe(
+						expect(b.ed.insertBlocks({ parent: 'C', index: 1 }, [line('L2', 'b')]).status).toBe(
 							'applied'
 						)
 					);
@@ -391,7 +390,7 @@ describe('XW-10: deleting a line never seals the block the FW-01 rule displaced'
 			race((a, b) => {
 				const del = a.capture(() => a.ed.deleteBlocks(['L1']));
 				const mv = b.capture(() =>
-					expect(b.ed.moveBlock('N', { parent: null, index: 0 }).status).toBe('applied')
+					expect(b.ed.moveBlocks(['N'], { parent: null, index: 0 }).status).toBe('applied')
 				);
 				a.receiveAll(mv);
 				b.receiveAll(del);
@@ -425,7 +424,7 @@ describe('XW-11: line kinds come from the roles config', () => {
 							expect(a.ed.setBlockType('C', 'paragraph').status).toBe('applied')
 						);
 						const add = b.capture(() =>
-							expect(b.ed.insertBlock({ parent: 'C', index: 1 }, line('L3', 'c')).status).toBe(
+							expect(b.ed.insertBlocks({ parent: 'C', index: 1 }, [line('L3', 'c')]).status).toBe(
 								'applied'
 							)
 						);
@@ -445,7 +444,7 @@ describe('XW-11: line kinds come from the roles config', () => {
 /**
  * XW-12: a code block never renders its own content, so merging its first
  * line into it would hide the line's text. The facade refuses it (one line
- * or several), and so does the view's `mergeBlockBackward`.
+ * or several), and so does the view's `mergeBackward`.
  */
 describe('XW-12: a first code line never merges into its code block', () => {
 	const seeds = {
@@ -479,7 +478,7 @@ describe('XW-12: a first code line never merges into its code block', () => {
 			}
 		});
 
-		it(`view (${name}): block.mergeBlockBackward() on the first line changes nothing`, () => {
+		it(`view (${name}): mergeBackward on the first line changes nothing`, () => {
 			const children = seed.map(function toJSON(b) {
 				return {
 					id: b.id,
@@ -491,7 +490,7 @@ describe('XW-12: a first code line never merges into its code block', () => {
 			const document = createDocument({ value: { children } });
 			const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
 			const before = tree(document.facade);
-			view.idToBlock.get('L1')!.mergeBlockBackward();
+			view.mergeBackward('L1');
 			expect(tree(document.facade)).toBe(before);
 			view.destroy();
 			document.destroy();
@@ -601,10 +600,10 @@ describe('DR-crdt-1: a duplicate never copies a missing type', () => {
 		document.destroy();
 	});
 
-	it('view block.duplicateBlock() → no block with an empty type', () => {
+	it('view duplicateBlock → no block with an empty type', () => {
 		const document = typeless(false);
 		const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
-		view.idToBlock.get('A')!.duplicateBlock();
+		view.duplicateBlock('A');
 		for (const id of document.facade.order())
 			if (id !== 'A' && id !== 'A1')
 				expect(M.blockNodeOf(document.doc, id).getAttr('type')).toMatch(/^.+$/);
@@ -619,7 +618,7 @@ describe('DR-crdt-1: a duplicate never copies a missing type', () => {
  * renders no content", not only into an island root. The first item of a
  * list or the first cell of a table merged its text into its container,
  * where no snippet shows it. Headless, room (same facade, defaultSemantics)
- * and the view's `mergeBlockBackward` all refuse it.
+ * and the view's `mergeBackward` all refuse it.
  */
 describe('DR-crdt-2: nothing merges into a block that renders no content', () => {
 	const list = [
@@ -654,10 +653,10 @@ describe('DR-crdt-2: nothing merges into a block that renders no content', () =>
 		});
 	}
 
-	it('view: block.mergeBlockBackward() on the first list item lifts it out (YW-02)', () => {
+	it('view: mergeBackward on the first list item lifts it out (YW-02)', () => {
 		const document = createDocument({ value: { children: structuredClone(list) } });
 		const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
-		view.idToBlock.get('I1')!.mergeBlockBackward();
+		view.mergeBackward('I1');
 		expect(tree(document.facade)).toBe('P:"p" I1:"a" U:""[I2:"b"]');
 		expect(document.facade.toJSON().children[1].type).toBe('paragraph');
 		view.destroy();

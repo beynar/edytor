@@ -1,6 +1,6 @@
 import type { EdytorSelection } from './selection.svelte.js';
 import type { Text } from '../text/text.svelte.js';
-import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
@@ -10,34 +10,29 @@ export const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
 /** A block suggestion's preview group: view-only, never a selection endpoint (`session/suggestions`). */
 export const SUGGESTION = '[data-edytor-suggestion]';
 
-export const getElementFromNode = (node: Node | null) => {
-	if (!node || typeof Element === 'undefined') {
-		return null;
-	}
+const TEXT = '[data-edytor-text]';
+const INLINE = '[data-edytor-inline-block]';
+const BLOCK = '[data-edytor-block]';
 
-	if (node instanceof Element) {
-		return node;
-	}
+export const getElementFromNode = (node: Node | null) =>
+	!node || typeof Element === 'undefined'
+		? null
+		: node instanceof Element
+			? node
+			: node.nodeType === Node.TEXT_NODE
+				? node.parentElement
+				: null;
 
-	return node.nodeType === Node.TEXT_NODE ? node.parentElement : null;
-};
+/** The element around `node` (itself included) matching `selector`. */
+const closestTo = (node: Node | null, selector: string) =>
+	getElementFromNode(node)?.closest<HTMLElement>(selector) ?? null;
 
-export const isInsideTrailingNewlineMarker = (node: Node) => {
-	const element = getElementFromNode(node);
-	return element instanceof Element && Boolean(element.closest(TRAILING_NEWLINE_SELECTOR));
-};
+/** `node` is an element matching `selector` or holding one. */
+const holds = (node: Node | null, selector: string) =>
+	node instanceof Element && (node.matches(selector) || !!node.querySelector(selector));
 
-const findClosestTextElement = (node: Node) => {
-	const element = getElementFromNode(node);
-	const textElement = element?.closest('[data-edytor-text]');
-	return textElement instanceof HTMLElement ? textElement : null;
-};
-
-const findSyntheticTextOverlayElement = (node: Node) => {
-	const element = getElementFromNode(node);
-	const overlay = element?.closest(SYNTHETIC_TEXT_OVERLAY_SELECTOR);
-	return overlay instanceof HTMLElement ? overlay : null;
-};
+export const isInsideTrailingNewlineMarker = (node: Node) =>
+	!!closestTo(node, TRAILING_NEWLINE_SELECTOR);
 
 /**
  * A selection endpoint counts as text-bound when it lives inside a
@@ -47,118 +42,49 @@ const findSyntheticTextOverlayElement = (node: Node) => {
  * native selection "node-bound" — the shape engines disagree on when
  * extending horizontally.
  */
-export const isTextBoundSelectionPoint = (node: Node | null) => {
-	const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-	return element instanceof Element && Boolean(element.closest('[data-edytor-text]'));
-};
+export const isTextBoundSelectionPoint = (node: Node | null) => !!closestTo(node, TEXT);
 
-const isIgnoredBoundaryNode = (node: Node) => {
-	if (node.nodeType === Node.COMMENT_NODE) {
-		return true;
-	}
+/** A node a boundary looks past: a comment, blank text, a suggestion, an element with no editor content. */
+const isIgnoredBoundaryNode = (node: Node) =>
+	node.nodeType === Node.COMMENT_NODE ||
+	(node instanceof Element
+		? node.matches(SUGGESTION) || !holds(node, `${TEXT}, ${INLINE}, ${BLOCK}`)
+		: node.nodeType === Node.TEXT_NODE &&
+			!(node.textContent ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim());
 
-	if (node instanceof Element) {
-		return (
-			node.matches(SUGGESTION) ||
-			!(
-				node.matches('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]') ||
-				node.querySelector('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]')
-			)
-		);
-	}
-
-	if (node.nodeType !== Node.TEXT_NODE) {
-		return false;
-	}
-
-	return (node.textContent ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim() === '';
-};
-
-const getBoundaryChild = (element: Element, offset: number, direction: 'previous' | 'next') => {
-	const step = direction === 'previous' ? -1 : 1;
-	let index = direction === 'previous' ? offset - 1 : offset;
-
-	while (index >= 0 && index < element.childNodes.length) {
-		const child = element.childNodes[index];
-		if (!isIgnoredBoundaryNode(child)) {
-			return child;
-		}
-		index += step;
-	}
-
+/** The first child of `element` from `offset` in `step`'s direction a boundary does not look past. */
+const boundaryChild = (element: Element, offset: number, step: -1 | 1) => {
+	for (let i = step < 0 ? offset - 1 : offset; i >= 0 && i < element.childNodes.length; i += step)
+		if (!isIgnoredBoundaryNode(element.childNodes[i])) return element.childNodes[i];
 	return null;
 };
 
 /** The first or last text element at `node`: itself, or one nested in it. */
-const getEdgeTextElement = (edge: 'first' | 'last', node: Node | null): HTMLElement | null => {
+const edgeText = (edge: 'first' | 'last', node: Node | null): HTMLElement | null => {
 	const element = getElementFromNode(node);
 	if (!(element instanceof HTMLElement)) return null;
 	if (element.hasAttribute('data-edytor-text')) return element;
-	const nested = element.querySelectorAll('[data-edytor-text]');
-	const found = nested.item(edge === 'first' ? 0 : nested.length - 1);
-	return found instanceof HTMLElement ? found : null;
+	const nested = element.querySelectorAll<HTMLElement>(TEXT);
+	return nested[edge === 'first' ? 0 : nested.length - 1] ?? null;
 };
 
-const containsInlineBlock = (node: Node | null) => {
-	if (!(node instanceof Element)) {
-		return false;
-	}
-
-	return (
-		node.matches('[data-edytor-inline-block]') ||
-		Boolean(node.querySelector('[data-edytor-inline-block]'))
-	);
+/** The children on either side of an element boundary, and the text elements they end and start with. */
+const boundaryOf = (node: Node, offset: number) => {
+	if (!(node instanceof Element)) return null;
+	const [previous, next] = [boundaryChild(node, offset, -1), boundaryChild(node, offset, 1)];
+	return { previous, next, before: edgeText('last', previous), after: edgeText('first', next) };
 };
 
-const containsBlock = (node: Node | null) => {
-	if (!(node instanceof Element)) {
-		return false;
-	}
-
-	return node.matches('[data-edytor-block]') || Boolean(node.querySelector('[data-edytor-block]'));
-};
-
-const getElementBoundary = (node: Node, offset: number) => {
-	if (!(node instanceof Element)) {
-		return null;
-	}
-
-	const previous = getBoundaryChild(node, offset, 'previous');
-	const next = getBoundaryChild(node, offset, 'next');
-
-	return {
-		previousText: getEdgeTextElement('last', previous),
-		nextText: getEdgeTextElement('first', next),
-		previousInline: containsInlineBlock(previous),
-		nextInline: containsInlineBlock(next),
-		previousBlock: containsBlock(previous),
-		nextBlock: containsBlock(next)
-	};
-};
-
-const getTextElementAtBoundary = (node: Node, offset: number) => {
-	const boundary = getElementBoundary(node, offset);
-	if (!boundary) {
-		return null;
-	}
-
-	if (boundary.previousInline && boundary.nextText) {
-		return boundary.nextText;
-	}
-
-	if (boundary.nextInline && boundary.previousText) {
-		return boundary.previousText;
-	}
-
-	if (boundary.nextBlock && boundary.nextText) {
-		return boundary.nextText;
-	}
-
-	if (boundary.previousBlock && boundary.previousText) {
-		return boundary.previousText;
-	}
-
-	return boundary.previousText ?? boundary.nextText;
+/** The text element an element boundary stands in: past an atom or a block, the text beside it. */
+const textAtBoundary = (node: Node, offset: number) => {
+	const at = boundaryOf(node, offset);
+	if (!at) return null;
+	const { previous, next, before, after } = at;
+	if (holds(previous, INLINE) && after) return after;
+	if (holds(next, INLINE) && before) return before;
+	if (holds(next, BLOCK) && after) return after;
+	if (holds(previous, BLOCK) && before) return before;
+	return before ?? after;
 };
 
 /**
@@ -172,171 +98,75 @@ const getTextElementAtBoundary = (node: Node, offset: number) => {
  * as element boundaries apply (comments, whitespace/zero-width text
  * nodes, and elements without editor content are skipped).
  */
-const getStrayBoundaryTextElement = (node: Node, container?: HTMLElement | null) => {
-	// The first non-ignored ELEMENT sibling of `current` in `direction`.
+const strayText = (node: Node, container?: HTMLElement | null) => {
+	// The first non-ignored ELEMENT sibling of `current` in `step`'s direction.
 	// A non-empty stray text node stops the scan: the gap is ambiguous and
 	// the caller should look at the enclosing level instead.
-	const siblingElement = (parent: Element, index: number, step: -1 | 1) => {
+	const sibling = (parent: Element, index: number, step: -1 | 1) => {
 		for (let i = index + step; i >= 0 && i < parent.childNodes.length; i += step) {
 			const child = parent.childNodes[i];
-			if (child instanceof Element) {
-				if (isIgnoredBoundaryNode(child)) continue;
-				return child;
-			}
-			if (!isIgnoredBoundaryNode(child)) break;
+			if (!isIgnoredBoundaryNode(child)) return child instanceof Element ? child : null;
 		}
 		return null;
 	};
-
-	let current: Node = node;
-	let parent = current.parentNode;
-	while (parent instanceof Element) {
+	for (let current = node, parent = node.parentNode; parent instanceof Element; ) {
 		const index = Array.prototype.indexOf.call(parent.childNodes, current);
-		if (index !== -1) {
-			const element =
-				getEdgeTextElement('last', siblingElement(parent, index, -1)) ??
-				getEdgeTextElement('first', siblingElement(parent, index, 1));
-			if (element) {
-				return element;
-			}
-		}
-		if (parent === container) {
-			break;
-		}
+		const element =
+			index !== -1 &&
+			(edgeText('last', sibling(parent, index, -1)) ??
+				edgeText('first', sibling(parent, index, 1)));
+		if (element) return element;
+		if (parent === container) break;
 		current = parent;
 		parent = current.parentNode;
 	}
 	return null;
 };
 
-const getTextOffsetAtElementBoundary = (text: Text, node: Node, offset: number) => {
-	const boundary = getElementBoundary(node, offset);
-	const textNode = text.node;
-	if (!boundary || !textNode) {
-		return null;
-	}
-
-	if (boundary.previousInline && boundary.nextText === textNode) {
-		return 0;
-	}
-
-	if (boundary.nextInline && boundary.previousText === textNode) {
-		return text.length;
-	}
-
-	if (boundary.previousText === textNode) {
-		return text.length;
-	}
-
-	if (boundary.nextText === textNode) {
-		return 0;
-	}
-
-	return null;
-};
-
+/**
+ * The text a DOM point is in: its text element; in a text suggestion's
+ * overlay, its block's last text; at an element boundary (with `offset`),
+ * the text beside it; on a stray node or in a block suggestion's preview,
+ * the nearest text at that boundary.
+ */
 export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
 	if (!node) return null;
-	const textOf = (element: Node | null) => (element && this.edytor.nodeToText.get(element)) || null;
+	const { edytor } = this;
+	const textOf = (element: Node | null) => (element && edytor.nodeToText.get(element)) || null;
 	// A point in a suggestion's preview is the stray boundary the preview sits at.
-	const preview = getElementFromNode(node)?.closest(SUGGESTION);
-	if (preview) return textOf(getStrayBoundaryTextElement(preview, this.edytor.node));
-	let text: Text | null = null;
-	if (node.nodeType !== Node.TEXT_NODE) {
-		text = textOf(node);
-		if (text) return text;
-		const syntheticOverlay = findSyntheticTextOverlayElement(node);
-		if (syntheticOverlay) {
-			const blockElement = syntheticOverlay.closest('[data-edytor-block]');
-			const blockId =
-				blockElement instanceof HTMLElement ? blockElement.dataset.edytorId : undefined;
-			const block = blockId ? this.edytor.idToBlock.get(blockId) : null;
-			return block?.lastText ?? null;
-		}
-		text =
-			textOf(findClosestTextElement(node)) ??
-			(typeof offset === 'number' ? textOf(getTextElementAtBoundary(node, offset)) : null);
-	} else {
-		for (let current: Node = node; current.parentElement && !text; current = current.parentElement)
-			text = textOf(current);
-	}
-	// The endpoint lives on a stray node (whitespace/empty text between
-	// blocks, the render anchor, a non-editable gap) — resolve it to the
-	// nearest text element at that boundary so open-ended selections
-	// still map to a model text position.
-	return text ?? textOf(getStrayBoundaryTextElement(node, this.edytor.node));
+	const preview = closestTo(node, SUGGESTION);
+	if (preview) return textOf(strayText(preview, edytor.node));
+	const element = node.nodeType !== Node.TEXT_NODE;
+	const overlay = element && !textOf(node) && closestTo(node, SYNTHETIC_TEXT_OVERLAY_SELECTOR);
+	if (overlay) return this.getBlockOfNode(overlay)?.lastText ?? null;
+	return (
+		textOf(closestTo(node, TEXT)) ??
+		(element && typeof offset === 'number' ? textOf(textAtBoundary(node, offset)) : null) ??
+		textOf(strayText(node, edytor.node))
+	);
 }
 
-export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {
-	if (!node) return null;
-
+/** The inline atom at `node`: around it, or the first one inside it. */
+export const getInlineBlockOfNode = (edytor: Edytor, node: Node | null) => {
 	const element = getElementFromNode(node);
-	const inlineElement = element?.closest('[data-edytor-inline-block]');
-	if (inlineElement instanceof Element && this.edytor.node?.contains(inlineElement)) {
-		return this.edytor.nodeToInlineBlock.get(inlineElement) || null;
-	}
+	const around = element?.closest(INLINE);
+	const inline = around && edytor.node?.contains(around) ? around : element?.querySelector(INLINE);
+	return (inline && edytor.nodeToInlineBlock.get(inline)) || null;
+};
 
-	if (element instanceof Element) {
-		const nestedInlineElement = element.querySelector('[data-edytor-inline-block]');
-		if (nestedInlineElement instanceof Element) {
-			return this.edytor.nodeToInlineBlock.get(nestedInlineElement) || null;
-		}
-	}
-
-	return null;
-}
-
-export function getInlineBlockInSelectedRange(this: EdytorSelection, range: Range | undefined) {
-	if (!range || range.collapsed) {
-		return null;
-	}
-
-	const root =
-		range.commonAncestorContainer instanceof Element
-			? range.commonAncestorContainer
-			: range.commonAncestorContainer.parentElement;
-	if (!root) {
-		return null;
-	}
-
-	const inlineElements = [
-		...(root.matches('[data-edytor-inline-block]') ? [root] : []),
-		...Array.from(root.querySelectorAll('[data-edytor-inline-block]'))
-	].filter((element) => range.intersectsNode(element));
-	const inlineBlocks = new Set(
-		inlineElements
-			.map((element) => this.edytor.nodeToInlineBlock.get(element))
-			.filter((inlineBlock): inlineBlock is InlineBlock => Boolean(inlineBlock))
+/** The one inline atom a non-collapsed range covers, touching no text. */
+export const getInlineBlockInSelectedRange = (edytor: Edytor, range: Range | undefined) => {
+	const root = range && !range.collapsed ? getElementFromNode(range.commonAncestorContainer) : null;
+	if (!root) return null;
+	const inside = (selector: string) =>
+		[...(root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector)].filter(
+			(element) => range!.intersectsNode(element)
+		);
+	const atoms = new Set(
+		inside(INLINE).flatMap((element) => edytor.nodeToInlineBlock.get(element) ?? [])
 	);
-
-	if (inlineBlocks.size !== 1) {
-		return null;
-	}
-
-	const intersectsText = Array.from(root.querySelectorAll('[data-edytor-text]')).some((element) =>
-		range.intersectsNode(element)
-	);
-	if (intersectsText) {
-		return null;
-	}
-
-	return inlineBlocks.values().next().value ?? null;
-}
-
-export function getTextsInSelection(
-	this: EdytorSelection,
-	startNode: Node | null,
-	endNode: Node | null,
-	startOffset = 0,
-	endOffset = startOffset
-): { startText: Text | null; endText: Text | null; inlineBlock: InlineBlock | null } {
-	const startText = this.getTextOfNode(startNode, startOffset);
-	return {
-		startText,
-		endText: startText ? this.getTextOfNode(endNode, endOffset) : null,
-		inlineBlock: this.getInlineBlockOfNode(startNode)
-	};
-}
+	return atoms.size === 1 && !inside(TEXT).length ? [...atoms][0] : null;
+};
 
 /**
  * The edge side of a collapsed DOM point at `offset` of `text`: inside
@@ -359,36 +189,60 @@ export const getMarkEdgeSide = (text: Text, node: Node | null, offset: number) =
 	return side;
 };
 
-export const getYIndex = (text: Text | null, node: Node | null, _start: number) => {
-	if (!text || !node) return _start;
-	const parent = text.node!;
-	const { isEmpty } = text;
+/**
+ * The offset the DOM point `(node, offset)` stands for in the rendered text
+ * `text` as the DOM holds it: its trailing newline's marker reads the end;
+ * no model rule (the DOM may be ahead of the model: a native insertion read
+ * before its adoption).
+ */
+export const domOffsetIn = (text: Text, node: Node, offset: number) =>
+	text.endsWithNewline && isInsideTrailingNewlineMarker(node)
+		? text.length
+		: getTextContentOffsetAtPoint(text.node!, node, offset);
 
-	if (text.endsWithNewline && isInsideTrailingNewlineMarker(node)) {
-		return text.length;
-	}
-
+/**
+ * The one DOM point → text offset mapper ({@link domOffsetIn} with the
+ * model's rules; `domPointOf` is its inverse): a point outside the text
+ * element beside it (an element boundary, past an inline atom) reads its
+ * edge, and an empty text's filler reads 0.
+ */
+export const getYIndex = (text: Text | null, node: Node | null, offset: number) => {
+	if (!text || !node) return offset;
+	const element = text.node!;
 	// A point inside the text element reads the text before it; the
 	// element-boundary rule is for points outside it.
-	const boundaryOffset = parent.contains(node)
-		? null
-		: getTextOffsetAtElementBoundary(text, node, _start);
-	if (boundaryOffset !== null) {
-		return boundaryOffset;
+	if (!element.contains(node)) {
+		const boundary = boundaryOf(node, offset);
+		if (boundary?.before === element) return text.length;
+		if (boundary?.after === element) return 0;
 	}
-
-	const start = getTextContentOffsetAtPoint(parent, node, _start);
-	if ((start === 0 || start === 1) && isEmpty) {
-		return 0;
-	}
-	return start;
+	const at = domOffsetIn(text, node, offset);
+	return (at === 0 || at === 1) && text.isEmpty ? 0 : at;
 };
+
+/** {@link getYIndex} within the text's length (a caret the model can hold). */
+export const offsetIn = (text: Text, node: Node | null, offset: number) =>
+	Math.min(Math.max(getYIndex(text, node, offset), 0), text.length);
 
 /** The mounted text and display offset a DOM point stands in, or `null` (`edytor.ports.surface.pointAt`). */
 export function textPointAt(this: EdytorSelection, node: Node, offset: number) {
 	const text = getTextOfNode.call(this, node);
 	return text?.node ? { text, offset: getYIndex(text, node, offset) } : null;
 }
+
+/** A DOM selection's endpoints in document order, and whether it runs backward. */
+export const ordered = (
+	selection: Pick<
+		DomSelectionSnapshot,
+		'anchorNode' | 'anchorOffset' | 'focusNode' | 'focusOffset'
+	>,
+	reversed: boolean
+) => {
+	const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+	return reversed
+		? { startNode: focusNode, start: focusOffset, endNode: anchorNode, end: anchorOffset }
+		: { startNode: anchorNode, start: anchorOffset, endNode: focusNode, end: focusOffset };
+};
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
@@ -414,19 +268,4 @@ export const normalizeUtf16Boundary = (
 	}
 
 	return direction === 'backward' ? clamped - 1 : clamped + 1;
-};
-
-export const getRangesFromSelection = (
-	selection: Pick<Selection, 'getRangeAt' | 'rangeCount'> | DomSelectionSnapshot
-): Range[] => {
-	return Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i));
-};
-
-export const climbDom = (node: Node | undefined | null, cb: (node: Node) => void | true) => {
-	if (!node) return;
-	let parent: Node | HTMLElement | null = node;
-	while (parent) {
-		if (cb(parent)) break;
-		parent = parent.parentElement;
-	}
 };

@@ -9,7 +9,7 @@
  */
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { RangeEndpoints } from '$lib/edytor.utils.js';
+import type { TextRange } from './selection.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 
 /** Content hidden by view state: a collapsed toggle's body, a `hidden` subtree. */
@@ -120,9 +120,6 @@ export const selectedMembers = (
 	return [...members].sort(edytor.compareBlocks);
 };
 
-/** A text range's endpoints and texts, as the selection (or an attempt's snapshot) holds them. */
-type TextRange = RangeEndpoints & { texts: Text[] };
-
 /**
  * Whether a text range covers `block` (`del.range.hidden-body`): a block the
  * view shows does; a hidden one exactly when deleting the range deletes it —
@@ -135,17 +132,14 @@ type TextRange = RangeEndpoints & { texts: Text[] };
  * selected list leave it as it is. Copy, cut, delete, marks and the
  * toolbar share this one answer.
  */
-export const rangeCovers = (
-	edytor: Edytor,
-	range: TextRange = edytor.selection.state,
-	{ replace = false } = {}
-) => {
+export const rangeCovers = (edytor: Edytor, snapshot?: TextRange, { replace = false } = {}) => {
 	const { selection } = edytor;
-	if (range === selection.state && selection.value.kind === 'blocks') {
+	if (!snapshot && selection.value.kind === 'blocks') {
 		const members = new Set(selectedMembers(edytor));
 		return (block: Block) =>
 			members.has(block) && (selection.selectedBlocks.has(block) || !hidden(block));
 	}
+	const range = snapshot ?? selection.textRange();
 	const members = new Set(range.texts.map((text) => text.parent));
 	const head = range.startText?.parent;
 	const headDies = !replace && range.startText?.segStart === 0 && range.yStart === 0;
@@ -164,13 +158,14 @@ export const rangeCovers = (
  */
 export const selectedTextSpans = (
 	edytor: Edytor,
-	range: TextRange = edytor.selection.state,
+	snapshot?: TextRange,
 	options: { replace?: boolean } = {}
 ) => {
-	const covers = rangeCovers(edytor, range, options);
+	const covers = rangeCovers(edytor, snapshot, options);
+	const range = snapshot ?? edytor.selection.textRange();
 	// A block selection's texts are its members' own lines (a list's items too).
 	const texts =
-		range === edytor.selection.state && edytor.selection.value.kind === 'blocks'
+		!snapshot && edytor.selection.value.kind === 'blocks'
 			? selectedMembers(edytor).flatMap((block) =>
 					block.rendersContent ? block.content.filter((part) => part instanceof Text) : []
 				)

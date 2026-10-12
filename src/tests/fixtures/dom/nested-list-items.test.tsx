@@ -11,10 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { rowOf } from '$lib/kinds.js';
 import {
 	dispatchDomBeforeInput,
@@ -22,6 +19,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -61,11 +60,11 @@ const shape = ({ edytor }: View) => {
 };
 const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart } = edytor.selection.state;
+	const { startBlock, yStart } = selectionState(edytor);
 	return [startBlock?.id, yStart];
 };
 const at = async (view: View, id: string, offset: number) => {
-	view.edytor.selection.setAtTextOffset(get(view, id).firstText!, offset);
+	view.edytor.selection.selectText(get(view, id).firstText!, offset);
 	await flushDomUpdates();
 };
 const enter = (view: View) => dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
@@ -162,7 +161,7 @@ describe('Turn into on an item of a list nested right in a list (DR-behavior-2)'
 
 	it('the markdown shortcut on the last item does the same', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[ul('u', [ul('u2', [li('b'), li('c')]), li('d')])]
 		);
 		await at(view, 'c', 0);
@@ -235,7 +234,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 
 	it('typing "- " or "1. " at an item’s start acts as on a flat item of that kind', async () => {
 		const flat = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'f', type: 'bulleted-list-item', content: text('f') }]
 		);
 		await at(flat, 'f', 0);
@@ -243,7 +242,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		const flatText = get(flat, 'f').firstText!.stringContent;
 		document.body.innerHTML = '';
 
-		const bullets = await render([markdownShortcutsPlugin], three(ul));
+		const bullets = await render([createMarkdownShortcutsPlugin()], three(ul));
 		await at(bullets, 'b', 0);
 		await type(bullets, '- ');
 		expect(shape(bullets)).toEqual([
@@ -251,7 +250,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		]);
 		document.body.innerHTML = '';
 
-		const numbers = await render([markdownShortcutsPlugin], three(ol));
+		const numbers = await render([createMarkdownShortcutsPlugin()], three(ol));
 		await at(numbers, 'b', 0);
 		await type(numbers, '1. ');
 		expect(shape(numbers)).toEqual([[O, ['list-item "a"', 'list-item "b"', 'list-item "c"']]]);
@@ -264,7 +263,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		);
 		expect(rowOf(view.edytor, get(view, 'b'))?.label).toBe('Bulleted list');
 		expect(rowOf(view.edytor, get(view, 'n'))?.label).toBe('Numbered list');
-		view.edytor.selection.setAtRange(get(view, 'b').firstText!, 0, get(view, 'b').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 0, get(view, 'b').firstText!, 1);
 		await flushDomUpdates();
 		expect(document.querySelector('.toolbar-type')?.textContent).toBe('Bulleted list');
 	});

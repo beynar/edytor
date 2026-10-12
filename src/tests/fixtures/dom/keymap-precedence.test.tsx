@@ -26,17 +26,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Snippet } from 'svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { HotKey } from '$lib/session/keymap.js';
-import type { Plugin } from '$lib/plugins.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import type { BlockSnippetPayload, Plugin } from '$lib/plugins.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S4. */
 const row = it;
@@ -239,7 +238,7 @@ describe('F-P12 — a claimed key does not also run the built-in binding', () =>
 					<paragraph>C</paragraph>
 					<paragraph>D</paragraph>
 				</root>,
-				{ plugins: plugins(arrowMovePlugin) }
+				{ plugins: plugins(createArrowMovePlugin()) }
 			);
 			// Select A as a block (the select-all ladder), then extend to B.
 			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
@@ -313,16 +312,20 @@ describe('F-P14 — duplicate definitions: the first extension wins', () => {
 		expect(edytor.commands.get('heading')?.label).toBe('first');
 	});
 
-	row('a consumer snippet still overrides the extension snippet (consumer > extensions)', () => {
-		const own = (() => {}) as unknown as Snippet<[never]>;
-		const edytor = new Edytor({
-			plugins: [defining('first'), richTextPlugin],
-			snippets: { headingBlock: own } as never
-		});
-		const heading = edytor.blocks.get('heading') as { snippet: unknown; placeholder?: string };
-		expect(heading.snippet).toBe(own);
-		expect(heading.placeholder).toBe('first');
-	});
+	row(
+		"a field the first extension leaves out is the next one's: a snippet alone restyles a kind",
+		() => {
+			const own = (() => {}) as unknown as Snippet<[BlockSnippetPayload]>;
+			const edytor = new Edytor({
+				plugins: [() => ({ blocks: { heading: own } }), richTextPlugin]
+			});
+			const heading = edytor.blocks.get('heading')!;
+			expect(heading.snippet).toBe(own);
+			// The rich text record's own fields stay: its presets, its contentElement.
+			expect(heading.presets?.length).toBe(3);
+			expect(heading.contentElement).toBeTypeOf('function');
+		}
+	);
 });
 
 describe('O36 — one precedence rule for bindings', () => {

@@ -110,10 +110,9 @@ describe('block attribution × undo', () => {
 		const d = createDocument({ actor: alice });
 		d.sync();
 		d.transact(() =>
-			d.facade.insertBlock(
-				{ parent: null, index: 1 },
+			d.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'b2', type: 'paragraph', content: [{ kind: 'text', text: 'two' }] }
-			)
+			])
 		);
 		expect(d.attribution.block('b2')).toEqual({
 			createdBy: 'alice',
@@ -135,7 +134,7 @@ describe('block attribution × undo', () => {
 		const d = createDocument({ actor: alice });
 		d.sync();
 		d.transact(() =>
-			d.facade.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' })
+			d.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }])
 		);
 		d.history.undo();
 		d.history.redo();

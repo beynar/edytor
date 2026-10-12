@@ -6,7 +6,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
-import { getDomSelection } from '$lib/selection/domSelection.js';
+import { caretAtPoint, getDomSelection } from '$lib/selection/domSelection.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -61,16 +61,10 @@ export const observeInternalDragSources = (rootNode: Node | null | undefined) =>
 	);
 };
 
-if (typeof document !== 'undefined') {
-	observeInternalDragSources(document);
-}
-
-const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
-	if (dataTransfer && Array.from(dataTransfer.types).includes(EDYTOR_BLOCK_DRAG_MIME)) {
-		return true;
-	}
-	return internalDragSource !== null && root.contains(internalDragSource);
-};
+/** The drag started inside the host. */
+const fromHost = (root: Element) =>
+	internalDragSource !== null && root.contains(internalDragSource);
+const typesOf = (dataTransfer: DataTransfer | null) => Array.from(dataTransfer?.types ?? []);
 
 /**
  * A foreign drop on a kind's own control (a field bound to `block.data`, a
@@ -79,18 +73,16 @@ const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
  * which the browser would open in place of the page: that one is swallowed.
  */
 const isControlDrop = (root: Element, event: DragEvent) =>
-	!Array.from(event.dataTransfer?.types ?? []).includes('Files') && ownsEvent(root, event);
+	!typesOf(event.dataTransfer).includes('Files') && ownsEvent(root, event);
 
 /**
  * The view's own text drag: a selected text range dragged from
  * inside the host, the block handles' drags excluded (their payload's MIME).
  */
-const isTextDrag = (edytor: Edytor | undefined, root: Element, dataTransfer: DataTransfer | null) =>
-	edytor !== undefined &&
+const isTextDrag = (edytor: Edytor, root: Element, dataTransfer: DataTransfer | null) =>
 	textDragOf(edytor) !== undefined &&
-	!Array.from(dataTransfer?.types ?? []).includes(EDYTOR_BLOCK_DRAG_MIME) &&
-	internalDragSource !== null &&
-	root.contains(internalDragSource);
+	!typesOf(dataTransfer).includes(EDYTOR_BLOCK_DRAG_MIME) &&
+	fromHost(root);
 
 /** Where the view's text drag may land: an editable view, in its text, not a kind's control. */
 const takesTextDrop = (edytor: Edytor, root: Element, event: DragEvent) =>
@@ -124,7 +116,7 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 	const root = edytor.node;
 	const value = edytor.selection.value;
 	if (!root || ownsEvent(root, event) || value.kind !== 'text') return;
-	if (edytor.selection.state.isCollapsed || edytor.isComposing) return;
+	if (edytor.selection.projection.isCollapsed || edytor.isComposing) return;
 	// Only a drag of the selection itself: another draggable in the host drags its own thing.
 	if (!startsInSelection(root, event.target)) return;
 	const fragment = createEdytorClipboardFragment(edytor);
@@ -140,71 +132,34 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 /** The drag ended, dropped or not: no text drag. */
 export const onTextDragEnd = (edytor: Edytor) => endTextDrag(edytor);
 
+/** A drop from outside (no chrome drag, no drag from the host) of a payload the editor takes. */
 const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null) => {
-	if (!dataTransfer || isInternalDrag(root, dataTransfer)) {
-		return false;
-	}
-	return Array.from(dataTransfer.types).some((type) => ACCEPTED_FOREIGN_DROP_TYPES.includes(type));
-};
-
-type CaretPointDocument = Document & {
-	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-	caretRangeFromPoint?: (x: number, y: number) => Range | null;
-};
-
-// `caretPositionFromPoint` is the spec API (Firefox, Chromium ≥128);
-// `caretRangeFromPoint` is the legacy WebKit/Chromium API. Support both.
-const caretRangeFromPoint = (doc: CaretPointDocument, x: number, y: number) => {
-	const position = doc.caretPositionFromPoint?.(x, y);
-	if (position?.offsetNode) {
-		return { container: position.offsetNode, offset: position.offset };
-	}
-	const range = doc.caretRangeFromPoint?.(x, y);
-	if (range) {
-		return { container: range.startContainer, offset: range.startOffset };
-	}
-	return null;
-};
-
-const createCollapsedStaticRange = (container: Node, offset: number): StaticRange => {
-	if (typeof StaticRange === 'function') {
-		try {
-			return new StaticRange({
-				startContainer: container,
-				startOffset: offset,
-				endContainer: container,
-				endOffset: offset
-			});
-		} catch {
-			// Fall through to the structural StaticRange below.
-		}
-	}
-	return {
-		startContainer: container,
-		startOffset: offset,
-		endContainer: container,
-		endOffset: offset,
-		collapsed: true
-	} as StaticRange;
+	const types = typesOf(dataTransfer);
+	return (
+		!types.includes(EDYTOR_BLOCK_DRAG_MIME) &&
+		!fromHost(root) &&
+		types.some((type) => ACCEPTED_FOREIGN_DROP_TYPES.includes(type))
+	);
 };
 
 // Preventing the drop suppresses the browser's own `insertFromDrop`
 // beforeinput, so the accepted payload is the occurrence itself — the same
-// routing as `insertFromPaste`, with the resolved drop point as its declared
-// target range.
+// routing as `insertFromPaste`, with the drop point as its declared target
+// range (`caretAtPoint`).
 const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
-	const caret = caretRangeFromPoint(
-		root.ownerDocument as CaretPointDocument,
-		event.clientX,
-		event.clientY
-	);
+	const at = caretAtPoint(root.ownerDocument, event.clientX, event.clientY);
+	const point =
+		at &&
+		new StaticRange({
+			startContainer: at.node,
+			startOffset: at.offset,
+			endContainer: at.node,
+			endOffset: at.offset
+		});
 	return runOccurrence(edytor, {
 		inputType: 'insertFromDrop',
 		dataTransfer: event.dataTransfer,
-		declared:
-			caret && root.contains(caret.container)
-				? createCollapsedStaticRange(caret.container, caret.offset)
-				: null,
+		declared: point && root.contains(point.startContainer) ? point : null,
 		cancelable: true
 	});
 };
@@ -222,18 +177,13 @@ const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
  *   exception is a foreign drop other than a file on a kind's own control,
  *   which is the control's (`isControlDrop`).
  */
-export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
-	const root = event.currentTarget;
-	if (!(root instanceof Element)) {
-		event.preventDefault();
-		event.stopPropagation();
-		return;
-	}
-	observeInternalDragSources(root.getRootNode());
+export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
+	// Listened on the host.
+	const root = event.currentTarget as Element;
 
 	// The view's own text drag: a move (a copy with Alt) where it may land.
 	if (isTextDrag(edytor, root, event.dataTransfer)) {
-		const takes = takesTextDrop(edytor!, root, event);
+		const takes = takesTextDrop(edytor, root, event);
 		if (event.type === 'dragover') {
 			if (!takes) return;
 			event.preventDefault();
@@ -243,12 +193,12 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		const drag = textDragOf(edytor!)!;
+		const drag = textDragOf(edytor)!;
 		if (!takes) return;
 		drag.copy = event.altKey;
 		// Its occurrence's handler takes it (`dropText`): the drop is the paste of a move.
 		drag.dropping = true;
-		return insertFromDrop(edytor!, root, event);
+		return insertFromDrop(edytor, root, event);
 	}
 
 	if (event.type === 'dragover') {
@@ -276,5 +226,5 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		return;
 	}
 	// Mid-composition drops are swallowed: the preview owns the write path.
-	if (edytor && !edytor.isComposing) return insertFromDrop(edytor, root, event);
+	if (!edytor.isComposing) return insertFromDrop(edytor, root, event);
 };

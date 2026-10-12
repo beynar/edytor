@@ -3,8 +3,7 @@ import { isRecord, type JSONText, type SerializableContent } from '$lib/utils/js
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { BlockSpec } from '$lib/crdt/index.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
-import { holdsNothing, lineage, placing } from '$lib/kinds.js';
+import { holdsNothing, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { selectedTextSpans, viewOf } from '$lib/selection/visibility.js';
@@ -143,13 +142,27 @@ export const openLink = (href: string, view: Window | null = globalThis.window ?
 	if (safe) view?.open(safe, '_blank', 'noopener,noreferrer');
 };
 
+/** Set `mark` to `value` (`null`: remove it) over `start`–`end` of `text`: the view's `formatRange`. */
+const markText = (
+	edytor: Edytor,
+	text: Text,
+	start: number,
+	end: number,
+	mark: string,
+	value: SerializableContent | null | undefined
+) =>
+	edytor.formatRange(text.parent.id, text.segStart + start, end - start, {
+		[mark]: value === undefined ? true : value
+	});
+
 const formatSelectedTextRange = (
 	edytor: Edytor,
 	mark: string,
 	value: SerializableContent | null | undefined,
 	toggle: boolean
 ) => {
-	const { yStart, yEnd, startText, endText, isCollapsed, isReversed } = edytor.selection.state;
+	const { yStart, yEnd, startText, endText } = edytor.selection.textRange();
+	const { isCollapsed, isReversed } = edytor.selection.projection;
 	if (isCollapsed || !startText || !endText) return;
 	const spans = selectedTextSpans(edytor).filter(({ start, end }) => end > start);
 	// One decision for the whole range (Notion): a toggle removes the mark only
@@ -157,15 +170,15 @@ const formatSelectedTextRange = (
 	const on = spans.every(({ text, start, end }) =>
 		text.getMarksAtRange(start, end).every(({ marks }) => marks && mark in marks)
 	);
-	const next = toggle && on ? null : value;
+	const next = toggle && on ? null : value === undefined ? true : value;
 
 	// One command per span: a vetoed one keeps its marks (`dispatcher.each`).
 	edytor.dispatcher.each('format', spans, ({ text, start, end }) =>
-		text.markText({ mark, value: next, start, end })
+		edytor.formatRange(text.parent.id, text.segStart + start, end - start, { [mark]: next })
 	);
 	// Selected blocks stay selected (Notion; a divider's phantom text is no range).
 	if (!selectsBlocks(edytor))
-		edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+		edytor.selection.selectText(startText, yStart, endText, yEnd, isReversed);
 };
 
 /**
@@ -187,10 +200,12 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * whole.
 	 */
 	insertDividerAtSelection: () => {
-		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
-		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
+		const { startText, yStart } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
+		const block = startText?.parent;
+		if (!block?.convertible || !block.parent || !isCollapsed) return null;
 		const { facade, dispatcher } = edytor;
-		const [self, parent] = [block.model.id, block.parent.isRoot ? null : block.parent.id];
+		const [self, parent] = [block.id, block.parent.isRoot ? null : block.parent.id];
 		const divider = { id: id('b'), type: 'divider', data: {}, content: [], children: [] };
 		const paragraph = { id: id('b'), type: edytor.defaultChild(block.parent) };
 		const slot = (after: number, specs: BlockSpec[]) =>
@@ -216,23 +231,24 @@ export const richTextOperations = (edytor: Edytor) => ({
 			caret = next?.id ?? paragraph.id;
 			prepare = () => slot(1, next ? [divider] : [divider, paragraph]);
 		}
-		if (!dispatchPlan(block, 'insertDivider', {}, prepare, lineage(block))) return null;
+		if (dispatcher.plan('insertDivider', {}, prepare, block).status !== 'applied') return null;
 		const text = caret ? edytor.idToBlock.get(caret)?.firstText : startText;
 		dispatcher.caret(text, caret ? 0 : yStart);
 		return block;
 	},
 	removeAllMarksAtRange: () => {
-		const { yStart, startText, isCollapsed } = edytor.selection.state;
+		const { yStart, startText } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
 				edytor.selection.stage({});
-				edytor.selection.setAtTextOffset(startText, yStart);
+				edytor.selection.selectText(startText, yStart);
 			}
 			return;
 		}
 
 		edytor.dispatcher.each('format', selectedTextSpans(edytor), ({ text, start, end }) => {
-			if (end > start) text.removeMarksFromText({ start, end });
+			if (end > start) edytor.clearMarks(text.parent.id, text.segStart + start, end - start);
 		});
 	},
 	setLinkAtRange: (link: RichTextLink) => {
@@ -259,16 +275,17 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const safe = sanitizeLinkHref(href);
 		if (safe === null || end <= start) return;
 		edytor.dispatcher.run('autolink', () =>
-			text.markText({ mark: 'link', value: { href: safe }, start, end })
+			markText(edytor, text, start, end, 'link', { href: safe })
 		);
 	},
 	/** Unlink `start`–`end` of `text` (the link card's Remove), one undo step; the selection stays. */
 	unlinkText: (text: Text, start: number, end: number) => {
-		edytor.dispatcher.run('format', () => text.markText({ mark: 'link', value: null, start, end }));
+		edytor.dispatcher.run('format', () => markText(edytor, text, start, end, 'link', null));
 	},
 	/** Remove one mark (a color, a highlight…) from the selected range. */
 	removeMarkAtRange: (mark: RichTextMark) => {
-		if (!edytor.selection.state.isCollapsed) formatSelectedTextRange(edytor, mark, null, false);
+		if (!edytor.selection.projection.isCollapsed)
+			formatSelectedTextRange(edytor, mark, null, false);
 	},
 	/**
 	 * Non-toggle valued-mark write — native `formatFontColor`/
@@ -283,7 +300,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const safeValue =
 			mark === 'color' || mark === 'highlight' ? sanitizeCssColorValue(value) : value;
 		if (safeValue === null) return;
-		const { isCollapsed, startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
 				// Stage the full set the next insertion carries, values kept.
@@ -293,7 +311,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 						[mark]: safeValue
 					})
 				);
-				edytor.selection.setAtTextOffset(startText, yStart);
+				edytor.selection.selectText(startText, yStart);
 			}
 			return;
 		}
@@ -305,19 +323,20 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * stage it for the next character typed.
 	 */
 	setMarkAtRange: (mark: RichTextMark | (string & {}), value?: SerializableContent) => {
-		const { yStart, yEnd, startText, endText, isCollapsed } = edytor.selection.state;
-		if (isCollapsed) {
+		const { yStart, yEnd, startText, endText } = edytor.selection.textRange();
+		const { selection } = edytor;
+		if (selection.projection.isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
-				edytor.dispatcher.run('format', () =>
-					startText.markText({
-						mark,
-						value,
-						toggle: true,
-						start: yStart,
-						end: yEnd
-					})
-				);
-				edytor.selection.setAtRange(startText, yStart, endText, yEnd);
+				// A caret stages the full set the next insertion carries (values kept).
+				edytor.dispatcher.run('format', () => {
+					const { [mark]: current = null, ...rest } = marksForInsertion(startText, yStart, {
+						pending: selection.pending
+					});
+					selection.stage(
+						current !== null ? rest : { ...rest, [mark]: value === undefined ? true : value }
+					);
+				});
+				selection.selectText(startText, yStart, endText, yEnd);
 			}
 			return;
 		}

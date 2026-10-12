@@ -1,13 +1,11 @@
+<svelte:options runes />
+
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
-	import type {
-		InlineBlockSnippetPayload,
-		Plugin,
-		TriggerContext,
-		TriggerItemPayload
-	} from '$lib/plugins.js';
+	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
+	import { withRulesAndTriggers } from '../triggers/triggers.js';
+	import { pageLinkEnglish, labelsOf } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 	/** A page the page-link menu offers: what your app's search answers. */
@@ -35,20 +33,14 @@
 		href?: (page: PageLinkItem) => string | undefined;
 		/** The text that opens the menu (default `[[`). */
 		char?: string;
-		/** Replace each row of the menu. */
-		item?: Snippet<[TriggerItemPayload<PageLinkItem>]>;
 		/**
-		 * Replace the whole menu; it renders while `controller.isOpen`, at the
-		 * caret. Keep its ARIA with `{@attach controller.popup}` on the list and
+		 * The menu's markup and its words; it renders while `controller.isOpen`,
+		 * at the caret (without it, nothing shows). Keep its ARIA with `{@attach
+		 * controller.popup}` on the list (name it) and
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[TriggerMenuController<PageLinkItem>]>;
-		/** The words the menu and the atom show, over the English ones. */
-		labels?: PartialLabels<'pageLink'>;
 	};
-
-	/** Each view's page link labels: the first page link plugin listed claims them, as its atom. */
-	const pageLinkLabels = viewLabels('pageLink');
 
 	/**
 	 * Links to your app's pages, as Notion's `[[`: it opens a menu of the pages
@@ -58,116 +50,64 @@
 	 */
 	export const createPageLinkPlugin =
 		(options: PageLinkPluginOptions): Plugin =>
-		(edytor) => {
-			const labels = labelsWith('pageLink', options.labels);
-			pageLinkLabels.claim(edytor, labels);
-			return {
-				inlineBlocks: {
-					pageLink: {
-						snippet: pageLink,
-						plain: (data) => {
-							const title = (data as Partial<PageLinkData> | undefined)?.title;
-							return typeof title === 'string' ? title : '';
+		(edytor) =>
+			withRulesAndTriggers(
+				edytor,
+				{
+					inlineBlocks: {
+						pageLink: {
+							snippet: pageLink,
+							plain: (data) => {
+								const title = (data as Partial<PageLinkData> | undefined)?.title;
+								return typeof title === 'string' ? title : '';
+							}
 						}
 					}
 				},
-				triggers: [
-					{
-						char: options.char ?? '[[',
-						name: labels.menu,
-						empty: labels.noResults,
-						searching: labels.searching,
-						items: (query, ctx) => options.search(query, ctx),
-						label: (page: PageLinkItem) => page.title,
-						key: (page: PageLinkItem) => page.id,
-						item: options.item ?? row,
-						menu: options.menu,
-						onPick: (page: PageLinkItem, { block, from, caret }) => {
-							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
-							const data: PageLinkData = {
-								id: page.id,
-								title: page.title,
-								...(href ? { href } : {}),
-								...(page.icon ? { icon: page.icon } : {})
-							};
-							const after = block.addInlineBlock({
-								offset: from,
-								block: { type: 'pageLink', data }
-							});
-							if (after) caret(from + 1);
-							return !!after;
+				{
+					triggers: [
+						{
+							char: options.char ?? '[[',
+							items: (query, ctx) => options.search(query, ctx),
+							label: (page: PageLinkItem) => page.title,
+							key: (page: PageLinkItem) => page.id,
+							menu: options.menu,
+							onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
+								const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
+								const data: PageLinkData = {
+									id: page.id,
+									title: page.title,
+									...(href ? { href } : {}),
+									...(page.icon ? { icon: page.icon } : {})
+								};
+								const atom = { type: 'pageLink', data };
+								const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+								if (written) caret(from + 1);
+								return written;
+							}
 						}
-					}
-				]
-			};
-		};
+					]
+				}
+			);
 </script>
 
 {#snippet pageLink({ block }: InlineBlockSnippetPayload<Partial<PageLinkData>>)}
 	<a
 		class="edytor-page-link"
-		class:selected={block.selected}
+		data-selected={block.selected ? 'true' : undefined}
 		href={sanitizeLinkHref(block.data.href) ?? undefined}
 		data-edytor-page-link
 		data-page-id={block.data.id}
 		><span class="icon" aria-hidden="true">{block.data.icon ?? '📄'}</span><span class="title"
-			>{block.data.title ?? pageLinkLabels.of(block.handle?.edytor).untitled}</span
+			>{block.data.title ??
+				labelsOf(block.handle?.edytor, 'pageLink', pageLinkEnglish).untitled}</span
 		></a
 	>
 {/snippet}
 
-{#snippet row({ item, option, run, select }: TriggerItemPayload<PageLinkItem>)}
-	<button
-		type="button"
-		class="edytor-page-link-row"
-		{...option}
-		data-testid="trigger-menu-item"
-		onmousemove={select}
-		onclick={run}
-	>
-		<span class="icon" aria-hidden="true">{item.icon ?? '📄'}</span>
-		<span class="title">{item.title}</span>
-	</button>
-{/snippet}
-
 <style>
+	/* One unit, on one line; its look is a theme's. */
 	.edytor-page-link {
-		color: inherit;
-		text-decoration: none;
-		white-space: nowrap;
-	}
-	.edytor-page-link .title {
-		border-bottom: 1px solid rgba(55, 53, 47, 0.25);
-		font-weight: 500;
-	}
-	.edytor-page-link .icon {
-		margin-right: 2px;
-	}
-	.edytor-page-link.selected {
-		border-radius: 3px;
-		background: rgba(35, 131, 226, 0.14);
-	}
-	.edytor-page-link-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		height: 28px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 6px;
-		background: none;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.edytor-page-link-row[data-selected='true'] {
-		background: rgba(33, 27, 23, 0.06);
-	}
-	.edytor-page-link-row .title {
-		overflow: hidden;
-		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 </style>

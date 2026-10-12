@@ -15,7 +15,6 @@ import { ownBlock } from './HeadingQuoteOverride.svelte';
 import type { Edytor as EdytorRuntime } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -25,6 +24,8 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -51,7 +52,7 @@ const blockNode = (editor: HTMLElement, id: string) =>
 	editor.querySelector<HTMLElement>(`[data-edytor-id="${id}"]`)!;
 
 const copyHtml = async (edytor: EdytorRuntime, editor: HTMLElement) => {
-	edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
+	selectBlocks(edytor, ...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 	const html = (await dispatchCopy(editor)).clipboardData['text/html'] ?? '';
 	return html.slice(html.indexOf('</span>') + '</span>'.length);
@@ -98,7 +99,7 @@ describe('caret in a heading with children', () => {
 		const { edytor, editor } = await render([heading('H', 'h1', [kid('a')])]);
 		const title = edytor.idToBlock.get('H')!.firstText!;
 		await setNativeSelection(edytor, title, 5);
-		expect(edytor.selection.state.startText?.parent.id).toBe('H');
+		expect(selectionState(edytor).startText?.parent.id).toBe('H');
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		expect(edytor.value.children?.[0]).toMatchObject({
 			type: 'heading',
@@ -109,13 +110,13 @@ describe('caret in a heading with children', () => {
 		expect(anchorNode?.parentElement?.closest('[data-edytor-block]')).toBe(blockNode(editor, 'H'));
 		expect(anchorNode?.parentElement?.closest('h1')).not.toBeNull();
 		expect(anchorOffset).toBe(6);
-		expect(edytor.selection.state.yStart).toBe(6);
+		expect(selectionState(edytor).yStart).toBe(6);
 	});
 
 	it('a caret in the nested paragraph maps to the child, outside the h1', async () => {
 		const { edytor, editor } = await render([heading('H', 'h1', [kid('a')])]);
 		await setNativeSelection(edytor, edytor.idToBlock.get('a')!.firstText!, 1);
-		expect(edytor.selection.state.startText?.parent.id).toBe('a');
+		expect(selectionState(edytor).startText?.parent.id).toBe('a');
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'b' });
 		expect(edytor.value.children?.[0]?.children).toMatchObject([
 			{ type: 'paragraph', content: [{ text: 'ab' }] }
@@ -149,19 +150,17 @@ describe('the exported HTML imports back', () => {
 	});
 });
 
-describe('a consumer snippet override keeps the heading tag and the blockquote', () => {
-	it('headingBlock and quoteBlock replace the snippet; h2 and blockquote still wrap the text', async () => {
+describe('a plugin restyling a kind keeps the heading tag and the blockquote', () => {
+	it('a plugin listed first names the heading and quote snippets; h2 and blockquote still wrap the text', async () => {
 		const rendered = mount(Edytor, {
 			props: {
-				plugins: [richTextPlugin],
+				plugins: [() => ({ blocks: { heading: ownBlock, quote: ownBlock } }), richTextPlugin],
 				value: {
 					children: [
 						heading('H', 'h2', [kid('a')]),
 						{ id: 'Q', type: 'quote', content: [{ text: 'Said' }], children: [kid('b')] }
 					]
-				},
-				headingBlock: ownBlock,
-				quoteBlock: ownBlock
+				}
 			} as never
 		});
 		await waitFor(() =>

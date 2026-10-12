@@ -14,15 +14,17 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { tableBlock } from '$lib/crdt/tables.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	codePlugin,
+	equation as createEquationPlugin,
+	imagePlugin,
+	mention as createMentionPlugin,
+	richTextPlugin,
+	tablePlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -30,7 +32,7 @@ afterEach(() => {
 
 const plugins = [
 	codePlugin,
-	columnsPlugin,
+	createColumnsPlugin(),
 	tablePlugin,
 	imagePlugin,
 	createMentionPlugin({ items: () => [] }),

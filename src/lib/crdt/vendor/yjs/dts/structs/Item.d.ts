@@ -80,21 +80,7 @@ export class Item extends AbstractStruct {
      */
     get keep(): boolean;
     get countable(): boolean;
-    set deleted(doDelete: boolean);
-    /**
-     * Whether this item was deleted or not.
-     * @type {Boolean}
-     */
-    get deleted(): boolean;
     markDeleted(): void;
-    /**
-     * Returns the next non-deleted item
-     */
-    get next(): Item | null;
-    /**
-     * Returns the previous non-deleted item
-     */
-    get prev(): Item | null;
     /**
      * Computes the last content address of this Item.
      */
@@ -180,11 +166,11 @@ export class AbstractContent {
      */
     gc(_transaction: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder
+     * @param {UpdateEncoder} _encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(_encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {1|2|3|4|5|6|7|8|9}
      */
@@ -239,11 +225,11 @@ export class ContentAny {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {8}
      */
@@ -295,11 +281,11 @@ export class ContentBinary {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {3}
      */
@@ -351,144 +337,15 @@ export class ContentDeleted {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {1}
      */
     getRef(): 1;
-}
-/**
- * @private
- */
-export class ContentDoc {
-    /**
-     * @param {string} guid
-     * @param {Object<string,any>} opts
-     */
-    constructor(guid: string, opts: {
-        [x: string]: any;
-    });
-    /**
-     * @type {Doc?}
-     */
-    doc: Doc | null;
-    guid: string;
-    opts: {
-        [x: string]: any;
-    };
-    /**
-     * @return {number}
-     */
-    getLength(): number;
-    /**
-     * @return {Array<any>}
-     */
-    getContent(): Array<any>;
-    /**
-     * @return {boolean}
-     */
-    isCountable(): boolean;
-    /**
-     * @return {ContentDoc}
-     */
-    copy(): ContentDoc;
-    /**
-     * @param {number} _offset
-     * @return {ContentDoc}
-     */
-    splice(_offset: number): ContentDoc;
-    /**
-     * @param {ContentDoc} _right
-     * @return {boolean}
-     */
-    mergeWith(_right: ContentDoc): boolean;
-    /**
-     * @param {Transaction} transaction
-     * @param {Item} item
-     */
-    integrate(transaction: Transaction, item: Item): void;
-    /**
-     * @param {Transaction} transaction
-     */
-    delete(transaction: Transaction): void;
-    /**
-     * @param {Transaction} _tr
-     */
-    gc(_tr: Transaction): void;
-    /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-     * @param {number} _offset
-     * @param {number} _offsetEnd
-     */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
-    /**
-     * @return {9}
-     */
-    getRef(): 9;
-}
-export function createContentDocFromDoc(ydoc: Doc): ContentDoc;
-/**
- * @private
- */
-export class ContentEmbed {
-    /**
-     * @param {Object} embed
-     */
-    constructor(embed: Object);
-    embed: Object;
-    /**
-     * @return {number}
-     */
-    getLength(): number;
-    /**
-     * @return {Array<any>}
-     */
-    getContent(): Array<any>;
-    /**
-     * @return {boolean}
-     */
-    isCountable(): boolean;
-    /**
-     * @return {ContentEmbed}
-     */
-    copy(): ContentEmbed;
-    /**
-     * @param {number} _offset
-     * @return {ContentEmbed}
-     */
-    splice(_offset: number): ContentEmbed;
-    /**
-     * @param {ContentEmbed} _right
-     * @return {boolean}
-     */
-    mergeWith(_right: ContentEmbed): boolean;
-    /**
-     * @param {Transaction} _transaction
-     * @param {Item} _item
-     */
-    integrate(_transaction: Transaction, _item: Item): void;
-    /**
-     * @param {Transaction} _transaction
-     */
-    delete(_transaction: Transaction): void;
-    /**
-     * @param {Transaction} _tr
-     */
-    gc(_tr: Transaction): void;
-    /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-     * @param {number} _offset
-     * @param {number} _offsetEnd
-     */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
-    /**
-     * @return {5}
-     */
-    getRef(): 5;
 }
 /**
  * @private
@@ -541,77 +398,15 @@ export class ContentFormat {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {6}
      */
     getRef(): 6;
-}
-/**
- * @private
- */
-export class ContentJSON {
-    /**
-     * @param {Array<any>} arr
-     */
-    constructor(arr: Array<any>);
-    /**
-     * @type {Array<any>}
-     */
-    arr: Array<any>;
-    /**
-     * @return {number}
-     */
-    getLength(): number;
-    /**
-     * @return {Array<any>}
-     */
-    getContent(): Array<any>;
-    /**
-     * @return {boolean}
-     */
-    isCountable(): boolean;
-    /**
-     * @return {ContentJSON}
-     */
-    copy(): ContentJSON;
-    /**
-     * @param {number} offset
-     * @return {ContentJSON}
-     */
-    splice(offset: number): ContentJSON;
-    /**
-     * @param {ContentJSON} right
-     * @return {boolean}
-     */
-    mergeWith(right: ContentJSON): boolean;
-    /**
-     * @param {Transaction} _transaction
-     * @param {Item} _item
-     */
-    integrate(_transaction: Transaction, _item: Item): void;
-    /**
-     * @param {Transaction} _transaction
-     */
-    delete(_transaction: Transaction): void;
-    /**
-     * @param {Transaction} _tr
-     */
-    gc(_tr: Transaction): void;
-    /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-     * @param {number} offset
-     * @param {number} offsetEnd
-     */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
-    /**
-     * @return {2}
-     */
-    getRef(): 2;
 }
 /**
  * @private
@@ -665,11 +460,11 @@ export class ContentString {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {4}
      */
@@ -734,11 +529,11 @@ export class ContentType {
      */
     gc(tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {7}
      */

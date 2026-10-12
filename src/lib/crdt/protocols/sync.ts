@@ -7,38 +7,28 @@
  * (`applyRemote`) and are stamped with a non-null `remoteApplyOrigin` so
  * echo suppression + undo exclusion keep working.
  *
- * Wire format (y-protocols' layout; SyncStep2 in the v2 encoding since
- * schema generation 5):
+ * Wire format (y-protocols' layout; every update in the engine's one
+ * encoding, the columnar one upstream calls v2, since schema generation 6):
  *
  * ```
  *   varuint messageType | payload
  *   messageType 0 (SyncStep1):   varuint8array stateVector
- *   messageType 1 (SyncStep2):   varuint8array update (v2, columnar)
- *   messageType 2 (Update):      varuint8array update (v1)
+ *   messageType 1 (SyncStep2):   varuint8array update
+ *   messageType 2 (Update):      varuint8array update
  * ```
  *
- * A SyncStep2 carries a state — a document's or what a peer lacks — and
- * the v2 encoding is smaller on any such batch (a 1,000-block document:
- * 280,557 → 220,444 bytes, gzip 55,016 → 28,476). An Update carries one
- * transaction, and v1 is smaller for most of those (a one-character
- * delete 13 vs 24 bytes, a block move 62 vs 84, a block delete 43 vs 65),
- * so updates stay v1: what the engine emits on `doc.on('update')` is
- * relayed as it is. A receiver converts a SyncStep2 to v1
- * ({@link step2Update}) and applies it through the one inbound path. That does NOT mean v13 and v14 peers are interchangeable — the
- * provider layer (`providers/*`) wraps every message in the protocol-version
- * envelope (`protocols/envelope.ts`) so engines that do not speak v14 never
- * reach `readSyncMessage`.
+ * What the engine emits on `doc.on('update')` is relayed as it is, and a
+ * SyncStep2 is applied through the same inbound path as an Update. That
+ * does NOT mean v13 and v14 peers are interchangeable — the provider layer
+ * (`providers/*`) wraps every message in the protocol-version envelope
+ * (`protocols/envelope.ts`) so engines that do not speak v14 never reach
+ * {@link applyRemote}.
  *
- * API boundary — two tiers:
- *
- * - RAW readers (`readSyncStep1`, `readSyncStep2`, `readUpdate`,
- *   `readSyncMessage`) apply through the inbound refusal but report
- *   nothing, and `readSyncMessage` THROWS on an unknown message type. They
- *   exist for harnesses/custom transports; the shipped providers do not
- *   route room traffic through them.
- * - The path the providers use lives in `providers/room.ts`:
- *   `applyRemote` + per-type dispatch, so a refused payload never mutates
- *   the live doc and an unknown type is a reported drop, not a throw.
+ * One inbound path: every payload a client or a server receives applies
+ * through `applyRemote`, which refuses a forged schema stamp before
+ * anything integrates; the providers dispatch by message type in
+ * `providers/room.ts` (an unknown type is a reported drop), the room in
+ * `cloudflare/room/admission.ts`.
  *
  * Engine functions are injected (`bindSync(Y)`): `src/lib` never
  * runtime-imports the vendored `.js` (see `engine-api.ts`), so the caller
@@ -67,7 +57,7 @@ export type IdSet = Decoded['ds'];
  * is optional). Remote integration MUST always arrive under a non-null,
  * non-tracked origin:
  *
- * - history capture (`document.history` / `Y.UndoManager`) keeps
+ * - history capture (`document.history`, edytor's undo manager) keeps
  *   untracked, non-local transactions out of the local undo stack — a
  *   `null` origin is ambiguous (it is also the untyped-local marker), so
  *   an explicit marker documents intent for `doc.on('update')`
@@ -87,6 +77,12 @@ export const messageYjsSyncStep1 = 0;
 export const messageYjsSyncStep2 = 1;
 export const messageYjsUpdate = 2;
 
+/** An inbound update that could not be read or applied: its handler hears it, the console shows it. */
+const reportUpdateError = (error: unknown, errorHandler?: (error: Error) => unknown): void => {
+	if (errorHandler != null) errorHandler(error as Error);
+	console.error('Caught error while handling a Yjs update', error);
+};
+
 /**
  * Bind the sync protocol to a concrete engine module (the vendored v14 `Y`).
  */
@@ -105,36 +101,7 @@ export const bindSync = (Y: EngineApi) => {
 		encodedStateVector?: Uint8Array
 	): void => {
 		encoding.writeVarUint(encoder, messageYjsSyncStep2);
-		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdateV2(doc, encodedStateVector));
-	};
-
-	/** A SyncStep2 payload (v2) as the v1 update every inbound path applies. */
-	const step2Update = (payload: Uint8Array): Uint8Array => Y.convertUpdateFormatV2ToV1(payload);
-
-	/** Read SyncStep1 message and reply with SyncStep2. */
-	const readSyncStep1 = (decoder: decoding.Decoder, encoder: encoding.Encoder, doc: YDoc): void =>
-		writeSyncStep2(encoder, doc, decoding.readVarUint8Array(decoder));
-
-	/**
-	 * Read and apply structs + delete set to a doc — through the same
-	 * inbound refusal as the providers ({@link applyRemote}), which report
-	 * a refused stamp; this raw reader reports only decode/apply errors.
-	 */
-	const readSyncStep2 = (
-		decoder: decoding.Decoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): void => {
-		let update: Uint8Array;
-		try {
-			update = step2Update(decoding.readVarUint8Array(decoder));
-		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			console.error('Caught error while handling a Yjs update', error);
-			return;
-		}
-		applyRemote(doc, update, transactionOrigin, errorHandler);
+		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(doc, encodedStateVector));
 	};
 
 	/**
@@ -152,16 +119,6 @@ export const bindSync = (Y: EngineApi) => {
 	const writeUpdate = (encoder: encoding.Encoder, update: Uint8Array): void => {
 		encoding.writeVarUint(encoder, messageYjsUpdate);
 		encoding.writeVarUint8Array(encoder, update);
-	};
-
-	/** Read and apply an Update (v1) through the inbound refusal. */
-	const readUpdate = (
-		decoder: decoding.Decoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): void => {
-		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
 	};
 
 	/**
@@ -227,7 +184,7 @@ export const bindSync = (Y: EngineApi) => {
 	/** What the engine holds pending on `doc` (structs and deletes waiting for a dependency). */
 	const held = (doc: YDoc): Decoded[] => {
 		const pending = [doc.store.pendingStructs?.update, doc.store.pendingDs];
-		return pending.flatMap((bytes) => (bytes ? [Y.decodeUpdateV2(bytes)] : []));
+		return pending.flatMap((bytes) => (bytes ? [Y.decodeUpdate(bytes)] : []));
 	};
 
 	/**
@@ -268,8 +225,7 @@ export const bindSync = (Y: EngineApi) => {
 				? { applied: true, problem: null }
 				: { applied: true, problem: null, discarded };
 		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			console.error('Caught error while handling a Yjs update', error);
+			reportUpdateError(error, errorHandler);
 			return { applied: false, problem: null };
 		}
 	};
@@ -290,12 +246,12 @@ export const bindSync = (Y: EngineApi) => {
 		encoder: encoding.Encoder,
 		doc: YDoc,
 		deletes?: IdSet,
-		unstored: IdSet | null = doc.store.pendingDs && Y.decodeUpdateV2(doc.store.pendingDs).ds
+		unstored: IdSet | null = doc.store.pendingDs && Y.decodeUpdate(doc.store.pendingDs).ds
 	): void => {
 		encoding.writeVarUint8Array(encoder, Y.encodeStateVector(doc));
 		const held = deletes && unstored ? Y.diffIdSet(deletes, unstored) : deletes;
 		if (!held || held.isEmpty()) return;
-		const body = new Y.UpdateEncoderV1();
+		const body = new Y.UpdateEncoder();
 		encoding.writeVarUint(body.restEncoder, 0); // no structs
 		Y.writeIdSet(body, held);
 		encoding.writeVarUint8Array(encoder, body.toUint8Array());
@@ -311,38 +267,6 @@ export const bindSync = (Y: EngineApi) => {
 			: null
 	});
 
-	/**
-	 * Read a sync message from `decoder`; writes any reply (SyncStep2) into
-	 * `encoder`. Returns the decoded message type. Callers MUST gate the
-	 * protocol-version envelope before invoking this (see `envelope.ts`).
-	 * RAW: payloads apply through the inbound refusal (unreported) and an
-	 * unknown message type THROWS — the shipped providers dispatch through
-	 * `providers/room.ts` (`applyRemote` + reported drops) instead.
-	 */
-	const readSyncMessage = (
-		decoder: decoding.Decoder,
-		encoder: encoding.Encoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): number => {
-		const messageType = decoding.readVarUint(decoder);
-		switch (messageType) {
-			case messageYjsSyncStep1:
-				readSyncStep1(decoder, encoder, doc);
-				break;
-			case messageYjsSyncStep2:
-				readSyncStep2(decoder, doc, transactionOrigin, errorHandler);
-				break;
-			case messageYjsUpdate:
-				readUpdate(decoder, doc, transactionOrigin, errorHandler);
-				break;
-			default:
-				throw new Error('Unknown message type');
-		}
-		return messageType;
-	};
-
 	return {
 		messageYjsSyncStep1,
 		messageYjsSyncStep2,
@@ -350,12 +274,7 @@ export const bindSync = (Y: EngineApi) => {
 		remoteApplyOrigin,
 		writeSyncStep1,
 		writeSyncStep2,
-		step2Update,
-		readSyncStep1,
-		readSyncStep2,
 		writeUpdate,
-		readUpdate,
-		readSyncMessage,
 		applyRemote,
 		lacks,
 		writeSaved,

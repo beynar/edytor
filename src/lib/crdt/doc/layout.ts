@@ -45,6 +45,8 @@ export const layoutOps = (c: OpsContext) => {
 		const kinds = [...roles.layoutKinds()];
 		return kinds.length === 1 ? kinds[0] : undefined;
 	};
+	/** A fresh empty block of `type`. */
+	const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
 	/**
 	 * The block a beside placement at `target` stands beside
 	 * (`layout.place-beside`): a layout or an item for itself; a block whose
@@ -130,7 +132,6 @@ export const layoutOps = (c: OpsContext) => {
 		if (wrap === undefined || item === undefined) return REFUSED;
 		if (moved.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
 		if (layout !== null && (isIsland(layout) || insideIsland(layout, v))) return REFUSED;
-		const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
 		const fresh = spec(item);
 		const into = (parent: BlockId) => moveTo(moved, parent, 0, ranksFor(parent, 0, moved.length));
 		let writes: PlanStep[];
@@ -192,7 +193,6 @@ export const layoutOps = (c: OpsContext) => {
 		const fill = roles.defaultChild(item);
 		if (columns > blocks.length && !fitsIn(item, fill)) return REFUSED;
 		const ordered = blocks.toSorted((a, b) => positionOf(a)!.index - positionOf(b)!.index);
-		const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
 		const items = Array.from({ length: columns }, (_, i) =>
 			i < ordered.length ? spec(item) : { ...spec(item), children: [spec(fill)] }
 		);
@@ -217,7 +217,6 @@ export const layoutOps = (c: OpsContext) => {
 	};
 
 	return {
-		layoutKind,
 		besideAt,
 		placeBeside,
 		wrapInLayout

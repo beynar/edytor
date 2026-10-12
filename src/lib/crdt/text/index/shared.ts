@@ -8,6 +8,7 @@ import type { EngineNode } from '../../engine-api.js';
 import type { BlockId, BlockRec } from '../../placement/model.js';
 import { AT, CONTENT, DATA, DATA_LEAF_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../../schema.js';
 import type { ContentRun, DisplayRoles } from '../runs.js';
+import type { SelfChecks } from './state.js';
 
 /**
  * The facet name of a block's registry entry itself (inserted or removed) —
@@ -101,14 +102,17 @@ export const sameShape = (roles: DisplayRoles, a: string, b: string): boolean =>
 };
 
 /**
- * Test lanes turn this on (`globalThis.__EDYTOR_INDEX_CHECKS__`, set before
- * the index loads): after every fold the index checks each fact it keeps
- * incrementally against a rebuild from the replicated state and throws on
- * the first difference. Off in production.
+ * The index's self-checks, off in production: a test lane's setup installs
+ * `of`, which builds an index's checker (on its first check), and turns them
+ * `on`. After every fold the index checks each fact it keeps incrementally
+ * against a rebuild from the replicated state and throws on the first
+ * difference; after every report, the published tree.
  */
-export const indexChecks = {
-	on: (globalThis as { __EDYTOR_INDEX_CHECKS__?: unknown }).__EDYTOR_INDEX_CHECKS__ === true
-};
+export const indexChecks: { on: boolean; of?: (ix: never) => SelfChecks } = { on: false };
+
+/** `ix`'s checker ({@link indexChecks}), built on its first check. */
+export const checksOf = (ix: { checks: SelfChecks | null }): SelfChecks =>
+	(ix.checks ??= indexChecks.of!(ix as never));
 
 /** Add `value` to `key`'s set in `index`. */
 export const addTo = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {

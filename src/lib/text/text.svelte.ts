@@ -1,30 +1,16 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { type JSONText } from '$lib/utils/json.js';
-import { Block } from '../block/block.svelte.js';
-import {
-	batch,
-	deleteText,
-	removeMarksFromText,
-	getMarksAtRange,
-	insertText,
-	markText,
-	setText,
-	splitText
-} from './text.utils.js';
-import { deltaToJson, runsToDeltas } from './deltas.js';
-import type { OpResult } from '$lib/crdt/index.js';
-import type { ContentPart } from '$lib/session/handles.js';
-
-/** A write through the block's model that the document did not refuse. */
-const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
+import type { Block } from '../block/block.svelte.js';
+import { segmentJSON, type ContentPart } from '$lib/session/handles.js';
 
 /**
- * An id-only text handle: the `ordinal`-th text segment
- * of block `blockId` — no identity across commits beyond that position.
- * Getters read the document index; mutators write through the block's model.
- * `node` is the element that renders the segment (a Surface fact). A
- * reactive reader of a getter depends on the block's cell, so it re-runs
- * when a commit changes the block's content.
+ * An id-only, read-only text handle: the `ordinal`-th text segment of block
+ * `blockId` — no identity across commits beyond that position. Getters read
+ * the document index; writes are the view's operations in block offsets
+ * (`edytor.insertText(text.parent.id, text.segStart + offset, …)`). `node`
+ * is the element that renders the segment (a Surface fact). A reactive
+ * reader of a getter depends on the block's cell, so it re-runs when a
+ * commit changes the block's content.
  */
 export class Text {
 	readonly = false;
@@ -63,7 +49,7 @@ export class Text {
 	}
 
 	get value(): JSONText[] {
-		return deltaToJson(runsToDeltas(this.#at.part?.items ?? [])[0]);
+		return segmentJSON(this.#at.part?.items ?? []);
 	}
 
 	/** The segment's text. */
@@ -104,41 +90,26 @@ export class Text {
 		this.edytor.cells?.remount(this.parent.id);
 	};
 
-	// ── segment writes ───────────────────────────────────────────────────
-	//
-	// `insertAt`/`deleteAt`/`formatAt` are the offset-based primitives the
-	// operation layer (`text.utils`), event handlers and plugins call. Offsets
-	// are SEGMENT-LOCAL display atoms (UTF-16 units); `segStart` maps them into
-	// the block's display space (read from the index, so a write after another
-	// in the same transaction lands right).
-
-	// They write raw (no hooks, no undo policy of their own): the commands
-	// that call them passed the dispatcher's admission, and a call a readonly
-	// view or a read-only document would refuse writes nothing.
-
-	/** Insert `text` (optionally marked) at segment-local `offset`. @internal */
-	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean =>
-		this.edytor.dispatcher.permits() &&
-		accepted(this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined));
-
-	/** Delete `length` atoms at segment-local `offset`. @internal */
-	deleteAt = (offset: number, length: number): boolean =>
-		this.edytor.dispatcher.permits() &&
-		accepted(this.parent.model?.deleteText(this.segStart + offset, length));
-
-	/** Multi-mark format over `[offset, offset+length)` — `null` values remove the mark. @internal */
-	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean =>
-		this.edytor.dispatcher.permits() &&
-		accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
-
-	private batch = batch.bind(this);
-	getMarksAtRange = getMarksAtRange.bind(this);
-	insertText = this.batch('insertText', insertText.bind(this));
-	deleteText = this.batch('deleteText', deleteText.bind(this));
-	splitText = this.batch('splitText', splitText.bind(this));
-	setText = this.batch('setText', setText.bind(this));
-	markText = this.batch('markText', markText.bind(this));
-	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
+	/**
+	 * The runs of `[start, end)` (segment offsets), each with a copy of its
+	 * marks: the MODEL runs (`value`), never the rendered ones — a kind's
+	 * `transformText` decorations (code tokens) are no marks of the text.
+	 */
+	getMarksAtRange = (start: number, end: number): JSONText[] => {
+		const result: JSONText[] = [];
+		let offset = 0;
+		for (const { text, marks } of this.value) {
+			const until = offset + text.length;
+			// From the run holding `start`, every run starting before `end`.
+			if (result.length ? offset < end : start >= offset && start < until)
+				result.push({
+					text: text.slice(Math.max(0, start - offset), end - offset),
+					marks: { ...marks }
+				});
+			offset = until;
+		}
+		return result;
+	};
 
 	/** @internal */
 	attach = (node: HTMLElement) => {
@@ -148,21 +119,13 @@ export class Text {
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
 
-		let pluginDestroy = this.edytor.plugins.reduce(
-			(acc, plugin) => {
-				const action = plugin.onTextAttached?.({ node, text: this });
-				if (typeof action === 'function') acc.push(action);
-				return acc;
-			},
-			[] as (() => void)[]
-		);
-		let insideVoid = this.parent.definition.void;
-		for (let block: unknown = this.parent; block instanceof Block; block = block.parent) {
-			if (block.definition.void) {
-				insideVoid = true;
-				break;
-			}
-		}
+		const pluginDestroy = this.edytor.plugins.flatMap((plugin) => {
+			const action = plugin.onTextAttached?.({ node, text: this });
+			return typeof action === 'function' ? [action] : [];
+		});
+		let insideVoid = false;
+		for (let block: Block | undefined = this.parent; block && !insideVoid; block = block.parent)
+			insideVoid = !!block.definition.void;
 
 		if (insideVoid) {
 			node.setAttribute('contenteditable', 'true');

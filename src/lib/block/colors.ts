@@ -26,26 +26,6 @@ export const BLOCK_COLORS = [
 	'red'
 ] as const;
 
-/**
- * Notion's light values of the palette: the fallbacks of the theme tokens
- * (`--edytor-color-<name>`, `--edytor-background-<name>`), as the core's
- * stylesheet (`Block.svelte`) and the Notion theme write them.
- */
-export const BLOCK_PALETTE: Record<
-	(typeof BLOCK_COLORS)[number],
-	{ color: string; background: string }
-> = {
-	gray: { color: '#7d7a75', background: '#f0efed' },
-	brown: { color: '#9f765a', background: '#f5ede9' },
-	orange: { color: '#d27b2d', background: '#fbebde' },
-	yellow: { color: '#cb9434', background: '#f9f3dc' },
-	green: { color: '#50946e', background: '#e8f1ec' },
-	blue: { color: '#387dc9', background: '#e5f2fc' },
-	purple: { color: '#9a6bb4', background: '#f3ebf9' },
-	pink: { color: '#c14c8a', background: '#fae9f1' },
-	red: { color: '#cf5148', background: '#fce9e7' }
-};
-
 /** A block's colour fields: its text colour and its background. */
 export type BlockColorField = 'color' | 'background';
 
@@ -102,8 +82,7 @@ export const setBlockColor = (
 	);
 	if (!painted.length) return false;
 	const applied = edytor.dispatcher.each('setBlockColor', painted, (block) => {
-		block.patchData({ ops: [{ path: [field], value: name }] });
-		return edytor.dispatcher.last?.status === 'applied';
+		return edytor.patchData(block.id, [{ path: [field], value: name }]).status === 'applied';
 	});
 	return applied.some(Boolean);
 };

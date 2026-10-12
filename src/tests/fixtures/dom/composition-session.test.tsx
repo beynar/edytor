@@ -33,10 +33,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import {
 	dispatchComposition,
 	dispatchDomBeforeInput,
@@ -45,6 +42,8 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since I3. */
 const row = it;
@@ -89,7 +88,7 @@ const textNodes = (element: Node) => {
 	return out.filter((node) => node.data.length > 0);
 };
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	const block = edytor.root!.children.findIndex((b) => b === startText?.parent);
 	return { block, offset: yStart, isCollapsed };
 };
@@ -262,7 +261,7 @@ describe('F-I16 — a session and its commit are one undo step', () => {
 
 			await undo(editor);
 			expect(texts(edytor)).toEqual(['say hello now']);
-			const { yStart, yEnd } = edytor.selection.state;
+			const { yStart, yEnd } = selectionState(edytor);
 			expect([yStart, yEnd]).toEqual([4, 9]);
 		}
 	);
@@ -294,7 +293,7 @@ describe('F-I16 — a session and its commit are one undo step', () => {
 		const vetoing: Plugin = () => ({
 			onBeforeOperation: (change) => {
 				if (
-					change.operation === 'removeBlock' &&
+					change.operation === 'deleteBlock' &&
 					(change.block as { content?: { stringContent?: string }[] }).content?.[0]
 						?.stringContent === 'bb'
 				)

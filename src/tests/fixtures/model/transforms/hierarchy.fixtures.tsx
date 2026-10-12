@@ -1,11 +1,29 @@
 /** @jsxImportSource ../../../jsx */
 import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { findBlockAndTextAtPath } from '../../../test.utils.js';
+import { selectionState } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
+
+/** The document destination a view path (`[...parentPath, index]`) names. */
+const at = (edytor: Edytor, path: number[]) => {
+	let parent = edytor.root!;
+	for (const index of path.slice(0, -1)) parent = parent.children[index]!;
+	return { parent: parent.isRoot ? null : parent.id, index: path.at(-1)! };
+};
+
+/** Move the selection's block to the destination `path` names. */
+const moveTo = (edytor: Edytor, path: number[]) =>
+	edytor.moveBlocks([selectionState(edytor).startBlock!.id], at(edytor, path));
+
+/** Insert `blocks` as children of the selection's block, at `index`. */
+const addChildren = (edytor: Edytor, blocks: JSONBlock[], index: number) =>
+	edytor.insertBlocks({ parent: selectionState(edytor).startBlock!.id, index }, blocks);
 
 const isolatedBlocksPlugin: Plugin = () => ({
 	blocks: {
@@ -24,11 +42,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Parent|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlock({
-				block: { type: 'paragraph' },
-				index: 0
-			}),
+		run: ({ edytor }) => addChildren(edytor, [{ type: 'paragraph' }], 0),
 		output: (
 			<root>
 				<paragraph>
@@ -49,13 +63,14 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlocks({
-				blocks: [
+			addChildren(
+				edytor,
+				[
 					{ type: 'paragraph', content: [{ text: 'Inserted 1' }] },
 					{ type: 'paragraph', content: [{ text: 'Inserted 2' }] }
 				],
-				index: 0
-			}),
+				0
+			),
 		output: (
 			<root>
 				<paragraph>
@@ -79,10 +94,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlocks({
-				blocks: [{ type: 'paragraph', content: [{ text: 'Inserted' }] }],
-				index: 99
-			}),
+			addChildren(edytor, [{ type: 'paragraph', content: [{ text: 'Inserted' }] }], 99),
 		output: (
 			<root>
 				<paragraph>
@@ -106,10 +118,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlocks({
-				blocks: [{ type: 'paragraph', content: [{ text: 'Inserted' }] }],
-				index: -1
-			}),
+			addChildren(edytor, [{ type: 'paragraph', content: [{ text: 'Inserted' }] }], -1),
 		output: (
 			<root>
 				<paragraph>
@@ -133,10 +142,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlock({
-				block: { type: 'paragraph', content: [{ text: 'Inserted' }] },
-				index: 99
-			}),
+			addChildren(edytor, [{ type: 'paragraph', content: [{ text: 'Inserted' }] }], 99),
 		result: { kind: 'block', path: [0, 2], type: 'paragraph' },
 		output: (
 			<root>
@@ -161,10 +167,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.addChildBlock({
-				block: { type: 'paragraph', content: [{ text: 'Inserted' }] },
-				index: -1
-			}),
+			addChildren(edytor, [{ type: 'paragraph', content: [{ text: 'Inserted' }] }], -1),
 		result: { kind: 'block', path: [0, 0], type: 'paragraph' },
 		output: (
 			<root>
@@ -178,21 +181,6 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'is a no-op when removing the root block',
-		input: (
-			<root>
-				<paragraph>First</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => edytor.root?.removeBlock(),
-		result: { kind: 'void' },
-		output: (
-			<root>
-				<paragraph>First</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
 		description: 'removes a sibling block with no children',
 		input: (
 			<root>
@@ -201,7 +189,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Third paragraph</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeBlock(),
+		run: ({ edytor }) => edytor.deleteBlock(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>First paragraph</paragraph>
@@ -224,7 +212,8 @@ export const fixtures = defineFixtures([
 				</ordered-list>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeBlock({ keepChildren: true }),
+		run: ({ edytor }) =>
+			edytor.deleteBlock(selectionState(edytor).startBlock!.id, { keepChildren: true }),
 		output: (
 			<root>
 				<ordered-list>
@@ -251,7 +240,8 @@ export const fixtures = defineFixtures([
 				</ordered-list>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeBlock({ keepChildren: false }),
+		run: ({ edytor }) =>
+			edytor.deleteBlock(selectionState(edytor).startBlock!.id, { keepChildren: false }),
 		output: (
 			<root>
 				<ordered-list>
@@ -272,7 +262,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeBlock(),
+		run: ({ edytor }) => edytor.deleteBlock(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>First</paragraph>
@@ -292,7 +282,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 1, 0]);
-			return block.nestBlock();
+			return block.previousBlock ? edytor.nestBlock(block.id, block.previousBlock.id) : null;
 		},
 		output: (
 			<root>
@@ -320,7 +310,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 1, 0]);
-			return block.nestBlock();
+			return block.previousBlock ? edytor.nestBlock(block.id, block.previousBlock.id) : null;
 		},
 		result: { kind: 'block', path: [0, 0, 0], type: 'list-item' },
 		output: (
@@ -349,7 +339,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0, 0]);
-			return block.nestBlock();
+			return block.previousBlock ? edytor.nestBlock(block.id, block.previousBlock.id) : null;
 		},
 		output: (
 			<root>
@@ -374,7 +364,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0, 0, 0]);
-			return block.unNestBlock();
+			return edytor.unNestBlock(block.id);
 		},
 		output: (
 			<root>
@@ -402,7 +392,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0, 1, 0]);
-			return block.unNestBlock();
+			return edytor.unNestBlock(block.id);
 		},
 		result: { kind: 'block', path: [0, 1], type: 'list-item' },
 		output: (
@@ -436,7 +426,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 1, 0]);
-			return edytor.moveBlocks({ blocks: [block], direction: 'out' })[0];
+			return edytor.move({ blocks: [block], direction: 'out' })[0];
 		},
 		result: { kind: 'block', path: [1], type: 'paragraph' },
 		output: (
@@ -469,7 +459,7 @@ export const fixtures = defineFixtures([
 		run: ({ edytor }) => {
 			const find = findBlockAndTextAtPath(edytor);
 			const blocks = [find([0, 1, 0]).block, find([0, 2, 0]).block];
-			return edytor.moveBlocks({ blocks, direction: 'out' }).length;
+			return edytor.move({ blocks, direction: 'out' }).length;
 		},
 		output: (
 			<root>
@@ -499,7 +489,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0, 0]);
-			return block.nextBlock?.unNestBlock();
+			return edytor.unNestBlock(block.nextBlock!.id);
 		},
 		result: { kind: 'block', path: [1], type: 'divider' },
 		output: (
@@ -521,7 +511,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Second</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.unNestBlock(),
+		run: ({ edytor }) => edytor.unNestBlock(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>First</paragraph>
@@ -538,7 +528,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Third</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [2] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [2]),
 		result: { kind: 'block', path: [2], type: 'paragraph' },
 		output: (
 			<root>
@@ -559,7 +549,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Second</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [1]),
 		result: { kind: 'block', path: [1], type: 'paragraph' },
 		output: (
 			<root>
@@ -582,7 +572,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1, 1] }),
+		run: ({ edytor }) => moveTo(edytor, [1, 1]),
 		output: (
 			<root>
 				<paragraph>
@@ -605,7 +595,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [0, 1, 0] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [0, 1, 0]),
 		result: { kind: 'block', path: [0, 0, 0], type: 'paragraph' },
 		output: (
 			<root>
@@ -633,7 +623,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [0, 1, 1] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [0, 1, 1]),
 		result: { kind: 'block', path: [0, 0, 1], type: 'paragraph' },
 		output: (
 			<root>
@@ -666,8 +656,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Tail</paragraph>
 			</root>
 		),
-		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.moveBlock({ path: [0, 0, 0, 1] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [0, 0, 0, 1]),
 		result: { kind: 'block', path: [0, 0, 0, 1], type: 'paragraph' },
 		output: (
 			<root>
@@ -697,7 +686,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1] }),
+		run: ({ edytor }) => moveTo(edytor, [1]),
 		output: (
 			<root>
 				<paragraph>Parent</paragraph>
@@ -724,7 +713,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Omega</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [1]),
 		result: { kind: 'block', path: [1], type: 'paragraph' },
 		output: (
 			<root>
@@ -742,73 +731,6 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'does not mutate the caller path array when moving a block',
-		input: (
-			<root>
-				<paragraph>First|</paragraph>
-				<paragraph>Second</paragraph>
-				<paragraph>Third</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const path = [2];
-			const result = edytor.selection.state.startBlock?.moveBlock({ path }) ?? null;
-			if (path.length !== 1 || path[0] !== 2) {
-				throw new Error('moveBlock mutated the caller path array');
-			}
-			return result;
-		},
-		result: { kind: 'block', path: [2], type: 'paragraph' },
-		output: (
-			<root>
-				<paragraph>Second</paragraph>
-				<paragraph>Third</paragraph>
-				<paragraph>First</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'does nothing when asked to move to an invalid path',
-		input: (
-			<root>
-				<paragraph>First|</paragraph>
-				<paragraph>Second</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [5, 2, 1] }),
-		output: (
-			<root>
-				<paragraph>First</paragraph>
-				<paragraph>Second</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'does nothing when asked to move with an empty or negative path',
-		input: (
-			<root>
-				<paragraph>First|</paragraph>
-				<paragraph>Second</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const block = edytor.selection.state.startBlock;
-			const emptyResult = block?.moveBlock({ path: [] }) ?? null;
-			const negativeResult = block?.moveBlock({ path: [-1] }) ?? null;
-			if (emptyResult !== null || negativeResult !== null) {
-				throw new Error('Expected invalid moveBlock paths to return null');
-			}
-			return null;
-		},
-		result: { kind: 'null' },
-		output: (
-			<root>
-				<paragraph>First</paragraph>
-				<paragraph>Second</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
 		description: 'prevents moving a block into its own descendant path',
 		input: (
 			<root>
@@ -819,7 +741,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [0, 1] }),
+		run: ({ edytor }) => moveTo(edytor, [0, 1]),
 		output: (
 			<root>
 				<paragraph>
@@ -839,7 +761,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Tail</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1, 0] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [1, 0]),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -859,7 +781,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Tail</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [1, 0] }) ?? null,
+		run: ({ edytor }) => moveTo(edytor, [1, 0]),
 		result: { kind: 'null' },
 		output: (
 			<root>

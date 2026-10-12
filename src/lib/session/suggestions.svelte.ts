@@ -12,8 +12,8 @@
 import type { BlockId, DocAnchor, OpResult } from '../crdt/index.js';
 import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
+import { REFUSED } from '../crdt/doc/plan.js';
 import type { Edytor } from '../edytor.svelte.js';
-import { applyAt, caretOf } from '../edytor.utils.js';
 import { textToBlocks } from '../clipboard/textBlocks.js';
 import { selectedMembers, viewOf } from '../selection/visibility.js';
 import { project, textSelection } from './selection.js';
@@ -44,13 +44,11 @@ export type SuggestionOptions = {
 	id?: string;
 	/** Default `ready` with content, `streaming` without. */
 	status?: SuggestionStatus;
-	/** A name for the UI (the default bar shows it). */
+	/** A name for the UI (an app's suggestion bar shows it). */
 	label?: string;
 	/** Offer "Try again": called by `retry()` once the content is emptied. */
 	onRetry?: (suggestion: Suggestion) => void;
 };
-
-const REFUSED: OpResult = Object.freeze({ status: 'refused', ids: [] });
 
 /** What a block position shows: before it, after it, as its last children, after its text. */
 export type SuggestionsAt = {
@@ -67,7 +65,10 @@ export type SuggestionsAt = {
 export const replacedMark = ({ replaced, inPlace }: SuggestionsAt) =>
 	replaced ? (inPlace ? 'empty' : '') : null;
 
-const NONE: SuggestionsAt = Object.freeze({
+type Place = {
+	-readonly [K in keyof SuggestionsAt]: K extends 'replaced' | 'inPlace' ? boolean : Suggestion[];
+};
+const place = (): Place => ({
 	before: [],
 	after: [],
 	inside: [],
@@ -75,6 +76,15 @@ const NONE: SuggestionsAt = Object.freeze({
 	replaced: false,
 	inPlace: false
 });
+const NONE: SuggestionsAt = Object.freeze(place());
+
+/** The block positions, in the order a position names its side. */
+const SIDES = ['after', 'before', 'inside', 'end'] as const;
+/** The side and block a block position names (none: a `replace`). */
+const sideOf = (at: ResolvedAt) => {
+	const side = SIDES.find((side) => side in at);
+	return side && ([side, (at as Record<typeof side, BlockId>)[side]] as const);
+};
 
 export class Suggestion {
 	readonly id: string;
@@ -240,36 +250,19 @@ export class Suggestions {
 
 	/** Where suggestions show, by block (reactive; follows the document while any is listed). */
 	#places = $derived.by(() => {
-		type Place = {
-			-readonly [K in keyof SuggestionsAt]: K extends 'replaced' | 'inPlace'
-				? boolean
-				: Suggestion[];
-		};
 		const places = new Map<BlockId, Place>();
 		if (!this.#list.length) return places;
 		void this.edytor.valueRevision;
-		const at = (id: BlockId) => {
-			if (!places.has(id))
-				places.set(id, {
-					before: [],
-					after: [],
-					inside: [],
-					end: [],
-					replaced: false,
-					inPlace: false
-				});
-			return places.get(id)!;
-		};
+		const at = (id: BlockId) => places.get(id) ?? places.set(id, place()).get(id)!;
 		for (const s of this.#list) {
 			const { at: where } = s;
-			if ('after' in where) at(where.after).after.push(s);
-			else if ('before' in where) at(where.before).before.push(s);
-			else if ('inside' in where) at(where.inside).inside.push(s);
-			else if ('end' in where) {
-				at(where.end).end.push(s);
+			const named = sideOf(where);
+			if (named) {
+				const [side, id] = named;
+				at(id)[side].push(s);
 				// Blocks past the first follow the block, as accepting places them.
-				if (s.content.length > 1) at(where.end).after.push(s);
-			} else {
+				if (side === 'end' && s.content.length > 1) at(id).after.push(s);
+			} else if ('replace' in where) {
 				const ids = this.#blocks(where);
 				if (Array.isArray(where.replace)) {
 					const inPlace = ids.every((id) => this.edytor.idToBlock.get(id)?.isEmpty);
@@ -339,15 +332,21 @@ export class Suggestions {
 			payload,
 			{ block },
 			(_payload, plan = prepare()) => {
-				const caret = applyAt(edytor, plan);
-				return range && caret ? applyAt(edytor, place(caret)) : caret;
+				/** Write a stage in the command; answers the caret it decides. */
+				const write = (plan: Prepared) => {
+					if (!('writes' in plan) || !plan.at) return null;
+					edytor.dispatcher.write(plan);
+					return plan.at;
+				};
+				const caret = write(plan);
+				return range && caret ? write(place(caret)) : caret;
 			},
 			prepare
 		);
 		if (out === undefined || (out === null && edytor.dispatcher.last?.status === 'refused'))
 			return REFUSED;
 		this.drop(suggestion);
-		if (out) edytor.dispatcher.caret(...caretOf.call(edytor, out));
+		if (out) edytor.dispatcher.caret(out);
 		const status = edytor.dispatcher.last?.status === 'applied' ? 'applied' : 'noop';
 		return { status, ids: status === 'applied' ? ids : [] };
 	};
@@ -355,21 +354,20 @@ export class Suggestions {
 	/** The flow target of a block position (at an `end`, the first block's content joins the text). */
 	#target = (at: ResolvedAt, flow: Flow): FlowTarget => {
 		const { facade } = this.edytor;
-		if ('end' in at) {
+		const [side, id] = sideOf(at) ?? [];
+		if (side === 'end') {
 			const [first, ...rest] = flow.lines;
 			if (first)
 				flow.lines = [
 					{ id: first.id, content: first.content, children: first.children } as FlowLine,
 					...rest
 				];
-			return { block: at.end, offset: facade.displayLength(at.end) };
+			return { block: id!, offset: facade.displayLength(id!) };
 		}
-		if ('replace' in at) return { replace: at.replace as readonly BlockId[] };
-		if ('inside' in at)
-			return { slot: { parent: at.inside, index: facade.childrenIds(at.inside).length } };
-		const id = 'after' in at ? at.after : at.before;
+		if (!id) return { replace: (at as { replace: readonly BlockId[] }).replace };
+		if (side === 'inside') return { slot: { parent: id, index: facade.childrenIds(id).length } };
 		const { parent, index } = facade.positionOf(id) ?? { parent: null, index: 0 };
-		return { slot: { parent, index: index + ('after' in at ? 1 : 0) } };
+		return { slot: { parent, index: index + (side === 'after' ? 1 : 0) } };
 	};
 
 	/** A range's endpoints in document order, or null when one no longer resolves. */
@@ -380,12 +378,11 @@ export class Suggestions {
 
 	/** The blocks a position names (a range: its endpoints' blocks). */
 	#blocks = (at: ResolvedAt): BlockId[] => {
-		if ('after' in at) return [at.after];
-		if ('before' in at) return [at.before];
-		if ('inside' in at) return [at.inside];
-		if ('end' in at) return [at.end];
-		if (Array.isArray(at.replace)) return [...(at.replace as readonly BlockId[])];
-		const range = this.#range(at.replace as SuggestionRange);
+		const named = sideOf(at);
+		if (named) return [named[1]];
+		const { replace } = at as { replace: readonly BlockId[] | SuggestionRange };
+		if (Array.isArray(replace)) return [...replace];
+		const range = this.#range(replace as SuggestionRange);
 		return range ? [range.start.block, range.end.block] : [];
 	};
 

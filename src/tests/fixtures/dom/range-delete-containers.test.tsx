@@ -24,6 +24,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference; green since D6. */
 const row = it;
@@ -40,9 +41,9 @@ const backspace = (edytor: Edytor) =>
 	);
 
 const caret = (edytor: Edytor) => ({
-	text: edytor.selection.state.startText?.stringContent,
-	at: edytor.selection.state.yStart,
-	collapsed: edytor.selection.state.isCollapsed
+	text: selectionState(edytor).startText?.stringContent,
+	at: selectionState(edytor).yStart,
+	collapsed: selectionState(edytor).isCollapsed
 });
 
 describe('F-D12 — nested, empty container (dom)', () => {
@@ -114,7 +115,7 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 		const note = edytor.root!.children[1]!.firstText!;
 		const tail = edytor.root!.children[2]!.firstText!;
 		// The model range the Shift+ArrowRight extension hands the command.
-		edytor.selection.setAtRange(note!, 4, tail!, 0);
+		edytor.selection.selectText(note!, 4, tail!, 0);
 		await backspace(edytor);
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['', 'notetail']);
@@ -132,7 +133,7 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['', 'note', 'tail']);
-		const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd, isCollapsed } = selectionState(edytor);
 		expect({
 			start: startText?.parent.index,
 			end: endText?.parent.index,
@@ -158,7 +159,7 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 		await setNativeSelection(edytor, edytor.root!.children[1]!.firstText!, 0);
 		edytor.historyUndo();
 		await flushDomUpdates();
-		const { yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;
+		const { yStart, yEnd, isCollapsed, isReversed } = selectionState(edytor);
 		expect(texts(edytor)).toEqual(['lead', 'note']);
 		expect({ yStart, yEnd, isCollapsed, isReversed }).toEqual({
 			yStart: 1,

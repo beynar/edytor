@@ -4,7 +4,7 @@ description: The rich text plugin's block kinds, marks, Notion hotkeys, placehol
 icon: type
 ---
 
-`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
+`createRichTextPlugin()` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-`createRichTextPlugin({ labels, keywords, callout })` builds it in another language or with other callout icons (see [Toggles and callouts](#toggles-and-callouts)): `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ callout })` builds it with other callout icons (see [Toggles and callouts](#toggles-and-callouts)), and `createRichTextPlugin({ checkbox, calloutIcon, emptyBody })` with your markup for the controls inside its blocks (see [Your markup for its controls](#your-markup-for-its-controls)). Its words (the presets, the toolbar's mark buttons, the to-do checkbox, the placeholders) are the view's `richText` labels, and its slash keywords the view's `keywords` (see [Localization](/docs/customization/localization)). A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 
@@ -38,14 +38,12 @@ The plugin also defines kinds without presets, for content that arrives from sto
 
 - `ordered-list` and `unordered-list`: `ol` and `ul` containers that render only their children. A new child takes the `list-item` kind, and so does a pasted line of the list's own flat kind (a numbered item in an `ordered-list`, a bulleted one in an `unordered-list`, their `itemKind`); any other kind keeps its kind.
 - `list-item`: an `li`.
-- `details`: the same as `toggle`.
-- `horizontalRule`: the same as `divider`.
 
 Behavior worth knowing:
 
 - Bulleted and numbered items, to-dos and toggles are [continuing kinds](/docs/customization/blocks#continuing-kinds): <kbd>Enter</kbd> opens another of the same kind (an unchecked to-do), and in an empty one ends the list. Toggles, callouts and quotes are [containers](/docs/customization/blocks#containers): <kbd>Enter</kbd> at the end of one with children, or of an open toggle, opens a first child, and in the middle of the header moves the rest of the text into that first child. <kbd>Backspace</kbd> at the start of any kind but a paragraph turns it into a paragraph first. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
 - Headings have Notion's three levels. A `heading`'s tag follows `data.level`, `h1` to `h3`, and so does its copied HTML. Without a level it is `h1`; any other level (a stored `h5`, say) renders and copies as `h3`, as pasting `h4` to `h6` gives a level `h3` heading.
-- The `h1`–`h3` of a heading and the `blockquote` of a quote wrap the block's own text only. The block element is a `div`, and nested blocks render after the tag, in a sibling `div`: the page's heading styles do not reach them, and a screen reader does not read them as part of the heading. Style the text through `[data-edytor-type='heading'] > h2`, the block through `[data-edytor-type='heading']`. The tag is the kinds' `contentElement`, so a `headingBlock` or `quoteBlock` snippet override keeps it around `content()`.
+- The `h1`–`h3` of a heading and the `blockquote` of a quote wrap the block's own text only. The block element is a `div`, and nested blocks render after the tag, in a sibling `div`: the page's heading styles do not reach them, and a screen reader does not read them as part of the heading. Style the text through `[data-edytor-type='heading'] > h2`, the block through `[data-edytor-type='heading']`. The tag is the kinds' `contentElement`, so a plugin that restyles the heading or the quote with its own `snippet` keeps it around `content()` ([Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)).
 - A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle. A toggle you create (the slash menu, `> `, Turn into a block without children) opens, so you can write its content right away (see [Toggles and callouts](#toggles-and-callouts)).
 - A `toggle-heading` is Notion's toggle heading: a heading's text as a toggle's header, `data.level` as on a heading. It is a `<details>` whose `summary` holds the `h1`–`h3`, and behaves as a toggle: a container, whose closed body is hidden and skipped; <kbd>Enter</kbd> at the end of an open one opens a first child, of a closed one a paragraph after it (it does not continue itself, as a heading does not). Turn into moves between a heading, a toggle heading and a toggle keeping the text, the children and the level. As in Notion, `> ` typed at a heading's start makes it a toggle heading of its level, and `# `, `## ` or `### ` at a toggle's (or a toggle heading's) start a toggle heading of that level, so `> # ` on a new line is a toggle heading 1 ([markdown shortcuts](/docs/plugins/markdown-shortcuts)). Its HTML is `<details><summary><h2>…</h2></summary>…</details>`, which pastes back as a toggle heading. The [table of contents](/docs/plugins/table-of-contents) lists it with the headings.
 - Every block that shows its own text takes a colour and a background from the [block menu](/docs/plugins/block-menu#block-colors) (`data.color`, `data.background`).
@@ -56,48 +54,101 @@ Behavior worth knowing:
 
 ## Toggles and callouts
 
-A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it).
+A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it; the `emptyBody` option replaces its markup, see [Your markup for its controls](#your-markup-for-its-controls)).
 
 A callout is Notion's: an icon, a title and a content.
 
 - Its title is its own text, semibold (`[data-edytor-callout-title]`), with the placeholder "Callout title" while empty ([placeholders](#placeholders)). <kbd>Enter</kbd> at the end of the title, or in the middle of it, goes into the content, whether or not it has blocks yet.
 - Its content is its children, any blocks. Copied, a callout is `<div data-edytor-callout="💡"><p>Title</p>…</div>`, which pastes back as the callout, its icon kept; as plain text, its title then its content.
-- Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `block.data.icon = '🔥'`.
-- Clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens a picker under it. Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
+- Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `edytor.patchData(block.id, [{ path: ['icon'], value: '🔥' }])`.
+- With the callout icons plugin listed (`createCalloutIconsPlugin({ picker, icons })`), clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens the view's icon picker under it: your `picker` snippet (without one, nothing shows; without the plugin, the icon is no button). Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
 
 ```svelte title="CalloutIcons.svelte" check
 <script lang="ts">
-	import { CALLOUT_ICONS, Edytor, createRichTextPlugin } from 'edytor';
+	import { CALLOUT_ICONS, Edytor, createCalloutIconsPlugin, createRichTextPlugin } from 'edytor';
 
 	// New callouts take 📌; the picker offers the default icons and a unicorn.
-	const richText = createRichTextPlugin({
-		callout: { icon: '📌', icons: [...CALLOUT_ICONS, '🦄'] }
-	});
+	const richText = createRichTextPlugin({ callout: { icon: '📌' } });
+	const icons = createCalloutIconsPlugin({ icons: [...CALLOUT_ICONS, '🦄'] });
 </script>
 
-<Edytor plugins={[richText]} />
+<Edytor plugins={[icons, richText]} />
 ```
 
-`callout.picker` replaces the picker's markup with your snippet. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, its words (`labels`) and `readonly`. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, and spread `picker.option(i)` on each row: its id, role, state (`data-active` on the keyboard's row, `aria-checked` on the current icon) and handlers; `picker.option(picker.icons.length)` is Remove icon. The editor places it under the icon.
+`picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, attach `picker.option(i)` to each row, as every menu's rows (its id, role, `aria-selected`, `aria-checked` on the current icon; the highlight is yours, from `picker.index === i`), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
 
 ```svelte title="IconPicker.svelte" check
 <script lang="ts">
-	import { Edytor, createRichTextPlugin, type CalloutIconPicker } from 'edytor';
+	import { Edytor, createCalloutIconsPlugin, type CalloutIconPicker } from 'edytor';
 
-	const richText = createRichTextPlugin({ callout: { picker: iconPicker } });
+	const icons = createCalloutIconsPlugin({ picker: iconPicker });
 </script>
 
 {#snippet iconPicker(picker: CalloutIconPicker)}
-	<div class="icons" {@attach picker.keys} {@attach picker.popup}>
+	<div class="icons" aria-label="Callout icons" {@attach picker.keys} {@attach picker.popup}>
 		{#each picker.icons as icon, index (index)}
-			<button type="button" {...picker.option(index)}>{icon}</button>
+			<button type="button" {@attach picker.option(index)} onclick={() => picker.pick(index)}>{icon}</button>
 		{/each}
-		<button type="button" {...picker.option(picker.icons.length)}>{picker.labels.remove}</button>
+		<button
+			type="button"
+			{@attach picker.option(picker.icons.length)}
+			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
+		>
 	</div>
 {/snippet}
 
-<Edytor plugins={[richText]} />
+<Edytor plugins={[icons]} />
 ```
+
+## Your markup for its controls
+
+Three controls sit inside the rich text blocks: a to-do's checkbox, a callout's icon and an empty body's hint. The plugin draws them (a native checkbox, a button showing the icon, a `div` with the hint), and each option replaces one with your snippet, used wherever the view renders the kind, a suggestion's preview included:
+
+| Option        | Snippet payload       | What it carries                                                                                                                                       |
+| ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkbox`    | `TodoCheckboxPayload` | `block` (`undefined` in a suggestion's preview), `checked`, `label` (the view's `richText.checkbox`), `toggle()`, `control`                              |
+| `calloutIcon` | `CalloutIconPayload`  | `block`, `icon` (`''`: none), `editable` (the icon opens the view's picker), `expanded` (the picker is open on it), `label` ("Change icon", "Add icon"), `toggle()`, `control` |
+| `emptyBody`   | `EmptyBodyPayload`    | `block`, `kind` (`'toggle'` or `'callout'`), `label` (the view's `richText.emptyBody`), `open()`, `control`                                             |
+
+Give the control's element `{@attach payload.control}`, as a menu's row takes `{@attach menu.option(index)}`: it carries what the editor reads of it and what keeps it usable, and you render the rest from the payload's values. The checkbox's are its marker (`data-edytor-todo-checkbox`), `contenteditable="false"`, its `aria-label`, a press that keeps the caret and a click that runs `toggle()`; on a `button` rather than an `input type="checkbox"` (give that one `checked={box.checked}`), it adds `role="checkbox"` and `aria-checked`. The icon's are `data-edytor-callout-icon` (the picker opens under it), `data-empty` without an icon, and where it is `editable`, its name, `aria-haspopup`, `aria-expanded`, `aria-controls`, the press and the click that opens the picker; else `aria-hidden`. The hint's are `data-edytor-empty-body` (a block dragged onto it drops inside), `aria-hidden` and the click that starts the body. Use a `button` or an `input` for a control the keyboard reaches: the editor leaves a form control's keys to it.
+
+The actions are the default markup's: `toggle()` checks the to-do as one undo step (refused in a readonly view), the icon's `toggle()` opens the [callout icon picker](#toggles-and-callouts), `open()` starts the body. The editor still decides when each shows: no hint in a readonly view or a closed toggle, no icon when the callout has none and none can be picked.
+
+```svelte title="Controls.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createCalloutIconsPlugin,
+		createRichTextPlugin,
+		type CalloutIconPayload,
+		type EmptyBodyPayload,
+		type TodoCheckboxPayload
+	} from 'edytor';
+
+	const richText = createRichTextPlugin({ checkbox, calloutIcon, emptyBody });
+	const icons = createCalloutIconsPlugin();
+</script>
+
+{#snippet checkbox(box: TodoCheckboxPayload)}
+	<button type="button" class="check" {@attach box.control}>{box.checked ? '✓' : ''}</button>
+{/snippet}
+
+{#snippet calloutIcon(icon: CalloutIconPayload)}
+	{#if icon.editable}
+		<button type="button" class="icon" {@attach icon.control}>{icon.icon || '+'}</button>
+	{:else}
+		<span class="icon" {@attach icon.control}>{icon.icon}</span>
+	{/if}
+{/snippet}
+
+{#snippet emptyBody(hint: EmptyBodyPayload)}
+	<p class="hint" {@attach hint.control}>{hint.label}</p>
+{/snippet}
+
+<Edytor plugins={[icons, richText]} />
+```
+
+The first rich text plugin listed in a view gives its controls, as it gives the kinds.
 
 ## Marks
 
@@ -197,4 +248,4 @@ format.insertDividerAtSelection();
 
 ## Placeholders
 
-`richTextPlaceholder` gives the kinds Notion's placeholders ("Heading 1", "Toggle heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). Pass it to `<Edytor placeholder={richTextPlaceholder} />`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).
+`richTextPlaceholder` gives the kinds Notion's placeholders ("Heading 1", "Toggle heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). List it as a plugin's placeholder: `plugins={[() => ({ placeholder: richTextPlaceholder })]}`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).

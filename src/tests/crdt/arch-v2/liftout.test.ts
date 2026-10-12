@@ -138,10 +138,9 @@ describe('liftOut under concurrency (AW-03)', () => {
 		// the list the split keeps, after it.
 		'an item added after b': [
 			(ed) =>
-				ed.insertBlock(
-					{ parent: 'U2', index: 1 },
+				ed.insertBlocks({ parent: 'U2', index: 1 }, [
 					{ id: 'N', type: 'list-item', content: [{ kind: 'text', text: 'n' }] }
-				),
+				]),
 			'bcnxd'
 		],
 		'x deleted': [(ed) => ed.deleteBlock('x'), 'bcd'],

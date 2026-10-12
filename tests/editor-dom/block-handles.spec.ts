@@ -6,6 +6,7 @@ import {
 	expectSelection,
 	readJsonByTestId,
 	throttleCpu,
+	notionTheme,
 	trackPageIssues,
 	waitForEditorReady
 } from './helpers';
@@ -133,7 +134,7 @@ const selectRootBlocks = async (page: Page, indexes: number[]) => {
 	await page.evaluate((selectedIndexes) => {
 		const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 		const blocks = selectedIndexes.map((index) => edytor.root.children[index]);
-		edytor.selection.selectBlocks(...blocks);
+		edytor.selection.select({ kind: 'blocks', ids: [...blocks].map((block) => block.id) });
 	}, indexes);
 };
 
@@ -246,6 +247,8 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		// The backdrop's look is the theme's (its class on the editor: the overlay is its sibling).
+		await notionTheme(page);
 		await settleHandles(page);
 		const parent = page.locator('[data-edytor-block="true"]').first();
 		// Rounded blocks must not bend the backdrop: it is the overlay's, not a block style.
@@ -346,7 +349,7 @@ test.describe('browser block handles and DnD', () => {
 		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.root.children[0].setBlock({ value: { type: 'toggle' } });
+			edytor.setBlock(edytor.root.children[0].id, { type: 'toggle' });
 		});
 		const toggle = page.locator('details[data-edytor-block="true"]').first();
 		await expect(toggle).not.toHaveAttribute('open');
@@ -390,7 +393,10 @@ test.describe('browser block handles and DnD', () => {
 		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.root.children[1].moveBlock({ path: [0, 2] });
+			edytor.moveBlocks([edytor.root.children[1].id], {
+				parent: edytor.root.children[0].id,
+				index: 2
+			});
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello']);
 		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual([
@@ -433,9 +439,9 @@ test.describe('browser block handles and DnD', () => {
 				content: [{ text }],
 				...(children && { children })
 			});
-			edytor.root.children[0].insertBlockBefore({
-				block: block('L1', [block('L2', [block('L3', [block('L4')])])])
-			});
+			edytor.insertBlocks({ parent: null, index: 0 }, [
+				block('L1', [block('L2', [block('L3', [block('L4')])])])
+			]);
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['L1', 'Hello', 'After']);
 		await settleHandles(page);
@@ -505,7 +511,9 @@ test.describe('browser block handles and DnD', () => {
 				content: [{ text }],
 				...(children && { children })
 			});
-			edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+			edytor.insertBlocks({ parent: null, index: edytor.root.children.length }, [
+				block('Last', [block('Only')])
+			]);
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
 		await settleHandles(page);
@@ -566,7 +574,9 @@ test.describe('browser block handles and DnD', () => {
 					content: [{ text }],
 					...(children && { children })
 				});
-				edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+				edytor.insertBlocks({ parent: null, index: edytor.root.children.length }, [
+					block('Last', [block('Only')])
+				]);
 			});
 			await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
 			await settleHandles(page);
@@ -842,7 +852,7 @@ test.describe('browser block handles and DnD', () => {
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const [start, parent] = edytor.root.children;
-			edytor.selection.setAtRange(start.firstText, 1, parent.children[0].firstText, 3);
+			edytor.selection.selectText(start.firstText, 1, parent.children[0].firstText, 3);
 		});
 		const source = await page.getByTestId('block-handle').first().boundingBox();
 		const target = await page.locator('[data-edytor-block="true"]').last().boundingBox();
@@ -862,7 +872,7 @@ test.describe('browser block handles and DnD', () => {
 		expect(blocks[3]?.children?.map(textOf)).toEqual(['Nested middle']);
 		// The blocks the range covered stay selected, the moved child too.
 		await expectSelection(page, { selectedBlockPaths: [[2], [3], [3, 0]] });
-		await page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.history.undo());
+		await page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.historyUndo());
 		await expect
 			.poll(() => readRootTexts(page))
 			.toEqual(['Start', 'Parent', 'image caption', 'Finish']);

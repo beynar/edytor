@@ -3,17 +3,20 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { ownText } from '$lib/surface/attributes.js';
 	import { reveal } from '$lib/selection/replaceSelection.js';
-	import { tocLabels, type TocHeadingLevel } from './toc.js';
+	import { labelsOf, tocEnglish } from '$lib/labels.js';
+	import { attach, keepSelection } from '../chrome.js';
+	import { richTextHeadingLevel, tocViews, type TocEntryPayload } from './toc.js';
 
 	/**
 	 * The document's headings, live, in reading order (Notion's table of
 	 * contents): read from the view's cells, so an edit anywhere re-renders
 	 * only the entries it changes. Each entry scrolls its heading into view,
-	 * opening the closed toggles it sits in; the selection stays.
+	 * opening the closed toggles it sits in; the selection stays. The app's
+	 * `entry` and `empty` snippets draw them, else this markup.
 	 */
-	let { level }: { level: TocHeadingLevel } = $props();
 	const edytor = getContext<Edytor>('edytor');
-	const labels = tocLabels.of(edytor);
+	const labels = labelsOf(edytor, 'toc', tocEnglish);
+	const { headingLevel: level = richTextHeadingLevel, entry, empty } = tocViews.get(edytor) ?? {};
 
 	type Entry = { id: string; level: number; text: string };
 	const entries = $derived.by(() => {
@@ -40,44 +43,35 @@
 		reveal(block);
 		block.node.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 	};
+
+	const payloadOf = ({ id, level, text }: Entry): TocEntryPayload => ({
+		id,
+		level,
+		depth: level - top,
+		text,
+		label: text || labels.untitled,
+		go: () => go(id),
+		control: attach(
+			{ 'data-edytor-toc-entry': '' },
+			{ mousedown: keepSelection, click: () => go(id) }
+		)
+	});
 </script>
 
 {#if entries.length}
-	{#each entries as entry (entry.id)}
-		<button
-			type="button"
-			data-edytor-toc-entry
-			data-level={entry.level}
-			data-untitled={entry.text ? undefined : 'true'}
-			style:--edytor-toc-depth={entry.level - top}
-			onmousedown={(event) => event.preventDefault()}
-			onclick={() => go(entry.id)}>{entry.text || labels.untitled}</button
-		>
+	{#each entries as found (found.id)}
+		{@const payload = payloadOf(found)}
+		{#if entry}{@render entry(payload)}{:else}<button
+				type="button"
+				data-edytor-toc-entry
+				data-level={payload.level}
+				data-untitled={payload.text ? undefined : 'true'}
+				style:--edytor-toc-depth={payload.depth}
+				{@attach payload.control}>{payload.label}</button
+			>{/if}
 	{/each}
+{:else if empty}
+	{@render empty({ label: labels.empty })}
 {:else}
 	<p data-edytor-toc-empty>{labels.empty}</p>
 {/if}
-
-<style>
-	/*
-	 * The entries' structure, at zero specificity (`:where`): one line each,
-	 * one nesting step in per level; a theme draws them (`themes/notion.css`).
-	 */
-	:global(:where([data-edytor-toc-entry])) {
-		display: block;
-		width: 100%;
-		margin: 0;
-		padding: 0;
-		padding-inline-start: calc(var(--edytor-toc-depth, 0) * var(--edytor-nest-indent, 24px));
-		border: 0;
-		background: none;
-		color: inherit;
-		font: inherit;
-		text-align: start;
-		cursor: pointer;
-	}
-	:global(:where([data-edytor-toc-empty])) {
-		margin: 0;
-		opacity: 0.6;
-	}
-</style>

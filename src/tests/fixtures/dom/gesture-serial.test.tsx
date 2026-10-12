@@ -27,6 +27,7 @@ import {
 	renderDomEdytor,
 	textNodeOf
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
@@ -98,13 +99,13 @@ describe('independent current-branch review', () => {
 		const pending = adopt(edytor, first, 'abcd', 4);
 		edytor.markUserGesture();
 		edytor.selection.select(edytor.selection.textValue(second, 1));
-		expect(edytor.selection.state.startText).toBe(second);
+		expect(selectionState(edytor).startText).toBe(second);
 		await pending;
 		expect(
-			edytor.selection.state.startText,
+			selectionState(edytor).startText,
 			'newer selection intent must survive the older async adoption'
 		).toBe(second);
-		expect(edytor.selection.state.yStart).toBe(1);
+		expect(selectionState(edytor).yStart).toBe(1);
 	});
 });
 
@@ -139,7 +140,7 @@ describe('a composition replaces only its own preview (variants)', () => {
 			await dispatchComposition(editor, [{ type: 'compositionend', data: options.commit }]);
 			remote.sync();
 			await flushDomUpdates();
-			const { startText, yStart, isCollapsed } = edytor.selection.state;
+			const { startText, yStart, isCollapsed } = selectionState(edytor);
 			return {
 				edytor,
 				local: edytor.facade.blockText(id),
@@ -245,7 +246,7 @@ describe('an adoption never overwrites a newer gesture (variants)', () => {
 		await pending;
 		await flushDomUpdates();
 		expect(edytor.facade.blockText(first.parent.id)).toBe('abcd');
-		const { startText, yStart, endText, yEnd, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, endText, yEnd, isCollapsed } = selectionState(edytor);
 		expect(isCollapsed, 'select-all ran after the adoption: its range stands').toBe(false);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual([
 			first.parent.id,
@@ -278,9 +279,9 @@ describe('an adoption never overwrites a newer gesture (variants)', () => {
 		await pending;
 		await flushDomUpdates();
 		expect(edytor.facade.blockText(first.parent.id)).toBe('abcd');
-		expect(edytor.selection.state.startText?.parent.id).toBe(second.parent.id);
-		expect(edytor.selection.state.yStart).toBe(1);
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).startText?.parent.id).toBe(second.parent.id);
+		expect(selectionState(edytor).yStart).toBe(1);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 	});
 });
 
@@ -339,7 +340,7 @@ describe('the drift repair’s deferred caret checks the gesture serial', () => 
 		edytor.selection.select(edytor.selection.textValue(next, 1));
 		await new Promise((resolve) => setTimeout(resolve, 60));
 		await flushDomUpdates();
-		expect(edytor.selection.state.startText?.parent.id).toBe(next.parent.id);
-		expect(edytor.selection.state.yStart).toBe(1);
+		expect(selectionState(edytor).startText?.parent.id).toBe(next.parent.id);
+		expect(selectionState(edytor).yStart).toBe(1);
 	});
 });

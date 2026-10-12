@@ -12,18 +12,14 @@
  *   - `Edytor` views on one `EdytorDocument` share the facade's single
  *     actor — no per-view stamping, no double `l` items.
  *   - Legacy `a/` records (pre-U2 per-edit capture) and foreign roots
- *     coexist: preserved verbatim, decodable via `attribution.legacy()`,
- *     and gated by the same admission boundary as everything else.
+ *     coexist: preserved verbatim and gated by the same admission
+ *     boundary as everything else.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import {
 	SchemaMismatchError,
-	UnsupportedDocError,
 	attachDocument,
 	createDocument,
 	loadDocument,
@@ -32,21 +28,21 @@ import {
 } from '../../../lib/crdt/index.js';
 import { checkSchema, inspectAdmission } from '../../../lib/crdt/protocol.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	applyUpdate,
-	attrsOn,
 	docValue,
 	firstBlock,
 	itemsOf,
 	contentNodeOf,
-	legacyMapFor,
+	legacyRecordFor,
+	recordBytes,
 	recordKeys,
 	wireDocs,
 	writeLegacyRecord,
 	authoredDocument
 } from './helpers.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -206,7 +202,7 @@ describe('local undo/redo', () => {
 		joinLate(a, b);
 		const unwire = wireDocs(a, b);
 
-		b.transact(() => b.facade.setMark(blockId, 0, 3, 'bold', true));
+		b.transact(() => b.facade.formatRange(blockId, 0, 3, { bold: true }));
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		b.history.undo();
 		expect(a.attribution.block(blockId)).toEqual({
@@ -226,10 +222,9 @@ describe('local undo/redo', () => {
 		const unwire = wireDocs(a, b);
 
 		a.transact(() =>
-			a.facade.insertBlock(
-				{ parent: null, index: 1 },
+			a.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'b2', type: 'paragraph', content: [{ kind: 'text', text: 'two' }] }
-			)
+			])
 		);
 		b.transact(() => b.facade.insertText('b2', 3, '!'));
 		expect(a.attribution.block('b2')?.lastChangedBy).toBe('bob');
@@ -296,10 +291,9 @@ describe('remote updates', () => {
 
 		// B authors a block — A reads bob's c/k/l exactly as written.
 		b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 1 },
+			b.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'b-block', type: 'paragraph', content: [{ kind: 'text', text: 'B' }] }
-			)
+			])
 		);
 		expect(a.attribution.block('b-block')).toEqual({
 			createdBy: 'bob',
@@ -394,10 +388,9 @@ describe('multi-view — one document, one actor', () => {
 
 		// View 2 authors a NEW block — stamped once, under the document actor.
 		v2.transact(() =>
-			v2.facade.insertBlock(
-				{ parent: null, index: 1 },
+			v2.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'v2-block', type: 'paragraph', content: [{ kind: 'text', text: 'v2' }] }
-			)
+			])
 		);
 		expect(document.attribution.block('v2-block')).toEqual({
 			createdBy: 'alice',
@@ -549,10 +542,9 @@ describe('remote edits vs local history', () => {
 
 		a.transact(() => a.facade.insertText(firstBlock(a).id, 0, 'L'));
 		b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 0 },
+			b.facade.insertBlocks({ parent: null, index: 0 }, [
 				{ id: 'remote-b', type: 'paragraph', content: [{ kind: 'text', text: 'rb' }] }
-			)
+			])
 		);
 		expect(a.facade.hasBlock('remote-b')).toBe(true);
 		expect(a.history.undoStack).toHaveLength(1);
@@ -641,10 +633,10 @@ describe('concurrent first-touch merge (documented LWW residual)', () => {
 // ──────────────────────────────────────────────────────────────────────
 
 describe('upgrade — old record shapes', () => {
-	it('a pre-U1 doc (a/+u/+c/ records, no blockattr root) loads, decodes, and gains block attribution lazily', () => {
+	it('a pre-U1 doc (a/+u/+c/ records, no blockattr root) loads, keeps its records, and gains block attribution lazily', () => {
 		// Hand-build the pre-U1 shape: authorless init (no b/ records, no l),
-		// then raw a/<nonce>/<seq> ContentMap records + u//c/ dictionary
-		// entries exactly as the retired capture pipeline wrote them.
+		// then raw a/<nonce>/<seq> records + u//c/ dictionary entries where
+		// the retired capture pipeline wrote them.
 		const old = new Y.Doc();
 		E.init(old as unknown as EngineDoc, {
 			content: [{ id: 'old-b', type: 'paragraph', content: [{ kind: 'text', text: 'old' }] }]
@@ -653,7 +645,8 @@ describe('upgrade — old record shapes', () => {
 			'content'
 		) as EngineNode;
 		const first = itemsOf(content)[0]!;
-		writeLegacyRecord(old, 'a/oldbuild/0', legacyMapFor([first], 'alice'));
+		const record = legacyRecordFor([first], 'alice');
+		writeLegacyRecord(old, 'a/oldbuild/0', record);
 		old.transact(() => {
 			const root = old.get('attribution');
 			root.setAttr('u/alice', { name: 'Alice', color: '#a11' });
@@ -665,11 +658,8 @@ describe('upgrade — old record shapes', () => {
 		expect([...old.get('blockattr').attrKeys()]).toHaveLength(0);
 
 		const restored = loadDocument(update, { actor: bob });
-		// legacy() decodes the merged ContentMap — insert:alice over the item.
-		const map = restored.attribution.legacy();
-		expect(map).not.toBeNull();
-		const restoredFirst = itemsOf(contentNodeOf(restored, 'old-b'))[0]!;
-		expect(attrsOn(map!.inserts, restoredFirst.id, restoredFirst.length)).toContain('insert:alice');
+		// The a/ record arrives byte for byte.
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		// The replicated dictionary survived; the new replica adds only its
 		// own c/<clientID> binding.
 		expect(restored.attribution.actors.get('alice')).toEqual({ name: 'Alice', color: '#a11' });
@@ -695,7 +685,8 @@ describe('upgrade — old record shapes', () => {
 		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const first = itemsOf(contentNodeOf(a, blockId))[0]!;
-		writeLegacyRecord(a.doc, 'a/oldbuild/0', legacyMapFor([first], 'alice'));
+		const record = legacyRecordFor([first], 'alice');
+		writeLegacyRecord(a.doc, 'a/oldbuild/0', record);
 
 		const restored = loadDocument(a.encode(), { actor: bob });
 		expect(restored.attribution.block(blockId)).toEqual({
@@ -703,12 +694,13 @@ describe('upgrade — old record shapes', () => {
 			contributors: new Set(['alice']),
 			lastChangedBy: 'alice'
 		});
-		expect(restored.attribution.legacy()).not.toBeNull();
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		// New edits stamp `l`/contributors; the a/ bytes are byte-identical.
 		const before = recordKeys(restored).sort();
 		restored.transact(() => restored.facade.insertText(blockId, 0, 'B'));
 		expect(restored.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		expect(recordKeys(restored).sort()).toEqual(before);
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		restored.destroy();
 		a.destroy();
 	});
@@ -777,15 +769,5 @@ describe('admission gates', () => {
 
 		// attachDocument refuses the same states on a live doc.
 		expect(() => attachDocument(v99, { actor: bob })).toThrow(SchemaMismatchError);
-	});
-
-	it('a v13-layout update refuses at load with the legacy migration error', () => {
-		const fixture = join(
-			dirname(fileURLToPath(import.meta.url)),
-			'../fixtures/legacy-v13/nested-marks.update.bin'
-		);
-		const update = new Uint8Array(readFileSync(fixture));
-		expect(() => loadDocument(update)).toThrow(UnsupportedDocError);
-		expect(() => loadDocument(update)).toThrow(/legacy v13/);
 	});
 });

@@ -7,7 +7,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Text as ModelText } from '$lib/text/text.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
@@ -21,6 +20,7 @@ import {
 } from '../test.utils.js';
 import EdytorHarness from './EdytorHarness.svelte';
 import { compareAllCells } from './cellsShadow.js';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 export type RenderDomEdytorOptions = {
 	plugins?: Plugin[];

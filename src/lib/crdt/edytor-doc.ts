@@ -4,27 +4,30 @@
  * This module binds the three proven engine layers over ONE Y.Doc into the
  * single public surface the command layer and providers consume:
  *
- * - `placement/model.ts` (`bindModel`) — stable block registry + placement
+ * - `placement/model.ts` — stable block registry + placement
  *   candidates; identity-preserving move/nest/split/merge.
- * - `text/model.ts` (`bindText`) — stable backing texts delimited by stream
+ * - `text/model.ts` — stable backing texts delimited by stream
  *   boundaries + merge claims; split/merge never copy text.
- * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
+ * - `text/runs.ts` (`indexOf`) — the maintained run view: immutable run
  *   snapshots, structural sharing, the change report.
  *
- * This module is the wiring: `create` builds a facade's parts, each a
+ * This module is the wiring: `docFacade` builds a facade's parts, each a
  * module under `doc/` taking an explicit context — the parts before it —
- * and assembles the facade object.
+ * and assembles the facade object. An editor's documents use it directly;
+ * the public binding (`bindDocModel`, `bindEdytorDoc`) adds the engine
+ * layers as objects (`model`, `text`, `runs`) and the room's tasks, so an
+ * editor's graph holds none of what only they reach.
  *
  * - `doc/gate.ts` — the schema manifest and gate (module-level);
  *   `doc/seed.ts` — the version record and the deterministic seed;
  *   `doc/types.ts` — the public types; `doc/plan.ts` — op results, a plan's
  *   effect, ingress normalization.
- * - `doc/reads.ts` (`DocBase`: the doc, its engine layers, its index and
+ * - `doc/reads.ts` (`DocBase`: the doc, its engine, its index and
  *   roles) — the reads, roles and document order; `doc/capability.ts` —
  *   structural capability (`canPlace`, `fits`, `canMerge`, the island and
  *   void rules).
- * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution and
- *   lineage); `doc/events.ts` — `onChange`; `doc/history.ts` —
+ * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution);
+ *   `doc/events.ts` — `onChange`; `doc/history.ts` —
  *   `createUndoManager`; `doc/anchors.ts` — caret anchors.
  * - `doc/steps.ts` — the step writers every op composes (ranks, settle,
  *   emptying, dissolving); the prepared op families over them
@@ -44,24 +47,31 @@
  * operation).
  */
 import { setMarkEdges } from './text/marks.js';
-import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
-import { TYPE, SCHEMA } from './schema.js';
-import { bindModel, type BlockId, type BlockSpec, type Destination } from './placement/model.js';
+import { SCHEMA } from './schema.js';
+import {
+	bindModel,
+	blockText,
+	crdtId,
+	listBlockIds,
+	project,
+	resolveBlock,
+	type BlockId
+} from './placement/model.js';
 import { bindText } from './text/model.js';
 import { bindDeletes } from './text/deletes.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
-import { bindRuns, type DisplayRoles, type RunView } from './text/runs.js';
-import { bindNodes, type DocBlock } from './nodes.js';
+import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
 	type BlockAttribution
 } from './attribution/block.js';
 import { rangeDeleteOps } from './rangeDelete.js';
-import { flowOps, type FlowContext } from './flow.js';
-import { sanitizeSpec, type JSONBlock, type JSONDoc } from '../utils/json.js';
+import { flowOps } from './flow.js';
+import type { JSONBlock, JSONDoc } from '../utils/json.js';
 import {
 	assertSchema,
 	assertUsableDoc,
@@ -74,7 +84,7 @@ import {
 	SchemaMismatchError,
 	schemaVersion
 } from './doc/gate.js';
-import { bindSeed } from './doc/seed.js';
+import { bindSeed, restore } from './doc/seed.js';
 import { applied, ref } from './doc/plan.js';
 import { docReads, type DocBase } from './doc/reads.js';
 import { docCapability } from './doc/capability.js';
@@ -89,7 +99,6 @@ import { splitMergeOps } from './doc/split-merge.js';
 import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
-import { tableOps } from './doc/table.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path
 // (`api/` reports the difference), so no value of the module reads them.
@@ -135,7 +144,7 @@ export {
 };
 export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
 export { SEED_ORIGIN } from './doc/seed.js';
-export { EdytorDocDisposedError, lineageDepthOf } from './doc/funnel.js';
+export { EdytorDocDisposedError } from './doc/funnel.js';
 export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
 export type {
 	AnchorAffinity,
@@ -154,37 +163,34 @@ export type {
 };
 
 export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
+/** A facade as the editor reads it: every member but the public binding's engine layers. */
+export type DocFacade = Omit<EdytorDoc, 'model' | 'text'>;
 export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
+export type DocModelBinding = ReturnType<typeof bindDocModel>;
 
 /**
- * Bind the assembled model to a concrete engine surface. `Y` must be the
- * vendored v14 module — injected so this file type-checks structurally and
- * never imports vendor `.js` (see `engine-api.ts`).
+ * The engine layers a facade lists as `model` and `text`: the public
+ * binding's ({@link bindDocModel}); an editor's facade lists none, so its
+ * graph holds neither object.
  */
-export const bindEdytorDoc = (Y: EngineApi) => {
-	// The doc's index (`text/runs.ts`) is the one owner of derived state:
-	// commands, runs, anchors, the change report and rendering read it.
-	const R = bindRuns(Y);
-	const M = bindModel(Y);
-	const T = bindText(Y);
+type Layers = {
+	model: ReturnType<typeof bindModel> | undefined;
+	text: ReturnType<typeof bindText> | undefined;
+};
+
+/**
+ * The per-doc facade factory over the engine `Y` (the editor's documents
+ * use it directly; {@link bindDocModel} is the public binding around it).
+ */
+export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	const D = bindDeletes(Y);
-	const P = bindPurge(Y);
-	/** Each history's release of all its steps (`releaseHistory`). */
-	const releasers = new WeakMap<YUndoManager, () => void>();
 	// Compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
 	const BA = bindBlockAttribution(Y);
+	const { init, seed } = bindSeed(Y, BA);
 
-	// ── version record / bootstrap (doc-level, facade-free) ────────────
-	// `schemaVersion`, `registryEmpty`, `isInitialized`, `checkSchema` and
-	// `assertSchema` are module-level (see above) — pure doc reads shared by
-	// providers and migration without re-binding.
-	const { restore, init, seed } = bindSeed(Y, M, BA);
-
-	// ── per-doc facade ──────────────────────────────────────────────────
-
-	const create = (doc: EngineDoc, config: EdytorDocConfig = {}) => {
+	return (doc: EngineDoc, config: EdytorDocConfig = {}) => {
 		keepingReplaced(doc);
 		// Document-boundary check — foreign (v13-engine) and legacy-schema docs
 		// fail fast here rather than inside the runs view (see assertUsableDoc).
@@ -194,7 +200,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const defaultType = config.defaultType ?? 'paragraph';
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const rendersContentOf = config.rendersContent ?? (() => true);
-		const runsView: RunView = R.attach(doc);
+		const runsView: RunView = indexOf(doc);
 		// The role table — the display and every guard below ask it.
 		// a void kind displays no children — the index sheds them into its
 		// slot at read time, so a child a peer nests or splits under a block
@@ -227,7 +233,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		if (config.roleOf) runsView.roles(roles);
 
 		// The facade's parts, each over the ones before it (`doc/*`).
-		const base: DocBase = { Y, doc, M, T, runsView, roles, roleOf, rendersContentOf };
+		const base: DocBase = { Y, doc, runsView, roles, roleOf, rendersContentOf };
 		const reads = { ...base, ...docReads(base) };
 		const shape = { ...reads, ...docCapability(reads) };
 		const {
@@ -249,7 +255,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			insideIsland,
 			isLayout,
 			isLayoutItem,
-			insideItem,
 			order,
 			compare,
 			next,
@@ -257,27 +262,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			displayLength,
 			contentItems,
 			hasBlock,
-			live,
-			contentTarget
+			live
 		} = reads;
-		const {
-			canPlace,
-			isContainer,
-			fits,
-			fitted,
-			emptiable,
-			nestParent,
-			canMerge,
-			rendersContent,
-			defaultChild,
-			kindToCopy
-		} = shape;
-
-		// Lineage ring watermark repair — concurrent partition appends can
-		// merge a ring past every writer's `depth`; this converges the
-		// stored ring back to the entries' own watermark after remote
-		// applies. Once per doc, doc-lifetime, no-op when nothing is over.
-		BA.attachRingTrim(doc);
+		const { canPlace, fits, nestParent, canMerge, defaultChild } = shape;
 
 		const funnel = writeFunnel({ ...reads, BA, config });
 		const { write, apply } = funnel;
@@ -287,10 +274,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			funnel.dispose();
 			events.close();
 		};
-		const { createUndoManager } = docHistory({ ...base, ...funnel, D, BA, releasers, init });
+		const { createUndoManager } = docHistory({ ...base, ...funnel, D, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
-		const { REFUSED, plan, ranksFor, move, pieceRanks, attr, settle, dissolving, remove } = steps;
+		const { plan } = steps;
 		// The prepared op families (`OpsContext`: the reads, capability and step writers).
 		const {
 			insertBlocks,
@@ -307,68 +294,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
 		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
 			contentOps(steps);
-		const tables = tableOps({ ...steps, dataSteps });
 
-		/** What range deletion and flow placement read, and the step writers they compose. */
-		const context: FlowContext = {
-			ref,
-			refused: REFUSED,
-			plan,
-			order: () => view().order,
-			positionOf,
-			ancestorsOf: (id) => ancestorsOf(id),
-			childrenIds,
-			displayLength,
-			contentTarget,
-			rendersContent,
-			canMerge,
-			isIsland,
-			isLines,
-			defaultChild,
-			fitted,
-			move,
-			retype: (id, type) => attr(id, TYPE, type),
-			isContainer,
-			emptiable,
-			settle,
-			remove,
-			insertBlocks,
-			sanitize: sanitizeSpec,
-			collides: (specs) => M.collides(doc, specs),
-			isVoid,
-			roleOf: (kind) => ({
-				void: roles.childless(kind),
-				island: roles.island(kind),
-				rendersContent: roles.rendersContent(kind),
-				layout: roles.layout(kind)
-			}),
-			insideItem: (id) => insideItem(id),
-			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
-			ranksFor,
-			insertRanks: (parent, index, count) => ranksFor(parent, index, count, [], true),
-			pieceRanks,
-			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
-			deleteBlocks: (ids, filled) => deleteBlocks(ids, false, filled),
-			dissolving: (gone, leaving, writes) => dissolving(new Set(gone), leaving, writes),
-			tableOf: (id) => reads.tableOf(id),
-			isTableCell: (id) => reads.isTableCell(id),
-			tableKind: (kind) =>
-				roles.table(kind) !== undefined
-					? 'table'
-					: reads.isRowKind(kind)
-						? 'row'
-						: reads.isCellKind(kind)
-							? 'cell'
-							: undefined
-		};
+		/** What range deletion and flow placement compose: the step writers and the ops. */
+		const ops = { ...steps, insertBlocks, deleteBlocks, dataSteps, replaceData };
 
 		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
 			insertBlocks,
-			insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => insertBlocks(dest, [spec]),
 			moveBlocks,
-			/** Relocate `id` — identity preserved. */
-			moveBlock: (id: BlockId, dest: Destination) => moveBlocks([id], dest),
 			/**
 			 * Move `id` to the last position under `parent` — under a container
 			 * it is no item of, under its last item (`nestParent`: Tab after a list).
@@ -390,29 +323,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			setBlock,
 			setBlockType,
 			patchData,
-			/** Replace a block's `data`: a patch of its root. */
-			setBlockData: (id: BlockId, data: Record<string, unknown>) =>
-				patchData(id, [{ path: [], value: data }]),
 			duplicateBlock,
 			insertText,
 			deleteText,
 			formatRange,
-			setMark: (id: BlockId, offset: number, length: number, name: string, value: unknown) =>
-				formatRange(id, offset, length, { [name]: value }),
-			unsetMark: (id: BlockId, offset: number, length: number, name: string) =>
-				formatRange(id, offset, length, { [name]: null }),
 			clearMarks,
 			insertInline,
 			removeInline,
-			/** Replace an inline atom's `data`: a patch of its root. */
-			setInlineData: (id: BlockId, inlineId: string, data: Record<string, unknown>) =>
-				patchData({ block: id, atom: inlineId }, [{ path: [], value: data }]),
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
 			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
-			// Tables (`table.*`): rows are blocks, columns the table's `data.columns`.
-			...tables,
-			...rangeDeleteOps(context),
-			...flowOps(context)
+			...rangeDeleteOps(ops),
+			...flowOps(ops)
 		};
 
 		/**
@@ -459,15 +380,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			(id: I, ...rest: A): R =>
 				f(ref(id), ...rest);
 
-		/**
-		 * The typed-node surface (`document.block(id)` handles — see
-		 * `nodes.ts`). Created lazily on first use; `bindNodes` caches one
-		 * handle per block id, so repeated `facade.block(id)` calls return
-		 * the same instance.
-		 */
-		let nodeApi: ReturnType<typeof bindNodes> | undefined;
-		const nodes = () => (nodeApi ??= bindNodes(facade));
-
 		const facade = {
 			// lifecycle
 			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
@@ -487,16 +399,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
-			/**
-			 * Drop every step of a history `createUndoManager` made (undo and
-			 * redo) and release what they kept for their undo, as the history
-			 * limit does: the engine collects that content now, the doc's
-			 * `gcFilter` still deciding. The room's validation history runs
-			 * it after each frame.
-			 */
-			releaseHistory: (um: YUndoManager): void => releasers.get(um)?.(),
 			// reads — every id argument normalizes at ingress
-			project: () => M.project(doc),
+			project: () => project(doc),
 			toJSON,
 			blockJSON: byRef(blockJSON),
 			childrenIds: byRef(childrenIds),
@@ -507,8 +411,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			pathOf: byRef(pathOf),
 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
 			ancestorsOf: byRef((id: BlockId) => ancestorsOf(id)),
-			listBlockIds: () => M.listBlockIds(doc),
-			blockText: byRef((id: BlockId) => M.blockText(doc, id)),
+			listBlockIds: () => listBlockIds(doc),
+			blockText: byRef((id: BlockId) => blockText(doc, id)),
 			blockTypeOf: byRef(blockTypeOf),
 			blockDataOf: byRef(blockDataOf),
 			docData,
@@ -521,8 +425,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			blockAttribution: byRef((id: BlockId): BlockAttribution | undefined =>
 				blockAttributionOf(doc, id)
 			),
-			crdtId: byRef((id: BlockId) => M.crdtId(doc, id)),
-			resolveBlock: byRef((id: BlockId) => M.resolveBlock(doc, id)),
+			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
+			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
 			displayLength: byRef(displayLength),
 			contentItems: byRef(contentItems),
 			hasBlock: byRef(hasBlock),
@@ -594,10 +498,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),
 			// escape hatch for the history and debugging — the bound engine layers.
-			model: M,
-			text: T,
+			model: layers.model as L['model'],
+			text: layers.text as L['text'],
 			runsView,
-			// ── model-state version + typed node surface ──────────
+			// ── model-state version ─────────────────────────────
 			/**
 			 * The index version — bumps on every fold that changed derived
 			 * state, mid-transaction writes included. Read surfaces that
@@ -606,19 +510,25 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			 */
 			get version() {
 				return runsView.version();
-			},
-			/**
-			 * The typed handle over one document block — the domain command
-			 * surface (see `nodes.ts` for the contract: display offsets,
-			 * transaction-aware reads, dead-safe). Handles are cached per
-			 * id; a handle for an absent id reports `exists`/`live`/`visible`
-			 * false and refuses ops.
-			 */
-			block: (id: BlockId): DocBlock => nodes().block(ref(id))
+			}
 		};
 		return facade;
 	};
+};
 
+/**
+ * Bind the assembled model to a concrete engine surface. `Y` must be the
+ * vendored v14 module — injected so this file type-checks structurally and
+ * never imports vendor `.js` (see `engine-api.ts`). A document composes
+ * this binding; {@link bindEdytorDoc} adds the room's purge and restore.
+ */
+export const bindDocModel = (Y: EngineApi) => {
+	const M = bindModel(Y);
+	const T = bindText(Y);
+	const R = bindRuns(Y);
+	const D = bindDeletes(Y);
+	const { init, seed } = bindSeed(Y, bindBlockAttribution(Y));
+	const create = docFacade(Y, { model: M, text: T });
 	return {
 		/** The schema manifest constants table. */
 		SCHEMA,
@@ -654,12 +564,27 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * what an editing replica keeps.
 		 */
 		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
+		/** The bound engine layers (same instances the facades use). */
+		model: M,
+		text: T,
+		runs: R
+	};
+};
+
+/**
+ * {@link bindDocModel} with the room's tasks: only the public binding
+ * (`bindCrdt(Y).doc`) reaches them, so an editor's graph holds neither.
+ */
+export const bindEdytorDoc = (Y: EngineApi) => {
+	const { model, text, runs, ...binding } = bindDocModel(Y);
+	// The spread last: the declared type lists the binding first, as before.
+	return {
 		/**
 		 * Purge from `doc` what was deleted before `horizon` (`room.purge.what`): real deletes, inside the caller's transaction,
 		 * and the horizon record every history reads (`hist.purge.horizon`).
 		 * The room's purge task runs it; `facade` is a facade over `doc`.
 		 */
-		purge: P.purge,
+		purge: bindPurge(Y).purge,
 		/** The purge horizon `doc` holds, or `null`. */
 		horizonOf: (doc: EngineDoc) => readHorizon(doc),
 		/**
@@ -667,9 +592,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * registry holds and writing only what differs (`room.history.restore`), inside the caller's transaction.
 		 */
 		restoreTo: restoreDocument,
-		/** The bound engine layers (same instances the facades use). */
-		model: M,
-		text: T,
-		runs: R
+		model,
+		text,
+		runs,
+		...binding
 	};
 };

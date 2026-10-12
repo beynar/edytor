@@ -27,7 +27,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	writeProtocolVersion,
@@ -96,7 +96,8 @@ const v13UpdateMessage = () => {
 	encoding.writeVarUint(e, 0); // v13 messageSync
 	encoding.writeVarUint(e, 2); // v13 sync Update
 	encoding.writeVarUint8Array(e, update13);
-	return { msg: encoding.toUint8Array(e), update13 };
+	// The same state in the encoding a v14 frame carries (smuggled inside one).
+	return { msg: encoding.toUint8Array(e), update13: Y13.encodeStateAsUpdateV2(doc13) };
 };
 
 describe('attack 1b: real v13 updates never reach a v14 doc', () => {

@@ -4,6 +4,7 @@ import type { JSONContentPart } from '$lib/block/contentRange.js';
 import {
 	keepsSelectedBlocks,
 	replaceSelectionWithCollapsedTarget,
+	caretLeft,
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
@@ -16,6 +17,7 @@ import {
 	type JSONText
 } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
+import { noSelection } from '$lib/session/selection.js';
 import { caretAt } from '$lib/session/attempt.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
 import { hasBlockMarkdown, textToBlocks } from './textBlocks.js';
@@ -78,9 +80,9 @@ export const pasteFlow = (
 	const block = p?.text.parent;
 	if (!replace.length && !block) return;
 	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
-	const [text, offset] = edytor.insertFlow({ flow, target });
-	if (replace.length) edytor.selection.selectBlocks();
-	caretAt(edytor, text, offset);
+	const end = caretLeft(edytor, edytor.insertFlow(target, flow));
+	if (replace.length) edytor.selection.select(noSelection);
+	caretAt(edytor, end?.text, end?.offset ?? 0);
 };
 
 /** Programmatic insertion: the fragment is untrusted input, projected to JSON and validated here. */

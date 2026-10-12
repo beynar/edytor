@@ -52,20 +52,21 @@ The menus' rows are not <kbd>Tab</kbd> stops: the field or the root owns the key
 
 With a text range selected and the toolbar shown, <kbd>Alt</kbd>+<kbd>F10</kbd> moves the focus to its first button (the editors' convention: Google Docs, TinyMCE, CKEditor). The bar is one tab stop (`role="toolbar"`): <kbd>←</kbd> and <kbd>→</kbd> walk its buttons, <kbd>Home</kbd> and <kbd>End</kbd> go to the first and the last, <kbd>Enter</kbd> or <kbd>Space</kbd> press one, and <kbd>Escape</kbd> gives the focus back to the editor over the same selection. Keys pressed in the bar never reach the document.
 
-### Custom menus
+### Your menus
 
-The ids, the keys and the publishing above are the controllers' attachments, which the built-in markup uses too: a custom snippet that uses them gets the same keyboard and the same ARIA. See [Menus and handles](/docs/customization/menus#the-pattern).
+The package draws no menu: your snippets do ([Menus and handles](/docs/customization/menus)). The ids, the keys and the publishing above are the controllers' attachments: a snippet that uses them gets this keyboard and this ARIA (the demo's markup is the one the accessibility tests run). See [Menus and handles](/docs/customization/menus#the-pattern).
 
 - `{@attach controller.popup}` on the list (or the toolbar) gives it its id, and its role and name unless you set them, and publishes it to the root while it is in the page (`aria-controls`, `aria-haspopup`, and `aria-activedescendant` when the root holds the keyboard), withdrawn when it goes.
 - `{@attach controller.keys}` on the element that holds the keyboard (the block menu's or the `+` menu's field, the toolbar) takes the menu's keys, focuses it when it mounts, and makes a field name the list and its highlighted row; on the toolbar, it is the roving tab stop and <kbd>Escape</kbd>.
-- `{...controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
-- The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts.
+- `{@attach controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a controller's row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
+- The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts, and a block handle's `grip` and `plus` keep the `aria-expanded`, `aria-controls` and `aria-haspopup` of the menu they opened.
+- A control inside a block (a to-do's checkbox, a callout's icon…) takes its attachment the same way, `{@attach payload.control}`: a checkbox drawn as a `button` gets `role="checkbox"` and `aria-checked` from it.
 
-The controllers still expose the ids (`listId` and `optionId(command)` on the slash menu's, `menuId`, `flyoutId` and `rowId(row)` on the block menu's, `barId` and `linkFieldId` on the toolbar's) and `publish(popup)`, for markup that publishes itself: write `{ id, haspopup?, active?, keys?, opener? }` from an `$effect` once your markup is in the page, `publish(null)` to withdraw it.
+The controllers still expose the ids, for markup that names them itself: every list's `listId` and `rowId(index)` (rows are named by position: the slash and trigger menus, the code language list, the callout picker, the pasted-link menu, a table grip's menu), the block menu's `menuId`, `flyoutId` and `rowId(row)`, the toolbar's `barId` and `linkFieldId`. The `popup` attachment is the one way a surface reaches the root.
 
 ## Block handles
 
-Each handle is named after its block's kind, read from the kind's preset label: the grip is "Heading 1 block: drag to move, click for actions", the `+` "Add a block below Heading 1 (Alt: above)". A custom `handle` snippet receives the same text as `label`. With a grip focused, <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> move the block (`aria-keyshortcuts` says so); <kbd>Enter</kbd> or <kbd>Space</kbd> opens its block menu. From the text, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block and <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> nest it (see [Hotkeys](/docs/customization/hotkeys)).
+Name each handle after its block's kind: your `handle` snippet receives it as `label`, read from the kind's preset label, and names its buttons in its words (the demo's grip "Heading 1 block: drag to move, click for actions", its `+` "Add a block below Heading 1 (Alt: above)"). With a grip focused, <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> move the block (the grip's attachment sets `aria-keyshortcuts`); <kbd>Enter</kbd> or <kbd>Space</kbd> opens its block menu. From the text, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block and <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> nest it (see [Hotkeys](/docs/customization/hotkeys)).
 
 ## Column widths from the keyboard
 
@@ -86,7 +87,7 @@ Changes a screen does not say by itself are announced in a polite live region (`
 
 | Change | Announced |
 | --- | --- |
-| A move of one block or several: a drag, the handle's <kbd>Alt</kbd>+arrows, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>, the block menu's Move, `edytor.moveBlocks` | "Moved Heading 1 block down", "Moved 3 blocks up", "Moved Text block" for a drop |
+| A move of one block or several: a drag, the handle's <kbd>Alt</kbd>+arrows, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>, the block menu's Move, `edytor.move` | "Moved Heading 1 block down", "Moved 3 blocks up", "Moved Text block" for a drop |
 | <kbd>Tab</kbd> or <kbd>Shift</kbd>+<kbd>Tab</kbd>, and the handle's <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd> | "Indented To-do list block", "Outdented 2 blocks" |
 | A delete of selected blocks: <kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut, the block menu's Delete | "Deleted 2 blocks", "Deleted Heading 2 block" |
 
@@ -100,7 +101,7 @@ The direction is set on the block, not on its text, because browsers move the ca
 
 ## Colors
 
-The built-in chrome and the code block's syntax colors meet WCAG AA contrast (4.5:1) on their backgrounds; the secondary gray is `#73726e` (`--notion-text-secondary` in the [Notion theme](/docs/customization/styling)). The list kinds keep their `li`, `ul` and `ol` tags for styles and the HTML export, with `role="none"`: a list's items are sibling blocks, never the only children of one list element, so assistive technology would read each as an orphan list item.
+The demo's chrome and the code block's syntax colors meet WCAG AA contrast (4.5:1) on their backgrounds; the secondary gray is `#73726e` (`--notion-text-secondary` in the [Notion theme](/docs/customization/styling)). The list kinds keep their `li`, `ul` and `ol` tags for styles and the HTML export, with `role="none"`: a list's items are sibling blocks, never the only children of one list element, so assistive technology would read each as an orphan list item.
 
 ## Testing
 

@@ -34,20 +34,18 @@ const stylesheet = (href: string): Promise<void> => {
 		(known) => known.getAttribute('href') === href
 	);
 	if (link?.sheet) return Promise.resolve();
-	const settled = new Promise<void>((resolve) => {
-		const done = () => resolve();
-		link?.addEventListener('load', done, { once: true });
-		link?.addEventListener('error', done, { once: true });
-		if (link) return;
+	if (!link) {
 		link = document.createElement('link');
 		link.rel = 'stylesheet';
 		link.href = href;
 		link.setAttribute(MARK, '');
-		link.addEventListener('load', done, { once: true });
-		link.addEventListener('error', done, { once: true });
 		head.append(link);
+	}
+	const known = link;
+	return new Promise((resolve) => {
+		for (const type of ['load', 'error'])
+			known.addEventListener(type, () => resolve(), { once: true });
 	});
-	return settled;
 };
 
 /** The KaTeX a module exports: itself, or its default export. */

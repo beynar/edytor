@@ -1,10 +1,13 @@
 import { untrack, type Snippet } from 'svelte';
+import { blockSelection } from '$lib/session/selection.js';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { englishLabels, viewLabels, type EquationLabels, type PartialLabels } from '$lib/labels.js';
+import { Anchored } from '../anchored.svelte.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -34,17 +37,44 @@ export type EquationPluginOptions = {
 	katex?: KatexLoader | string | false;
 	/** TeX macros every equation reads (`{ '\\RR': '\\mathbb{R}' }`). */
 	macros?: Record<string, string>;
-	/** The words the equations and their editor show, over the English ones. */
-	labels?: PartialLabels<'equation'>;
-	/** The slash menu's keywords by command id (`block.equation`, `equation.inline`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace the editor's panel (the source's field, KaTeX's error, Done):
-	 * it renders under the edited equation while `editor.target` is set
-	 * (centered under a block equation). Put `{@attach editor.field}` on the
-	 * source's field.
+	 * The editor's panel and its words (the source's field, KaTeX's error, Done): it
+	 * renders under the edited equation while `editor.target` is set
+	 * (centered under a block equation; without it, nothing shows). Put
+	 * `{@attach editor.field}` on the source's field.
 	 */
 	panel?: Snippet<[EquationEditor]>;
+	/**
+	 * An empty equation's placeholder (default: `√x` and the view's
+	 * `equation.blockPlaceholder` or `inlinePlaceholder`). A click on it
+	 * opens the editor, as on any equation.
+	 */
+	placeholder?: Snippet<[EquationPlaceholderPayload]>;
+	/**
+	 * An equation KaTeX cannot read (default: its source, marked invalid,
+	 * KaTeX's message in its title).
+	 */
+	error?: Snippet<[EquationErrorPayload]>;
+};
+
+/** What an equation's `placeholder` snippet receives. */
+export type EquationPlaceholderPayload = {
+	/** A block equation (`true`) or an inline one. */
+	display: boolean;
+	/** The view's placeholder for it (`equation.blockPlaceholder`, `inlinePlaceholder`). */
+	label: string;
+};
+
+/** What an equation's `error` snippet receives. */
+export type EquationErrorPayload = {
+	/** A block equation (`true`) or an inline one. */
+	display: boolean;
+	/** Its TeX source. */
+	expression: string;
+	/** KaTeX's message. */
+	error: string;
+	/** The view's word for it (`equation.invalid`). */
+	label: string;
 };
 
 /** The data of a block equation and of an inline one: its TeX source. */
@@ -61,9 +91,6 @@ export const expressionOf = (data: unknown): string => {
 	const value = (data as EquationData | undefined)?.expression;
 	return typeof value === 'string' ? value : '';
 };
-
-const escape = (value: string) =>
-	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** The cap of the drawings each renderer keeps. */
 const CACHE = 256;
@@ -125,7 +152,7 @@ export class EquationRenderer {
 				// TeX KaTeX cannot read: the source as text, below.
 			}
 		}
-		const source = escape(tex);
+		const source = escapeHtml(tex);
 		return (
 			`<span class="katex"><math xmlns="http://www.w3.org/1998/Math/MathML"${display ? ' display="block"' : ''}>` +
 			`<semantics><mrow><mtext>${source}</mtext></mrow><annotation encoding="${TEX}">${source}</annotation></semantics></math></span>`
@@ -179,17 +206,8 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 	return tex?.trim() ? { expression: tex.trim() } : undefined;
 };
 
-/** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
-export const equationLabels = viewLabels('equation');
-
-/** The overlay host the editor renders in (the overlay's mount names it). */
-const HOST = '[data-edytor-equation-editor-host]';
-
 /** The equation being edited: a block equation, or an inline one (`atom`) in block `block`. */
 export type EquationTarget = { block: string; atom?: string };
-
-/** The edited equation's box, layer-relative. */
-export type EquationBox = { x: number; y: number; width: number; height: number };
 
 /**
  * One view's equation editor (Notion's): a click on an equation of an
@@ -204,7 +222,7 @@ export type EquationBox = { x: number; y: number; width: number; height: number 
  *
  * What a `panel` snippet receives: the equation being edited (`target`,
  * `display` for a block one), its source (`expression`, written by
- * `set`), KaTeX's error (`error`), `close()` and the plugin's `labels`.
+ * `set`), KaTeX's error (`error`) and `close()`.
  * Put `{@attach editor.field}` on the source's field: it takes the focus
  * as the editor opens, Enter (Shift+Enter: a newline in a block equation)
  * and Escape close the editor, and focus leaving the panel closes it.
@@ -213,19 +231,24 @@ export class EquationEditor {
 	/** The equation being edited (reactive). */
 	target = $state.raw<EquationTarget | null>(null);
 	/**
-	 * Its box, measured in the overlay's frame.
+	 * The editor's panel under the edited equation: its place, and what closes it.
 	 * @internal
 	 */
-	box = $state.raw<EquationBox | null>(null);
+	readonly panel: Anchored;
 
 	/** @internal */
 	constructor(
 		private edytor: Edytor,
 		/** @internal */
-		readonly renderer: EquationRenderer,
-		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
-		readonly labels: EquationLabels = englishLabels.equation
-	) {}
+		readonly renderer: EquationRenderer
+	) {
+		this.panel = new Anchored(
+			edytor,
+			'edytor-equation-editor-host',
+			() => (this.target ? this.#node(this.target) : undefined),
+			() => this.close(false)
+		);
+	}
 
 	/** The view is readonly (reactive): the editor closes. */
 	get readonly(): boolean {
@@ -238,12 +261,7 @@ export class EquationEditor {
 	 * @internal
 	 */
 	get place(): { left: number; top: number } | null {
-		const box = this.box;
-		if (!this.target || !box) return null;
-		return {
-			left: this.display ? box.x + box.width / 2 : box.x,
-			top: box.y + box.height + 6
-		};
+		return this.target && this.panel.place(6, this.display);
 	}
 
 	/** A block equation is edited (a field of several lines). */
@@ -282,8 +300,9 @@ export class EquationEditor {
 	set = (expression: string) => {
 		const target = this.target;
 		if (!target || expression === this.expression) return;
-		const data = target.atom ? this.#atom(target)?.data : this.#block(target)?.data;
-		if (data) data.expression = expression;
+		const at = target.atom ? { block: target.block, atom: target.atom } : target.block;
+		if (target.atom ? this.#atom(target) : this.#block(target))
+			this.edytor.patchData(at, [{ path: ['expression'], value: expression }]);
 	};
 
 	/**
@@ -295,7 +314,7 @@ export class EquationEditor {
 		const target = this.target;
 		if (!target) return;
 		this.target = null;
-		this.box = null;
+		this.panel.box = null;
 		this.edytor.overlay.invalidate();
 		const block = this.#block(target);
 		if (!block) return;
@@ -305,10 +324,10 @@ export class EquationEditor {
 			if (!atom) return;
 			const offset = offsetOf(block, atom);
 			if (!expressionOf(atom.data) && this.edytor.dispatcher.permits()) {
-				block.removeInlineBlock({ index: atom.index });
+				this.edytor.removeInline(block.id, atom.id);
 				if (keys) selection.setCaret({ block, offset });
 			} else if (keys) selection.setCaret({ block, offset: offset + 1 });
-		} else if (keys) selection.selectBlocks(block);
+		} else if (keys) selection.select(blockSelection([block.id]));
 		if (keys) takeKeys(this.edytor);
 	};
 
@@ -330,8 +349,8 @@ export class EquationEditor {
 				this.close();
 			};
 			const element: HTMLElement = node;
-			element.addEventListener('keydown', keydown);
-			element.addEventListener('focusout', this.#blurred);
+			const off = listen(element, 'keydown', keydown);
+			const off2 = listen(element, 'focusout', this.panel.blurred);
 			// Each equation the editor opens on: the field takes the focus, the caret at the end.
 			$effect(() => {
 				if (!this.target) return;
@@ -341,62 +360,8 @@ export class EquationEditor {
 					node.setSelectionRange(node.value.length, node.value.length);
 				});
 			});
-			return () => {
-				element.removeEventListener('keydown', keydown);
-				element.removeEventListener('focusout', this.#blurred);
-			};
+			return all(off, off2);
 		});
-
-	/**
-	 * The view turned readonly: the editor closes, the equation as it is.
-	 * @internal
-	 */
-	lock = () => this.close(false);
-
-	/**
-	 * A press anywhere (capture): one outside the editor and its equation closes it.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		const target = this.target;
-		if (!target) return;
-		const at = event.target as Element | null;
-		if (at?.closest?.(HOST)) return;
-		if (at instanceof Node && this.#node(target)?.contains(at)) return;
-		this.close(false);
-	};
-
-	/** Focus left the field for somewhere outside the editor: it closes. */
-	#blurred = (event: FocusEvent) => {
-		const to = event.relatedTarget;
-		const panel = (event.currentTarget as Element | null)?.closest(HOST);
-		// No new focus (the window went to the background): it stays.
-		if (!(to instanceof Node) || panel?.contains(to)) return;
-		this.close(false);
-	};
-
-	/**
-	 * The overlay measure: the edited equation's box; gone, the editor closes.
-	 * @internal
-	 */
-	measure = (host: HTMLElement, origin: DOMRect) => {
-		const target = this.target;
-		const node = target ? this.#node(target) : null;
-		const rect = node?.isConnected ? node.getBoundingClientRect() : null;
-		const box = rect
-			? {
-					x: rect.left - origin.left,
-					y: rect.top - origin.top,
-					width: rect.width,
-					height: rect.height
-				}
-			: null;
-		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
-			if (target && !node) return this.close(false);
-			if (!sameBox(box, this.box)) this.box = box;
-		};
-	};
 
 	#block = (target: EquationTarget): Block | undefined => {
 		const block = this.edytor.idToBlock.get(target.block);
@@ -428,16 +393,13 @@ const offsetOf = (block: Block, atom: InlineBlock) => {
 };
 
 /** A view's equations: the first equation plugin listed in it owns them, as its kinds. */
-export type EquationView = { renderer: EquationRenderer; editor: EquationEditor };
+export type EquationView = {
+	renderer: EquationRenderer;
+	editor: EquationEditor;
+	/** The app's markup for an empty equation and an unreadable one, if any. */
+	placeholder?: Snippet<[EquationPlaceholderPayload]>;
+	error?: Snippet<[EquationErrorPayload]>;
+};
 
 /** By view. */
 export const equationViews = new WeakMap<Edytor, EquationView>();
-
-const sameBox = (a: EquationBox | null, b: EquationBox | null) =>
-	a === b ||
-	(a !== null &&
-		b !== null &&
-		a.x === b.x &&
-		a.y === b.y &&
-		a.width === b.width &&
-		a.height === b.height);

@@ -8,10 +8,10 @@
  *   it.
  * - API-08 — `onAfterOperation`'s payload narrows by `operation` (a
  *   distributive `Omit`): checked by `pnpm test:typecheck`.
- * - API-09 — one result channel: `dispatcher.last` is the
- *   `CommandResult { operation, status, value }` of every handle mutator
- *   (`value` is what the mutator returned); the raw path
- *   `edytor.document.facade` takes the `JSONBlock` shape `value` and
+ * - API-09 — one write API: the view's operations (`edytor.insertBlocks`)
+ *   answer the document's `OpResult` and record the `CommandResult
+ *   { operation, status }` in `dispatcher.last`; the raw path, the
+ *   document's same operations, takes the `JSONBlock` shape `value` and
  *   `toJSON` speak.
  *
  * Expected values come from the plan rows, never from running the code.
@@ -27,7 +27,7 @@ import {
 	type Text
 } from '$lib/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 const p = (id: string, text: string): JSONBlock => ({ id, type: 'paragraph', content: [{ text }] });
 
@@ -40,8 +40,7 @@ const view = (plugins: Plugin[] = []) => {
 const texts = (edytor: Edytor) =>
 	(edytor.value.children ?? []).map((b) => (b.content ?? []).map((x) => ('text' in x ? x.text : '')).join(''));
 
-const typeAt = (edytor: Edytor, id: string, value: string) =>
-	edytor.idToBlock.get(id)!.firstText!.insertText({ value, start: 0, end: 0 });
+const typeAt = (edytor: Edytor, id: string, value: string) => edytor.insertText(id, 0, value);
 
 describe('API-07 · prevent records and returns', () => {
 	test('the hook runs to its end; the command is refused', () => {
@@ -87,7 +86,7 @@ describe('API-07 · prevent records and returns', () => {
 					if (operation !== 'insertText') return;
 					prevent(() => {
 						runs++;
-						edytor.idToBlock.get('b')!.firstText!.insertText({ value: 'y', start: 0, end: 0 });
+						edytor.insertText('b', 0, 'y');
 					});
 					prevent(() => (runs += 10));
 				}
@@ -143,11 +142,11 @@ describe('API-08 · onAfterOperation narrows by operation', () => {
 			onAfterOperation: (change) => {
 				expectTypeOf(change).not.toHaveProperty('prevent');
 				if (change.operation === 'insertText') {
-					expectTypeOf(change.text).toEqualTypeOf<Text>();
-					expectTypeOf(change.payload.value).toEqualTypeOf<string>();
+					expectTypeOf(change.text).toEqualTypeOf<Text | undefined>();
+					expectTypeOf(change.payload[2]).toEqualTypeOf<string>();
 				}
 				if (change.operation === 'setBlock') {
-					expectTypeOf(change).not.toHaveProperty('text');
+					expectTypeOf(change.payload[0]).toEqualTypeOf<string>();
 				}
 			}
 		});
@@ -156,7 +155,7 @@ describe('API-08 · onAfterOperation narrows by operation', () => {
 			plugin,
 			() => ({
 				onAfterOperation: (change) => {
-					if (change.operation === 'insertText') after.push(change.payload.value);
+					if (change.operation === 'insertText') after.push(change.payload[2]);
 				}
 			})
 		]);
@@ -165,59 +164,50 @@ describe('API-08 · onAfterOperation narrows by operation', () => {
 	});
 });
 
-describe('API-09 · one result channel and one raw path', () => {
-	test('dispatcher.last is the CommandResult of a handle mutator, its value included', () => {
+describe('API-09 · one write API, two entry points', () => {
+	test('a view operation answers its OpResult and records its CommandResult', () => {
 		const { edytor } = view();
-		const block = edytor.idToBlock.get('a')!;
-		const inserted = block.insertBlockAfter({ block: { type: 'paragraph' } });
+		const at = { parent: null, index: 1 };
+		const inserted = edytor.insertBlocks(at, [{ type: 'paragraph' }]);
 		const last: CommandResult | null = edytor.dispatcher.last;
-		expect(inserted?.id).toBeTypeOf('string');
-		expect(last).toMatchObject({ operation: 'insertBlockAfter', status: 'applied' });
-		expect(last?.value).toBe(inserted);
+		expect(inserted).toMatchObject({ status: 'applied', ids: [expect.any(String)] });
+		expect(last).toMatchObject({ operation: 'insertBlocks', status: 'applied' });
 		edytor.readonly = true;
-		expect(block.insertBlockAfter({ block: { type: 'paragraph' } })).toBeUndefined();
-		expect(edytor.dispatcher.last).toMatchObject({
-			operation: 'insertBlockAfter',
+		expect(edytor.insertBlocks(at, [{ type: 'paragraph' }])).toMatchObject({
 			status: 'refused',
-			value: undefined
+			reason: 'view'
 		});
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'insertBlocks', status: 'refused' });
 	});
 
-	test('a replacement running the vetoed operation keeps its own value', () => {
+	test('a replacement running the vetoed operation records its own result', () => {
 		// The mention plugin's pattern: `prevent(cb)` where `cb` runs the same
-		// operation. The vetoed call answers `undefined`; the result recorded
-		// is the replacement's, its value included.
+		// operation. The vetoed call is refused by the view; the result
+		// recorded is the replacement's.
 		let replacement: unknown;
 		const { edytor } = view([
 			() => ({
-				onBeforeOperation: ({ operation, payload, block, prevent }) => {
-					if (operation !== 'insertBlockAfter' || payload.block?.type !== 'paragraph') return;
+				onBeforeOperation: ({ operation, payload, prevent }) => {
+					if (operation !== 'insertBlocks' || payload[1][0]?.type !== 'paragraph') return;
 					prevent(() => {
-						replacement = block.insertBlockAfter({ block: { type: 'heading' } });
+						replacement = edytor.insertBlocks(payload[0], [{ type: 'heading' }]);
 					});
 				}
 			})
 		]);
-		const vetoed = edytor.idToBlock.get('a')!.insertBlockAfter({ block: { type: 'paragraph' } });
-		expect(vetoed).toBeUndefined();
-		expect(replacement).toBeDefined();
-		expect(edytor.dispatcher.last).toMatchObject({
-			operation: 'insertBlockAfter',
-			status: 'applied'
-		});
-		expect(edytor.dispatcher.last?.value).toBe(replacement);
+		const vetoed = edytor.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]);
+		expect(vetoed).toMatchObject({ status: 'refused', reason: 'view' });
+		expect(replacement).toMatchObject({ status: 'applied' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'insertBlocks', status: 'applied' });
 	});
 
-	test('the raw path, edytor.document.facade, takes JSONBlock', () => {
+	test('the raw path, the document’s same operation, takes JSONBlock', () => {
 		const { edytor, document } = view();
-		const result = edytor.document.facade.insertBlock(
-			{ parent: null, index: 2 },
-			{
+		const result = edytor.document.insertBlocks({ parent: null, index: 2 }, [{
 				type: 'paragraph',
 				content: [{ text: 'raw ' }, { text: 'bold', marks: { bold: true } }],
 				children: [{ id: 'kid', type: 'paragraph', content: [{ text: 'child' }] }]
-			}
-		);
+			}]);
 		expect(result.status).toBe('applied');
 		const [id] = result.ids;
 		expect(id).toBeTypeOf('string');

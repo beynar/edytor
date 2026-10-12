@@ -12,10 +12,10 @@
  * hand-authored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { block, contractDoc, renderColumns, selected, tree } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, blockMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -25,7 +25,7 @@ const key = (key: string, shiftKey = false) => dispatchDomKeyDown(document, { ke
 
 const start = async (...ids: string[]) => {
 	const view = await renderColumns(contractDoc());
-	view.edytor.selection.selectBlocks(...ids.map((id) => block(view.edytor, id)));
+	selectBlocks(view.edytor, ...ids.map((id) => block(view.edytor, id)));
 	await flushDomUpdates();
 	return view;
 };

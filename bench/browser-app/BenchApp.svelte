@@ -1,5 +1,5 @@
 <script>
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor, createRichTextPlugin } from 'edytor';
 	import * as Y from 'edytor/crdt';
 	import { bindDocument, bindEdytorDoc, bindSync } from 'edytor/crdt/edytor';
 
@@ -72,7 +72,7 @@
 					}))
 				};
 
-	const plugins = [richTextPlugin];
+	const plugins = [createRichTextPlugin()];
 
 	/**
 	 * U8a — explicit full-value consumer modes (`?consumer=`):

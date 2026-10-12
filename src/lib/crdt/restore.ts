@@ -24,25 +24,31 @@
  * 6. the document's data, patched to the snapshot's.
  */
 import type { EngineDoc, EngineNode } from './engine-api.js';
-import type {
-	BlockId,
-	BlockSpec,
-	ContentItem,
-	InlineSpec,
-	PlacementModel
+import {
+	blockNodeOf,
+	materializeSpec,
+	ranksAt,
+	view as modelView,
+	writePlacement,
+	type BlockId,
+	type BlockSpec,
+	type ContentItem,
+	type InlineSpec,
+	type PlacementModel
 } from './placement/model.js';
 import type { DataPatch } from './data.js';
 import { DEL_PREFIX, TYPE, WITHDRAW_PREFIX } from './schema.js';
-import { patchWrites, writeLeaves } from './data.js';
+import { common, patchWrites, writeLeaves } from './data.js';
 import { canonKey } from './text/model.js';
 import { randOf } from './rand.js';
 import type { JSONDoc } from '../utils/json.js';
 import { toBlockSpec } from '../utils/json.js';
 
-type Unit = { key: string; item: ContentItem };
+/** One display unit: a character (a code point) with its marks, or an inline atom, keyed for comparison. */
+export type Unit = { key: string; item: ContentItem };
 
 /** `items` one unit each (a character with its marks, or an atom), keyed for comparison. */
-const unitsOf = (items: readonly ContentItem[]): Unit[] => {
+export const unitsOf = (items: readonly ContentItem[]): Unit[] => {
 	const out: Unit[] = [];
 	for (const item of items) {
 		if (item.kind === 'inline') {
@@ -79,6 +85,53 @@ const runsOf = (units: readonly Unit[]): ContentItem[] => {
 	return out;
 };
 
+/** The one changed stretch from `x` to `y`: `x[p, e)` became `mid`. */
+export const hunk = (x: readonly Unit[], y: readonly Unit[]) => {
+	let p = 0;
+	while (p < x.length && p < y.length && x[p].key === y[p].key) p++;
+	let q = 0;
+	while (
+		q < x.length - p &&
+		q < y.length - p &&
+		x[x.length - 1 - q].key === y[y.length - 1 - q].key
+	)
+		q++;
+	return { p, e: x.length - q, mid: y.slice(p, y.length - q) };
+};
+
+/** A unit's width in the block's offsets (a character's UTF-16 length; an atom counts 1). */
+const width = (u: Unit) => (u.item.kind === 'text' ? u.item.text.length : 1);
+
+/**
+ * Make block `id`'s content, `have` (its units now), read `want`: the one
+ * changed stretch between their common prefix and suffix is deleted and
+ * written again through the facade (an atom without an id gets a fresh
+ * one). Whether it wrote anything.
+ */
+export const rewriteContent = <Plan>(
+	facade: Pick<RestoreFacade<Plan>, 'apply' | 'prepare'>,
+	id: BlockId,
+	have: readonly Unit[],
+	want: readonly Unit[]
+): boolean => {
+	const { p, e, mid } = hunk(have, want);
+	if (p === e && mid.length === 0) return false;
+	let at = have.slice(0, p).reduce((n, u) => n + width(u), 0);
+	const gone = have.slice(p, e).reduce((n, u) => n + width(u), 0);
+	if (gone > 0) facade.apply(facade.prepare.deleteText(id, at, gone));
+	for (const item of runsOf(mid)) {
+		if (item.kind === 'text') {
+			facade.apply(facade.prepare.insertText(id, at, item.text, item.marks ?? {}));
+			at += item.text.length;
+		} else {
+			const atom = { id: item.id || crypto.randomUUID(), type: item.type, data: item.data };
+			facade.apply(facade.prepare.insertInline(id, at, atom));
+			at += 1;
+		}
+	}
+	return true;
+};
+
 /** Visible-tree order of `specs` with each block's snapshot parent. */
 const walk = (
 	specs: readonly BlockSpec[],
@@ -90,29 +143,6 @@ const walk = (
 		walk(spec.children ?? [], spec.id, into);
 	}
 	return into;
-};
-
-/** The ids of `list` (positions in another order, `-1` absent) on its longest increasing run. */
-const longestRun = (positions: readonly number[]): Set<number> => {
-	const tails: number[] = [];
-	const tailAt: number[] = [];
-	const links: number[] = new Array(positions.length).fill(-1);
-	positions.forEach((position, i) => {
-		if (position < 0) return;
-		let lo = 0;
-		let hi = tails.length;
-		while (lo < hi) {
-			const mid = (lo + hi) >> 1;
-			if (tails[mid] < position) lo = mid + 1;
-			else hi = mid;
-		}
-		tails[lo] = position;
-		tailAt[lo] = i;
-		links[i] = lo > 0 ? tailAt[lo - 1] : -1;
-	});
-	const kept = new Set<number>();
-	for (let i = tails.length ? tailAt[tails.length - 1] : -1; i !== -1; i = links[i]) kept.add(i);
-	return kept;
 };
 
 export type RestoreReport = {
@@ -152,11 +182,10 @@ export const restoreDocument = <Plan>(
 	facade: RestoreFacade<Plan>,
 	json: JSONDoc
 ): RestoreReport => {
-	const M = facade.model;
 	const report: RestoreReport = { revived: 0, moved: 0, rewritten: 0, created: 0, deleted: 0 };
 	const specs = json.children.map((block) => toBlockSpec(block));
 	const all = walk(specs, null, new Map());
-	const node = (id: BlockId): EngineNode | null => M.blockNodeOf(doc, id);
+	const node = (id: BlockId): EngineNode | null => blockNodeOf(doc, id);
 
 	// 1 · Revive, and free every snapshot block from the claims on it.
 	for (const id of all.keys()) {
@@ -169,7 +198,7 @@ export const restoreDocument = <Plan>(
 		if (marks.length > 0) report.revived++;
 	}
 	{
-		const { blocks } = M.view(doc);
+		const { blocks } = modelView(doc);
 		for (const rec of blocks.values()) {
 			// A deleted holder's claims are void (and stay so): only the others.
 			if (rec.deleted || rec.claimsNode === undefined) continue;
@@ -200,7 +229,13 @@ export const restoreDocument = <Plan>(
 		if (list.length === 0) continue;
 		const slots = facade.childSlots(parent);
 		const index = new Map(slots.map((slot, i) => [slot.id, i] as const));
-		const kept = longestRun(list.map((spec) => index.get(spec.id) ?? -1));
+		// What a longest common run of the two orders keeps stays where it is.
+		const kept = new Set(
+			common(
+				slots.map((slot) => slot.id),
+				list.map((spec) => spec.id)
+			).map(([, j]) => j)
+		);
 		let prev: string | undefined;
 		list.forEach((spec, i) => {
 			if (kept.has(i)) {
@@ -217,13 +252,13 @@ export const restoreDocument = <Plan>(
 				...(prev === undefined ? [] : [{ rank: prev }]),
 				...(next === undefined ? [] : [{ rank: next }])
 			];
-			const [rank] = M.ranksAt(bounds, prev === undefined ? 0 : 1, 1, doc.clientID, randOf(doc));
+			const [rank] = ranksAt(bounds, prev === undefined ? 0 : 1, 1, doc.clientID, randOf(doc));
 			const n = node(spec.id);
 			if (n === null) {
-				M.materializeSpec(doc, { ...spec, children: [] }, parent, rank);
+				materializeSpec(doc, { ...spec, children: [] }, parent, rank);
 				report.created++;
 			} else {
-				M.writePlacement(doc, n, parent, rank);
+				writePlacement(doc, n, parent, rank);
 				report.moved++;
 			}
 			prev = rank;
@@ -235,41 +270,19 @@ export const restoreDocument = <Plan>(
 		const want = unitsOf(spec.content ?? []);
 		let have = unitsOf(facade.contentItems(id));
 		if (have.length === want.length && have.every((u, i) => u.key === want[i].key)) continue;
-		const rec = M.view(doc).blocks.get(id);
+		const rec = modelView(doc).blocks.get(id);
 		const claims = rec?.claimsNode;
 		if (claims !== undefined && claims.length > 0) {
 			claims.delete(0, claims.length);
 			have = unitsOf(facade.contentItems(id));
 		}
-		let head = 0;
-		while (head < have.length && head < want.length && have[head].key === want[head].key) head++;
-		let tail = 0;
-		while (
-			tail < have.length - head &&
-			tail < want.length - head &&
-			have[have.length - 1 - tail].key === want[want.length - 1 - tail].key
-		)
-			tail++;
-		const removed = have.length - head - tail;
-		if (removed > 0) facade.apply(facade.prepare.deleteText(id, head, removed));
-		let at = head;
-		for (const item of runsOf(want.slice(head, want.length - tail))) {
-			if (item.kind === 'text') {
-				facade.apply(facade.prepare.insertText(id, at, item.text, item.marks ?? {}));
-				at += item.text.length;
-			} else {
-				facade.apply(
-					facade.prepare.insertInline(id, at, { id: item.id, type: item.type, data: item.data })
-				);
-				at += 1;
-			}
-		}
+		rewriteContent(facade, id, have, want);
 		report.rewritten++;
 	}
 
 	// 5 · Every visible block outside the snapshot is deleted, with what it displays.
 	for (let round = 0; round < 8; round++) {
-		const view = M.view(doc);
+		const view = modelView(doc);
 		const extra = view.order.ids.filter((id) => !all.has(id));
 		if (extra.length === 0) break;
 		for (const id of extra) {

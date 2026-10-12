@@ -210,12 +210,7 @@ const rawPeer = async (room: string, query: string) => {
 		const syncType = E.readVarUint(decoder);
 		const payload = E.readVarUint8Array(decoder);
 		if (syncType === E.messageYjsSyncStep1) return;
-		// A SyncStep2 is v2 on the wire (P5).
-		crdt.sync.applyRemote(
-			doc,
-			syncType === E.messageYjsSyncStep2 ? crdt.sync.step2Update(payload) : payload,
-			'room'
-		);
+		crdt.sync.applyRemote(doc, payload, 'room');
 		if (syncType === E.messageYjsSyncStep2) state.synced = true;
 	};
 	ws.addEventListener('message', (event) => read(new Uint8Array(event.data as ArrayBuffer)));

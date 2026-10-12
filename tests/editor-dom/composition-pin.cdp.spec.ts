@@ -263,7 +263,7 @@ const structural: Structural[] = [
 	},
 	{
 		name: 'reorder (after its next sibling)',
-		run: (peer) => op(peer, 'moveBlock', 'collab-b2', { parent: null, index: 3 }),
+		run: (peer) => op(peer, 'moveBlocks', ['collab-b2'], { parent: null, index: 3 }),
 		arrived: ['paragraph:alpha', 'paragraph:gamma', 'paragraph:betan']
 	}
 ];

@@ -2,7 +2,7 @@
 	// `EdytorClass` alias: the emitted `.svelte.d.ts` also declares `Edytor`
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
-	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
+	import { Edytor as EdytorClass, useEdytor } from '../edytor.svelte.js';
 	import {
 		SyncRefusedError,
 		type Awareness,
@@ -19,43 +19,28 @@
 	} from '$lib/collaboration/awarenessSelection.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
-	import type { Placeholder, Plugin } from '$lib/plugins.js';
+	import type { Plugin } from '$lib/plugins.js';
+	import { brandOf } from '$lib/plugins/brand.js';
 	import type { PartialLabels } from '$lib/labels.js';
-	import {
-		blockHandlesPlugin,
-		createBlockHandlesPlugin,
-		isBlockHandlesPlugin,
-		type BlockHandlesOptions
-	} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-	import { isRichTextPlugin, richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-	import {
-		isSuggestionsPlugin,
-		suggestionsPlugin
-	} from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { createRichTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 
 	/**
-	 * The plugins every view has unless it lists its own (or sets
+	 * The plugins every view has unless it lists one of their kind (or sets
 	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
 	 * block moves, the suggestion UI, the image kind, then rich text.
 	 */
-	const withDefaults = (plugins: Plugin[] = []): Plugin[] => [
-		...plugins,
-		...(plugins.includes(arrowMovePlugin) ? [] : [arrowMovePlugin]),
-		...(plugins.some(isSuggestionsPlugin) ? [] : [suggestionsPlugin]),
-		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
-		...(plugins.some(isRichTextPlugin) ? [] : [richTextPlugin])
+	const DEFAULTS = [
+		createArrowMovePlugin(),
+		createSuggestionsPlugin(),
+		createImagePlugin(),
+		createRichTextPlugin()
 	];
-	/**
-	 * The handles: none with `false`, the configured ones (replacing any
-	 * listed) with options, else the listed ones or the default, first.
-	 */
-	const withHandles = (plugins: Plugin[] | undefined, handles: boolean | BlockHandlesOptions) => {
-		const others = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
-		if (handles === false) return others;
-		if (typeof handles === 'object') return [createBlockHandlesPlugin(handles), ...(others ?? [])];
-		return plugins?.some(isBlockHandlesPlugin) ? plugins : [blockHandlesPlugin, ...(plugins ?? [])];
+	const withDefaults = (plugins: Plugin[] = []): Plugin[] => {
+		const listed = new Set(plugins.map(brandOf));
+		return [...plugins, ...DEFAULTS.filter((plugin) => !listed.has(brandOf(plugin)))];
 	};
 	/**
 	 * The sync of a room id no dial can carry (`validRoomId`): no socket, the
@@ -80,10 +65,8 @@
 		children: []
 	};
 
-	export type EdytorProps = Snippets & {
+	export type EdytorProps = {
 		plugins?: Plugin[];
-		/** Show built-in block handles, with optional pointer dragging and activation callback. */
-		blockHandles?: boolean | BlockHandlesOptions;
 		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
 		class?: string;
@@ -100,7 +83,7 @@
 		document?: EdytorDocument;
 		doc?: YDoc;
 		awareness?: Awareness;
-		/** The local author (id, name, color) of the document this view owns: history lineage and presence. */
+		/** The local author (id, name, color) of the document this view owns: attribution and presence. */
 		actor?: DocumentActor;
 		/**
 		 * What this view shares of its selection with peers (`share`: `'caret'`,
@@ -125,13 +108,12 @@
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
-		placeholder?: Placeholder;
 		/**
-		 * The words the view says itself, over the English ones: its
-		 * announcements to assistive technology and a suggestion's name. Each
-		 * plugin takes its own `labels`. Read once.
+		 * The words the package shows and says in this view, over the English
+		 * ones: any entry of any section (`editor`, `richText`, `table`…) and
+		 * the commands' slash `keywords` by id. Read once.
 		 */
-		labels?: PartialLabels<'editor'>;
+		labels?: PartialLabels;
 		translate?: 'yes' | 'no';
 		spellcheck?: boolean;
 		autocorrect?: 'on' | 'off';
@@ -195,7 +177,6 @@
 
 	let {
 		plugins: userPlugins,
-		blockHandles,
 		defaultPlugins = true,
 		class: className,
 		'aria-label': ariaLabel,
@@ -223,7 +204,6 @@
 		onChange,
 		onDocChange,
 		onSelectionChange,
-		placeholder,
 		labels,
 		translate = 'no',
 		spellcheck = true,
@@ -231,17 +211,12 @@
 		autocomplete = 'off',
 		autocapitalize = 'none',
 		inputmode,
-		enterkeyhint,
-		...snippets
+		enterkeyhint
 	}: EdytorProps = $props();
 
 	const initialEdytorOptions = untrack(() => ({
-		snippets,
 		readonly,
-		plugins: withHandles(
-			defaultPlugins ? withDefaults(userPlugins) : userPlugins,
-			blockHandles ?? true
-		),
+		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
 		doc,
 		awareness,
@@ -253,7 +228,6 @@
 		onDocChange,
 		sync: !!sync || room !== undefined,
 		value,
-		placeholder,
 		labels
 	}));
 
@@ -354,25 +328,13 @@
 	$effect(edytor.surface.post);
 	$effect(edytor.projector.post);
 
-	const browserMutationGuardAttributes = $derived({
-		spellcheck,
-		autocorrect,
-		autocomplete,
-		autocapitalize,
-		inputmode,
-		enterkeyhint
-	});
-
 	/**
-	 * The root's browser attributes. Optional hints (`inputmode`,
-	 * `enterkeyhint`) stay absent when unset — emitting a guessed default
-	 * would override the browser/UA's own choice.
+	 * The root's browser hints, several of them unknown to Svelte's element
+	 * types; one left unset is absent (a guessed default would override the
+	 * browser's own choice).
 	 */
-	const editableRootBrowserAttributes = (
-		node: HTMLElement,
-		attributes: typeof browserMutationGuardAttributes
-	) => {
-		const apply = (next: typeof attributes) => {
+	const browserAttributes = (node: HTMLElement, attributes: Record<string, unknown>) => {
+		const apply = (next: Record<string, unknown>) => {
 			for (const [name, value] of Object.entries(next))
 				if (value === undefined) node.removeAttribute(name);
 				else node.setAttribute(name, String(value));
@@ -380,28 +342,25 @@
 		apply(attributes);
 		return { update: apply };
 	};
-
-	const nonNativeEditableBlockChromeSelection = (node: HTMLElement) => {
-		const { selection } = edytor;
-		// `selectstart` is the only event fired before a drag-selection
-		// begins — the guard keeps one from starting on non-editable
-		// chrome (markers, void/island chrome, plugin UI). A press on that
-		// chrome is the press's (`events/onFocus.ts`).
-		node.addEventListener('selectstart', selection.pointer.onSelectStart);
-		return {
-			destroy: () => node.removeEventListener('selectstart', selection.pointer.onSelectStart)
-		};
-	};
 </script>
 
 {#if edytor.synced}
 	<!-- The editing host is focusable (contenteditable): no tabindex of its own. -->
 	<!-- svelte-ignore a11y_aria_activedescendant_has_tabindex -->
+	<!-- `selectstart`, fired before a drag-selection begins, keeps one from starting on
+	non-editable chrome (a press there is the press's: `events/onFocus.ts`). -->
 	<div
 		class={className}
 		use:edytor.attach
-		use:editableRootBrowserAttributes={browserMutationGuardAttributes}
-		use:nonNativeEditableBlockChromeSelection
+		onselectstart={edytor.selection.pointer.onSelectStart}
+		use:browserAttributes={{
+			spellcheck,
+			autocorrect,
+			autocomplete,
+			autocapitalize,
+			inputmode,
+			enterkeyhint
+		}}
 		data-edytor
 		data-edytor-selection={edytor.selection.value.kind === 'blocks' ? 'blocks' : undefined}
 		contenteditable={!readonly}
@@ -419,8 +378,7 @@
 		{translate}
 	>
 		{#each edytor.suggestions.around(edytor.cells?.rootIds ?? []) as kid (kid)}<Block
-				id={typeof kid === 'string' ? kid : undefined}
-				suggestion={typeof kid === 'string' ? undefined : kid}
+				{kid}
 			/>{/each}<span
 			data-edytor-render-anchor
 			contenteditable="false"
@@ -433,19 +391,18 @@
 	<!-- The room's JSON, read-only, while this view's document hydrates. -->
 	<div data-edytor-snapshot style="display: contents">
 		<Snapshot
-			value={snapshot}
-			readonly
-			plugins={userPlugins}
-			{defaultPlugins}
-			{blockHandles}
-			class={className}
-			{placeholder}
-			{labels}
-			aria-label={ariaLabel}
-			aria-labelledby={ariaLabelledby}
-			aria-describedby={ariaDescribedby}
-			{id}
-			{...snippets}
+			{...{
+				value: snapshot,
+				readonly: true,
+				plugins: userPlugins,
+				defaultPlugins,
+				class: className,
+				labels,
+				'aria-label': ariaLabel,
+				'aria-labelledby': ariaLabelledby,
+				'aria-describedby': ariaDescribedby,
+				id
+			}}
 		/>
 	</div>
 {/if}

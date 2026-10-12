@@ -102,20 +102,14 @@ export const updateFrameWithWord = (word: number, update: Uint8Array): Uint8Arra
 };
 
 /**
- * What the room stored, as one v1 update: its records (`records()`) read
- * as a restart reads them — a v2 container's snapshot (`v2`) converted.
+ * What the room stored, as one update: its records (`records()`) read
+ * as a restart reads them.
  */
 export const storedUpdate = (
-	records: Array<{ kind: string; bytes: Uint8Array<ArrayBuffer>; v2?: boolean }>
+	records: Array<{ kind: string; bytes: Uint8Array<ArrayBuffer> }>
 ): Uint8Array =>
 	Y.mergeUpdates(
-		records
-			.filter((record) => record.kind !== 'generation')
-			.map((record) =>
-				record.v2
-					? (Y.convertUpdateFormatV2ToV1(record.bytes) as Uint8Array<ArrayBuffer>)
-					: record.bytes
-			)
+		records.filter((record) => record.kind !== 'generation').map((record) => record.bytes)
 	);
 
 type Facade = ReturnType<typeof crdt.doc.create>;
@@ -288,9 +282,7 @@ export class RawClient {
 				this.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep2(e, this.doc, payload)));
 				return;
 			}
-			// A SyncStep2 is v2 on the wire (P5).
-			const update = syncType === E.messageYjsSyncStep2 ? crdt.sync.step2Update(payload) : payload;
-			const { applied, problem } = crdt.sync.applyRemote(this.doc, update, REMOTE);
+			const { applied, problem } = crdt.sync.applyRemote(this.doc, payload, REMOTE);
 			if (!applied || problem !== null) throw new Error('client refused a server update');
 			if (syncType === E.messageYjsSyncStep2) this.synced = true;
 			return;

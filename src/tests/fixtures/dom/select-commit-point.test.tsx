@@ -28,9 +28,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchComposition,
 	dispatchDomBeforeInput,
@@ -40,6 +38,8 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { endSuggestion, suggestEnd } from '../../test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since V2. */
 const row = it;
@@ -104,7 +104,7 @@ describe('V2 — one commit point', () => {
 			remote.facade.deleteBlock(second!.id);
 			await remote.push();
 
-			const state = edytor.selection.state;
+			const state = selectionState(edytor);
 			expect(state.startText?.parent).toBe(first);
 			expect(state.yStart).toBe('First'.length);
 			expect(state.isCollapsed).toBe(true);
@@ -132,7 +132,7 @@ describe('V2 — one commit point', () => {
 		await setNativeSelection(edytor, aa!.firstText!, 1);
 		const before = calls.length;
 
-		edytor.selection.selectBlocks(bb!);
+		selectBlocks(edytor, bb!);
 
 		expect(calls.length - before).toBe(1);
 		const [entry] = presence(edytor);
@@ -153,7 +153,7 @@ describe('V2 — one commit point', () => {
 			);
 			const [, bb, cc] = edytor.root!.children;
 			await setNativeSelection(edytor, bb!.firstText!, 1);
-			edytor.selection.selectBlocks(bb!);
+			selectBlocks(edytor, bb!);
 			await flushDomUpdates();
 			const before = calls.length;
 
@@ -162,7 +162,7 @@ describe('V2 — one commit point', () => {
 			await remote.push();
 
 			expect(edytor.selection.selectedBlocks.size).toBe(0);
-			const state = edytor.selection.state;
+			const state = selectionState(edytor);
 			expect(state.startText?.parent).toBe(cc);
 			expect(state.yStart).toBe(0);
 			expect(state.isCollapsed).toBe(true);
@@ -193,7 +193,7 @@ describe('V2 — one commit point', () => {
 		remote.facade.insertInline(block.id, 3, { id: 'm1', type: 'mention', data: {} });
 		remote.deliver();
 
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = selectionState(edytor);
 		expect(startText!.segStart + yStart).toBe(12);
 		await flushDomUpdates();
 		expect(edytor.value.children?.[0]?.content).toEqual([
@@ -233,7 +233,7 @@ describe('V2 fix — typing over a reversed range leaves the caret after the ins
 			});
 			const text = edytor.root!.children[0]!.firstText!;
 			await setNativeSelection(edytor, text, 0, text, 3, { reversed: true });
-			expect(edytor.selection.state).toMatchObject({ yStart: 0, yEnd: 3, isReversed: true });
+			expect(selectionState(edytor)).toMatchObject({ yStart: 0, yEnd: 3, isReversed: true });
 			if (via === 'composition')
 				await dispatchComposition(editor, [
 					{ type: 'compositionstart' },
@@ -246,7 +246,7 @@ describe('V2 fix — typing over a reversed range leaves the caret after the ins
 				{ text: 'é' },
 				{ text: 'ords', marks: { highlight: 'yellow' } }
 			]);
-			const state = edytor.selection.state;
+			const state = selectionState(edytor);
 			expect([state.startText!.segStart + state.yStart, state.isCollapsed]).toEqual([1, true]);
 		});
 	}
@@ -283,7 +283,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		);
 		const [hello, world] = edytor.root!.children;
 		suggestEnd(edytor, hello!, ' there');
-		edytor.selection.setAtTextOffset(world!.firstText!, 2);
+		edytor.selection.selectText(world!.firstText!, 2);
 		expect(endSuggestion(edytor, hello!)).toBe(' there');
 	});
 

@@ -1,23 +1,13 @@
 import * as math from 'lib0-v14/math'
-import * as traits from 'lib0-v14/traits'
 import * as encoding from 'lib0-v14/encoding'
 import * as decoding from 'lib0-v14/decoding'
-import * as buf from 'lib0-v14/buffer'
-import * as rabin from 'lib0-v14/hash/rabin'
 import * as array from 'lib0-v14/array'
-import * as map from 'lib0-v14/map'
-import * as s from 'lib0-v14/schema'
 
-import { iterateStructs, findIndexSS, iterateStructsWithoutSplits } from './transaction-helpers.js'
-import { UpdateEncoderV2, IdSetEncoderV2 } from './UpdateEncoder.js'
-import { IdSetDecoderV2 } from './UpdateDecoder.js'
+import { iterateStructs, findIndexSS } from './transaction-helpers.js'
+import { UpdateEncoder } from './UpdateEncoder.js'
 
 /**
  * @typedef {{ inserts: IdSet, deletes: IdSet }} ContentIds
- */
-
-/**
- * @typedef {{ inserts: IdMap<any>, deletes: IdMap<any> }} ContentMap
  */
 
 export class IdRange {
@@ -43,46 +33,7 @@ export class IdRange {
   copyWith (clock, len) {
     return new IdRange(clock, len)
   }
-
-  /**
-   * Helper method making this compatible with IdMap.
-   *
-   * @return {Array<ContentAttribute<any>>}
-   */
-  get attrs () {
-    return []
-  }
 }
-
-export class MaybeIdRange {
-  /**
-   * @param {number} clock
-   * @param {number} len
-   * @param {boolean} exists
-   */
-  constructor (clock, len, exists) {
-    /**
-     * @type {number}
-     */
-    this.clock = clock
-    /**
-     * @type {number}
-     */
-    this.len = len
-    /**
-     * @type {boolean}
-     */
-    this.exists = exists
-  }
-}
-
-/**
- * @param {number} clock
- * @param {number} len
- * @param {boolean} exists
- * @return {MaybeIdRange}
- */
-export const createMaybeIdRange = (clock, len, exists) => new MaybeIdRange(clock, len, exists)
 
 export class IdRanges {
   /**
@@ -163,37 +114,8 @@ export class IdRanges {
     }
     return ids
   }
-
-  /**
-   * Test a predicate against every attribute held by these ranges. Does not mutate - see
-   * {@link AttrRanges#everyAttr}.
-   *
-   * This exists because an `IdMap` may hold `IdRanges`: {@link insertIntoIdMap}'s `src` may be an
-   * `IdSet`, and `_insertIntoIdSet` picks the container class from whichever `src` reaches a client
-   * first. For a pure `IdRanges` the loop is vacuous ({@link IdRange#attrs} is always `[]`), but it
-   * must *not* shortcut to `true`: the append branch of `_insertIntoIdSet` copies elements without
-   * checking their class, so an `IdRanges` reached by an `IdSet` first and an `IdMap` second holds
-   * real `AttrRange`s - which {@link $idMap} must still validate.
-   *
-   * @param {(attr:ContentAttribute<any>) => boolean} f
-   * @return {boolean}
-   */
-  everyAttr (f) {
-    const ids = this._ids
-    for (let i = 0; i < ids.length; i++) {
-      const attrs = ids[i].attrs
-      if (attrs == null) continue
-      for (let j = 0; j < attrs.length; j++) {
-        if (!f(attrs[j])) return false
-      }
-    }
-    return true
-  }
 }
 
-/**
- * @implements {traits.EqualityTrait}
- */
 export class IdSet {
   constructor () {
     /**
@@ -204,17 +126,6 @@ export class IdSet {
 
   isEmpty () {
     return this.clients.size === 0
-  }
-
-  /**
-   * @param {(idrange:IdRange, client:number) => void} f
-   */
-  forEach (f) {
-    this.clients.forEach((ranges, client) => {
-      ranges.getIds().forEach((range) => {
-        f(range, client)
-      })
-    })
   }
 
   /**
@@ -257,113 +168,6 @@ export class IdSet {
   }
 
   /**
-   * Whether the entire range `[clock, clock+len)` of `client` is contained in this set.
-   * Allocation-free (binary search). Because `getIds()` returns maximal, merged ranges, full
-   * coverage of a range implies it lies within a single range.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {boolean}
-   */
-  covers (client, clock, len) {
-    const dr = this.clients.get(client)
-    if (dr) {
-      const ranges = dr.getIds()
-      const index = findIndexInIdRanges(ranges, clock)
-      if (index !== null) {
-        const r = ranges[index]
-        return clock + len <= r.clock + r.len
-      }
-    }
-    return false
-  }
-
-  /**
-   * Total number of ids in `[clock, clock+len)` of `client` contained in this set.
-   * Allocation-free (binary search + linear scan of the overlapping ranges). Equivalent to
-   * `slice(client, clock, len).reduce((s, r) => r.exists ? s + r.len : s, 0)` without allocating.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {number}
-   */
-  coveredLength (client, clock, len) {
-    const dr = this.clients.get(client)
-    let covered = 0
-    if (dr) {
-      const ranges = dr.getIds()
-      const end = clock + len
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        for (; index < ranges.length; index++) {
-          const r = ranges[index]
-          if (r.clock >= end) break
-          const from = r.clock < clock ? clock : r.clock
-          const rEnd = r.clock + r.len
-          const to = rEnd > end ? end : rEnd
-          covered += to - from
-        }
-      }
-    }
-    return covered
-  }
-
-  /**
-   * Return slices of ids that exist in this idset.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {Array<MaybeIdRange>}
-   */
-  slice (client, clock, len) {
-    const dr = this.clients.get(client)
-    /**
-     * @type {Array<MaybeIdRange>}
-     */
-    const res = []
-    if (dr) {
-      /**
-       * @type {Array<IdRange>}
-       */
-      const ranges = dr.getIds()
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        let prev = null
-        while (index < ranges.length) {
-          let r = ranges[index]
-          if (r.clock < clock) {
-            r = new IdRange(clock, r.len - (clock - r.clock))
-          }
-          if (r.clock + r.len > clock + len) {
-            r = new IdRange(r.clock, clock + len - r.clock)
-          }
-          if (r.len <= 0) break
-          const prevEnd = prev != null ? prev.clock + prev.len : clock
-          if (prevEnd < r.clock) {
-            res.push(createMaybeIdRange(prevEnd, r.clock - prevEnd, false))
-          }
-          prev = r
-          res.push(createMaybeIdRange(r.clock, r.len, true))
-          index++
-        }
-      }
-    }
-    if (res.length > 0) {
-      const last = res[res.length - 1]
-      const end = last.clock + last.len
-      if (end < clock + len) {
-        res.push(createMaybeIdRange(end, clock + len - end, false))
-      }
-    } else {
-      res.push(createMaybeIdRange(clock, len, false))
-    }
-    return res
-  }
-
-  /**
    * @param {number} client
    * @param {number} clock
    * @param {number} len
@@ -387,37 +191,10 @@ export class IdSet {
     _deleteRangeFromIdSet(this, client, clock, len)
   }
 
-  /**
-   * @param {any} other
-   */
-  [traits.EqualityTraitSymbol] (other) {
-    return equalIdSets(this, other)
-  }
 }
 
 /**
- * @param {IdSet} ds1
- * @param {IdSet} ds2
- */
-export const equalIdSets = (ds1, ds2) => {
-  if (ds1.clients.size !== ds2.clients.size) return false
-  for (const [client, _deleteItems1] of ds1.clients.entries()) {
-    const deleteItems1 = _deleteItems1.getIds()
-    const deleteItems2 = ds2.clients.get(client)?.getIds()
-    if (deleteItems2 === undefined || deleteItems1.length !== deleteItems2.length) return false
-    for (let i = 0; i < deleteItems1.length; i++) {
-      const di1 = deleteItems1[i]
-      const di2 = deleteItems2[i]
-      if (di1.clock !== di2.clock || di1.len !== di2.len) {
-        return false
-      }
-    }
-  }
-  return true
-}
-
-/**
- * @param {IdSet | IdMap<any>} set
+ * @param {IdSet} set
  * @param {number} client
  * @param {number} clock
  * @param {number} len
@@ -465,29 +242,6 @@ export const iterateStructsByIdSet = (transaction, ds, f) =>
       for (let i = 0; i < ranges.length; i++) {
         const del = ranges[i]
         iterateStructs(transaction, structs, del.clock, del.len, f)
-      }
-    }
-  })
-
-/**
- * Iterate over all structs that are mentioned by the IdSet, without spliting the items.
- *
- * @param {StructStore} store
- * @param {IdSet} ds
- * @param {(struct: GC|Item|Skip, offset:number, len:number)=>void} f
- */
-export const iterateStructsByIdSetWithoutSplits = (store, ds, f) =>
-  ds.clients.forEach((idRanges, clientid) => {
-    const ranges = idRanges.getIds()
-    const structs = /** @type {Array<GC|Item>} */ (store.clients.get(clientid))
-    if (structs != null) {
-      const lastStruct = structs[structs.length - 1]
-      const nextClock = lastStruct.id.clock + lastStruct.length
-      for (let i = 0; i < ranges.length; i++) {
-        const del = ranges[i]
-        if (del.clock < nextClock) {
-          iterateStructsWithoutSplits(structs, del.clock, del.len, f)
-        }
       }
     }
   })
@@ -574,9 +328,8 @@ export const mergeIdSets = idSets => {
 }
 
 /**
- * @template {IdSet | IdMap<any>} S
- * @param {S} dest
- * @param {S} src
+ * @param {IdSet} dest
+ * @param {IdSet} src
  */
 const _insertIntoIdSet = (dest, src) => {
   src.clients.forEach((srcRanges, client) => {
@@ -599,44 +352,17 @@ const _insertIntoIdSet = (dest, src) => {
 export const insertIntoIdSet = _insertIntoIdSet
 
 /**
- * Note that `src` may be an `IdSet`, in which case `dest` ends up holding `IdRanges` - which carry
- * no attributes ({@link IdRange#attrs} is `[]`). This is by design; {@link $idMap} tolerates it.
- *
- * @type {(dest: IdMap<any>, src: IdMap<any>|IdSet) => void}
- */
-export const insertIntoIdMap = _insertIntoIdSet
-
-/**
- * @todo rename to excludeIdSet | excludeIdMap
- *
- * @todo dispatch on the schema rather than `instanceof IdSet`: `const isMap = set.$type ===
- * $idMapAny`. Mind the polarity - it inverts. `instanceof IdSet` selects the "is a set" branch,
- * `$type === $idMapAny` selects the "is a map" branch, so both ternaries below flip. Compare
- * against `$idMapAny` (the interned tag), never `$idMap(attrs)` - that builds a fresh `s.$custom`
- * per call, so `===` against it is always false.
- *
- * The reason is soundness, not speed: `instanceof` walks the prototype chain and is per-install, so
- * an `IdSet` from a duplicate yjs install falls through to the IdMap branch and we silently build an
- * IdMap holding IdRanges. `$type` is a single inline-cached load and stays sound across installs -
- * the same reason `$renderer` uses `$type` over `$instanceOf`. Not a perf win either way: this runs
- * twice per call, outside both loops.
- *
- * Applies equally to `_intersectSets`.
+ * @todo rename to excludeIdSet
  *
  * Remove all ranges from `exclude` from `ds`. The result is a fresh IdSet containing all ranges from `idSet` that are not
  * in `exclude`.
  *
- * @template {IdSet | IdMap<any>} Set
- * @param {Set} set
- * @param {IdSet | IdMap<any>} exclude
- * @return {Set}
+ * @param {IdSet} set
+ * @param {IdSet} exclude
+ * @return {IdSet}
  */
 export const _diffSet = (set, exclude) => {
-  /**
-   * @type {Set}
-   */
-  const res = /** @type {any } */ (set instanceof IdSet ? new IdSet() : new IdMap())
-  const Ranges = set instanceof IdSet ? IdRanges : AttrRanges
+  const res = new IdSet()
   set.clients.forEach((_setRanges, client) => {
     /**
      * @type {Array<IdRange>}
@@ -685,8 +411,7 @@ export const _diffSet = (set, exclude) => {
         resRanges.push(setRanges[i++])
       }
     }
-    // @ts-ignore
-    if (resRanges.length > 0) res.clients.set(client, /** @type {any} */ (new Ranges(resRanges)))
+    if (resRanges.length > 0) res.clients.set(client, new IdRanges(resRanges))
   })
   return res
 }
@@ -695,26 +420,17 @@ export const _diffSet = (set, exclude) => {
  * Remove all ranges from `exclude` from `idSet`. The result is a fresh IdSet containing all ranges from `idSet` that are not
  * in `exclude`.
  *
- * @type {(idSet: IdSet, exclude: IdSet|IdMap<any>) => IdSet}
+ * @type {(idSet: IdSet, exclude: IdSet) => IdSet}
  */
 export const diffIdSet = _diffSet
 
 /**
- * @todo dispatch on `setA.$type === $idMapAny` rather than `setA instanceof IdSet` - see the note
- * on `_diffSet`. The polarity inverts.
- *
- * @template {IdSet | IdMap<any>} SetA
- * @template {IdSet | IdMap<any>} SetB
- * @param {SetA} setA
- * @param {SetB} setB
- * @return {SetA extends IdMap<infer A> ? (SetB extends IdMap<infer B> ? IdMap<A | B> : IdMap<A>) : IdSet}
+ * @param {IdSet} setA
+ * @param {IdSet} setB
+ * @return {IdSet}
  */
 export const _intersectSets = (setA, setB) => {
-  /**
-   * @type {IdMap<any> | IdSet}
-   */
-  const res = /** @type {any } */ (setA instanceof IdSet ? new IdSet() : new IdMap())
-  const Ranges = setA instanceof IdSet ? IdRanges : AttrRanges
+  const res = new IdSet()
   setA.clients.forEach((_aRanges, client) => {
     /**
      * @type {Array<IdRange>}
@@ -731,10 +447,7 @@ export const _intersectSets = (setA, setB) => {
         const clock = math.max(aRange.clock, bRange.clock)
         const len = math.min(aRange.len - (clock - aRange.clock), bRange.len - (clock - bRange.clock))
         if (len > 0) {
-          resRanges.push(aRange instanceof AttrRange
-            ? new AttrRange(clock, len, /** @type {Array<any>} */ (aRange.attrs).concat(bRange.attrs))
-            : new IdRange(clock, len)
-          )
+          resRanges.push(new IdRange(clock, len))
         }
         if (aRange.clock + aRange.len < bRange.clock + bRange.len) {
           a++
@@ -743,10 +456,9 @@ export const _intersectSets = (setA, setB) => {
         }
       }
     }
-    // @ts-ignore
-    if (resRanges.length > 0) res.clients.set(client, /** @type {any} */ (new Ranges(resRanges)))
+    if (resRanges.length > 0) res.clients.set(client, new IdRanges(resRanges))
   })
-  return /** @type {any} */ (res)
+  return res
 }
 
 export const intersectSets = _intersectSets
@@ -788,7 +500,7 @@ export const createDeleteSetFromStructStore = ss => {
 }
 
 /**
- * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
+ * @param {IdSetEncoder} encoder
  * @param {IdSet} idSet
  *
  * @private
@@ -814,7 +526,7 @@ export const writeIdSet = (encoder, idSet) => {
 }
 
 /**
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
+ * @param {IdSetDecoder} decoder
  * @return {IdSet}
  *
  * @private
@@ -846,7 +558,7 @@ export const readIdSet = decoder => {
  */
 
 /**
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
+ * @param {IdSetDecoder} decoder
  * @param {Transaction} transaction
  * @param {StructStore} store
  * @return {Uint8Array<ArrayBuffer>|null} Returns a v2 update containing all deletes that couldn't be applied yet; or null if all deletes were applied successfully.
@@ -906,599 +618,10 @@ export const readAndApplyDeleteSet = (decoder, transaction, store) => {
     }
   }
   if (unappliedDS.clients.size > 0) {
-    const ds = new UpdateEncoderV2()
+    const ds = new UpdateEncoder()
     encoding.writeVarUint(ds.restEncoder, 0) // encode 0 structs
     writeIdSet(ds, unappliedDS)
     return ds.toUint8Array()
   }
   return null
 }
-
-/**
- * @template Attrs
- */
-export class AttrRange {
-  /**
-   * @param {number} clock
-   * @param {number} len
-   * @param {Array<ContentAttribute<Attrs>>} attrs
-   */
-  constructor (clock, len, attrs) {
-    /**
-     * @readonly
-     */
-    this.clock = clock
-    /**
-     * @readonly
-     */
-    this.len = len
-    /**
-     * @readonly
-     */
-    this.attrs = attrs
-  }
-
-  /**
-   * @param {number} clock
-   * @param {number} len
-   */
-  copyWith (clock, len) {
-    return new AttrRange(clock, len, this.attrs)
-  }
-}
-
-/**
- * @todo rename this to `Attribute`
- * @template V
- */
-export class ContentAttribute {
-  /**
-   * @param {string} name
-   * @param {V} val
-   */
-  constructor (name, val) {
-    this.name = name
-    this.val = val
-  }
-
-  hash () {
-    const encoder = encoding.createEncoder()
-    encoding.writeVarString(encoder, this.name)
-    encoding.writeAny(encoder, /** @type {any} */ (this.val))
-    return buf.toBase64(rabin.fingerprint(rabin.StandardIrreducible128, encoding.toUint8Array(encoder)))
-  }
-}
-
-/**
- * @template V
- * @param {string} name
- * @param {V} val
- * @return {ContentAttribute<V>}
- */
-export const createContentAttribute = (name, val) => new ContentAttribute(name, val)
-
-/**
- * @template Attrs
- * @typedef {{ clock: number, len: number, attrs: Array<ContentAttribute<Attrs>>? }} MaybeAttrRange
- */
-
-/**
- * @template Attrs
- *
- * @param {number} clock
- * @param {number} len
- * @param {Array<ContentAttribute<Attrs>>?} attrs
- * @return {MaybeAttrRange<Attrs>}
- */
-export const createMaybeAttrRange = (clock, len, attrs) => new AttrRange(clock, len, /** @type {any} */ (attrs))
-
-/**
- * @template T
- * @param {Array<T>} a
- * @param {Array<T>} b
- */
-const idmapAttrRangeJoin = (a, b) => a.concat(b.filter(attr => !idmapAttrsHas(a, attr)))
-
-/**
- * Whenever this is instantiated, it must receive a fresh array of ops, not something copied.
- *
- * @template Attrs
- */
-export class AttrRanges {
-  /**
-   * @param {Array<AttrRange<Attrs>>} ids
-   */
-  constructor (ids) {
-    this.sorted = false
-    /**
-     * @private
-     */
-    this._ids = ids
-  }
-
-  copy () {
-    const cpy = new AttrRanges(this._ids.slice())
-    cpy.sorted = this.sorted
-    return cpy
-  }
-
-  /**
-   * @param {number} clock
-   * @param {number} length
-   * @param {Array<ContentAttribute<Attrs>>} attrs
-   */
-  add (clock, length, attrs) {
-    if (length === 0) return
-    this.sorted = false
-    this._ids.push(new AttrRange(clock, length, attrs))
-  }
-
-  /**
-   * Return the list of id ranges, sorted and merged.
-   */
-  getIds () {
-    const ids = this._ids
-    if (!this.sorted) {
-      this.sorted = true
-      ids.sort((a, b) => a.clock - b.clock)
-      /**
-       * algorithm thoughts:
-       * - sort (by clock AND by length), bigger length is to the right (or not, we can't make
-       *   assumptions abouth length after long length has been split)
-       * -- maybe better: sort by clock+length. Then split items from right to left. This way, items are always
-       *   in the right order. But I also need to swap if left items is smaller after split
-       *   --- thought: there is no way to go around swapping. Unless, for each item from left to
-       *   right, when I have to split because one of the look-ahead items is overlapping, i split
-       *   it and merge the attributes into the following ones (that I also need to split). Best is
-       *   probably left to right with lookahead.
-       * - left to right, split overlapping items so that we can make the assumption that either an
-       *   item is overlapping with the next 1-on-1 or it is not overlapping at all (when splitting,
-       *   we can already incorporate the attributes)
-       *   -- better: for each item, go left to right and add own attributes to overlapping items.
-       *   Split them if necessary. After split, i must insert the retainer at a valid position.
-       * - merge items if neighbor has same attributes
-       */
-      for (let i = 0; i < ids.length - 1;) {
-        const range = ids[i]
-        const nextRange = ids[i + 1]
-        // find out how to split range. it must match with next range.
-        // 1) we have space. Split if necessary.
-        // 2) concat attributes in range to the next range. Split range and splice the remainder at
-        // the correct position.
-        if (range.clock < nextRange.clock) { // might need to split range
-          if (range.clock + range.len > nextRange.clock) {
-            // is overlapping
-            const diff = nextRange.clock - range.clock
-            ids[i] = new AttrRange(range.clock, diff, range.attrs)
-            ids.splice(i + 1, 0, new AttrRange(nextRange.clock, range.len - diff, range.attrs))
-          }
-          i++
-          continue
-        }
-        // now we know that range.clock === nextRange.clock
-        // merge range with nextRange
-        const largerRange = range.len > nextRange.len ? range : nextRange
-        const smallerLen = range.len < nextRange.len ? range.len : nextRange.len
-        ids[i] = new AttrRange(range.clock, smallerLen, idmapAttrRangeJoin(range.attrs, nextRange.attrs))
-        if (range.len === nextRange.len) {
-          ids.splice(i + 1, 1)
-        } else {
-          ids[i + 1] = new AttrRange(range.clock + smallerLen, largerRange.len - smallerLen, largerRange.attrs)
-          array.bubblesortItem(ids, i + 1, (a, b) => a.clock - b.clock)
-        }
-        if (smallerLen === 0) i++
-      }
-      while (ids.length > 0 && ids[0].len === 0) {
-        ids.splice(0, 1)
-      }
-      // merge items without filtering or splicing the array.
-      // i is the current pointer
-      // j refers to the current insert position for the pointed item
-      // try to merge dels[i] into dels[j-1] or set dels[j]=dels[i]
-      let i, j
-      for (i = 1, j = 1; i < ids.length; i++) {
-        const left = ids[j - 1]
-        const right = ids[i]
-        if (left.clock + left.len === right.clock && idmapAttrsEqual(left.attrs, right.attrs)) {
-          ids[j - 1] = new AttrRange(left.clock, left.len + right.len, left.attrs)
-        } else if (right.len !== 0) {
-          if (j < i) {
-            ids[j] = right
-          }
-          j++
-        }
-      }
-      ids.length = ids.length === 0 ? 0 : (ids[j - 1].len === 0 ? j - 1 : j)
-    }
-    return ids
-  }
-
-  /**
-   * Test a predicate against every attribute held by these ranges.
-   *
-   * Unlike {@link AttrRanges#getIds} this does **not** sort/merge - i.e. it does not mutate its
-   * receiver, which matters because it backs {@link $idMap}`.check`. The *set* of attributes is
-   * invariant under sorting/merging (merging only ever concatenates existing attr arrays), so this
-   * observes exactly the attributes that `getIds()` would expose.
-   *
-   * @param {(attr:ContentAttribute<Attrs>) => boolean} f
-   * @return {boolean}
-   */
-  everyAttr (f) {
-    const ids = this._ids
-    for (let i = 0; i < ids.length; i++) {
-      const attrs = ids[i].attrs
-      // only `createMaybeAttrRange` yields null attrs, never `clients` - defensive
-      if (attrs == null) continue
-      for (let j = 0; j < attrs.length; j++) {
-        if (!f(attrs[j])) return false
-      }
-    }
-    return true
-  }
-}
-
-/**
- * @template Attrs
- */
-export class IdMap {
-  constructor () {
-    /**
-     * @type {Map<number,AttrRanges<Attrs>>}
-     */
-    this.clients = new Map()
-    /**
-     * @type {Map<string, ContentAttribute<Attrs>>}
-     */
-    this.attrsH = new Map()
-    /**
-     * @type {Set<ContentAttribute<Attrs>>}
-     */
-    this.attrs = new Set()
-  }
-
-  /**
-   * @param {(attrRange:AttrRange<Attrs>, client:number) => void} f
-   */
-  forEach (f) {
-    this.clients.forEach((ranges, client) => {
-      ranges.getIds().forEach((range) => {
-        f(range, client)
-      })
-    })
-  }
-
-  isEmpty () {
-    return this.clients.size === 0
-  }
-
-  /**
-   * @param {ID} id
-   * @return {boolean}
-   */
-  hasId (id) {
-    return this.has(id.client, id.clock)
-  }
-
-  /**
-   * @param {number} client
-   * @param {number} clock
-   * @return {boolean}
-   */
-  has (client, clock) {
-    const dr = this.clients.get(client)
-    if (dr) {
-      return findIndexInIdRanges(dr.getIds(), clock) !== null
-    }
-    return false
-  }
-
-  /**
-   * Total number of ids in `[clock, clock+len)` of `client` contained in this map (i.e. carrying
-   * an attribution, incl. an empty `[]`). Allocation-free (binary search + linear scan).
-   * Equivalent to `slice(client, clock, len).reduce((s, r) => r.attrs != null ? s + r.len : s, 0)`
-   * without allocating.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {number}
-   */
-  coveredLength (client, clock, len) {
-    const dr = this.clients.get(client)
-    let covered = 0
-    if (dr) {
-      const ranges = dr.getIds()
-      const end = clock + len
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        for (; index < ranges.length; index++) {
-          const r = ranges[index]
-          if (r.clock >= end) break
-          const from = r.clock < clock ? clock : r.clock
-          const rEnd = r.clock + r.len
-          const to = rEnd > end ? end : rEnd
-          covered += to - from
-        }
-      }
-    }
-    return covered
-  }
-
-  /**
-   * Return attributions for a slice of ids.
-   *
-   * @param {ID} id
-   * @param {number} len
-   * @return {Array<MaybeAttrRange<Attrs>>}
-   */
-  sliceId (id, len) {
-    return this.slice(id.client, id.clock, len)
-  }
-
-  /**
-   * Return attributions for a slice of ids.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {Array<MaybeAttrRange<Attrs>>}
-   */
-  slice (client, clock, len) {
-    const dr = this.clients.get(client)
-    /**
-     * @type {Array<MaybeAttrRange<Attrs>>}
-     */
-    const res = []
-    if (dr) {
-      /**
-       * @type {Array<AttrRange<Attrs>>}
-       */
-      const ranges = dr.getIds()
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        let prev = null
-        while (index < ranges.length) {
-          let r = ranges[index]
-          if (r.clock < clock) {
-            r = new AttrRange(clock, r.len - (clock - r.clock), r.attrs)
-          }
-          if (r.clock + r.len > clock + len) {
-            r = new AttrRange(r.clock, clock + len - r.clock, r.attrs)
-          }
-          if (r.len <= 0) break
-          const prevEnd = prev != null ? prev.clock + prev.len : clock
-          if (prevEnd < r.clock) {
-            res.push(createMaybeAttrRange(prevEnd, r.clock - prevEnd, null))
-          }
-          prev = r
-          res.push(r)
-          index++
-        }
-      }
-    }
-    if (res.length > 0) {
-      const last = res[res.length - 1]
-      const end = last.clock + last.len
-      if (end < clock + len) {
-        res.push(createMaybeAttrRange(end, clock + len - end, null))
-      }
-    } else {
-      res.push(createMaybeAttrRange(clock, len, null))
-    }
-    return res
-  }
-
-  /**
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @param {Array<ContentAttribute<Attrs>>} attrs
-   */
-  add (client, clock, len, attrs) {
-    if (len === 0) return
-    attrs = _ensureAttrs(this, attrs)
-    const ranges = this.clients.get(client)
-    if (ranges == null) {
-      this.clients.set(client, new AttrRanges([new AttrRange(clock, len, attrs)]))
-    } else {
-      ranges.add(clock, len, attrs)
-    }
-  }
-
-  /**
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   */
-  delete (client, clock, len) {
-    _deleteRangeFromIdSet(this, client, clock, len)
-  }
-}
-
-/**
- * @template T
- * @param {Array<T>} attrs
- * @param {T} attr
- *
- */
-const idmapAttrsHas = (attrs, attr) => attrs.find(a => a === attr)
-
-/**
- * @template T
- * @param {Array<T>} a
- * @param {Array<T>} b
- */
-export const idmapAttrsEqual = (a, b) => a.length === b.length && a.every(v => idmapAttrsHas(b, v))
-
-/**
- * Efficiently encodes IdMap to a binary form. Ensures that information is de-duplicated when
- * written. Attribute.names are referenced by id. Attributes themselfs are also referenced by id.
- *
- * @template Attr
- * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
- * @param {IdMap<Attr>} idmap
- *
- * @private
- * @function
- */
-export const writeIdMap = (encoder, idmap) => {
-  encoding.writeVarUint(encoder.restEncoder, idmap.clients.size)
-  let lastWrittenClientId = 0
-  /**
-   * @type {Map<ContentAttribute<Attr>, number>}
-   */
-  const visitedAttributions = map.create()
-  /**
-   * @type {Map<string, number>}
-   */
-  const visitedAttrNames = map.create()
-  // Ensure that the ids are written in a deterministic order (smaller clientids first)
-  array.from(idmap.clients.entries())
-    .sort((a, b) => a[0] - b[0])
-    .forEach(([client, _idRanges]) => {
-      const attrRanges = _idRanges.getIds()
-      encoder.resetIdSetCurVal()
-      const diff = client - lastWrittenClientId
-      encoding.writeVarUint(encoder.restEncoder, diff)
-      lastWrittenClientId = client
-      const len = attrRanges.length
-      encoding.writeVarUint(encoder.restEncoder, len)
-      for (let i = 0; i < len; i++) {
-        const item = attrRanges[i]
-        const attrs = item.attrs
-        const attrLen = attrs.length
-        encoder.writeIdSetClock(item.clock)
-        encoder.writeIdSetLen(item.len)
-        encoding.writeVarUint(encoder.restEncoder, attrLen)
-        for (let j = 0; j < attrLen; j++) {
-          const attr = attrs[j]
-          const attrId = visitedAttributions.get(attr)
-          if (attrId != null) {
-            encoding.writeVarUint(encoder.restEncoder, attrId)
-          } else {
-            const newAttrId = visitedAttributions.size
-            visitedAttributions.set(attr, newAttrId)
-            encoding.writeVarUint(encoder.restEncoder, newAttrId)
-            const attrNameId = visitedAttrNames.get(attr.name)
-            // write attr.name
-            if (attrNameId != null) {
-              encoding.writeVarUint(encoder.restEncoder, attrNameId)
-            } else {
-              const newAttrNameId = visitedAttrNames.size
-              encoding.writeVarUint(encoder.restEncoder, newAttrNameId)
-              encoding.writeVarString(encoder.restEncoder, attr.name)
-              visitedAttrNames.set(attr.name, newAttrNameId)
-            }
-            encoding.writeAny(encoder.restEncoder, /** @type {any} */ (attr.val))
-          }
-        }
-      }
-    })
-}
-
-/**
- * @param {IdMap<any>} idmap
- */
-export const encodeIdMap = idmap => {
-  const encoder = new IdSetEncoderV2()
-  writeIdMap(encoder, idmap)
-  return encoder.toUint8Array()
-}
-
-/**
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
- * @return {IdMap<any>}
- *
- * @private
- * @function
- */
-export const readIdMap = decoder => {
-  const idmap = new IdMap()
-  const numClients = decoding.readVarUint(decoder.restDecoder)
-  /**
-   * @type {Array<ContentAttribute<any>>}
-   */
-  const visitedAttributions = []
-  /**
-   * @type {Array<string>}
-   */
-  const visitedAttrNames = []
-  let lastClientId = 0
-  for (let i = 0; i < numClients; i++) {
-    decoder.resetDsCurVal()
-    const client = lastClientId + decoding.readVarUint(decoder.restDecoder)
-    lastClientId = client
-    const numberOfDeletes = decoding.readVarUint(decoder.restDecoder)
-    /**
-     * @type {Array<AttrRange<any>>}
-     */
-    const attrRanges = []
-    for (let i = 0; i < numberOfDeletes; i++) {
-      const rangeClock = decoder.readDsClock()
-      const rangeLen = decoder.readDsLen()
-      /**
-       * @type {Array<ContentAttribute<any>>}
-       */
-      const attrs = []
-      const attrsLen = decoding.readVarUint(decoder.restDecoder)
-      for (let j = 0; j < attrsLen; j++) {
-        const attrId = decoding.readVarUint(decoder.restDecoder)
-        if (attrId >= visitedAttributions.length) {
-          // attrId not known yet
-          const attrNameId = decoding.readVarUint(decoder.restDecoder)
-          if (attrNameId >= visitedAttrNames.length) {
-            visitedAttrNames.push(decoding.readVarString(decoder.restDecoder))
-          }
-          visitedAttributions.push(new ContentAttribute(visitedAttrNames[attrNameId], decoding.readAny(decoder.restDecoder)))
-        }
-        attrs.push(visitedAttributions[attrId])
-      }
-      attrRanges.push(new AttrRange(rangeClock, rangeLen, attrs))
-    }
-    idmap.clients.set(client, new AttrRanges(attrRanges))
-  }
-  visitedAttributions.forEach(attr => {
-    idmap.attrs.add(attr)
-    idmap.attrsH.set(attr.hash(), attr)
-  })
-  return idmap
-}
-
-/**
- * @param {Uint8Array} data
- * @return {IdMap<any>}
- */
-export const decodeIdMap = data => readIdMap(new IdSetDecoderV2(decoding.createDecoder(data)))
-
-/**
- * @template Attrs
- * @param {IdMap<Attrs>} idmap
- * @param {Array<ContentAttribute<Attrs>>} attrs
- * @return {Array<ContentAttribute<Attrs>>}
- */
-const _ensureAttrs = (idmap, attrs) => attrs.map(attr =>
-  idmap.attrs.has(attr)
-    ? attr
-    : map.setIfUndefined(idmap.attrsH, attr.hash(), () => {
-      idmap.attrs.add(attr)
-      return attr
-    }))
-
-export const createIdMap = () => new IdMap()
-
-/**
- * Schema of an {@link IdSet}.
- *
- * Nominal: `check` is a single identity compare against the globally interned `y:idSet` tag, so it
- * stays sound across duplicate yjs installations (unlike `instanceof`) - the same reason
- * {@link $renderer} uses `$type`.
- */
-export const $idSet = IdSet.prototype.$type = s.$type('y:idSet', IdSet)
-
-/**
- * Schema of an {@link IdMap} with any mapped-value type. This is where the nominal `y:idMap` tag
- * lives - {@link $idMap} builds on it. Mirrors lib0's `$deltaAny` / `$delta` split.
- */
-export const $idMapAny = /** @type {s.Schema<IdMap<any>>} */ (IdMap.prototype.$type = s.$type('y:idMap', IdMap))
-

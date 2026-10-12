@@ -4,9 +4,12 @@ description: Build a working Edytor editor with the bundled plugins, an initial 
 icon: zap
 ---
 
-This page builds a complete Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It mounts it in a SvelteKit page, reads the document as it changes and styles the result.
+This page builds a Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles, and the Notion theme. It mounts it in a SvelteKit page, reads the document as it changes and styles the result.
 
 <Steps>
+  <Step title="Copy the menus and handles">
+    The package draws no menu, toolbar or handle: each is a snippet you pass its plugin. Copy the demo's Notion-style ones into your app and pass its plugins ([below](#the-ready-made-menus-and-handles)). Without them the editor works, but shows no menus and no handles.
+  </Step>
   <Step title="Pick the plugins">
     Every block kind and mark comes from a plugin. `<Edytor>` already includes rich text (paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers and the text marks), images and keyboard block moves. Add the others for menus, code and shortcuts.
   </Step>
@@ -24,25 +27,82 @@ This page builds a complete Notion-style editor: rich text blocks and marks, ima
   </Step>
 </Steps>
 
+## The ready-made menus and handles
+
+The demo's chrome, every menu, toolbar, handle and panel drawn the Notion way with its styles, is a folder of the repository, [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): `chrome.svelte` holds the snippets, its components the markup, and `plugins.ts` passes them to each plugin. Copy it into your app, then make its imports name the package (they name `$lib/index.js`, the package's own sources):
+
+```bash
+npx degit beynar/edytor/src/routes/chrome src/lib/chrome
+sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
+```
+
+Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0`): without one you get `master`'s, which follows the next release.
+
+Then pass its plugins: each is the package's factory given the demo's snippets (`slashMenu(options)` and the others take the factory's options too).
+
+```svelte title="src/lib/NotionEditor.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+	import 'edytor/themes/notion.css';
+	import {
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		calloutIconsPlugin,
+		codePlugin,
+		imageToolbarPlugin,
+		mediaEmptyPlugin,
+		slashMenuPlugin,
+		toolbarPlugin
+	} from '$lib/chrome/plugins';
+
+	const plugins = [
+		slashMenuPlugin,
+		toolbarPlugin,
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		codePlugin,
+		imageToolbarPlugin,
+		mediaEmptyPlugin,
+		calloutIconsPlugin
+	];
+</script>
+
+<div class="edytor-notion">
+	<Edytor {plugins} />
+</div>
+```
+
+That is the whole editor of the [demo](/): a `/` menu, a toolbar over a selection, a `+` and a grip beside each block with its block menu, a code block with its language list, the image toolbar and the empty image's panel, and the callout's icon picker. Without these plugins, or with a plugin given no snippet, the editor still edits, its keys still run, and nothing shows. The files are yours to change: their words are in `words.svelte.ts`, their icons in `icons.ts`.
+
 ## The editor
+
+To draw a menu yourself instead, give its plugin your snippet: the plugin opens and places it, and gives it its keys and ARIA through attachments ([Menus and handles](/docs/customization/menus)).
 
 ```svelte title="src/lib/Editor.svelte" check
 <script lang="ts">
 	import {
-		Edytor,
-		blockMenuPlugin,
-		codePlugin,
-		markdownShortcutsPlugin,
-		richTextPlaceholder,
-		slashMenuPlugin,
-		toolbarPlugin,
-		type EdytorInstance,
-		type JSONDoc
-	} from 'edytor';
+	Edytor,
+	createCodePlugin,
+	createSlashMenuPlugin,
+	createToolbarPlugin,
+	createMarkdownShortcutsPlugin,
+	richTextPlaceholder,
+	type EdytorInstance,
+	type JSONDoc,
+	type SlashMenuController,
+	type ToolbarController
+} from 'edytor';
 	import 'edytor/themes/notion.css';
 
 	// Rich text, images and arrow moves are included by default.
-	const plugins = [codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, blockMenuPlugin];
+	const plugins = [
+		// Notion's hints in empty blocks.
+		() => ({ placeholder: richTextPlaceholder }),
+		createCodePlugin(),
+		createMarkdownShortcutsPlugin(),
+		createSlashMenuPlugin({ menu }),
+		createToolbarPlugin({ toolbar })
+	];
 
 	const value: JSONDoc = {
 		children: [
@@ -66,29 +126,71 @@ This page builds a complete Notion-style editor: rich text blocks and marks, ima
 	};
 </script>
 
+<!-- The slash menu: its rows are the commands, its keys and ARIA the controller's. -->
+{#snippet menu(slash: SlashMenuController)}
+	<ul class="menu" {@attach slash.popup}>
+		{#each slash.commands as command, index (command.id)}
+			<li
+				data-selected={slash.index === index}
+				{@attach slash.option(index)}
+				onclick={() => void slash.run(command)}
+			>
+				{command.label}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<!-- The selection toolbar: a button per mark. -->
+{#snippet toolbar(bar: ToolbarController)}
+	<div class="bar" {@attach bar.popup} {@attach bar.keys}>
+		{#each bar.marks as { mark, label, icon } (mark)}
+			<button aria-label={label} aria-pressed={bar.isActive(mark)} onclick={() => bar.toggleMark(mark)}
+				>{icon}</button
+			>
+		{/each}
+	</div>
+{/snippet}
+
 <div class="edytor-notion">
-	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={richTextPlaceholder} />
+	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" />
 </div>
+
+<style>
+	.menu,
+	.bar {
+		margin: 0;
+		padding: 4px;
+		border-radius: 8px;
+		background: #fff;
+		box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+		list-style: none;
+	}
+	.menu [data-selected='true'] {
+		background: #f1f1ef;
+	}
+</style>
 ```
 
-The `edytor-notion` class applies the imported theme, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). Block handles are on by default, so each block has a `+` and a drag grip without an extra plugin; `blockMenuPlugin` opens its menu when you click the grip. Pass `blockHandles={false}` to remove them.
+The `edytor-notion` class applies the imported theme to the document, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller's attachments (`popup`, `keys`, `option(index)`), while your markup draws the highlighted row from its value. Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`, or the [ready-made ones](#the-ready-made-menus-and-handles) above.
 
 What each plugin adds:
 
 | Plugin | Adds |
 | --- | --- |
-| `richTextPlugin` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
-| `imagePlugin` (default) | An image block: embed from a link (or your upload, with `createImagePlugin({ upload })`), with an editable caption. |
-| `arrowMovePlugin` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
-| `codePlugin` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
-| `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
-| `slashMenuPlugin` | A menu of block kinds, opened by typing `/`. |
-| `toolbarPlugin` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
-| `blockMenuPlugin` | The menu of a block handle's grip: Turn into, Duplicate, Move, Delete. |
+| `createRichTextPlugin()` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
+| `createImagePlugin()` (default) | An image block: embed from a link (or your upload, with `createUploadsPlugin({ upload })`), with an editable caption. |
+| `createArrowMovePlugin()` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
+| `createCodePlugin()` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
+| `createMarkdownShortcutsPlugin()` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
+| `createSlashMenuPlugin({ menu })` | A menu of block kinds, opened by typing `/`. |
+| `createToolbarPlugin({ toolbar })` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
+| `createBlockHandlesPlugin({ handle })` | A `+` and a drag grip beside each block: drag and drop, keyboard moves. |
+| `createBlockMenuPlugin({ menu })` | The menu of a block handle's grip: Turn into, Duplicate, Move, Delete. |
 
 Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. Rich text is added after your plugins so they can override it; `defaultPlugins={false}` turns the defaults off. See [Plugins](/docs/plugins#default-plugins).
 
-The slash menu, the toolbar, the block menu and the block handles each take a snippet to render your own markup while keeping their behavior. See [Menus and handles](/docs/customization/menus).
+Every menu, toolbar, handle and panel takes the snippet that draws it, and draws nothing without one. See [Menus and handles](/docs/customization/menus).
 
 ## Mount it in a page
 
@@ -156,7 +258,7 @@ The editor renders a `div` with `data-edytor` (and your `class`). Each block is 
 | `[data-edytor-mark="bold"]` | A mark element (`<strong>`, `<em>`, `<a>`, …). |
 | `[data-edytor-inline-block]` | Inline blocks. |
 | `[data-placeholder]::before` | The placeholder of an empty block. |
-| `[data-edytor-overlay]` | The layer after the root that holds handles, menus and remote carets. |
+| `[data-edytor-overlay]` | The layer after the root that holds your handles and menus, and remote carets. |
 
 The block element's tag comes from its kind: list items render `li`, a toggle `details`. A `heading` is a `div` holding its text in an `h1`–`h3`, and a `quote` holds its text in a `blockquote`; their nested blocks follow that tag. A few styles to start from:
 
@@ -164,7 +266,6 @@ The block element's tag comes from its kind: list items render `li`, a toggle `d
 .editor {
 	outline: none;
 	line-height: 1.6;
-	--edytor-drop-indicator-color: #2eaadc;
 }
 .editor :is(p, blockquote) {
 	margin: 0;
@@ -181,7 +282,7 @@ The block element's tag comes from its kind: list items render `li`, a toggle `d
 
 The placeholder is drawn by a `::before` rule the library ships, at 45% opacity. Override `[data-edytor-text][data-placeholder]::before` to restyle it.
 
-To change a kind's markup rather than its styles, override its snippet (see [the component page](/docs/editor/edytor-component#snippets)) or define your own kind in [Custom blocks](/docs/customization/blocks).
+To change a kind's markup rather than its styles, restyle it with a plugin's snippet (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) or define your own kind in [Custom blocks](/docs/customization/blocks).
 
 ## Next steps
 

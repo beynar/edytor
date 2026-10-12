@@ -96,7 +96,7 @@ describe('mounted editor — placeholder attribute', () => {
 		blockNode.append(anchor);
 		const text = edytor.root!.children[0]!.firstText!;
 		edytor.transact(() => {
-			text.insertAt(text.length, '!');
+			edytor.insertText(text.parent.id, text.segStart + text.length, '!');
 		});
 		await flushDomUpdates();
 		await sleep(20);

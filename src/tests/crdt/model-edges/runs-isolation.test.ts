@@ -45,7 +45,7 @@ describe('runs view isolation', () => {
 		expect(vA.runs('b1')).toBe(before);
 	});
 
-	it('runs() on a detached-but-present block does not poison .delta', () => {
+	it('runs() on a detached-but-present block does not poison later reads', () => {
 		const set = createPeerPair(MODEL_BASE_SEED);
 		const { A } = set;
 		const v = R.attach(A.doc);

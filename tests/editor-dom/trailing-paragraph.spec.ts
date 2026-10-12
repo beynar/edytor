@@ -38,7 +38,12 @@ const shape = (page: Page) =>
 /** The model caret: its block's id (or `new` for a block the fixture did not name), offset. */
 const caret = (page: Page, ids: string[]) =>
 	page.evaluate((known) => {
-		const { state } = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection;
+		const view = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection;
+		const state = {
+			...view.textRange(),
+			startBlock: view.textRange().startText?.parent,
+			isCollapsed: view.projection.isCollapsed
+		};
 		const id = state.startBlock?.id;
 		return [known.includes(id) ? id : 'new', state.yStart, state.isCollapsed];
 	}, ids);
@@ -61,7 +66,13 @@ const endOf = async (page: Page, id: string) => {
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
-				const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+				const state = ((s) =>
+					s && {
+						...s.textRange(),
+						startBlock: s.textRange().startText?.parent,
+						isCollapsed: s.projection.isCollapsed,
+						isReversed: s.projection.isReversed
+					})((window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection);
 				return [state.startBlock?.id, state.yStart, state.isCollapsed];
 			})
 		)
@@ -167,7 +178,9 @@ test.describe('ArrowDown at the last stop (nav.trailing.exit)', () => {
 		await expect
 			.poll(() =>
 				page.evaluate(
-					() => (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state.startBlock?.id
+					() =>
+						(window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.textRange().startText
+							?.parent?.id
 				)
 			)
 			.toBe('K');

@@ -30,6 +30,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference (`arch-v2/ref-r2`); green since R2. */
 const row = it;
@@ -90,7 +91,7 @@ describe('F-P9 — one Tab re-parents one subtree, nothing else remounts', () =>
 		const nested = edytor.root!.children[0]!.children[0]!;
 		expect(nested.node).not.toBe(b);
 		expect(a.contains(nested.node!)).toBe(true);
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect([startText?.parent === nested, yStart, isCollapsed]).toEqual([true, 1, true]);
 		const dom = document.getSelection();
 		expect(nested.node!.contains(dom?.anchorNode ?? null)).toBe(true);

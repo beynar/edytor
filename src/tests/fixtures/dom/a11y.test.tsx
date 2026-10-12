@@ -21,12 +21,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { englishLabels } from '$lib/labels.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { englishWords } from '../../../routes/chrome/words.svelte.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -34,6 +30,13 @@ import {
 	renderDomEdytor,
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -74,7 +77,7 @@ const key = async (target: Element, init: KeyboardEventInit) => {
 /** The element an IDREF names, in the page. */
 const named = (id: string | null) => (id ? document.getElementById(id) : null);
 const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 
@@ -185,7 +188,7 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 	it('names the toolbar while it shows; Alt+F10 focuses it, the arrows walk it, Escape returns', async () => {
 		const { edytor, editor } = await render([p('a', 'hello')], [toolbarPlugin]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		const toolbar = named(editor.getAttribute('aria-controls'));
 		expect(toolbar?.getAttribute('role')).toBe('toolbar');
@@ -205,14 +208,14 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 
 		await key(document.activeElement!, { key: 'Escape' });
 		expect(document.activeElement).toBe(editor);
-		const { startText, yStart, yEnd } = edytor.selection.state;
+		const { startText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, yEnd]).toEqual(['a', 0, 5]);
 	});
 
 	it('names nothing once the selection collapses', async () => {
 		const { edytor, editor } = await render([p('a', 'hello')], [toolbarPlugin]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		expect(editor.hasAttribute('aria-controls')).toBe(true);
 		await caretIn(edytor, 'a', 2);
@@ -228,7 +231,7 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 		const fields: HTMLInputElement[] = [];
 		for (const { edytor, container } of views) {
 			const text = edytor.root!.children[0]!.firstText!;
-			edytor.selection.setAtRange(text, 0, text, 5);
+			edytor.selection.selectText(text, 0, text, 5);
 			await flushDomUpdates();
 			await click(container.querySelector('[data-testid="toolbar-link"]')!);
 			const field = container.querySelector<HTMLInputElement>(
@@ -236,7 +239,7 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 			)!;
 			expect(document.activeElement).toBe(field);
 			expect(document.querySelector(`label[for="${field.id}"]`)?.textContent).toBe(
-				englishLabels.toolbar.linkUrl
+				englishWords.toolbar.linkUrl
 			);
 			fields.push(field);
 		}
@@ -274,7 +277,7 @@ describe('the live region announces block moves and deletes', () => {
 	});
 
 	it('a move says what moved and where', async () => {
-		const { edytor } = await render([h1('t'), p('a'), p('b')], [arrowMovePlugin]);
+		const { edytor } = await render([h1('t'), p('a'), p('b')], [createArrowMovePlugin()]);
 		await caretIn(edytor, 't', 1);
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
 		expect(edytor.value.children!.map((b) => b.id)).toEqual(['a', 't', 'b']);
@@ -288,7 +291,7 @@ describe('the live region announces block moves and deletes', () => {
 
 	it('a block delete says how many blocks went', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c')]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Backspace' });
 		expect(edytor.value.children!.map((b) => b.id)).toEqual(['c']);
@@ -296,7 +299,7 @@ describe('the live region announces block moves and deletes', () => {
 	});
 
 	it('a refused move announces nothing', async () => {
-		const { edytor } = await render([p('a'), p('b')], [arrowMovePlugin]);
+		const { edytor } = await render([p('a'), p('b')], [createArrowMovePlugin()]);
 		await caretIn(edytor, 'a', 1);
 		await dispatchDomKeyDown(document, { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
 		expect(region()!.textContent).toBe('');

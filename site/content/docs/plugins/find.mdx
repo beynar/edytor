@@ -4,17 +4,24 @@ description: The find plugin opens a find and replace bar on Mod+F, as in Notion
 icon: search
 ---
 
-`findPlugin` adds find and replace to the editor. <kbd>Mod</kbd> + <kbd>F</kbd> opens a bar at the editor's top right with a query field, the match count, a case toggle, previous and next buttons, and a replace row. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
+`createFindPlugin({ bar })` adds find and replace to the editor. <kbd>Mod</kbd> + <kbd>F</kbd> opens a bar at the editor's top right: your `bar` snippet (the demo's has a query field, the match count, a case toggle, previous and next buttons, and a replace row; see [Markup](#markup)). <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, findPlugin } from 'edytor';
+	import { Edytor, createFindPlugin, type FindController } from 'edytor';
 </script>
 
-<Edytor plugins={[findPlugin]} />
+{#snippet bar(find: FindController)}
+	<input value={find.query} oninput={(e) => (find.query = e.currentTarget.value)} {@attach find.field} />
+	<span>{find.matches.length ? `${find.current + 1} of ${find.matches.length}` : 'None'}</span>
+	<button onclick={find.next}>Next</button>
+	<button onclick={() => find.close()}>Done</button>
+{/snippet}
+
+<Edytor plugins={[createFindPlugin({ bar })]} />
 ```
 
-It is opt-in, not a [default plugin](/docs/plugins#default-plugins): without it, <kbd>Mod</kbd> + <kbd>F</kbd> is the browser's own find. `createFindPlugin({ bar })` builds one that renders your markup (see [Custom markup](#custom-markup)), and `createFindPlugin({ labels })` one in your language: its words, and the count as a function of the current match and the total (see [Localization](/docs/customization/localization)).
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins): without it, <kbd>Mod</kbd> + <kbd>F</kbd> is the browser's own find. Without a `bar`, <kbd>Mod</kbd> + <kbd>F</kbd> still searches and highlights the matches, and nothing else shows. The bar's words are your markup's.
 
 ## Searching
 
@@ -37,7 +44,7 @@ The replace row has a **Replace with** field and two buttons:
 
 Each is one command, `replaceMatches`, and one undo step: <kbd>Mod</kbd> + <kbd>Z</kbd> after Replace all brings every match back at once. The replacement takes the marks the replaced text had in common, as typing over a selection does: replacing a bold word gives a bold word.
 
-`onBeforeOperation` sees the command, with the payload `{ matches, replacement }` (`matches` as `{ block, offset, length }`, block display offsets), then each step it plans: a `deleteContentAtRange` and an `insertText` per match. A hook can refuse it with `prevent()`; nothing is then written. See [Operations](/docs/plugins/operations).
+`onBeforeOperation` sees the command, with the payload `{ matches, replacement }` (`matches` as `{ block, offset, length }`, block display offsets), then each step it plans: a `deleteText` and an `insertText` per match. A hook can refuse it with `prevent()`; nothing is then written. See [Operations](/docs/plugins/operations).
 
 A readonly view, or a view of a read-only document, shows no replace row and refuses a replacement. In a readonly view the keymap does not run, so <kbd>Mod</kbd> + <kbd>F</kbd> stays the browser's find; open the bar from code with `findController(edytor).open()`.
 
@@ -75,34 +82,9 @@ export const renameEverywhere = (edytor: EdytorInstance, from: string, to: strin
 
 ## Placement and styling
 
-The bar mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-find-host` and `z-index: 55`, at the editor's top right and inside the viewport. Its elements carry these attributes:
+The bar mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-find-host` and `z-index: 55`, at the editor's top right and inside the viewport. Its look is yours (the demo's is `FindBar.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome); give your bar `role="search"` and a name). The highlights are the plugin's: `data-edytor-find-match` rectangles in the overlay (`data-current` on the current match's), colored by `--edytor-find-match` and `--edytor-find-current`.
 
-| Attribute | Element |
-| --- | --- |
-| `data-edytor-find` | The bar (`role="search"`), rendered while open |
-| `data-edytor-find-query`, `data-edytor-find-replacement` | The two fields |
-| `data-edytor-find-count` | The count |
-| `data-edytor-find-case`, `data-edytor-find-previous`, `data-edytor-find-next`, `data-edytor-find-close` | The buttons of the first row |
-| `data-edytor-find-replace`, `data-edytor-find-replace-all` | The replace buttons |
-| `data-edytor-find-match` | A highlight rectangle in the overlay (`data-current` on the current match's) |
+## Markup
 
-The highlights use `--edytor-find-match` and `--edytor-find-current` for their colors, and the bar `--edytor-find-background` and `--edytor-find-color`.
+`createFindPlugin` takes a `bar` snippet, the bar. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `{@attach find.field}` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `{@attach find.replaceField}` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>. The example at the top of this page uses `field`.
 
-## Custom markup
-
-`createFindPlugin` takes a `bar` snippet that replaces the bar's content. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `use:find.field` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `use:find.replaceField` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>.
-
-```svelte title="CustomFind.svelte" check
-<script lang="ts">
-	import { Edytor, createFindPlugin, type FindController } from 'edytor';
-</script>
-
-{#snippet bar(find: FindController)}
-	<input value={find.query} oninput={(e) => (find.query = e.currentTarget.value)} use:find.field />
-	<span>{find.matches.length ? `${find.current + 1} of ${find.matches.length}` : 'None'}</span>
-	<button onclick={find.next}>Next</button>
-	<button onclick={() => find.close()}>Done</button>
-{/snippet}
-
-<Edytor plugins={[createFindPlugin({ bar })]} />
-```

@@ -9,18 +9,13 @@ import {
 } from '$lib/dnd/pragmatic.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
-import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
-import type { TableLabels } from '$lib/labels.js';
-import { iconOf } from '../icons.js';
-import {
-	attribute,
-	inPage,
-	keepFocus,
-	optionAttributes,
-	type MenuItemPayload,
-	type OptionAttributes
-} from '../chrome.js';
-import { tablePreview } from './dragPreview.js';
+import { takeKeys } from '$lib/events/onFocus.js';
+import { pin } from '$lib/surface/overlay.js';
+import { attribute, type MenuItemPayload } from '../chrome.js';
+import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.js';
+import { BandDrag, bandKey } from '../bands.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
+import { dragPreview } from '../blockHandles/dragPreview.js';
 import {
 	caretCell,
 	deleteColumn,
@@ -32,6 +27,8 @@ import {
 	moveRows,
 	widthOf
 } from './table.js';
+
+type Kind = 'row' | 'column';
 
 /**
  * A table's grid box and its rows and columns, layer-relative.
@@ -60,10 +57,11 @@ export type TableLayout = {
 };
 
 /**
- * A column resize in progress: where the pointer went down, where it is, the
- * width it started at, and the widest the room leaves it (`table.width.fit`);
- * the free room it started with and its right neighbour's width (none for
- * the last column), which give the neighbour's width (`table.width.neighbour`).
+ * A column resize in progress: its table and column, where the pointer went
+ * down and where it is, the width it started at, and the widest the room
+ * leaves it (`table.width.fit`); the free room it started with and its right
+ * neighbour's width (none for the last column), which give the neighbour's
+ * width (`table.width.neighbour`).
  */
 type Drag = {
 	table: string;
@@ -82,65 +80,59 @@ type Drag = {
  * own place), by position among the rows (columns), `0` before the first.
  * @internal
  */
-export type TableMove = {
-	kind: 'row' | 'column';
-	table: string;
-	id: string;
-	gap: number | null;
-};
+export type TableMove = { kind: Kind; table: string; id: string; gap: number | null };
 
 /** The drag data key naming the chrome a row's or a column's drag is from. */
 const MOVE = Symbol('edytor table move');
 /** How far past the table's box a drag still aims at it (the grips stand outside it). */
 const GUTTER = 32;
 
-/** The resolved widths of `grid`'s columns, as laid out (none where nothing is). */
-const trackWidths = (grid: HTMLElement): number[] =>
-	(grid.ownerDocument.defaultView?.getComputedStyle(grid).gridTemplateColumns ?? '')
-		.split(/\s+/)
-		.map((w) => Number.parseFloat(w))
-		.filter((w) => Number.isFinite(w));
+const styleOf = (node: HTMLElement) => node.ownerDocument.defaultView?.getComputedStyle(node);
 
 /** A computed length in pixels, `0` when none. */
 const px = (value: string | undefined) => Number.parseFloat(value ?? '') || 0;
 
+/** The resolved widths of `grid`'s columns, as laid out (none where nothing is). */
+const trackWidths = (grid: HTMLElement): number[] =>
+	(styleOf(grid)?.gridTemplateColumns ?? '')
+		.split(/\s+/)
+		.map(Number.parseFloat)
+		.filter(Number.isFinite);
+
+/** The grid element of a table block. */
+const gridNode = (table: Block | null | undefined) =>
+	table?.node?.querySelector<HTMLElement>('[data-edytor-table-grid]');
+
+/** A table's stored column entries (`data.columns`), each found by its column id. */
+const entriesOf = (table: Block): unknown[] => {
+	const stored = table.edytor.facade.blockDataOf(table.id)?.columns;
+	return Array.isArray(stored) ? stored : [];
+};
+const entryIndex = (entries: unknown[], id: string | undefined) =>
+	entries.findIndex((c) => (c as { id?: unknown } | null)?.id === id);
+
 type Point = { clientX: number; clientY: number };
 
-/** What a grip's menu acts on: a row of a table (its block id), or a column (its position). */
-export type TableMenu =
-	| { kind: 'row'; table: string; row: string }
-	| { kind: 'column'; table: string; column: number };
-
-/** A row of a grip's menu (insert, move, delete). */
-export type TableMenuRow = {
-	/**
-	 * `insert-above`, `insert-below`, `move-up`, `move-down`, `delete-row`;
-	 * `insert-left`, `insert-right`, `move-left`, `move-right`, `delete-column`.
-	 */
-	id: string;
-	/** Its words, in the plugin's labels. */
-	label: string;
-	/** Its built-in icon's name. */
-	icon: string;
-	/** It deletes. */
-	danger?: boolean;
-	/** Whether it can run now (Move up on the first row cannot). */
-	isEnabled: () => boolean;
-	run: () => unknown;
-};
+/** What a grip's menu acts on: a row (its block id) or a column (its id) of a table. */
+export type TableMenu = { kind: Kind; table: string; id: string };
 
 /**
- * One row of a grip's menu, for a custom `menu`: the row shape every menu
+ * A row of a grip's menu: `insert-above`, `insert-below`, `move-up`,
+ * `move-down`, `delete-row`; `insert-left`, `insert-right`, `move-left`,
+ * `move-right`, `delete-column`.
+ */
+export type TableMenuRow = { id: string };
+
+/**
+ * One row of a grip's menu, for your `menu`: the row shape every menu
  * shares (`item` is the row, `run` runs it and closes the menu), with
- * whether it can run now, whether it deletes, and its built-in icon.
+ * whether it can run now and whether it deletes.
  */
 export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
 	/** It cannot run now (`aria-disabled`): the keys skip it, a click does nothing. */
 	disabled: boolean;
 	/** It deletes. */
 	danger: boolean;
-	/** The built-in line icon as a CSS `mask-image` value, when the row has one. */
-	icon: string | undefined;
 };
 
 /**
@@ -149,11 +141,10 @@ export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
  * `button`): it drags the row or the column, a click opens its menu,
  * ArrowDown opens it too and Escape closes it, and it carries the ARIA
  * (`aria-haspopup`, `aria-expanded`, `aria-controls` while its menu is
- * open, its name unless you set one). The plugin centers it where the
- * grip stands.
+ * open; name it). The plugin centers it where the grip stands.
  */
 export type TableGripPayload = {
-	kind: 'row' | 'column';
+	kind: Kind;
 	/** The row's block id, or the column's id. */
 	id: string;
 	/** Its position among the table's rows (columns). */
@@ -162,14 +153,10 @@ export type TableGripPayload = {
 	expanded: boolean;
 	/** It is being dragged. */
 	dragging: boolean;
-	/** Its accessible name (`labels.rowMenu`, `labels.columnMenu`). */
-	label: string;
 	/** Open its menu, or close it when it is open (what a click does). */
 	toggle: () => void;
 	/** The grip's behavior and ARIA: `{@attach grip}`. */
 	grip: Attachment<HTMLElement>;
-	/** The plugin's words. */
-	labels: TableLabels;
 	/** The table's chrome (its menu, its actions). */
 	chrome: TableChrome;
 };
@@ -181,17 +168,10 @@ export type TableGripPayload = {
  * the editor's selection.
  */
 export type TableAddPayload = {
-	kind: 'row' | 'column';
-	/** Its accessible name (`labels.addRow`, `labels.addColumn`). */
-	label: string;
+	kind: Kind;
 	/** Add the row or the column. */
 	add: () => void;
-	/** The plugin's words. */
-	labels: TableLabels;
 };
-
-/** Where a grip stands, layer-relative: the point it centers on. */
-type GripPlace = { kind: 'row' | 'column'; id: string; index: number; x: number; y: number };
 
 /**
  * The table's chrome (`table.*`), in the overlay: while the pointer is over
@@ -205,22 +185,20 @@ type GripPlace = { kind: 'row' | 'column'; id: string; index: number; x: number;
  * drops the preview. Every action is a table command (`table.ts`): refused
  * when the view is readonly.
  *
- * What a custom `menu` snippet receives: the open menu (`menu`), its rows
+ * What a `menu` snippet receives: the open menu (`menu`), its rows
  * (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
- * attachments that keep the built-in keys and ARIA (`popup` and `keys` on
- * the menu's element, `option(index)` spread on each row), `close()` and
- * the plugin's `labels`. A grip's own attachment is its payload's `grip`.
+ * attachments that give it the keys and the ARIA (`popup` and `keys` on
+ * the menu's element, `option(index)` on each row) and `close()`.
+ * A grip's own attachment is its payload's `grip`.
  */
-export class TableChrome {
+export class TableChrome extends ChromeList {
 	/**
-	 * The table, row and column under the pointer.
+	 * The table, row and column (their ids) under the pointer.
 	 * @internal
 	 */
-	hovered = $state<{ table: string; row: string | null; column: number | null } | null>(null);
+	hovered = $state<{ table: string; row: string | null; column: string | null } | null>(null);
 	/** What the open grip menu acts on (`null`: none is open). */
 	menu = $state<TableMenu | null>(null);
-	/** The keyboard's row of the open menu, in `rows` (never a disabled one). */
-	index = $state(0);
 	/**
 	 * The measured table the chrome is for.
 	 * @internal
@@ -232,10 +210,10 @@ export class TableChrome {
 	 */
 	dragging = $state(false);
 	/**
-	 * The column resize in progress.
+	 * The column resize (its drag in progress, `band.drag`).
 	 * @internal
 	 */
-	drag = $state<Drag | null>(null);
+	band: BandDrag<Drag>;
 	/**
 	 * The row's or column's drag in progress (`table.drag`).
 	 * @internal
@@ -250,10 +228,7 @@ export class TableChrome {
 	cell: string | null = null;
 
 	constructor(
-		/** @internal */
-		readonly edytor: Edytor,
-		/** The words the chrome shows and says (the plugin's `labels`). */
-		readonly labels: TableLabels,
+		edytor: Edytor,
 		/**
 		 * A column's width when it sets none, and the narrowest a resize leaves.
 		 * @internal
@@ -261,7 +236,19 @@ export class TableChrome {
 		readonly columnWidth: number,
 		/** @internal */
 		readonly minColumnWidth: number
-	) {}
+	) {
+		super(edytor, 'table-menu', 'menu', (node) => {
+			const kind = this.menu?.kind;
+			if (!kind) return null;
+			node.setAttribute('data-edytor-table-menu', kind);
+			return {};
+		});
+		this.band = new BandDrag(edytor);
+	}
+
+	protected get count() {
+		return this.#rows.length;
+	}
 
 	/** The view is readonly (reactive): the chrome shows nothing. */
 	get readonly() {
@@ -269,11 +256,11 @@ export class TableChrome {
 	}
 
 	/**
-	 * A text selection is in progress: the chrome takes no pointer.
+	 * The column resize in progress.
 	 * @internal
 	 */
-	get selecting() {
-		return this.drag === null && this.edytor.selection.dragging;
+	get drag() {
+		return this.band.drag;
 	}
 
 	/**
@@ -288,19 +275,16 @@ export class TableChrome {
 	}
 
 	/**
-	 * The row the row grip stands for: the open menu's, else the hovered one.
-	 * @internal
+	 * What the `kind` grip stands for now (the open menu's row or column,
+	 * else the hovered one): its table, id and position; `null` when none.
 	 */
-	get gripRow(): string | null {
-		return this.menu?.kind === 'row' ? this.menu.row : (this.hovered?.row ?? null);
-	}
-
-	/**
-	 * The column (by position) the column grip stands for: the open menu's, else the hovered one.
-	 * @internal
-	 */
-	get gripColumn(): number | null {
-		return this.menu?.kind === 'column' ? this.menu.column : (this.hovered?.column ?? null);
+	#source(kind: Kind) {
+		const table = this.block(this.table);
+		const grid = gridOf(table);
+		const id = this.menu?.kind === kind ? this.menu.id : this.hovered?.[kind];
+		const ids = kind === 'row' ? grid?.rows.map((row) => row.id) : grid?.columns;
+		const index = id ? (ids?.indexOf(id) ?? -1) : -1;
+		return table && grid && index >= 0 ? { table, grid, id: id!, index } : null;
 	}
 
 	/**
@@ -308,8 +292,7 @@ export class TableChrome {
 	 * @internal
 	 */
 	track = () => {
-		if (this.edytor.selection.value.kind !== 'text') return;
-		this.cell = caretCell(this.edytor)?.id ?? null;
+		if (this.edytor.selection.value.kind === 'text') this.cell = caretCell(this.edytor)?.id ?? null;
 	};
 
 	/**
@@ -339,8 +322,8 @@ export class TableChrome {
 	 * @internal
 	 */
 	inView = (x: number) => {
-		const layout = this.layout;
-		return !!layout && x >= layout.view.left - 1 && x <= layout.view.right + 1;
+		const view = this.layout?.view;
+		return !!view && x >= view.left - 1 && x <= view.right + 1;
 	};
 
 	/**
@@ -356,36 +339,39 @@ export class TableChrome {
 	}
 
 	/**
-	 * Where the row grip stands: on the grid's left edge, at the middle of the
-	 * row it stands for (`gripRow`); layer-relative, the point it centers on.
-	 * @internal
+	 * The open menu's or the hovered row's and column's lines in the
+	 * measured table, with their positions.
 	 */
-	get rowGrip(): GripPlace | null {
+	#lines(kind: Kind) {
 		const layout = this.layout;
-		const id = this.gripRow;
-		const index = layout && id ? layout.rows.findIndex((row) => row.id === id) : -1;
-		const row = layout?.rows[index];
-		return layout && row
-			? { kind: 'row', id: row.id, index, x: layout.left, y: row.top + row.height / 2 }
-			: null;
+		const id = this.menu?.kind === kind ? this.menu.id : this.hovered?.[kind];
+		const lines: { id: string }[] = (kind === 'row' ? layout?.rows : layout?.columns) ?? [];
+		const index = lines.findIndex((line) => line.id === id);
+		return index < 0 ? null : { layout: layout!, index, id: id! };
 	}
 
 	/**
-	 * Where the column grip stands: on the grid's top edge, at the middle of
-	 * the column it stands for (`gripColumn`), while that middle shows (the
-	 * grip a drag started from stays, its source, even scrolled out of view).
+	 * Where the grips stand, layer-relative, the point each centers on: the
+	 * row grip on the grid's left edge, at the middle of the row it stands
+	 * for; the column grip on its top edge, at the middle of the column it
+	 * stands for, while that middle shows (the grip a drag started from
+	 * stays, its source, even scrolled out of view).
 	 * @internal
 	 */
-	get columnGrip(): GripPlace | null {
-		const layout = this.layout;
-		const index = this.gripColumn;
-		const column = index === null ? undefined : layout?.columns[index];
-		if (!layout || index === null || !column) return null;
-		const x = column.left + column.width / 2;
-		const source = this.moving?.kind === 'column';
-		return source || this.inView(x)
-			? { kind: 'column', id: column.id, index, x, y: layout.top }
-			: null;
+	get grips(): { kind: Kind; id: string; index: number; x: number; y: number }[] {
+		const row = this.#lines('row');
+		const column = this.#lines('column');
+		const r = row && row.layout.rows[row.index]!;
+		const c = column && column.layout.columns[column.index]!;
+		const x = c ? c.left + c.width / 2 : 0;
+		return [
+			...(row && r
+				? [{ ...row, kind: 'row' as const, x: row.layout.left, y: r.top + r.height / 2 }]
+				: []),
+			...(column && (this.moving?.kind === 'column' || this.inView(x))
+				? [{ ...column, kind: 'column' as const, x, y: column.layout.top }]
+				: [])
+		];
 	}
 
 	/**
@@ -393,17 +379,17 @@ export class TableChrome {
 	 * the one beside it (as tall as the grid, while its right edge shows).
 	 * @internal
 	 */
-	get bars() {
+	get bars(): { kind: Kind; left: number; top: number; width?: number; height?: number }[] {
 		const layout = this.layout;
-		if (!layout) return { row: null, column: null };
+		if (!layout) return [];
 		const { left, width } = this.span;
 		const right = layout.left + layout.width;
-		return {
-			row: { left, top: layout.top + layout.height + 2, width },
-			column: this.inView(right)
-				? { left: right + 2, top: layout.top, height: layout.height }
-				: null
-		};
+		return [
+			{ kind: 'row', left, top: layout.top + layout.height + 2, width },
+			...(this.inView(right)
+				? [{ kind: 'column' as const, left: right + 2, top: layout.top, height: layout.height }]
+				: [])
+		];
 	}
 
 	/**
@@ -411,15 +397,38 @@ export class TableChrome {
 	 * @internal
 	 */
 	get menuPlace(): { left: number; top: number } | null {
-		const menu = this.menu;
-		const layout = this.layout;
-		if (!menu || !layout) return null;
-		if (menu.kind === 'row') {
-			const row = layout.rows.find((r) => r.id === menu.row);
-			return row ? { left: layout.left - 9, top: row.top + Math.min(row.height, 28) } : null;
+		const kind = this.menu?.kind;
+		const at = kind && this.#lines(kind);
+		if (!at) return null;
+		const { layout, index } = at;
+		if (kind === 'row') {
+			const row = layout.rows[index]!;
+			return { left: layout.left - 9, top: row.top + Math.min(row.height, 28) };
 		}
-		const column = layout.columns[menu.column];
-		return column ? { left: column.left + column.width / 2 - 12, top: layout.top + 10 } : null;
+		const column = layout.columns[index]!;
+		return { left: column.left + column.width / 2 - 12, top: layout.top + 10 };
+	}
+
+	/**
+	 * The drop line of a grip's drag, layer-relative: between two rows
+	 * (columns), where the drop would land.
+	 * @internal
+	 */
+	get line() {
+		const move = this.moving;
+		const gap = move?.gap ?? null;
+		const layout = this.layout;
+		if (!move || gap === null || !layout) return null;
+		const row = move.kind === 'row';
+		const lines = row ? layout.rows : layout.columns.map((c) => ({ top: c.left, height: c.width }));
+		const last = lines.at(-1);
+		const at = lines[gap]?.top ?? (last && last.top + last.height);
+		if (at === undefined) return null;
+		if (row)
+			return { kind: move.kind, gap, left: this.span.left, top: at - 2, width: this.span.width };
+		return this.inView(at)
+			? { kind: move.kind, gap, left: at - 2, top: layout.top, height: layout.height }
+			: null;
 	}
 
 	/**
@@ -429,27 +438,25 @@ export class TableChrome {
 	 */
 	width = (table: string, index: number, column: unknown): number => {
 		const drag = this.drag;
-		if (drag && drag.table === table && drag.column === index) return this.dragWidth(drag);
-		if (drag && drag.table === table && drag.column + 1 === index) {
-			const next = this.nextWidth(drag);
-			if (next !== undefined) return next;
-		}
-		return widthOf(column, this.columnWidth);
+		const at = drag?.table === table ? index - drag.column : -1;
+		const preview =
+			at === 0 ? this.#dragWidth(drag!) : at === 1 ? this.#nextWidth(drag!) : undefined;
+		return preview ?? widthOf(column, this.columnWidth);
 	};
 
 	/** The resize's width: the pointer's, between the minimum and the room's (`table.width.fit`). */
-	private dragWidth = (drag: Drag) =>
+	#dragWidth = (drag: Drag) =>
 		Math.max(this.minColumnWidth, Math.min(drag.max, Math.round(drag.width + drag.at - drag.from)));
 
 	/**
-	 * The right neighbour's width while column `drag.column` is `dragWidth`
+	 * The right neighbour's width while column `drag.column` is `#dragWidth`
 	 * (`table.width.neighbour`): the column grows into the free room first,
 	 * then what it gains past it comes off its neighbour, down to the
 	 * minimum; a narrowing gives nothing back.
 	 */
-	private nextWidth(drag: Drag): number | undefined {
+	#nextWidth(drag: Drag): number | undefined {
 		if (drag.next === undefined) return undefined;
-		const take = Math.max(0, this.dragWidth(drag) - drag.width - drag.slack);
+		const take = Math.max(0, this.#dragWidth(drag) - drag.width - drag.slack);
 		return Math.max(Math.min(drag.next, this.minColumnWidth), drag.next - take);
 	}
 
@@ -457,37 +464,27 @@ export class TableChrome {
 	 * The widths `table`'s grid shows, by position (its columns' stored
 	 * widths, else the default one): what its template reads, the model's.
 	 */
-	private widthsOf(table: Block): number[] {
-		const columns = gridOf(table)?.columns ?? [];
-		const stored = table.edytor.facade.blockDataOf(table.id)?.columns;
-		const entries: unknown[] = Array.isArray(stored) ? stored : [];
-		return columns.map((id) =>
-			widthOf(
-				entries.find((c) => (c as { id?: unknown } | null)?.id === id),
-				this.columnWidth
-			)
+	#widthsOf(table: Block): number[] {
+		const entries = entriesOf(table);
+		return (gridOf(table)?.columns ?? []).map((id) =>
+			widthOf(entries[entryIndex(entries, id)], this.columnWidth)
 		);
 	}
 
 	/**
-	 * A resize of column `column` of `table`, pressed at `from` (`table.width.fit`,
-	 * `table.width.neighbour`): the column may grow by the room the table
-	 * leaves free and by what its right neighbour can give (down to the
-	 * minimum), so the table never gets wider; it may always narrow.
+	 * A resize of column `column` of the measured table, pressed at `from`
+	 * (`table.width.fit`, `table.width.neighbour`): the column may grow by the
+	 * room the table leaves free and by what its right neighbour can give
+	 * (down to the minimum), so the table never gets wider; it may always narrow.
 	 */
-	private resize(
-		table: Block,
-		column: number,
-		room: number,
-		from: number,
-		at: number
-	): Drag | null {
-		const widths = this.widthsOf(table);
+	#resize(column: number, from: number, at: number): Drag | null {
+		const layout = this.layout;
+		const table = this.block(layout?.table);
+		const widths = table ? this.#widthsOf(table) : [];
 		const width = widths[column];
-		if (width === undefined) return null;
+		if (!layout || !table || width === undefined) return null;
 		const next = widths[column + 1];
-		const total = widths.reduce((sum, w) => sum + w, 0);
-		const slack = Math.max(0, room - total);
+		const slack = Math.max(0, layout.room - widths.reduce((sum, w) => sum + w, 0));
 		const gives = next === undefined ? 0 : next - Math.min(next, this.minColumnWidth);
 		const max = Math.floor(width + slack + gives);
 		return { table: table.id, column, from, at, width, max, slack, next };
@@ -502,20 +499,18 @@ export class TableChrome {
 		if (this.moving) return;
 		const element = target instanceof Element ? target : null;
 		const cell = element?.closest<HTMLElement>('[data-edytor-table-cell], [data-edytor-table-pad]');
-		const tableNode = element?.closest<HTMLElement>('[data-edytor-table]');
-		const table = tableNode?.dataset.edytorId ?? null;
-		let next: TableChrome['hovered'] = null;
-		if (table && this.block(table)) {
-			const rowNode = cell?.closest<HTMLElement>('[data-edytor-table-row]');
-			const row = rowNode?.dataset.edytorId ?? null;
-			const column = cell ? Number(cell.dataset.edytorColumn) : NaN;
-			next = { table, row, column: Number.isInteger(column) ? column : null };
-		}
-		const was = this.hovered;
-		if (was?.table === next?.table && was?.row === next?.row && was?.column === next?.column)
-			return;
+		const table = element?.closest<HTMLElement>('[data-edytor-table]')?.dataset.edytorId;
+		const grid = gridOf(this.block(table));
+		const next =
+			table && grid
+				? {
+						table,
+						row: cell?.closest<HTMLElement>('[data-edytor-table-row]')?.dataset.edytorId ?? null,
+						column: grid.columns[Number(cell?.dataset.edytorColumn)] ?? null
+					}
+				: null;
 		// Over the chrome (a grip, the `+`), the row and column it is for stay.
-		if (next === null && this.menu) return;
+		if (JSON.stringify(next) === JSON.stringify(this.hovered) || (!next && this.menu)) return;
 		this.hovered = next;
 		this.edytor.overlay.invalidate();
 	};
@@ -537,26 +532,26 @@ export class TableChrome {
 	 * @internal
 	 */
 	measure = (host: HTMLElement, origin: DOMRect) => {
-		const layout = this.shown ? this.read(origin) : null;
+		const layout = this.shown ? this.#read(origin) : null;
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
-			if (!sameLayout(layout, this.layout)) this.layout = layout;
+			pin(host);
+			if (JSON.stringify(layout) !== JSON.stringify(this.layout)) this.layout = layout;
 		};
 	};
 
-	private read(origin: DOMRect): TableLayout | null {
+	#read(origin: DOMRect): TableLayout | null {
 		const table = this.block(this.table);
-		const grid = table?.node?.querySelector<HTMLElement>('[data-edytor-table-grid]');
+		const grid = gridNode(table);
 		const columns = gridOf(table)?.columns;
 		if (!table || !grid?.isConnected || !columns) return null;
 		const box = grid.getBoundingClientRect();
 		const widths = trackWidths(grid);
-		let x = box.left - origin.left;
+		const left = box.left - origin.left;
+		let x = left;
 		const cols = columns.map((id, i) => {
 			const width = widths[i] ?? this.columnWidth;
-			const col = { id, left: x, width };
 			x += width;
-			return col;
+			return { id, left: x - width, width };
 		});
 		const rows = table.children.flatMap((row) => {
 			const rect = row.node?.getBoundingClientRect();
@@ -565,47 +560,37 @@ export class TableChrome {
 		// The box the grid scrolls in: its client box is what shows, and the room.
 		const scroller = grid.closest<HTMLElement>('[data-edytor-table-scroll]') ?? grid.parentElement;
 		const inner = scroller?.clientWidth ?? 0;
-		const clip = inner > 0 ? scroller?.getBoundingClientRect() : undefined;
-		const style = grid.ownerDocument.defaultView?.getComputedStyle(grid);
-		const border = px(style?.borderLeftWidth) + px(style?.borderRightWidth);
-		const left = clip ? clip.left + (scroller?.clientLeft ?? 0) - origin.left : 0;
+		const clip = inner > 0 ? scroller!.getBoundingClientRect() : undefined;
+		const style = styleOf(grid);
+		const at = clip ? clip.left + scroller!.clientLeft - origin.left : 0;
 		return {
 			table: table.id,
-			left: box.left - origin.left,
+			left,
 			top: box.top - origin.top,
-			width: Math.min(box.width, x - (box.left - origin.left)) || box.width,
+			width: Math.min(box.width, x - left) || box.width,
 			height: box.height,
 			rows,
 			columns: cols,
-			view: clip ? { left, right: left + inner } : { left: -Infinity, right: Infinity },
-			room: clip ? inner - border : Infinity
+			view: clip ? { left: at, right: at + inner } : { left: -Infinity, right: Infinity },
+			room: clip ? inner - px(style?.borderLeftWidth) - px(style?.borderRightWidth) : Infinity
 		};
 	}
 
 	/**
-	 * Open the menu of a row's or a column's grip (a second press on it
-	 * closes it), its first row that can run the keyboard's.
+	 * Open the `kind` grip's menu on the row or column it stands for, its
+	 * first row that can run the keyboard's, or close it when it is open
+	 * there (a grip's click).
 	 */
-	open = (menu: TableMenu) => {
-		const same =
-			this.menu?.kind === menu.kind &&
-			this.menu.table === menu.table &&
-			(menu.kind === 'row'
-				? (this.menu as { row: string }).row === menu.row
-				: (this.menu as { column: number }).column === menu.column);
-		this.menu = same ? null : menu;
-		if (!same) this.index = Math.max(0, this.#enabled()[0] ?? 0);
+	toggle = (kind: Kind) => {
+		const source = this.#source(kind);
+		const open = this.menu?.kind === kind;
+		this.menu = open || !source ? null : { kind, table: source.table.id, id: source.id };
+		if (this.menu)
+			this.index = Math.max(
+				0,
+				this.#rows.findIndex((row) => !row.disabled)
+			);
 		this.edytor.overlay.invalidate();
-	};
-
-	/** Open the `kind` grip's menu on the row or column it stands for, or close it (a grip's click). */
-	toggle = (kind: TableMenu['kind']) => {
-		const source = this.source(kind);
-		if (!source) return;
-		const { table, id, index } = source;
-		this.open(
-			kind === 'row' ? { kind, table: table.id, row: id } : { kind, table: table.id, column: index }
-		);
 	};
 
 	/** Whether a menu is open (reactive). */
@@ -620,88 +605,74 @@ export class TableChrome {
 		takeKeys(this.edytor);
 	};
 
-	/** The menu element's id (page-unique), for `aria-controls`. */
-	get menuId() {
-		return this.edytor.popups.idOf('table-menu');
+	/**
+	 * The open menu's rows: insert before and after, move back and forth,
+	 * delete (whether each can run now; the last deletes).
+	 */
+	get #rows(): { id: string; disabled: boolean; run: () => unknown }[] {
+		const kind = this.menu?.kind;
+		const at = kind && this.#source(kind);
+		if (!at) return [];
+		const { table, grid, id, index } = at;
+		const row = kind === 'row';
+		const block = this.edytor.idToBlock.get(id);
+		const last = (row ? grid.rows : grid.columns).length - 1;
+		const insert = (to: number) => (row ? insertRow(table, to, true) : insertColumn(table, to));
+		const move = (to: number) => (row ? moveRows(table, [block!], to) : moveColumn(table, id, to));
+		const [before, after, back, forth] = row
+			? ['above', 'below', 'up', 'down']
+			: ['left', 'right', 'left', 'right'];
+		return [
+			{ id: `insert-${before}`, disabled: false, run: () => insert(index) },
+			{ id: `insert-${after}`, disabled: false, run: () => insert(index + 1) },
+			{ id: `move-${back}`, disabled: index === 0, run: () => move(index - 1) },
+			{ id: `move-${forth}`, disabled: index === last, run: () => move(index + 1) },
+			{
+				id: `delete-${kind}`,
+				disabled: false,
+				run: () => (row ? deleteRows(table, [block!]) : deleteColumn(table, id))
+			}
+		];
 	}
 
-	/** A row's element id (page-unique), for `aria-activedescendant`. */
-	rowId = (row: TableMenuRow) => this.edytor.popups.idOf(`table-menu-${row.id}`);
-
-	/** The positions in `rows` of the rows that can run now. */
-	#enabled = () => this.rows.flatMap((row, index) => (row.isEnabled() ? [index] : []));
-
 	/**
-	 * The open menu's rows for a custom `menu`: each the row shape every menu
+	 * The open menu's rows for your `menu`: each the row shape every menu
 	 * shares (`run` runs it and closes the menu, `select` makes it the
 	 * keyboard's, `option` its attributes), whether it can run now
-	 * (`disabled`), whether it deletes (`danger`), and its icon.
+	 * (`disabled`) and whether it deletes (`danger`).
 	 */
 	get items(): TableMenuItem[] {
-		return this.rows.map((row, index) => {
-			const disabled = !row.isEnabled();
-			return {
-				item: row,
-				id: this.rowId(row),
-				label: row.label,
-				selected: index === this.index,
-				disabled,
-				danger: Boolean(row.danger),
-				icon: iconOf(row.icon),
-				run: () => this.runRow(row),
-				select: () => {
-					if (!disabled) this.index = index;
-				},
-				option: this.option(index)
-			};
-		});
+		return this.#rows.map(({ id, disabled, run }, index) => ({
+			item: { id },
+			id: this.rowId(index),
+			selected: index === this.index,
+			disabled,
+			danger: id.startsWith('delete'),
+			run: () => {
+				if (disabled) return;
+				this.menu = this.hovered = null;
+				takeKeys(this.edytor);
+				run();
+				this.edytor.overlay.invalidate();
+			},
+			select: () => {
+				if (!disabled) this.index = index;
+			},
+			option: this.option(index)
+		}));
 	}
 
 	/**
-	 * The attributes of the open menu's row at `index`: spread them on its
-	 * element (`{...chrome.option(index)}`). Its id, `menuitem` role,
-	 * `aria-disabled` when it cannot run now, `data-selected` for the
-	 * keyboard's row, which scrolls into view.
+	 * The attachment of the open menu's row at `index`
+	 * (`{@attach chrome.option(index)}`). Its id, `menuitem` role,
+	 * `aria-disabled` when it cannot run now; the keyboard's row scrolls into
+	 * view. The menu's element takes
+	 * `data-edytor-table-menu` (the kind it is open on) from `popup`.
 	 */
-	option = (index: number): OptionAttributes => {
-		const row = this.rows[index];
-		const id = row ? this.rowId(row) : this.edytor.popups.idOf(`table-menu-${index}`);
-		return optionAttributes(
-			id,
-			'menuitem',
-			index === this.index,
-			row && !row.isEnabled() ? { 'aria-disabled': true } : {}
-		);
-	};
-
-	/**
-	 * The menu's element (`{@attach chrome.popup}`): its id, `menu` role and
-	 * name (Row options, Column options) unless it has its own, presses that
-	 * keep the focus, and its publication to the view's root
-	 * (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in
-	 * the page; `data-edytor-table-menu` names the kind it is open on.
-	 */
-	popup: Attachment<HTMLElement> = (node) =>
-		untrack(() => {
-			node.id = this.menuId;
-			if (!node.hasAttribute('role')) node.setAttribute('role', 'menu');
-			const named = node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby');
-			node.addEventListener('mousedown', keepFocus);
-			$effect(() => {
-				const kind = this.menu?.kind;
-				if (!kind) return;
-				node.setAttribute('data-edytor-table-menu', kind);
-				if (!named)
-					attribute(
-						node,
-						'aria-label',
-						kind === 'row' ? this.labels.rowMenu : this.labels.columnMenu
-					);
-				this.edytor.popups.set('table-menu', { id: this.menuId, haspopup: 'menu' });
-				return () => this.edytor.popups.set('table-menu', null);
-			});
-			return () => node.removeEventListener('mousedown', keepFocus);
-		});
+	option(index: number): Attachment<HTMLElement> {
+		const extra = this.#rows[index]?.disabled ? { 'aria-disabled': true } : {};
+		return optionAttachment(this.rowId(index), 'menuitem', index === this.index, extra);
+	}
 
 	/**
 	 * The element that holds the menu's keyboard (`{@attach chrome.keys}`,
@@ -714,35 +685,22 @@ export class TableChrome {
 	keys: Attachment<HTMLElement> = (node) =>
 		untrack(() => {
 			if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
-			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
-			node.addEventListener('keydown', this.#keydown);
-			$effect(() => {
-				const row = this.rows[this.index];
-				attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row)));
-			});
-			return () => node.removeEventListener('keydown', this.#keydown);
+			return holdKeys(node, this.#keydown, () => this.rowId(this.index));
 		});
 
 	/** The menu's keys (`keys`). */
 	#keydown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || event.isComposing) return;
-		const enabled = this.#enabled();
-		const at = enabled.indexOf(this.index);
-		const { key } = event;
-		if (key === 'ArrowDown' || key === 'ArrowUp') {
-			const step = key === 'ArrowDown' ? 1 : -1;
-			const count = enabled.length;
-			if (count) this.index = enabled[(at + step + count) % count]!;
-		} else if (key === 'Home' || key === 'End') {
-			const index = key === 'Home' ? enabled[0] : enabled.at(-1);
-			if (index !== undefined) this.index = index;
-		} else if (key === 'Enter' || key === ' ') {
-			const row = this.rows[this.index];
-			if (row) this.runRow(row);
-		} else if (key === 'Escape' || key === 'Tab') this.close();
-		else return;
-		event.preventDefault();
-		event.stopPropagation();
+		const items = this.items;
+		const menu = {
+			at: this.index,
+			count: items.length,
+			to: (index: number) => (this.index = index),
+			pick: () => items[this.index]?.run(),
+			close: this.close
+		};
+		if (menuKey(event, menu, { usable: (index) => !items[index]!.disabled }))
+			event.stopPropagation();
 	};
 
 	/**
@@ -750,261 +708,91 @@ export class TableChrome {
 	 * `grip` snippet's payload carries it): in an editable view, dragging it
 	 * moves its row or column within its table (`table.drag`); a click with
 	 * no drag opens or closes its menu; ArrowDown opens the menu, Escape
-	 * closes it and gives the keys back to the editor. It names the element (its own name wins) and carries
+	 * closes it and gives the keys back to the editor. It carries
 	 * `aria-haspopup`, `aria-expanded`, `aria-controls` while its menu is
 	 * open, and `data-dragging` during its drag. A press on it is never
 	 * prevented: that would stop the native drag.
 	 */
-	gripOf = (kind: TableMenu['kind']): Attachment<HTMLElement> =>
+	gripOf = (kind: Kind): Attachment<HTMLElement> =>
 		(this.#grips[kind] ??= (node) => untrack(() => this.#grip(node, kind)));
 
-	#grips: Partial<Record<TableMenu['kind'], Attachment<HTMLElement>>> = {};
+	#grips: Partial<Record<Kind, Attachment<HTMLElement>>> = {};
 
-	#grip = (node: HTMLElement, kind: TableMenu['kind']) => {
-		if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-			node.setAttribute(
-				'aria-label',
-				kind === 'row' ? this.labels.rowMenu : this.labels.columnMenu
-			);
+	#grip = (node: HTMLElement, kind: Kind) => {
 		node.setAttribute('aria-haspopup', 'menu');
-		const click = () => this.toggle(kind);
-		const keydown = (event: KeyboardEvent) => {
-			// Escape gives the keys back to the editor (closing the menu if open).
-			if (event.key === 'Escape') this.close();
-			else if (event.key === 'ArrowDown' && this.menu?.kind !== kind) this.toggle(kind);
-			else return;
-			event.preventDefault();
-			event.stopPropagation();
-		};
-		node.addEventListener('click', click);
-		node.addEventListener('keydown', keydown);
 		$effect(() => {
 			const open = this.menu?.kind === kind;
 			attribute(node, 'aria-expanded', String(open));
-			attribute(node, 'aria-controls', open ? this.menuId : undefined);
+			attribute(node, 'aria-controls', open ? this.listId : undefined);
 			attribute(node, 'data-dragging', this.moving?.kind === kind ? 'true' : undefined);
 		});
-		const cleanup = draggable({
-			element: node,
-			canDrag: () =>
-				!this.edytor.readonly && this.edytor.dispatcher.permits() && this.source(kind) !== null,
-			getInitialData: () => ({ [MOVE]: this }),
-			// The editor's own drag: no view takes it as a foreign drop.
-			getInitialDataForExternal: () => {
-				const source = this.source(kind);
-				return { [EDYTOR_BLOCK_DRAG_MIME]: (kind === 'row' ? source?.id : source?.table.id) ?? '' };
-			},
-			onGenerateDragPreview: ({ nativeSetDragImage, location }) =>
-				this.begin(kind, node, location.current.input, nativeSetDragImage),
-			// The drag library tells the source before the drop target: the drop runs first.
-			onDrop: () => queueMicrotask(() => this.finish())
-		});
-		return () => {
-			node.removeEventListener('click', click);
-			node.removeEventListener('keydown', keydown);
-			cleanup();
-		};
-	};
-
-	/** The rows of the open menu. */
-	get rows(): TableMenuRow[] {
-		const menu = this.menu;
-		const table = this.block(menu?.table);
-		const grid = gridOf(table);
-		if (!menu || !table || !grid) return [];
-		const { labels } = this;
-		if (menu.kind === 'row') {
-			const index = grid.rows.findIndex((r) => r.id === menu.row);
-			const row = this.edytor.idToBlock.get(menu.row);
-			if (index < 0 || !row) return [];
-			const last = grid.rows.length - 1;
-			return [
-				{
-					id: 'insert-above',
-					label: labels.insertAbove,
-					icon: 'action.up',
-					isEnabled: () => true,
-					run: () => insertRow(table, index, true)
+		const off = all(
+			listen(node, 'click', () => this.toggle(kind)),
+			listen(node, 'keydown', (event: KeyboardEvent) => {
+				// Escape gives the keys back to the editor (closing the menu if open).
+				if (event.key === 'Escape') this.close();
+				else if (event.key === 'ArrowDown' && this.menu?.kind !== kind) this.toggle(kind);
+				else return;
+				event.preventDefault();
+				event.stopPropagation();
+			}),
+			draggable({
+				element: node,
+				canDrag: () =>
+					!this.edytor.readonly && this.edytor.dispatcher.permits() && this.#source(kind) !== null,
+				getInitialData: () => ({ [MOVE]: this }),
+				// The editor's own drag: no view takes it as a foreign drop.
+				getInitialDataForExternal: () => {
+					const source = this.#source(kind);
+					return {
+						[EDYTOR_BLOCK_DRAG_MIME]: (kind === 'row' ? source?.id : source?.table.id) ?? ''
+					};
 				},
-				{
-					id: 'insert-below',
-					label: labels.insertBelow,
-					icon: 'action.down',
-					isEnabled: () => true,
-					run: () => insertRow(table, index + 1, true)
-				},
-				{
-					id: 'move-up',
-					label: labels.moveUp,
-					icon: 'action.up',
-					isEnabled: () => index > 0,
-					run: () => moveRows(table, [row], index - 1)
-				},
-				{
-					id: 'move-down',
-					label: labels.moveDown,
-					icon: 'action.down',
-					isEnabled: () => index < last,
-					run: () => moveRows(table, [row], index + 1)
-				},
-				{
-					id: 'delete-row',
-					label: labels.deleteRow,
-					icon: 'action.delete',
-					danger: true,
-					isEnabled: () => true,
-					run: () => deleteRows(table, [row])
-				}
-			];
-		}
-		const index = menu.column;
-		const column = grid.columns[index];
-		if (column === undefined) return [];
-		const last = grid.columns.length - 1;
-		return [
-			{
-				id: 'insert-left',
-				label: labels.insertLeft,
-				icon: 'table.left',
-				isEnabled: () => true,
-				run: () => insertColumn(table, index)
-			},
-			{
-				id: 'insert-right',
-				label: labels.insertRight,
-				icon: 'table.right',
-				isEnabled: () => true,
-				run: () => insertColumn(table, index + 1)
-			},
-			{
-				id: 'move-left',
-				label: labels.moveLeft,
-				icon: 'table.left',
-				isEnabled: () => index > 0,
-				run: () => moveColumn(table, index, index - 1)
-			},
-			{
-				id: 'move-right',
-				label: labels.moveRight,
-				icon: 'table.right',
-				isEnabled: () => index < last,
-				run: () => moveColumn(table, index, index + 1)
-			},
-			{
-				id: 'delete-column',
-				label: labels.deleteColumn,
-				icon: 'action.delete',
-				danger: true,
-				isEnabled: () => true,
-				run: () => deleteColumn(table, index)
-			}
-		];
-	}
-
-	/** Run a menu row, then close the menu. */
-	runRow = (row: TableMenuRow) => {
-		if (!row.isEnabled()) return;
-		this.menu = null;
-		this.hovered = null;
-		takeKeys(this.edytor);
-		row.run();
-		this.edytor.overlay.invalidate();
-	};
-
-	/** The `+` under the table: a row at its end, the caret in its first cell. */
-	addRow = () => {
-		const table = this.block(this.table);
-		const grid = gridOf(table);
-		if (!table || !grid) return;
-		takeKeys(this.edytor);
-		insertRow(table, grid.rows.length, true);
-	};
-
-	/** The `+` beside the table: a column at its end. */
-	addColumn = () => {
-		const table = this.block(this.table);
-		const grid = gridOf(table);
-		if (!table || !grid) return;
-		takeKeys(this.edytor);
-		insertColumn(table, grid.columns.length);
+				onGenerateDragPreview: ({ nativeSetDragImage, location }) =>
+					this.#begin(kind, node, location.current.input, nativeSetDragImage),
+				// The drag library tells the source before the drop target: the drop runs first.
+				onDrop: () =>
+					queueMicrotask(() => {
+						for (const release of this.#releases.splice(0)) release();
+						this.moving = null;
+						this.edytor.overlay.invalidate();
+					})
+			})
+		);
+		return off;
 	};
 
 	/**
-	 * A `mousedown` on a band: no native selection; the press itself when no `pointerdown` came.
+	 * The `+` under the table (`row`: a row at its end, the caret in its
+	 * first cell) or beside it (a column at its end).
 	 * @internal
 	 */
-	mousedown = (event: MouseEvent, column: number) => {
-		event.preventDefault();
-		if (isLonePress(this.edytor, event)) this.start(event, column);
+	add = (kind: Kind) => {
+		const table = this.block(this.table);
+		const grid = gridOf(table);
+		if (!table || !grid) return;
+		takeKeys(this.edytor);
+		if (kind === 'row') insertRow(table, grid.rows.length, true);
+		else insertColumn(table, grid.columns.length);
 	};
 
 	/**
-	 * Press on column `column`'s band: the drag starts; the preview follows
-	 * the pointer and the release writes the width (`release`); Escape, a
-	 * cancel or the view turning readonly drop the preview, nothing written.
+	 * Press on column `column`'s band (its `pointerdown`, or its lone
+	 * `mousedown`): the drag starts; the preview follows the pointer and the
+	 * release writes the width (`#release`); Escape, a cancel or the view
+	 * turning readonly drop the preview, nothing written.
 	 * @internal
 	 */
 	start = (event: PointerEvent | MouseEvent, column: number) => {
-		const { edytor } = this;
-		const layout = this.layout;
-		if (event.button !== 0 || edytor.readonly || this.drag || !layout) return;
-		const col = layout.columns[column];
-		if (!col) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement | null;
-		const pointer = event.type === 'pointerdown';
-		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
-		const table = this.block(layout.table);
-		if (!table) return;
-		const drag = this.resize(table, column, layout.room, event.clientX, event.clientX);
-		if (!drag) return;
+		const drag = this.band.drag ? null : this.#resize(column, event.clientX, event.clientX);
+		const shown = this.layout?.columns[column]?.width;
+		if (!drag || shown === undefined) return;
 		// The press starts from the width the grid shows.
-		this.drag = { ...drag, width: col.width, max: Math.max(drag.max, col.width) };
-		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const tracked = pointer ? document : document?.defaultView;
-		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
-		const move = (moved: MouseEvent) => {
-			if (!this.drag) return;
-			if (!edytor.dispatcher.permits()) return end(moved);
-			this.drag.at = moved.clientX;
-			edytor.overlay.invalidate();
-		};
-		const end = (ended: Event) => {
-			tracked?.removeEventListener(moves, move as EventListener);
-			tracked?.removeEventListener(ups, end);
-			tracked?.removeEventListener('pointercancel', end);
-			document?.removeEventListener('keydown', escape, true);
-			const drag = this.drag;
-			if (drag && ended.type === ups) {
-				drag.at = (ended as MouseEvent).clientX;
-				this.release(drag);
-				takeKeys(edytor);
-			}
-			this.drag = null;
-			edytor.overlay.invalidate();
-		};
-		const escape = (key: KeyboardEvent) => {
-			if (key.key !== 'Escape') return;
-			key.preventDefault();
-			key.stopPropagation();
-			end(key);
-		};
-		this.#cancel = () => end(new Event('cancel'));
-		tracked?.addEventListener(moves, move as EventListener);
-		tracked?.addEventListener(ups, end);
-		if (pointer) tracked?.addEventListener('pointercancel', end);
-		document?.addEventListener('keydown', escape, true);
-		edytor.overlay.invalidate();
-	};
-	#cancel: (() => void) | null = null;
-
-	/**
-	 * The view turned readonly mid-drag: the preview goes, nothing written.
-	 * @internal
-	 */
-	lock = () => {
-		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
+		this.band.start(
+			event,
+			{ ...drag, width: shown, max: Math.max(drag.max, shown) },
+			(drag) => drag && this.#release(drag)
+		);
 	};
 
 	/**
@@ -1014,19 +802,9 @@ export class TableChrome {
 	 * @internal
 	 */
 	key = (event: KeyboardEvent, column: number) => {
-		event.stopPropagation();
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			return takeKeys(this.edytor);
-		}
-		const step = ({ ArrowLeft: -1, ArrowRight: 1 } as Record<string, number>)[event.key];
-		if (step === undefined) return;
-		event.preventDefault();
-		const layout = this.layout;
-		const table = this.block(layout?.table);
-		if (!layout || !table || this.drag) return;
-		const drag = this.resize(table, column, layout.room, 0, step * (event.shiftKey ? 32 : 8));
-		if (drag) this.release(drag);
+		const step = bandKey(this.edytor, this.band, event, { ArrowLeft: -1, ArrowRight: 1 });
+		const drag = step && this.#resize(column, 0, step * (event.shiftKey ? 32 : 8));
+		if (drag) this.#release(drag);
 	};
 
 	/**
@@ -1037,107 +815,71 @@ export class TableChrome {
 	 * first entry naming it), never by position: the stored array may hold
 	 * an entry the grid does not show.
 	 */
-	private release(drag: Drag) {
+	#release(drag: Drag) {
 		const table = this.block(drag.table);
 		const columns = gridOf(table)?.columns;
-		if (!table || !columns) return;
-		const { facade } = table.edytor;
-		const stored = facade.blockDataOf(table.id)?.columns;
-		const entries: unknown[] = Array.isArray(stored) ? stored : [];
-		const items = facade.dataItemIds(table.id, ['columns']);
-		const write = (index: number, width: number | undefined) => {
-			const id = columns[index];
-			const at = entries.findIndex((c) => (c as { id?: unknown } | null)?.id === id);
-			const item = at < 0 || id === undefined ? undefined : items[at];
-			if (item === undefined || width === undefined) return [];
-			if (width === widthOf(entries[at], this.columnWidth)) return [];
-			return [{ path: ['columns', item, 'width'], value: width }];
-		};
-		const own = write(drag.column, this.dragWidth(drag));
-		if (!own.length && columns[drag.column] === undefined) return;
-		const ops = [...own, ...write(drag.column + 1, this.nextWidth(drag))];
-		if (ops.length) table.patchData({ ops });
-	}
-
-	/** What the row grip or the column grip stands for now: its table, the row's or column's id, its position. */
-	private source(kind: TableMove['kind']) {
-		const table = this.block(this.table);
-		const grid = gridOf(table);
-		if (!table || !grid) return null;
-		if (kind === 'row') {
-			const id = this.gripRow;
-			const index = grid.rows.findIndex((r) => r.id === id);
-			return id && index >= 0 ? { table, id, index } : null;
-		}
-		const index = this.gripColumn;
-		const id = index === null ? undefined : grid.columns[index];
-		return index === null || id === undefined ? null : { table, id, index };
+		if (!table || !columns || columns[drag.column] === undefined) return;
+		const entries = entriesOf(table);
+		const items = table.edytor.facade.dataItemIds(table.id, ['columns']);
+		const ops = [this.#dragWidth(drag), this.#nextWidth(drag)].flatMap((width, i) => {
+			const at = entryIndex(entries, columns[drag.column + i]);
+			const item = items[at];
+			return at < 0 || item === undefined || width === undefined
+				? []
+				: width === widthOf(entries[at], this.columnWidth)
+					? []
+					: [{ path: ['columns', item, 'width'], value: width }];
+		});
+		if (ops.length) this.edytor.patchData(table.id, ops);
 	}
 
 	/** The drop target and auto-scroll of the drag in progress, released when it ends. */
 	#releases: (() => void)[] = [];
 
-	/** The drag starts: what it moves, its ghost, the page as its drop target, auto-scroll. */
-	private begin(
-		kind: TableMove['kind'],
+	/**
+	 * The drag starts: what it moves; its ghost, the row's cells side by side
+	 * or the column's one under the other, at their columns' widths (the
+	 * blocks' ghost, `dragPreview`); the page as its drop target; auto-scroll.
+	 */
+	#begin(
+		kind: Kind,
 		node: HTMLElement,
 		pointer: Point,
 		nativeSetDragImage: DataTransfer['setDragImage'] | null
 	) {
-		const source = this.source(kind);
-		if (!source) return;
-		const { table } = source;
+		const source = this.#source(kind);
+		const root = this.edytor.node;
+		if (!source || !root) return;
+		const { table, grid, id, index } = source;
 		this.menu = null;
-		this.moving = { kind, table: table.id, id: source.id, gap: null };
-		const preview = nativeSetDragImage ? this.preview(kind, source, pointer) : null;
-		if (nativeSetDragImage && preview)
+		this.moving = { kind, table: table.id, id, gap: null };
+		const widths = this.#widthsOf(table);
+		const cells = (
+			kind === 'row' ? grid.rows[index]!.cells : grid.rows.map((r) => r.cells[index])
+		).flatMap((cell) => (cell && this.edytor.idToBlock.get(cell)?.node) || []);
+		if (nativeSetDragImage && cells.length) {
+			const preview = dragPreview(root, cells, pointer, kind === 'row' ? widths : [widths[index]!]);
 			setCustomNativeDragPreview({
 				nativeSetDragImage,
 				getOffset: preview.offset,
 				render: ({ container }) => container.append(preview.element)
 			});
+		}
 		const ours = (data: Record<string | symbol, unknown>) => data[MOVE] === this;
 		// The page is the target: the line follows the pointer from the grips, outside the grid.
 		this.#releases.push(
 			dropTargetForElements({
 				element: node.ownerDocument.body,
 				canDrop: ({ source }) => ours(source.data),
-				onDragEnter: ({ location }) => this.aim(location.current.input),
-				onDrag: ({ location }) => this.aim(location.current.input),
-				onDragLeave: () => this.aim(null),
-				onDrop: ({ location }) => this.drop(location.current.input)
+				onDragEnter: ({ location }) => this.#aim(location.current.input),
+				onDrag: ({ location }) => this.#aim(location.current.input),
+				onDragLeave: () => this.#aim(null),
+				onDrop: ({ location }) => this.#drop(location.current.input)
 			})
 		);
 		const scroller = table.node?.querySelector<HTMLElement>('[data-edytor-table-scroll]');
 		if (scroller) this.#releases.push(autoScrollFor(scroller, ours));
 		this.edytor.overlay.invalidate();
-	}
-
-	/** The ghost: the row's cells side by side, or the column's cells one under the other. */
-	private preview(
-		kind: TableMove['kind'],
-		{ table, index }: { table: Block; index: number },
-		pointer: Point
-	) {
-		const grid = gridOf(table);
-		const gridNode = table.node?.querySelector<HTMLElement>('[data-edytor-table-grid]');
-		if (!grid || !gridNode) return null;
-		const document = gridNode.ownerDocument;
-		const nodeOf = (id: string | null | undefined) =>
-			(id ? this.edytor.idToBlock.get(id)?.node : null) ?? null;
-		const widths = this.widthsOf(table);
-		const heights = grid.rows.map((r) => nodeOf(r.id)?.getBoundingClientRect().height ?? 0);
-		const box = gridNode.getBoundingClientRect();
-		if (kind === 'row') {
-			const row = nodeOf(grid.rows[index]?.id)?.getBoundingClientRect() ?? box;
-			const cells = grid.rows[index]?.cells.map(nodeOf) ?? [];
-			return tablePreview(document, [cells], widths, [heights[index] ?? 0], row, pointer);
-		}
-		const left = box.left + widths.slice(0, index).reduce((sum, w) => sum + w, 0);
-		const width = widths[index] ?? this.columnWidth;
-		const column = new DOMRect(left, box.top, width, box.height);
-		const cells = grid.rows.map((r) => [nodeOf(r.cells[index])]);
-		return tablePreview(document, cells, [width], heights, column, pointer);
 	}
 
 	/**
@@ -1146,13 +888,13 @@ export class TableChrome {
 	 * `null` outside the table (past its box and the gutter) and at its own
 	 * place (the gap before or after it).
 	 */
-	private landing(input: Point | null) {
+	#landing(input: Point | null) {
 		const move = this.moving;
 		const table = this.block(move?.table);
 		const grid = gridOf(table);
-		const gridNode = table?.node?.querySelector<HTMLElement>('[data-edytor-table-grid]');
-		if (!move || !input || !table?.node || !grid || !gridNode) return null;
-		const box = table.node.getBoundingClientRect();
+		const node = gridNode(table);
+		const box = table?.node?.getBoundingClientRect();
+		if (!move || !input || !box || !grid || !node) return null;
 		const { clientX: x, clientY: y } = input;
 		if (
 			x < box.left - GUTTER ||
@@ -1161,8 +903,9 @@ export class TableChrome {
 			y > box.bottom + GUTTER
 		)
 			return null;
-		let from: number;
+		// The gap: the rows' (columns', from the grid's left border) middles before the pointer.
 		let gap = 0;
+		let from: number;
 		if (move.kind === 'row') {
 			from = grid.rows.findIndex((r) => r.id === move.id);
 			for (const row of grid.rows) {
@@ -1171,23 +914,18 @@ export class TableChrome {
 			}
 		} else {
 			from = grid.columns.indexOf(move.id);
-			const style = gridNode.ownerDocument.defaultView?.getComputedStyle(gridNode);
-			let left = gridNode.getBoundingClientRect().left + px(style?.borderLeftWidth);
-			for (const width of trackWidths(gridNode)) {
-				if (x > left + width / 2) gap++;
-				left += width;
-			}
+			let left = node.getBoundingClientRect().left + px(styleOf(node)?.borderLeftWidth);
+			for (const width of trackWidths(node)) if (x > (left += width) - width / 2) gap++;
 		}
 		if (from < 0 || gap === from || gap === from + 1) return null;
 		return { gap, to: gap > from ? gap - 1 : gap };
 	}
 
 	/** The pointer moved during the drag: the drop line follows it. */
-	private aim(input: Point | null) {
+	#aim(input: Point | null) {
 		const move = this.moving;
-		if (!move) return;
-		const gap = this.landing(input)?.gap ?? null;
-		if (gap === move.gap) return;
+		const gap = this.#landing(input)?.gap ?? null;
+		if (!move || gap === move.gap) return;
 		move.gap = gap;
 		this.edytor.overlay.invalidate();
 	}
@@ -1197,9 +935,9 @@ export class TableChrome {
 	 * `moveColumn`: one command, one undo step), the keys go to the editor;
 	 * nothing where no line shows.
 	 */
-	private drop(input: Point) {
+	#drop(input: Point) {
 		const move = this.moving;
-		const landing = this.landing(input);
+		const landing = this.#landing(input);
 		const table = this.block(move?.table);
 		if (!move) return;
 		move.gap = null;
@@ -1210,14 +948,4 @@ export class TableChrome {
 		} else moveColumn(table, move.id, landing.to);
 		takeKeys(this.edytor);
 	}
-
-	/** The drag ended, dropped or cancelled: no line, no target; the chrome follows the pointer again. */
-	private finish() {
-		for (const release of this.#releases.splice(0)) release();
-		this.moving = null;
-		this.edytor.overlay.invalidate();
-	}
 }
-
-const sameLayout = (a: TableLayout | null, b: TableLayout | null) =>
-	a === b || (a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b));

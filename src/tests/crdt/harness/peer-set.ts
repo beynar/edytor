@@ -47,6 +47,7 @@ import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from './rng.js';
 import { updateHash } from './trace.js';
 import type { TraceEvent } from './trace.js';
+import { UndoManager } from './undo.js';
 
 /**
  * Fixed clientID of the ephemeral seed document. Well above the peer range
@@ -88,7 +89,7 @@ export class Peer {
 	readonly updateLog: Uint8Array[] = [];
 	/** Last snapshot produced by `persist()` (or the seed at construction). */
 	persisted: Uint8Array;
-	undoManager: InstanceType<typeof Y.UndoManager> | null = null;
+	undoManager: UndoManager | null = null;
 	/** Reload count — the rand-stream generation. */
 	private randGen = 0;
 	private readonly set: PeerSet;
@@ -201,11 +202,9 @@ export class Peer {
 	 * `opts.scope` narrows the scope to a subtree (e.g. the model registry
 	 * node); the doc-wide default matches upstream behavior.
 	 */
-	enableUndo(
-		opts: Record<string, unknown> & { scope?: unknown } = {}
-	): InstanceType<typeof Y.UndoManager> {
+	enableUndo(opts: Record<string, unknown> & { scope?: unknown } = {}): UndoManager {
 		const { scope, ...rest } = opts;
-		this.undoManager = new Y.UndoManager((scope ?? this.doc) as never, {
+		this.undoManager = new UndoManager((scope ?? this.doc) as never, {
 			trackedOrigins: new Set([this.localOrigin]),
 			...rest
 		});

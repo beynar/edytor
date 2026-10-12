@@ -196,7 +196,8 @@ test.describe('P8 — a large page with content-visibility', () => {
 		page
 	}) => {
 		await open(page);
-		await block(page, 'b3000').scrollIntoViewIfNeeded();
+		// Mid-viewport: a drag near an edge would auto-scroll the page under the pointer.
+		await block(page, 'b3001').evaluate((node) => node.scrollIntoView({ block: 'center' }));
 		const box = (await textOf(page, 'b3001').boundingBox())!;
 		await page.mouse.move(box.x + 10, box.y + box.height / 2);
 		const handle = page.locator('[data-testid="block-handle"]');
@@ -242,7 +243,9 @@ test.describe('P8 — a large page with content-visibility', () => {
 				grip.x + ((to.x - grip.x) * step) / 12,
 				grip.y + ((to.y - grip.y) * step) / 12
 			);
-		await dragTo(page, to.x + 4, to.y);
+		// Released over b3003's lower part as it is laid out now (the drag may have moved it).
+		const now = (await block(page, 'b3003').boundingBox())!;
+		await dragTo(page, now.x + 44, now.y + now.height * 0.8);
 		await page.mouse.up();
 		await expect
 			.poll(async () => {
@@ -280,7 +283,7 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await page.evaluate(() => {
 			const peer = (window as unknown as { __peer: any }).__peer;
 			const text = peer.idToBlock.block('b4000').firstText;
-			peer.selection.setAtTextOffset(text, 6);
+			peer.selection.selectText(text, 6);
 		});
 		const cursor = page.locator('[data-edytor-remote-cursor]');
 		await expect.poll(() => cursor.count()).toBeGreaterThan(0);

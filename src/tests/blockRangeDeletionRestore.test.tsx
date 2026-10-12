@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createOperationEdytor, runBeforeInput } from './test.utils.js';
+import { selectionState } from './selection.js';
 
 // D13, rewritten at arch-v2 D6 against the invariant that replaced the
 // mechanism: a spanning delete is the document's range deletion, which
@@ -32,7 +33,7 @@ describe('block-range deletion caret', () => {
 		await new Promise((resolve) => setTimeout(resolve, 250));
 
 		expect(errorSpy).not.toHaveBeenCalled();
-		expect(edytor.selection.state.startText?.stringContent).toBe('foar');
-		expect(edytor.selection.state.yStart).toBe(2);
+		expect(selectionState(edytor).startText?.stringContent).toBe('foar');
+		expect(selectionState(edytor).yStart).toBe(2);
 	});
 });

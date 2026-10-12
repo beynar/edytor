@@ -6,14 +6,15 @@
  * (`net.chunk.outbound` in `docs/editor-delete-contract.md`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-	createImagePlugin,
-	MAX_INLINE_IMAGE_BYTES,
-	storableImageSrc
-} from '$lib/plugins/image/ImagePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { MAX_INLINE_IMAGE_BYTES, storableImageSrc } from '$lib/plugins/image/ImagePlugin.svelte';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	image as createImagePlugin,
+	mediaEmptyPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -30,7 +31,12 @@ const mount = async (upload?: (file: File) => Promise<string>) =>
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [richTextPlugin, createImagePlugin({ upload })],
+			plugins: [
+				...(upload ? [createUploadsPlugin({ upload })] : []),
+				richTextPlugin,
+				createImagePlugin(),
+				mediaEmptyPlugin
+			],
 			value: { children: [{ id: 'img', type: 'image', content: [{ text: '' }] }] }
 		}
 	);

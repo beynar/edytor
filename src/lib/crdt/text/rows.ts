@@ -230,12 +230,3 @@ export const placeRow = (row: LiveRow, delim: ReadonlyMap<BlockId, string>): voi
 	row.cuts = cuts;
 	row.head = delim.has(row.home) ? null : row.home;
 };
-
-/** The row agrees with a fresh scan of its text (the index's self-check). */
-export const sameRow = (row: LiveRow, scan: TextRow): boolean => {
-	if (row.key !== scan.key || row.bounds.length !== scan.bounds.length) return false;
-	if (rowLength(row) !== scan.len) return false;
-	for (let j = 0; j < scan.bounds.length; j++)
-		if (boundAt(row, j) !== scan.bounds[j].at) return false;
-	return true;
-};

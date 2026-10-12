@@ -108,7 +108,7 @@ describe('F-S10 — echo, render drift, foreign write, intent', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		await edytor.selection.setAtTextOffset(text, 3);
+		await edytor.selection.selectText(text, 3);
 		await flushDomUpdates();
 		expect(domCaret(text.node!)).toBe(3);
 		const epoch = edytor.selection.epoch;
@@ -125,7 +125,7 @@ describe('F-S10 — echo, render drift, foreign write, intent', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		await edytor.selection.setAtTextOffset(text, 3);
+		await edytor.selection.selectText(text, 3);
 		await flushDomUpdates();
 		text.refreshFromModel();
 		await flushDomUpdates();
@@ -248,9 +248,9 @@ describe('F-S10 — the Android post-delete snap-back (named rule)', () => {
 		const [first, second] = edytor.root!.children;
 		// The merge's position signature: a caret at a text start, then a
 		// write landing in another text — with no delete command.
-		await edytor.selection.setAtTextOffset(second!.firstText!, 0);
+		await edytor.selection.selectText(second!.firstText!, 0);
 		await flushDomUpdates();
-		await edytor.selection.setAtTextOffset(first!.lastText!, 3);
+		await edytor.selection.selectText(first!.lastText!, 3);
 		await flushDomUpdates();
 		await settle();
 		moveWithoutGesture(first!.lastText!.node!, 4);

@@ -6,7 +6,7 @@
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import type { SeedUpdate } from '../harness/peer-set.js';
-import { buildBlock } from '../harness/ops/raw-node-ops.js';
+import { insertBuilt } from '../harness/ops/raw-node-ops.js';
 import type { BlockSpec } from '../harness/ops/crdt-ops.js';
 
 const M = bindModel(Y);
@@ -16,7 +16,7 @@ export const specSeed = (blocks: BlockSpec[]): SeedUpdate => {
 	return (doc) => {
 		const root = doc.get('content');
 		for (const spec of blocks) {
-			root.insert(root.length, [buildBlock(spec)]);
+			insertBuilt(root, root.length, spec);
 		}
 	};
 };

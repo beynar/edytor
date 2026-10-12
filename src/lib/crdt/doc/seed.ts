@@ -19,7 +19,7 @@
  * Seeding is explicit: reads never create or normalize state.
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
-import type { PlacementModel, BlockSpec } from '../placement/model.js';
+import { insertBlock, insertBlocks, restoreBlocks, type BlockSpec } from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
 import type { JsonObj } from './types.js';
 import { hash32, setDocRand } from '../rand.js';
@@ -39,31 +39,31 @@ import { isInitialized, META_KEY, registryEmpty, SCHEMA_NAME, SCHEMA_VERSION } f
 /** Origin of the seed update's apply — non-local, like any integrated update. */
 export const SEED_ORIGIN = Symbol('edytor:seed');
 
-/** The version record and seed writers over the bound engine layers. */
-export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionApi) => {
-	/**
-	 * Stamp the version record, absent only: never downgrade a higher
-	 * version written by a newer peer — the version gate decides compatibility.
-	 */
-	const stamp = (doc: EngineDoc): void => {
-		const meta = doc.get(META_KEY);
-		if (meta.getAttr(SCHEMA.metaAttrs.version) !== undefined) return;
-		meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
-		meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
-	};
+/**
+ * Stamp the version record, absent only: never downgrade a higher
+ * version written by a newer peer — the version gate decides compatibility.
+ */
+export const stamp = (doc: EngineDoc): void => {
+	const meta = doc.get(META_KEY);
+	if (meta.getAttr(SCHEMA.metaAttrs.version) !== undefined) return;
+	meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
+	meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
+};
 
-	/**
-	 * Restore definition (migration only): stamp the version
-	 * record (absent only) and make `content` the whole document under its
-	 * own ids, rewritten in place where they exist (the model's
-	 * `restoreBlocks`). Writes no attribution.
-	 */
-	const restore = (doc: EngineDoc, content: BlockSpec[]): void =>
-		doc.transact(() => {
-			stamp(doc);
-			M.restoreBlocks(doc, content.map(sanitizeSpec));
-		});
+/**
+ * Restore definition (migration only): stamp the version
+ * record (absent only) and make `content` the whole document under its
+ * own ids, rewritten in place where they exist (the model's
+ * `restoreBlocks`). Writes no attribution.
+ */
+export const restore = (doc: EngineDoc, content: BlockSpec[]): void =>
+	doc.transact(() => {
+		stamp(doc);
+		restoreBlocks(doc, content.map(sanitizeSpec));
+	});
 
+/** The seed writers over the engine's block attribution. */
+export const bindSeed = (Y: EngineApi, BA: BlockAttributionApi) => {
 	/**
 	 * Stamp the version record (absent only) and, into an EMPTY registry,
 	 * bulk-insert `content` — the local materializer: the seed's scratch
@@ -84,14 +84,14 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 			if (specs.length === 0 || !registryEmpty(doc)) return;
 			// Bulk path: one sibling read + a local rank chain for the
 			// whole batch. All-or-nothing: a dup spec id refuses the batch.
-			if (!M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs)) {
+			if (!insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs)) {
 				// Malformed initial content (e.g. a duplicated id) — fall back
 				// to per-spec insertion so valid blocks still load.
 				console.error(
 					'[edytor-doc] initial content refused by bulk insert; retrying per-spec (duplicate block ids are skipped)'
 				);
 				for (const spec of specs) {
-					M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
+					insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
 				}
 			}
 		});
@@ -160,5 +160,5 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		data?: JsonObj
 	): void => Y.applyUpdate(asYDoc(doc), seedUpdate(value, defaultType, data), SEED_ORIGIN);
 
-	return { stamp, restore, init, seedUpdate, seed };
+	return { init, seed };
 };

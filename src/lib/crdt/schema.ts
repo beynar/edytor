@@ -56,7 +56,7 @@ export const INLINE_NODE = 'inline';
 /** Attr keys on a block node (`SCHEMA.blockAttrs`). */
 export const ID = 'id';
 export const TYPE = 'type';
-/** A block's or atom's whole data: the legacy layer, read under the leaves and exploded by the first patch. */
+/** A block's or atom's whole data, as documents before 0.1.0-next.6 stored it: no longer read; the room's purge deletes it. */
 export const DATA = 'data';
 /** A data leaf: `d/` and its path, RFC 6901 escaped (`crdt/data.ts`). */
 export const DATA_LEAF_PREFIX = 'd/';
@@ -97,10 +97,9 @@ export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
-	// 5 (0.1.0-next.25): paired marks, variable-length ranks, v2
-	// SyncStep2; a generation-4 container converts through its JSON
-	// (`migration/generation.ts`).
-	version: 5,
+	// 6: one update encoding (the columnar one) on the wire and in storage;
+	// a container or frame of an earlier generation is refused.
+	version: 6,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

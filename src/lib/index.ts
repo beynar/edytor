@@ -15,7 +15,7 @@
  *
  * - `edytor/crdt/edytor` — the document API without Svelte (Node, Workers),
  *   and the full facade vocabulary (`BlockSpec`, `Destination`,
- *   `ProjectedDoc`, `DocAnchor`, …), attribution, migration and `bindCrdt`;
+ *   `ProjectedDoc`, `DocAnchor`, …), attribution and `bindCrdt`;
  * - `edytor/protocol` — the wire and coordinator vocabulary (frames,
  *   message types, codecs, generation records, admission gates, the raw
  *   provider classes);
@@ -53,13 +53,13 @@ export type {
 	Placeholder,
 	PlaceholderView,
 	ChangePayload,
+	Commands,
 	AfterOperationPayload,
 	Prevent,
 	InputRule,
 	InputRuleContext,
 	Trigger,
 	TriggerContext,
-	TriggerItemPayload,
 	TextRuleContext
 } from './plugins.js';
 export type { Caret } from './selection/selection.svelte.js';
@@ -81,17 +81,20 @@ export type {
 
 // ── The bundled plugins ────────────────────────────────────────────────
 export {
-	richTextPlugin,
 	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
-	createRichTextPlaceholder,
 	CALLOUT_ICONS,
+	createCalloutIconsPlugin,
+	createUploadsPlugin,
+	type UploadsOptions,
 	type CalloutIconPicker,
-	type CalloutIconOption,
+	type CalloutIconsOptions,
 	type RichTextPluginOptions,
-	arrowMovePlugin,
-	codePlugin,
+	type TodoCheckboxPayload,
+	type CalloutIconPayload,
+	type EmptyBodyPayload,
+	createArrowMovePlugin,
 	createCodePlugin,
 	CODE_LANGUAGES,
 	loadCodeLanguage,
@@ -101,7 +104,7 @@ export {
 	type LanguageMenu,
 	type LanguageMenuItem,
 	type LanguageRow,
-	markdownShortcutsPlugin,
+	createMarkdownShortcutsPlugin,
 	createMentionPlugin,
 	type MentionItem,
 	type MentionData,
@@ -111,48 +114,36 @@ export {
 	type PageLinkData,
 	type PageLinkPluginOptions,
 	type TriggerMenuController,
+	withRulesAndTriggers,
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
 	type BlockActivation,
 	type BlockAddition,
-	blockHandlesPlugin,
 	createBlockHandlesPlugin,
-	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload,
 	type BlockHandleController,
-	slashMenuPlugin,
 	createSlashMenuPlugin,
 	type SlashMenuOptions,
-	type SlashMenuItem,
 	type SlashMenuController,
-	toolbarPlugin,
 	createToolbarPlugin,
-	TOOLBAR_COLORS,
 	type ToolbarOptions,
 	type ToolbarController,
-	blockMenuPlugin,
 	createBlockMenuPlugin,
 	type BlockMenuOptions,
 	type BlockMenuController,
 	type BlockMenuAction,
 	type BlockMenuColor,
-	suggestionsPlugin,
 	createSuggestionsPlugin,
-	type SuggestionsOptions,
+	createSuggestionBarPlugin,
+	type SuggestionBarOptions,
 	type SuggestionBarPayload,
-	imagePlugin,
 	createImagePlugin,
-	isImagePlugin,
 	safeImageSrc,
 	storableImageSrc,
 	MAX_INLINE_IMAGE_BYTES,
-	type ImagePluginOptions,
-	columnsPlugin,
 	createColumnsPlugin,
-	isColumnsPlugin,
 	type ColumnsPluginOptions,
-	embedPlugin,
 	createEmbedPlugin,
 	EMBED_PROVIDERS,
 	EMBED_SANDBOX,
@@ -160,20 +151,24 @@ export {
 	embedSourceOf,
 	type EmbedProvider,
 	type EmbedPluginOptions,
-	bookmarkPlugin,
+	type EmbedFallbackPayload,
 	createBookmarkPlugin,
 	type BookmarkPluginOptions,
 	type BookmarkPreview,
-	filePlugin,
+	type BookmarkCardPayload,
 	createFilePlugin,
-	videoPlugin,
+	type FilePluginOptions,
+	type FileRowPayload,
 	createVideoPlugin,
-	audioPlugin,
 	createAudioPlugin,
 	safeWebUrl,
 	safeMediaSrc,
 	type MediaKind,
-	type MediaPluginOptions,
+	createMediaEmptyPlugin,
+	type MediaEmptyOptions,
+	createImageToolbarPlugin,
+	type ImageToolbar,
+	type ImageToolbarOptions,
 	type MediaEmptyController,
 	type MediaEmptyFailure,
 	type UrlPasteController,
@@ -181,11 +176,7 @@ export {
 	type UrlPasteOption,
 	type ImageControls,
 	type ImageBox,
-	type ImageEmptyController,
-	type ImageEmptyFailure,
 	type MenuItemPayload,
-	type OptionAttributes,
-	findPlugin,
 	createFindPlugin,
 	findController,
 	findMatches,
@@ -194,7 +185,6 @@ export {
 	type ReplaceMatches,
 	type FindMatch,
 	type FindOptions,
-	marqueePlugin,
 	createMarqueePlugin,
 	type MarqueePluginOptions,
 	type MarqueeBoxPayload,
@@ -207,17 +197,23 @@ export {
 	type CommentNotice,
 	type CommentUser,
 	type PlacedThread,
-	pagePlugin,
 	createPagePlugin,
 	type PagePluginOptions,
-	tocPlugin,
+	type PageBlockLinkPayload,
 	createTocPlugin,
 	type TocPluginOptions,
 	type TocHeadingLevel,
-	tablePlugin,
+	type TocEntryPayload,
+	type TocEmptyPayload,
 	createTablePlugin,
-	isTablePlugin,
 	type TablePluginOptions,
+	insertTableRow,
+	deleteTableRows,
+	insertTableColumn,
+	deleteTableColumn,
+	moveTableColumn,
+	moveTableRows,
+	fillTableCell,
 	type TableChrome,
 	type TableMenu,
 	type TableMenuRow,
@@ -232,6 +228,8 @@ export {
 	type EquationPluginOptions,
 	type EquationData,
 	type EquationEditor,
+	type EquationErrorPayload,
+	type EquationPlaceholderPayload,
 	type EquationTarget,
 	type KatexLike,
 	type KatexLoader
@@ -317,18 +315,17 @@ export {
 
 // ── Version history ────────────────────────────────────────────────────
 export {
-	HistoryPanel,
+	VersionHistory,
 	createHistoryClient,
 	HistoryRequestError,
 	versionDiff,
-	defaultHistoryLabels,
 	type HistoryClient,
 	type HistoryClientOptions,
 	type HistoryRestoreResult,
 	type HistoryUndoResult,
 	type HistoryVersion,
-	type HistoryPanelLabels,
-	type HistoryPanelProps,
+	type VersionHistoryStatus,
+	type VersionHistoryOptions,
 	type VersionChange,
 	type VersionDiff
 } from './collaboration/history/index.js';
@@ -337,29 +334,21 @@ export {
 // The types a consumer meets through a prop, an option, a member or a
 // callback above, exported so an app can name them.
 export type { EdytorProps } from './components/Edytor.svelte';
-export type { EdytorOptions, Snippets } from './edytor.svelte.js';
-export type { HistoryVersionItem } from './collaboration/history/index.js';
+export type { EdytorOptions } from './edytor.svelte.js';
 export type {
-	BlockHandlesLabels,
 	BlockMenuLabels,
 	CodeLabels,
 	ColumnsLabels,
 	CommentsLabels,
 	EditorLabels,
 	EquationLabels,
-	FindLabels,
 	ImageLabels,
-	MediaKindLabels,
 	MediaLabels,
-	MentionLabels,
 	PageLabels,
 	PageLinkLabels,
 	RichTextLabels,
-	SlashMenuLabels,
-	SuggestionsLabels,
 	TableLabels,
-	TocLabels,
-	ToolbarLabels
+	TocLabels
 } from './labels.js';
 export type {
 	BlockElement,
@@ -377,16 +366,11 @@ export type {
 	SelectionSegment,
 	SelectionValue
 } from './session/selection.js';
-export type { SelectionState, TextAnchor } from './selection/selection.svelte.js';
+export type { TextAnchor } from './selection/selection.svelte.js';
 export type { Key, Modifier, Modifiers } from './session/keymap.js';
-export type { TextOperations } from './text/text.utils.js';
-export type { BlockBeside, BlockOperations } from './block/block.utils.js';
-export type {
-	TextInsertionPayload,
-	TriggerRange
-} from './plugins/triggers/TriggerController.svelte.js';
+export type { TriggerRange } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
-export type { UploadReport, Uploader } from './plugins/uploads.svelte.js';
+export type { KindUpload, UploadReport, Uploader } from './plugins/uploads.svelte.js';
 export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
 export type { DataPatch } from './crdt/data.js';
 export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';
@@ -406,7 +390,6 @@ export type { DocPosition, RangeView } from './crdt/rangeDelete.js';
 export type { FlowView } from './crdt/flow.js';
 export type { ContentRun } from './crdt/text/runs.js';
 export type { DataTarget, OrderPolicy, PlanEffect, PlanStep } from './crdt/doc/types.js';
-export type { DocBlock, NodeRef } from './crdt/nodes.js';
 export type { MarkEdge } from './crdt/text/marks.js';
 export type { Cell, Cells } from './surface/cells.js';
 export type { Measure, Overlay } from './surface/overlay.js';
@@ -426,7 +409,6 @@ export type { DocumentOptions } from './crdt/document.js';
 export type {
 	ActorProfile,
 	AttributionActor,
-	BlockLineageEntry,
 	DocumentAttribution
 } from './crdt/attribution/attribution.js';
 export type { ActorId, BlockAttribution } from './crdt/attribution/block.js';

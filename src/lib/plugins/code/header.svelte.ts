@@ -1,19 +1,18 @@
 /**
  * A code block's header (`code.language`): the block's language, a button
  * that opens the view's language list (`LanguageMenu`) and Copy. One per
- * rendered code block; the default markup (`CodeHeader.svelte`) and an
- * app's `header` snippet read the same controller and share its
- * attachment (`button`), so a custom header keeps the keys and the ARIA.
+ * rendered code block with the app's `header` snippet, whose attachment
+ * (`button`) gives its markup the keys and the ARIA.
  */
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { CodeLabels } from '$lib/labels.js';
 import type { BlockView } from '$lib/plugins.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { attribute } from '../chrome.js';
-import { languageLabel, languageOf, type CodeSettings } from './languages.js';
-import type { LanguageMenu, LanguageRow } from './languageMenu.svelte.js';
+import { languageOf, type CodeSettings } from './languages.js';
+import type { LanguageMenu } from './languageMenu.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
 const COPIED_FOR = 1200;
@@ -28,10 +27,9 @@ const codeText = (code: Block) =>
 
 /**
  * What a code plugin's `header` snippet receives: the code block's
- * language (`language`, its id; `label`, as shown), the languages the
- * plugin lists (`languages`), whether the language may be changed here
+ * language (`language`, its id; `label`, as shown), whether the language may be changed here
  * (`editable`: an editable view, not a suggestion's preview), the list's
- * state (`expanded`), the actions (`setLanguage`, `toggle`, `copy`, and
+ * state (`expanded`), the actions (`toggle`, the list's own `pick`, `copy`, and
  * `copied` for a moment after a copy) and the plugin's `labels`. Put
  * `{@attach header.button}` on the element that opens the language list:
  * it opens it on a click, ArrowDown or ArrowUp, Escape gives the keys back
@@ -72,21 +70,7 @@ export class CodeHeader {
 	/** The language's label; a language the plugin does not list shows its id (reactive). */
 	get label(): string {
 		const language = this.language;
-		const row = this.settings.languages.find((row) => row.id === language);
-		return row ? languageLabel(row, this.settings) : language;
-	}
-
-	/** The languages the plugin lists, labeled, in order. */
-	get languages(): LanguageRow[] {
-		return this.settings.languages.map((row) => ({
-			id: row.id,
-			label: languageLabel(row, this.settings)
-		}));
-	}
-
-	/** The plugin's words (`language`, `copy`, `copied`, …). */
-	get labels(): CodeLabels {
-		return this.settings.labels;
+		return this.settings.languages.find((row) => row.id === language)?.label ?? language;
 	}
 
 	/** The view is readonly (reactive). */
@@ -104,13 +88,6 @@ export class CodeHeader {
 		const block = this.view().handle;
 		return Boolean(block && this.menu?.isOpenFor(block.id));
 	}
-
-	/** Set the block's language (one undo step); nothing where it is not `editable`. */
-	setLanguage = (id: string) => {
-		const block = this.view().handle;
-		if (!this.editable || !block?.isInTree || id === this.language) return;
-		block.data.language = id;
-	};
 
 	/**
 	 * Open the language list under the header's button, or close it (`keys`:
@@ -145,7 +122,6 @@ export class CodeHeader {
 		untrack(() => {
 			node.setAttribute('data-edytor-code-language-button', '');
 			node.setAttribute('aria-haspopup', 'listbox');
-			const named = node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby');
 			const mousedown = (event: MouseEvent) => event.preventDefault();
 			// A click from Enter or Space has no pointer (`detail` 0): the keys opened it.
 			const click = (event: MouseEvent) => this.toggle(event.detail === 0);
@@ -156,20 +132,15 @@ export class CodeHeader {
 				else return;
 				event.preventDefault();
 			};
-			node.addEventListener('mousedown', mousedown);
-			node.addEventListener('click', click);
-			node.addEventListener('keydown', keydown);
+			const off = listen(node, 'mousedown', mousedown);
+			const off2 = listen(node, 'click', click);
+			const off3 = listen(node, 'keydown', keydown);
 			$effect(() => {
 				const expanded = this.expanded;
 				attribute(node, 'aria-expanded', String(expanded));
 				attribute(node, 'aria-controls', expanded ? this.menu?.listId : undefined);
-				if (!named) attribute(node, 'aria-label', `${this.labels.language}: ${this.label}`);
 			});
-			return () => {
-				node.removeEventListener('mousedown', mousedown);
-				node.removeEventListener('click', click);
-				node.removeEventListener('keydown', keydown);
-			};
+			return all(off, off2, off3);
 		});
 
 	/**

@@ -11,7 +11,7 @@
 	import { page } from '$app/state';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createDocument } from '$lib/crdt/index.js';
-	import HistoryPanel from '$lib/collaboration/history/HistoryPanel.svelte';
+	import HistoryPanel from '../../chrome/HistoryPanel.svelte';
 	import {
 		createHistoryClient,
 		HistoryRequestError,

@@ -106,18 +106,18 @@ class ChunksRefused extends Error {
 
 export class Admission {
 	/** Each socket's update allowance. */
-	private readonly allowances: Allowances = new WeakMap();
+	readonly #allowances: Allowances = new WeakMap();
 	/**
 	 * Each socket's chunked frame in flight, released when it ends or its
 	 * socket closes (memory: a wake loses it, and the socket is faulted).
 	 */
-	private readonly chunkReaders = new Map<WebSocket, E.ChunkReader>();
+	readonly #chunkReaders = new Map<WebSocket, E.ChunkReader>();
 
 	constructor(private readonly room: RoomContext) {}
 
 	/** Release `ws`'s chunk sequence in flight (it closed, or was closed). */
 	forget(ws: WebSocket) {
-		this.chunkReaders.delete(ws);
+		this.#chunkReaders.delete(ws);
 	}
 
 	/** One message of a document socket (`AttachedDocument.webSocketMessage`). */
@@ -152,7 +152,7 @@ export class Admission {
 		const limit = room.limits.maxInboundFrameBytes;
 		// The frame quota: never decoded past it.
 		if (bytes.length > limit) {
-			return this.overQuota(ws, attachment.user, 'frame', { bytes: bytes.length, limit });
+			return this.#overQuota(ws, attachment.user, 'frame', { bytes: bytes.length, limit });
 		}
 		const decoder = E.createDecoder(bytes);
 		// 1 · Admission: the generation word, before anything is decoded.
@@ -161,7 +161,7 @@ export class Admission {
 		}
 		try {
 			const type = decode(() => E.readVarUint(decoder));
-			if (type === E.messageChunk) return this.onChunk(ws, attachment, doc, decoder);
+			if (type === E.messageChunk) return this.#onChunk(ws, attachment, doc, decoder);
 			if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
 			if (type === E.messageAwareness) {
 				const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
@@ -194,29 +194,29 @@ export class Admission {
 	 * sequence started — the room woke between two chunks and lost the
 	 * buffer — faults the socket (1011): its provider redials and resends.
 	 */
-	private onChunk(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
+	#onChunk(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
 		const room = this.room;
-		let read = this.chunkReaders.get(ws);
+		let read = this.#chunkReaders.get(ws);
 		if (read === undefined) {
 			read = E.createChunkReader(room.limits.maxInboundFrameBytes, (total) =>
 				this.admitChunks(ws, total)
 			);
-			this.chunkReaders.set(ws, read);
+			this.#chunkReaders.set(ws, read);
 		}
 		let whole: Uint8Array | null;
 		try {
 			whole = read(decoder);
 		} catch (error) {
-			this.chunkReaders.delete(ws);
+			this.#chunkReaders.delete(ws);
 			if (error instanceof ChunkLimitError) {
-				return this.overQuota(ws, attachment.user, 'frame', {
+				return this.#overQuota(ws, attachment.user, 'frame', {
 					bytes: error.total,
 					limit: error.limit
 				});
 			}
 			if (error instanceof ChunksRefused) {
 				if (error.quota === 'rate') {
-					return this.overQuota(ws, attachment.user, 'rate', error.detail);
+					return this.#overQuota(ws, attachment.user, 'rate', error.detail);
 				}
 				// The room's buffer is full, not the sender at fault: it redials.
 				room.note({
@@ -255,7 +255,7 @@ export class Admission {
 		if (!this.allow(ws))
 			throw new ChunksRefused('rate', { perSecond: room.limits.maxUpdatesPerSecond });
 		let buffered = 0;
-		for (const [other, read] of this.chunkReaders) if (other !== ws) buffered += read.buffered;
+		for (const [other, read] of this.#chunkReaders) if (other !== ws) buffered += read.buffered;
 		const limit = room.limits.maxBufferedBytes;
 		if (buffered + total > limit) {
 			throw new ChunksRefused('buffer', { bytes: total, buffered, limit });
@@ -267,7 +267,7 @@ export class Admission {
 	buffered(): { sequences: number; bytes: number } {
 		let sequences = 0;
 		let bytes = 0;
-		for (const read of this.chunkReaders.values()) {
+		for (const read of this.#chunkReaders.values()) {
 			if (read.buffered === 0) continue;
 			sequences++;
 			bytes += read.buffered;
@@ -283,7 +283,7 @@ export class Admission {
 	 * wait in the room's memory for good, unstored and unacknowledged; and
 	 * a redial would resend it and meet the same quota.
 	 */
-	private overQuota(
+	#overQuota(
 		ws: WebSocket,
 		user: string,
 		quota: 'document' | 'rate' | 'frame',
@@ -292,7 +292,7 @@ export class Admission {
 		const room = this.room;
 		room.note({ reason: 'quota', detail: { user, quota, ...detail } });
 		room.log({ edytor: 'quota', user, quota });
-		this.chunkReaders.delete(ws);
+		this.#chunkReaders.delete(ws);
 		room.presence.depart(ws);
 		room.close(ws, CLOSE.quota, `quota: ${quota}`);
 	}
@@ -303,7 +303,7 @@ export class Admission {
 	 * Presence messages draw from a bucket of their own (`RoomPresence`).
 	 */
 	private allow(ws: WebSocket): boolean {
-		return allowance(this.allowances, ws, this.room.limits.maxUpdatesPerSecond);
+		return allowance(this.#allowances, ws, this.room.limits.maxUpdatesPerSecond);
 	}
 
 	/**
@@ -312,7 +312,7 @@ export class Admission {
 	 * the engine holds waiting; update records count until compaction
 	 * collapses them, so it compacts first when they would.
 	 */
-	private overDocument(incoming: number, freed: number): boolean {
+	#overDocument(incoming: number, freed: number): boolean {
 		const room = this.room;
 		const { storage } = room;
 		const limit = room.limits.maxDocumentBytes;
@@ -340,7 +340,7 @@ export class Admission {
 		const syncType = decode(() => E.readVarUint(decoder));
 		// The rate quota counts every sync message, a Step1 too (it costs a Step2).
 		if (!this.allow(ws)) {
-			return this.overQuota(ws, attachment.user, 'rate', {
+			return this.#overQuota(ws, attachment.user, 'rate', {
 				perSecond: room.limits.maxUpdatesPerSecond
 			});
 		}
@@ -357,11 +357,7 @@ export class Admission {
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return room.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
-		// A SyncStep2 is v2 on the wire: every path below reads v1.
-		const update = decode(() => {
-			const payload = E.readVarUint8Array(decoder);
-			return syncType === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
-		});
+		const update = decode(() => E.readVarUint8Array(decoder));
 		const started = now();
 		try {
 			this.onUpdate(ws, attachment, doc, update);
@@ -390,9 +386,9 @@ export class Admission {
 		// The document quota, net of what the frame deletes.
 		if (
 			decoded.structs.some((struct) => !(struct instanceof Y.Skip)) &&
-			this.overDocument(update.length, freedBy(doc, decoded.ds))
+			this.#overDocument(update.length, freedBy(doc, decoded.ds))
 		) {
-			return this.overQuota(ws, attachment.user, 'document', {
+			return this.#overQuota(ws, attachment.user, 'document', {
 				bytes: storage.documentBytes,
 				incoming: update.length,
 				limit: room.limits.maxDocumentBytes
@@ -517,7 +513,7 @@ export class Admission {
 						({ id }) => !stripped.has(id.client) && storedStruct(doc, id.client, id.clock) === null
 					);
 		const released = room.handle(() =>
-			this.settleDeletes(ws, attachment.user, doc, waiting, stay, discarded !== undefined)
+			this.#settleDeletes(ws, attachment.user, doc, waiting, stay, discarded !== undefined)
 		);
 		if (room.unstored !== null) return this.fault(ws, room.unstored);
 		if (discarded) room.note({ reason: 'schema', detail: { discarded } });
@@ -532,7 +528,7 @@ export class Admission {
 			if (room.unstored !== null) return this.fault(ws, room.unstored);
 		}
 		// A dropped delete is not acknowledged: its sender stays unsaved.
-		room.send(ws, savedFrame(doc, addIds(this.storedDeletes(doc, decoded.ds), released)));
+		room.send(ws, savedFrame(doc, addIds(this.#storedDeletes(doc, decoded.ds), released)));
 		// Waiting writes the frame released are other sockets' (a relayer's
 		// edit that built on an author's lost one): they are stored now, with
 		// the deletes that waited with them.
@@ -560,7 +556,7 @@ export class Admission {
 	 * the sender's), unstored and unacknowledged. A replaced entry is
 	 * deleted by its rewrite anyway, should that integrate.
 	 */
-	private settleDeletes(
+	#settleDeletes(
 		ws: WebSocket,
 		user: string,
 		doc: YDoc,
@@ -608,7 +604,7 @@ export class Admission {
 	 * (the waiting cap, a stripped rewrite's replaced entry) or keeps
 	 * waiting in memory only.
 	 */
-	private storedDeletes(doc: YDoc, deletes: Decoded['ds']): Decoded['ds'] {
+	#storedDeletes(doc: YDoc, deletes: Decoded['ds']): Decoded['ds'] {
 		const unheld = Y.diffIdSet(deletes, heldDeletes(doc, deletes));
 		return Y.diffIdSet(deletes, Y.diffIdSet(unheld, this.room.storage.storedWaiting));
 	}

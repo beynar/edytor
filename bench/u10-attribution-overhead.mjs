@@ -179,7 +179,7 @@ const runWorkload = async (withAttribution, dbName) => {
 			}
 		}
 		for (const key of doc.get('blockattr').attrKeys()) blockAttrKeys++;
-		legacyPresent = document.attribution.legacy() !== null;
+		legacyPresent = recordCount > 0;
 	}
 	await persistence.destroy();
 	document?.destroy();
@@ -217,7 +217,7 @@ console.log(
 );
 console.log(
 	`  U2 cross-check: a/ records=${on.recordCount} (${on.recordBytes}B), ` +
-		`blockattr records=${on.blockAttrKeys}, legacy()=${on.legacyPresent}`
+		`blockattr records=${on.blockAttrKeys}, legacy a/ present=${on.legacyPresent}`
 );
 console.log(
 	`  attribution OFF: encode=${off.encodeBytes}B · update stream ${off.updateBytes}B/` +

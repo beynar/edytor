@@ -8,9 +8,10 @@
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 export const p = (id: string, text = id, children?: JSONBlock[]): JSONBlock => ({
 	id,
@@ -43,7 +44,7 @@ export const renderColumns = (children: JSONBlock[], plugins: Plugin[] = []) =>
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [...plugins, columnsPlugin, richTextPlugin],
+			plugins: [...plugins, createColumnsPlugin(), richTextPlugin],
 			value: { children },
 			autoSelectFixture: false
 		}
@@ -66,13 +67,13 @@ export const text = (edytor: Edytor, id: string) =>
 export const block = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!;
 
 export const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(block(edytor, id).firstText!, offset);
+	edytor.selection.selectText(block(edytor, id).firstText!, offset);
 	await flushDomUpdates();
 };
 
 /** The model caret: its block, offset, and whether it is collapsed. */
 export const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startBlock?.id, offset: yStart, isCollapsed };
 };
 

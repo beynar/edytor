@@ -8,9 +8,9 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { convertToKind } from '$lib/kinds.js';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -53,7 +53,7 @@ describe('H4: a retype keeps the block’s properties', () => {
 
 	it('Backspace at the start of a to-do turns it into a paragraph with its properties', async () => {
 		const view = await render();
-		view.edytor.selection.setAtTextOffset(get(view, 't').firstText!, 0);
+		view.edytor.selection.selectText(get(view, 't').firstText!, 0);
 		await flushDomUpdates();
 		dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		await flushDomUpdates();

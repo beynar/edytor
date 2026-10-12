@@ -10,8 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { createDocument, semanticsOf } from '$lib/crdt/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { clientPairs, converge, replica, seedUpdate } from './replica-harness.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const ok = (r) => {
 	if (r && r.status !== undefined && r.status !== 'applied')
@@ -110,7 +110,7 @@ describe('H8: an atomic data path is written as one leaf', () => {
 		});
 		const edytor = new Edytor({ document, plugins: [embedPlugin, richTextPlugin] });
 		expect(document.semantics.roles.get('widget')).toMatchObject({ atomic: [['link']] });
-		edytor.idToBlock.get('e')!.data.link = { url: 'y' };
+		edytor.patchData('e', [{ path: ['link'], value: { url: 'y' } }]);
 		expect(document.facade.resolveBlock('e').getAttr('d/link')).toEqual({ url: 'y' });
 		expect(document.facade.blockDataOf('e')).toEqual({ link: { url: 'y' } });
 		edytor.destroy();

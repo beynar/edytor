@@ -29,7 +29,6 @@ document.history.undo(); // 'hello' again; the seed itself is never an undo step
 | `awareness` | `Awareness` | Use an existing awareness instance instead of creating one. The document does not destroy a borrowed instance. |
 | `history` | `{ captureTimeout?: number, limit?: number }` | `captureTimeout`: edits closer together than this many milliseconds merge into one undo step. Engine default: 500. `0` makes every commit its own step. `limit`: the undo steps kept, 200 by default (`DEFAULT_HISTORY_LIMIT`); an older step is dropped and the deleted content it kept is released. `Infinity` keeps every step. |
 | `semantics` | `DocumentSemanticsConfig` | Block roles (void, island, lines, layout), kinds without content, default child types, the default block type and mark edges (`marks: { link: { edge: 'side-dependent' } }`: where text a collaborator types at a mark's edge lands while it is being set). Views contribute these from their plugins. Defaults to `defaultSemantics`, the bundled rich-text, code, image, media and columns kinds (`richTextSemantics`, `codeSemantics`, `imageSemantics`, `mediaSemantics`, `layoutSemantics` each hold one plugin's; `mediaSemantics` the embed, bookmark, file, video and audio plugins'), which the room holds too; `{}` checks no roles. |
-| `lineage` | `{ depth?: number }` | Keep up to `depth` earlier versions of each block, captured when another author, a delete or an undo replaces it. Off by default; read them with `attribution.history(id)`. |
 
 A document edited with no view attached obeys these roles: it refuses to merge text into a divider or to move a code line out of its code block, edits no view could render. If your plugins add kinds of their own, pass them too, merged with the bundled ones: `semantics: mergeSemantics(defaultSemantics, semanticsOf(myKinds))` (see [Block roles](/docs/reference/document-api#block-roles)). A view whose plugins redefine a bundled kind (an `image` that is not void) throws `SemanticConflictError` on such a document: give it the view's rules, or `semantics: {}`. With `semantics: {}` the document applies every edit the tree allows.
 
@@ -50,13 +49,13 @@ const copy = loadDocument(bytes); // readiness 'hydrated'
 copy.toJSON(); // same JSON as the source
 ```
 
-`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes throw `UndecodableUpdateError`, a schema this build cannot own throws `SchemaMismatchError`, and a v13 (`yjs`) document throws `UnsupportedDocError` with reason `legacy`; see [importing v13 documents](/docs/reference/v13-import). Your bytes are never modified.
+`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes (a v13 `yjs` document's among them) throw `UndecodableUpdateError`, and a schema this build cannot own throws `SchemaMismatchError`. Your bytes are never modified.
 
 ## The document object
 
 | Member | Description |
 | --- | --- |
-| Operations and reads | The document's own: `insertBlock`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
+| Operations and reads | The document's own: `insertBlocks`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
 | `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
 | `clearHistory()` | Empty the undo and redo stacks. Otherwise they keep the newest `history.limit` steps (200 by default). |
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
@@ -151,7 +150,7 @@ import { loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
 export function appendLine(saved: Uint8Array, text: string): Uint8Array {
   const document = loadDocument(saved, { actor: { id: 'server-bot' } }); // the bundled kinds' roles
   const index = document.childrenIds(null).length; // append at the root
-  document.insertBlock({ parent: null, index }, toBlockSpec({ type: 'paragraph', content: [{ text }] }));
+  document.insertBlocks({ parent: null, index }, [toBlockSpec({ type: 'paragraph', content: [{ text }] })]);
   const bytes = document.encode();
   document.destroy();
   return bytes;
@@ -199,5 +198,5 @@ Documents seeded by an older build used a full 32-bit writer id. A template with
 | `DocumentDestroyedError` | The document is used after `destroy()`, or `attachSync` runs on a destroyed document. |
 | `SemanticConflictError` | A view or option declares a block rule that contradicts one the document already adopted. |
 | `UndecodableUpdateError` | `loadDocument` bytes cannot be decoded. |
-| `UnsupportedDocError` | A foreign object, or a v13 document (reason `legacy`). |
+| `UnsupportedDocError` | A foreign object (a v13 `yjs` document, for one). |
 | `SchemaMismatchError` | The content claims a schema this build cannot own. |

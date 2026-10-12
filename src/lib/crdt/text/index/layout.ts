@@ -5,7 +5,7 @@
  */
 import type { BlockId, ChildSlot } from '../../placement/model.js';
 import { encodeRank, RANK_VMAX } from '../../placement/rank.js';
-import { unlistedRank } from '../../tables.js';
+import { listedColumns, unlistedRank } from '../../tables.js';
 import type { DisplayRoles } from '../runs.js';
 import type { IndexState } from './state.js';
 
@@ -56,17 +56,10 @@ export const indexLayout = (ix: IndexState) => {
 		const data = blocks.get(table)?.data;
 		if (data === null || typeof data !== 'object') return null;
 		let index = columnsMemo.get(data);
-		if (index !== undefined) return index;
-		const columns = (data as { columns?: unknown }).columns;
-		index = null;
-		if (Array.isArray(columns)) {
-			index = new Map();
-			for (const c of columns) {
-				const id = (c as { id?: unknown } | null)?.id;
-				if (typeof id === 'string' && !index.has(id)) index.set(id, index.size);
-			}
+		if (index === undefined) {
+			const ids = listedColumns(data);
+			columnsMemo.set(data, (index = ids && new Map(ids.map((id, i) => [id, i]))));
 		}
-		columnsMemo.set(data, index);
 		return index;
 	};
 	/** The column a cell names (`data.column`), if any. */
@@ -82,12 +75,7 @@ export const indexLayout = (ix: IndexState) => {
 	const tableFacts = (b: BlockId, data: unknown): string => {
 		const k = kindsOf.get(b);
 		if (data === null || typeof data !== 'object') return '';
-		if (k?.table) {
-			const columns = (data as { columns?: unknown }).columns;
-			return Array.isArray(columns)
-				? JSON.stringify(columns.map((c) => (c as { id?: unknown } | null)?.id ?? null))
-				: '';
-		}
+		if (k?.table) return JSON.stringify(listedColumns(data));
 		if (k?.cell) {
 			const c = (data as { column?: unknown }).column;
 			return typeof c === 'string' ? c : '';
@@ -322,7 +310,6 @@ export const indexLayout = (ix: IndexState) => {
 		cellRank,
 		tableFacts,
 		declaredItems,
-		dissolveVisit,
 		dissolve,
 		redissolve
 	};

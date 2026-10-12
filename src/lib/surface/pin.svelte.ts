@@ -139,6 +139,13 @@ export class Pin {
 		return { deltas: renderDeltas(items), empty: !textOf(items) };
 	};
 
+	/** The render of `segment` of `cell`: pinned while it hosts the IME, else its kind's (`segmentDeltas`). */
+	shown = (cell: Cell, segment: Segment, transform: TextTransform | undefined) =>
+		this.render(cell.id, segment.key) ?? {
+			deltas: segmentDeltas(cell, segment, transform),
+			empty: segment.text === ''
+		};
+
 	/** What follows the pinned segment `key` of `block` in its own element (`merge`, `beside`). */
 	rest = (block: BlockId, key: string): RenderDelta[] => {
 		const held = this.#held;

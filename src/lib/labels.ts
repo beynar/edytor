@@ -1,18 +1,15 @@
 /**
- * The words the editor's chrome shows or says: one dictionary section per
- * bundled plugin, plus `editor` for the view itself (announcements, a
- * suggestion's name). English is the default; each plugin factory takes a
- * `labels` option with the entries to replace (`PartialLabels`), and
- * `<Edytor labels>` takes the `editor` section.
+ * The words the package itself shows or says: the kinds' and commands'
+ * names (the menus search them), the document's own markup (placeholders,
+ * a to-do's checkbox, an empty body's hint, a page's or an entry's
+ * "Untitled"), the accessible names of the elements it renders, and the
+ * view's announcements. English is the default. A view's `labels`
+ * (`<Edytor labels>`) replaces any entry of any section, and its
+ * `keywords` a command's slash keywords, by command id. The words of the
+ * chrome (menus, bars, panels, cards) are the app's: its snippets write them.
  *
  * A label that says something about a value is a function of it, so a
  * language can order and inflect the words: `moved: (what) => …`.
- *
- * Group names (`KindPreset.group`: `Basic blocks`, `Advanced blocks`,
- * `Media`, `Layout`), the toolbar's color names (`TOOLBAR_COLORS`) and the
- * block palette's (`BLOCK_COLORS`, and `default`) are keys: the slash menu's
- * `groups`, the toolbar's `colors` and the block menu's `colors` map them to
- * what is shown.
  */
 
 /** What the view itself says: its live announcements and a suggestion's default name. */
@@ -30,15 +27,9 @@ export type EditorLabels = {
 	/** A move to a place (a drop). */
 	moved: (what: string) => string;
 	deleted: (what: string) => string;
-	/** A trigger menu's accessible name when its trigger names none (`Trigger.name`). */
-	triggerMenu: string;
-	/** A trigger menu's text while a search is pending, when its trigger says none. */
-	searching: string;
-	/** A trigger menu's text when no row matches, when its trigger says none. */
-	noResults: string;
 };
 
-/** The rich text kinds and marks: menu rows, toolbar buttons, placeholders. */
+/** The rich text kinds and marks: their names, the document's own words, placeholders. */
 export type RichTextLabels = {
 	/** Each preset's label: the slash menu, Turn into, the handles' names. */
 	kinds: {
@@ -57,15 +48,15 @@ export type RichTextLabels = {
 		quote: string;
 		divider: string;
 	};
-	/** The toolbar's mark buttons. */
+	/** The marks' toolbar buttons (`MarkDefinition.toolbar.label`). */
 	marks: { bold: string; italic: string; underline: string; strike: string; code: string };
 	/** A to-do's checkbox. */
 	checkbox: string;
 	/** The hint an empty body shows (an open toggle's, a callout's): a press there starts it. */
 	emptyBody: { toggle: string; callout: string };
-	/** A callout's icon button (`change`, `add` when it has none) and its picker. */
-	calloutIcon: { change: string; add: string; picker: string; remove: string };
-	/** `createRichTextPlaceholder`'s texts. */
+	/** A callout's icon button: `change` its icon, `add` one when it has none. */
+	calloutIcon: { change: string; add: string };
+	/** `richTextPlaceholder`'s texts. */
 	placeholders: {
 		heading: (level: 1 | 2 | 3) => string;
 		toggleHeading: (level: 1 | 2 | 3) => string;
@@ -82,198 +73,47 @@ export type RichTextLabels = {
 	};
 };
 
-export type ToolbarLabels = {
-	/** The bar's accessible name. */
-	bar: string;
-	/** The kind button when the selection's kind has no label. */
-	text: string;
-	turnInto: string;
-	link: string;
-	/** The link field's accessible name. */
-	linkUrl: string;
-	linkPlaceholder: string;
-	apply: string;
-	applyLink: string;
-	remove: string;
-	removeLink: string;
-	color: string;
-	textColor: string;
-	backgroundColor: string;
-	/** A color's name, by its `TOOLBAR_COLORS` name. */
-	colors: Record<string, string>;
-	/** A text color swatch, from the color's name. */
-	colorText: (color: string) => string;
-	/** A background swatch, from the color's name. */
-	colorBackground: (color: string) => string;
-	/** The card under a hovered link. */
-	card: string;
-	open: string;
-	openLink: string;
-	edit: string;
-	editLink: string;
-};
-
-export type SlashMenuLabels = {
-	/** The `+` menu's field. */
-	filter: string;
-	filterLabel: string;
-	/** The list's accessible name. */
-	list: string;
-	noResults: string;
-	close: string;
-	/** The key shown beside Close. */
-	closeKey: string;
-	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color`, `Inline`); others show as they are. */
-	groups: Record<string, string>;
-};
-
+/** The block menu's actions (its search matches them) and the block colours' commands. */
 export type BlockMenuLabels = {
-	search: string;
-	searchLabel: string;
-	/** The menu's accessible name. */
-	menu: string;
-	/** The heading when the block's kind has no label. */
-	block: string;
 	turnInto: string;
-	/** The Color row, and its flyout's accessible name. */
+	/** The Color row. */
 	color: string;
-	/** The flyout's sections. */
-	textColor: string;
-	backgroundColor: string;
 	/** A color's name, by its `BLOCK_COLORS` name (`red`), `default` for none. */
 	colors: Record<string, string>;
-	/** A text color row, from the color's name ("Red text"). */
+	/** A text color row and command, from the color's name ("Red text"). */
 	colorText: (color: string) => string;
-	/** A background row, from the color's name ("Red background"). */
+	/** A background row and command, from the color's name ("Red background"). */
 	colorBackground: (color: string) => string;
 	copyLink: string;
 	duplicate: string;
 	moveUp: string;
 	moveDown: string;
 	delete: string;
-	noResults: string;
 	/** Key names in the shortcuts shown off a Mac. */
 	ctrl: string;
 	shift: string;
 	deleteKey: string;
 };
 
-export type BlockHandlesLabels = {
-	/** The `+`'s accessible name, from its block's kind. */
-	add: (kind: string) => string;
-	/** The same, for a block directly in a column (Alt adds a column). */
-	addBeside: (kind: string) => string;
-	/** The `+`'s tooltip. */
-	addHint: string;
-	addBesideHint: string;
-	/** The grip's accessible name, from its block's kind. */
-	grip: (kind: string) => string;
-};
-
 export type ImageLabels = {
-	/** The preset, and a readonly empty image. */
-	image: string;
-	add: string;
-	link: string;
-	linkPlaceholder: string;
-	embed: string;
-	upload: string;
-	uploading: string;
-	/** An inline image over the size limit (`limit`, in words); `upload`: an upload is offered. */
-	tooLarge: (limit: string, upload: boolean) => string;
-	uploadFailed: string;
-	invalid: string;
-	/** The chrome's toolbar name. */
-	toolbar: string;
-	alignLeft: string;
-	alignCenter: string;
-	alignRight: string;
-	alt: string;
-	altPlaceholder: string;
-};
-
-/** One media kind's empty block and menu row. */
-export type MediaKindLabels = {
 	/** The preset. */
-	label: string;
-	/** The empty block's button. */
-	add: string;
-	placeholder: string;
-	submit: string;
-	invalid: string;
+	image: string;
 };
 
+/** The media kinds' presets, and a file's size. */
 export type MediaLabels = {
-	embed: MediaKindLabels & {
-		/** The row a pasted link offers. */
-		offer: string;
-	};
-	bookmark: MediaKindLabels & { offer: string };
-	file: MediaKindLabels & {
-		/** The button when an upload is offered. */
-		addOrUpload: string;
-	};
-	video: MediaKindLabels;
-	audio: MediaKindLabels;
-	upload: string;
-	/** A pasted or dropped file's block while it uploads. */
-	uploading: string;
-	/** A pasted or dropped file whose upload failed. */
-	uploadFailed: string;
+	embed: string;
+	bookmark: string;
+	file: string;
+	video: string;
+	audio: string;
 	/** A file's size, in bytes. */
 	fileSize: (bytes: number) => string;
-	/** The menu a pasted link opens. */
-	pasteAs: string;
-	/** Its row keeping the link. */
-	pasteLink: string;
 };
 
 export type CodeLabels = {
-	/** The preset. */
+	/** The preset (a language's name is its `CodePluginOptions.languages` row's). */
 	code: string;
-	/** The language picker's name (its button reads "<language>: <the block's language>"). */
-	language: string;
-	/** The language list's search field placeholder. */
-	search: string;
-	/** The language list when no language matches the query. */
-	noResults: string;
-	copy: string;
-	copied: string;
-	/** A language's label, by id, over the language list's own. */
-	languages: Record<string, string>;
-};
-
-export type FindLabels = {
-	/** The bar's accessible name. */
-	bar: string;
-	query: string;
-	queryPlaceholder: string;
-	noResults: string;
-	/** The current match and the count. */
-	count: (current: number, total: number) => string;
-	matchCase: string;
-	previous: string;
-	previousHint: string;
-	next: string;
-	nextHint: string;
-	close: string;
-	closeHint: string;
-	replaceWith: string;
-	replace: string;
-	replaceAll: string;
-};
-
-export type SuggestionsLabels = {
-	/** A suggestion's name when it has no `label`. */
-	suggestion: string;
-	/** While it streams, from its `label`. */
-	writing: (label: string | undefined) => string;
-	accept: string;
-	discard: string;
-	retry: string;
-	/** Key names in the hints. */
-	ctrl: string;
-	escape: string;
 };
 
 /** The page block (`createPagePlugin`). */
@@ -294,74 +134,10 @@ export type TocLabels = {
 	empty: string;
 };
 
-/** The `[[` page link menu and atom (`createPageLinkPlugin`). */
+/** The `[[` page link atom (`createPageLinkPlugin`). */
 export type PageLinkLabels = {
-	/** The menu's accessible name. */
-	menu: string;
-	/** The menu while a search is pending, with no rows. */
-	searching: string;
-	noResults: string;
 	/** An atom whose page has no title. */
 	untitled: string;
-};
-
-/** The `@` mention menu (`createMentionPlugin`). */
-export type MentionLabels = {
-	/** The menu's accessible name. */
-	menu: string;
-	/** The menu while a search is pending, with no rows. */
-	searching: string;
-	noResults: string;
-};
-
-/** The version history panel (`HistoryPanel`). */
-export type HistoryPanelLabels = {
-	/** The panel's name (its `aria-label`). */
-	title: string;
-	/** The list's name. */
-	versions: string;
-	/** The first half of a day (before local noon). */
-	morning: string;
-	/** The second half of a day (until midnight). */
-	evening: string;
-	loading: string;
-	/** No version stored yet. */
-	empty: string;
-	/** A version's editors are unknown (a server edit). */
-	noEditors: string;
-	/** Editors left out of a version's list, after the names shown. */
-	moreEditors: (count: number) => string;
-	/** Shown before a version's write time. */
-	saved: string;
-	/** The preview's name (its `aria-label`). */
-	preview: string;
-	/** Pick a version to preview it. */
-	choose: string;
-	/** The highlight toggle. */
-	highlight: string;
-	/** Blocks added since the version. */
-	added: (count: number) => string;
-	/** Blocks removed since the version. */
-	removed: (count: number) => string;
-	/** Blocks changed since the version. */
-	changed: (count: number) => string;
-	/** The version equals the current document. */
-	same: string;
-	restore: string;
-	restoring: string;
-	undo: string;
-	restored: string;
-	/** A restore that changed nothing (`noop`). */
-	unchanged: string;
-	/** The version is gone (`refused`). */
-	unavailable: string;
-	undone: string;
-	/** An undo with no restore to undo (`noop`). */
-	nothingToUndo: string;
-	/** A `401` or `403`. */
-	denied: string;
-	/** Any other failure. */
-	failed: string;
 };
 
 /** The block and inline equations (`createEquationPlugin`). */
@@ -374,11 +150,6 @@ export type EquationLabels = {
 	blockPlaceholder: string;
 	/** An empty inline equation. */
 	inlinePlaceholder: string;
-	/** The editor's accessible name, and its field's. */
-	editor: string;
-	/** The field's placeholder. */
-	placeholder: string;
-	done: string;
 	/** TeX that does not render: shown as the equation's title, with KaTeX's message. */
 	invalid: string;
 };
@@ -390,36 +161,15 @@ export type ColumnsLabels = {
 	resize: string;
 };
 
-/** The comments plugin (`createCommentsPlugin`): its toolbar button, sidebar and composer. */
+/** The comments plugin (`createCommentsPlugin`): its toolbar button and its sidebar. */
 export type CommentsLabels = {
-	/** The toolbar button and the sidebar's accessible name. */
+	/** The toolbar button, and a thread's card's accessible name. */
 	comment: string;
 	/** The sidebar's accessible name. */
 	sidebar: string;
-	/** The new thread's field. */
-	placeholder: string;
-	/** A thread's reply field. */
-	reply: string;
-	/** The button posting a new thread or a reply. */
-	post: string;
-	cancel: string;
-	resolve: string;
-	reopen: string;
-	delete: string;
-	/** A resolved thread's line, with who resolved it. */
-	resolvedBy: (name: string) => string;
-	/** The button showing the resolved threads, with their count. */
-	showResolved: (count: number) => string;
-	hideResolved: string;
-	/** The current user, in place of their name. */
-	you: string;
-	/** When a comment was written (ms since the epoch). */
-	when: (at: number) => string;
-	/** A request the server refused or could not answer. */
-	failed: string;
 };
 
-/** The table block and its controls (`createTablePlugin`). */
+/** The table block (`createTablePlugin`). */
 export type TableLabels = {
 	/** The "Table" command, and a table's accessible name. */
 	table: string;
@@ -431,23 +181,8 @@ export type TableLabels = {
 	insertRowBelow: string;
 	insertColumnLeft: string;
 	insertColumnRight: string;
-	/** The row and column menus. */
-	insertAbove: string;
-	insertBelow: string;
-	insertLeft: string;
-	insertRight: string;
-	moveUp: string;
-	moveDown: string;
-	moveLeft: string;
-	moveRight: string;
 	deleteRow: string;
 	deleteColumn: string;
-	/** The `+` under the table and beside it. */
-	addRow: string;
-	addColumn: string;
-	/** The grips that open the row and column menus. */
-	rowMenu: string;
-	columnMenu: string;
 	/** A column's resize band. */
 	resize: string;
 	/** A padded cell (a row showing none in a column): its first press creates it. */
@@ -458,36 +193,36 @@ export type TableLabels = {
 export type Labels = {
 	editor: EditorLabels;
 	richText: RichTextLabels;
-	toolbar: ToolbarLabels;
-	slashMenu: SlashMenuLabels;
 	blockMenu: BlockMenuLabels;
-	blockHandles: BlockHandlesLabels;
 	image: ImageLabels;
 	media: MediaLabels;
 	code: CodeLabels;
-	find: FindLabels;
-	suggestions: SuggestionsLabels;
 	columns: ColumnsLabels;
 	page: PageLabels;
 	toc: TocLabels;
 	pageLink: PageLinkLabels;
 	comments: CommentsLabels;
 	table: TableLabels;
-	mention: MentionLabels;
-	history: HistoryPanelLabels;
 	equation: EquationLabels;
 };
 
+/** The entries of a section to replace: any of them, and any entry of a nested group. */
+type Overrides<L> = {
+	[P in keyof L]?: L[P] extends (...args: never[]) => unknown
+		? L[P]
+		: L[P] extends object
+			? Partial<L[P]>
+			: L[P];
+};
+
 /**
- * The entries of section `K` to replace: any of them, and any entry of a
- * nested group (`placeholders`, `groups`, a media kind) without the others.
+ * A view's words (`<Edytor labels>`): any entry of any section, and any
+ * entry of a nested group (`placeholders`, `kinds`) without the others;
+ * `keywords` replaces a command's slash keywords by command id (list the
+ * English ones in it to keep them).
  */
-export type PartialLabels<K extends keyof Labels> = {
-	[P in keyof Labels[K]]?: Labels[K][P] extends (...args: never[]) => unknown
-		? Labels[K][P]
-		: Labels[K][P] extends object
-			? Partial<Labels[K][P]>
-			: Labels[K][P];
+export type PartialLabels = { [K in keyof Labels]?: Overrides<Labels[K]> } & {
+	keywords?: Partial<Record<string, string[]>>;
 };
 
 /** A byte count for people: `5 B`, `1.2 KB`, `3.4 MB`. */
@@ -512,421 +247,213 @@ const frozen = <T extends object>(value: T): T => {
 	return Object.freeze(value);
 };
 
-/**
- * The English dictionary: the default of every section. Frozen: start
- * yours from a copy (`{ ...englishLabels.toolbar, link: '…' }`).
- */
-export const englishLabels: Labels = frozen({
-	editor: {
-		suggestion: 'Suggestion',
-		block: (kind) => `${kind} block`,
-		blocks: (count) => `${count} blocks`,
-		movedUp: (what) => `Moved ${what} up`,
-		movedDown: (what) => `Moved ${what} down`,
-		indented: (what) => `Indented ${what}`,
-		outdented: (what) => `Outdented ${what}`,
-		moved: (what) => `Moved ${what}`,
-		deleted: (what) => `Deleted ${what}`,
-		triggerMenu: 'Suggestions',
-		searching: 'Searching…',
-		noResults: 'No results'
+const UNTITLED = 'Untitled';
+/** An empty body's hint (`body.hint`). */
+/* @__NO_SIDE_EFFECTS__ */
+const emptyBody = (kind: string) => `Empty ${kind}. Click or drop blocks inside.`;
+const heading = (level: number) => `Heading ${level}`;
+const toggleHeading = (level: number) => `Toggle heading ${level}`;
+
+/** The `editor` section in English. */
+export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
+	suggestion: 'Suggestion',
+	block: (kind) => `${kind} block`,
+	blocks: (count) => `${count} blocks`,
+	movedUp: (what) => `Moved ${what} up`,
+	movedDown: (what) => `Moved ${what} down`,
+	indented: (what) => `Indented ${what}`,
+	outdented: (what) => `Outdented ${what}`,
+	moved: (what) => `Moved ${what}`,
+	deleted: (what) => `Deleted ${what}`
+});
+
+/** The `richText` section in English. */
+export const richTextEnglish: RichTextLabels = /* @__PURE__ */ frozen({
+	kinds: {
+		paragraph: 'Text',
+		heading1: heading(1),
+		heading2: heading(2),
+		heading3: heading(3),
+		toggleHeading1: toggleHeading(1),
+		toggleHeading2: toggleHeading(2),
+		toggleHeading3: toggleHeading(3),
+		bulletedList: 'Bulleted list',
+		numberedList: 'Numbered list',
+		todoList: 'To-do list',
+		toggleList: 'Toggle list',
+		callout: 'Callout',
+		quote: 'Quote',
+		divider: 'Divider'
 	},
-	richText: {
-		kinds: {
-			paragraph: 'Text',
-			heading1: 'Heading 1',
-			heading2: 'Heading 2',
-			heading3: 'Heading 3',
-			toggleHeading1: 'Toggle heading 1',
-			toggleHeading2: 'Toggle heading 2',
-			toggleHeading3: 'Toggle heading 3',
-			bulletedList: 'Bulleted list',
-			numberedList: 'Numbered list',
-			todoList: 'To-do list',
-			toggleList: 'Toggle list',
-			callout: 'Callout',
-			quote: 'Quote',
-			divider: 'Divider'
-		},
-		marks: {
-			bold: 'Bold',
-			italic: 'Italic',
-			underline: 'Underline',
-			strike: 'Strike',
-			code: 'Code'
-		},
-		checkbox: 'Done',
-		emptyBody: {
-			toggle: 'Empty toggle. Click or drop blocks inside.',
-			callout: 'Empty callout. Click or drop blocks inside.'
-		},
-		calloutIcon: {
-			change: 'Change icon',
-			add: 'Add icon',
-			picker: 'Callout icons',
-			remove: 'Remove icon'
-		},
-		placeholders: {
-			heading: (level) => `Heading ${level}`,
-			toggleHeading: (level) => `Toggle heading ${level}`,
-			list: 'List',
-			todo: 'To-do',
-			toggle: 'Toggle',
-			quote: 'Empty quote',
-			callout: 'Callout title',
-			caption: 'Write a caption…',
-			empty: "Type '/' for commands"
-		}
+	marks: {
+		bold: 'Bold',
+		italic: 'Italic',
+		underline: 'Underline',
+		strike: 'Strike',
+		code: 'Code'
 	},
-	toolbar: {
-		bar: 'Text formatting',
-		text: 'Text',
-		turnInto: 'Turn into',
-		link: 'Link',
-		linkUrl: 'Link URL',
-		linkPlaceholder: 'Paste link',
-		apply: 'Apply',
-		applyLink: 'Apply link',
-		remove: 'Remove',
-		removeLink: 'Remove link',
-		color: 'Color',
-		textColor: 'Text color',
-		backgroundColor: 'Background color',
-		colors: {
-			Default: 'Default',
-			Gray: 'Gray',
-			Brown: 'Brown',
-			Orange: 'Orange',
-			Yellow: 'Yellow',
-			Green: 'Green',
-			Blue: 'Blue',
-			Purple: 'Purple',
-			Pink: 'Pink',
-			Red: 'Red'
-		},
-		colorText: (color) => `${color} text`,
-		colorBackground: (color) => `${color} background`,
-		card: 'Link',
-		open: 'Open',
-		openLink: 'Open link in a new tab',
-		edit: 'Edit',
-		editLink: 'Edit link'
+	checkbox: 'Done',
+	emptyBody: {
+		toggle: emptyBody('toggle'),
+		callout: emptyBody('callout')
 	},
-	slashMenu: {
-		filter: 'Type to filter…',
-		filterLabel: 'Filter block commands',
-		list: 'Block commands',
-		noResults: 'No results',
-		close: 'Close menu',
-		closeKey: 'esc',
-		groups: {
-			'Basic blocks': 'Basic blocks',
-			'Advanced blocks': 'Advanced blocks',
-			Media: 'Media',
-			Layout: 'Layout',
-			Color: 'Color',
-			Inline: 'Inline'
-		}
-	},
-	blockMenu: {
-		search: 'Search actions…',
-		searchLabel: 'Search actions',
-		menu: 'Block actions',
-		block: 'Block',
-		turnInto: 'Turn into',
-		color: 'Color',
-		textColor: 'Text color',
-		backgroundColor: 'Background color',
-		colors: {
-			default: 'Default',
-			gray: 'Gray',
-			brown: 'Brown',
-			orange: 'Orange',
-			yellow: 'Yellow',
-			green: 'Green',
-			blue: 'Blue',
-			purple: 'Purple',
-			pink: 'Pink',
-			red: 'Red'
-		},
-		colorText: (color) => `${color} text`,
-		colorBackground: (color) => `${color} background`,
-		copyLink: 'Copy link to block',
-		duplicate: 'Duplicate',
-		moveUp: 'Move up',
-		moveDown: 'Move down',
-		delete: 'Delete',
-		noResults: 'No results',
-		ctrl: 'Ctrl',
-		shift: 'Shift',
-		deleteKey: 'Del'
-	},
-	blockHandles: {
-		add: (kind) => `Add a block below ${kind} (Alt: above)`,
-		addBeside: (kind) => `Add a block below ${kind} (Alt: a column to the right)`,
-		addHint: 'Click to add below\nAlt-click to add a block above',
-		addBesideHint: 'Click to add below\nAlt-click to add a column to the right',
-		grip: (kind) => `${kind} block: drag to move, click for actions`
-	},
-	image: {
-		image: 'Image',
-		add: 'Add an image',
-		link: 'Image link',
-		linkPlaceholder: 'Paste the image link…',
-		embed: 'Embed image',
-		upload: 'Upload',
-		uploading: 'Uploading…',
-		tooLarge: (limit, upload) =>
-			`Inline images are limited to ${limit}: ${upload ? 'upload the file instead' : 'host the image and paste its link'}.`,
-		uploadFailed: 'The upload failed: try again or paste a link.',
-		invalid: "That doesn't look like an image link or upload.",
-		toolbar: 'Image',
-		alignLeft: 'Align left',
-		alignCenter: 'Align center',
-		alignRight: 'Align right',
-		alt: 'Alt text',
-		altPlaceholder: 'Describe the image…'
-	},
-	media: {
-		embed: {
-			label: 'Embed',
-			offer: 'Embed',
-			add: 'Embed a link',
-			placeholder: 'Paste the link…',
-			submit: 'Embed link',
-			invalid: 'No embed provider plays that link.'
-		},
-		bookmark: {
-			label: 'Web bookmark',
-			offer: 'Bookmark',
-			add: 'Add a web bookmark',
-			placeholder: 'Paste the link…',
-			submit: 'Create bookmark',
-			invalid: "That doesn't look like a web link."
-		},
-		file: {
-			label: 'File',
-			add: 'Embed a file',
-			addOrUpload: 'Upload or embed a file',
-			placeholder: 'Paste the file link…',
-			submit: 'Embed link',
-			invalid: "That doesn't look like a file link or upload."
-		},
-		video: {
-			label: 'Video',
-			add: 'Embed a video',
-			placeholder: 'Paste the video link…',
-			submit: 'Embed video',
-			invalid: "That doesn't look like a video link or upload."
-		},
-		audio: {
-			label: 'Audio',
-			add: 'Embed audio',
-			placeholder: 'Paste the audio link…',
-			submit: 'Embed audio',
-			invalid: "That doesn't look like an audio link or upload."
-		},
-		upload: 'Upload',
-		uploading: 'Uploading…',
-		uploadFailed: 'The upload failed: try again or paste a link.',
-		fileSize: bytes,
-		pasteAs: 'Paste as',
-		pasteLink: 'Link'
-	},
-	code: {
-		code: 'Code',
-		language: 'Code language',
-		search: 'Search for a language…',
-		noResults: 'No results',
-		copy: 'Copy',
-		copied: 'Copied',
-		languages: {}
-	},
-	find: {
-		bar: 'Find in page',
-		query: 'Find',
-		queryPlaceholder: 'Find in page',
-		noResults: 'No results',
-		count: (current, total) => `${current}/${total}`,
-		matchCase: 'Match case',
-		previous: 'Previous match',
-		previousHint: 'Previous match (Shift+Enter)',
-		next: 'Next match',
-		nextHint: 'Next match (Enter)',
-		close: 'Close',
-		closeHint: 'Close (Escape)',
-		replaceWith: 'Replace with',
-		replace: 'Replace',
-		replaceAll: 'Replace all'
-	},
-	suggestions: {
-		suggestion: 'Suggestion',
-		writing: (label) => `${label ?? 'AI'} is writing…`,
-		accept: 'Accept',
-		discard: 'Discard',
-		retry: 'Try again',
-		ctrl: 'Ctrl',
-		escape: 'Esc'
-	},
-	columns: {
-		columns: (count) => `${count} columns`,
-		resize: 'Resize columns'
-	},
-	page: {
-		page: 'Page',
-		untitled: 'Untitled'
-	},
-	toc: {
-		toc: 'Table of contents',
-		untitled: 'Untitled',
-		empty: 'Add headings to create a table of contents.'
-	},
-	pageLink: {
-		menu: 'Pages',
-		searching: 'Searching…',
-		noResults: 'No results',
-		untitled: 'Untitled'
-	},
-	comments: {
-		comment: 'Comment',
-		sidebar: 'Comments',
-		placeholder: 'Add a comment…',
-		reply: 'Reply…',
-		post: 'Comment',
-		cancel: 'Cancel',
-		resolve: 'Resolve',
-		reopen: 'Re-open',
-		delete: 'Delete',
-		resolvedBy: (name) => `Resolved by ${name}`,
-		showResolved: (count) => `Resolved (${count})`,
-		hideResolved: 'Hide resolved',
-		you: 'You',
-		when: (at) =>
-			Number.isFinite(at)
-				? new Intl.DateTimeFormat('en', {
-						month: 'short',
-						day: 'numeric',
-						hour: 'numeric',
-						minute: '2-digit'
-					}).format(at)
-				: '',
-		failed: 'Could not save the comment. Try again.'
-	},
-	table: {
-		table: 'Table',
-		headerRow: 'Header row',
-		headerColumn: 'Header column',
-		insertRowAbove: 'Insert row above',
-		insertRowBelow: 'Insert row below',
-		insertColumnLeft: 'Insert column left',
-		insertColumnRight: 'Insert column right',
-		insertAbove: 'Insert above',
-		insertBelow: 'Insert below',
-		insertLeft: 'Insert left',
-		insertRight: 'Insert right',
-		moveUp: 'Move up',
-		moveDown: 'Move down',
-		moveLeft: 'Move left',
-		moveRight: 'Move right',
-		deleteRow: 'Delete row',
-		deleteColumn: 'Delete column',
-		addRow: 'Add a row',
-		addColumn: 'Add a column',
-		rowMenu: 'Row options',
-		columnMenu: 'Column options',
-		resize: 'Resize column',
-		emptyCell: 'Empty cell'
-	},
-	mention: {
-		menu: 'People',
-		searching: 'Searching…',
-		noResults: 'No results'
-	},
-	history: {
-		title: 'Version history',
-		versions: 'Versions',
-		morning: 'Morning',
-		evening: 'Evening',
-		loading: 'Loading…',
-		empty: 'No versions yet. A version is saved twice a day while the page changes.',
-		noEditors: 'No editors',
-		moreEditors: (count) => `+${count}`,
-		saved: 'Saved',
-		preview: 'Version preview',
-		choose: 'Choose a version to preview it.',
-		highlight: 'Highlight changes',
-		added: (count) => `${count} added since`,
-		removed: (count) => `${count} removed since`,
-		changed: (count) => `${count} changed since`,
-		same: 'Same as the current page',
-		restore: 'Restore version',
-		restoring: 'Restoring…',
-		undo: 'Undo restore',
-		restored: 'Version restored.',
-		unchanged: 'The page already matches this version.',
-		unavailable: 'This version is no longer available.',
-		undone: 'Restore undone.',
-		nothingToUndo: 'There is no restore to undo.',
-		denied: 'You do not have access to this history.',
-		failed: 'The history could not be reached.'
-	},
-	equation: {
-		block: 'Block equation',
-		inline: 'Inline equation',
-		blockPlaceholder: 'Add a TeX equation',
-		inlinePlaceholder: 'New equation',
-		editor: 'Equation',
-		placeholder: 'E = mc^2',
-		done: 'Done',
-		invalid: 'Invalid equation'
+	calloutIcon: { change: 'Change icon', add: 'Add icon' },
+	placeholders: {
+		heading,
+		toggleHeading,
+		list: 'List',
+		todo: 'To-do',
+		toggle: 'Toggle',
+		quote: 'Empty quote',
+		callout: 'Callout title',
+		caption: 'Write a caption…',
+		empty: "Type '/' for commands"
 	}
 });
 
+/** The `blockMenu` section in English. */
+export const blockMenuEnglish: BlockMenuLabels = /* @__PURE__ */ frozen({
+	turnInto: 'Turn into',
+	color: 'Color',
+	colors: Object.fromEntries(
+		['Default', 'Gray', 'Brown', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Red'].map(
+			(name) => [name.toLowerCase(), name]
+		)
+	),
+	colorText: (color) => `${color} text`,
+	colorBackground: (color) => `${color} background`,
+	copyLink: 'Copy link to block',
+	duplicate: 'Duplicate',
+	moveUp: 'Move up',
+	moveDown: 'Move down',
+	delete: 'Delete',
+	ctrl: 'Ctrl',
+	shift: 'Shift',
+	deleteKey: 'Del'
+});
+
+/** The `image` section in English. */
+export const imageEnglish: ImageLabels = /* @__PURE__ */ frozen({ image: 'Image' });
+
+/** The `media` section in English. */
+export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
+	embed: 'Embed',
+	bookmark: 'Web bookmark',
+	file: 'File',
+	video: 'Video',
+	audio: 'Audio',
+	fileSize: bytes
+});
+
+/** The `code` section in English. */
+export const codeEnglish: CodeLabels = /* @__PURE__ */ frozen({ code: 'Code' });
+
+/** The `columns` section in English. */
+export const columnsEnglish: ColumnsLabels = /* @__PURE__ */ frozen({
+	columns: (count) => `${count} columns`,
+	resize: 'Resize columns'
+});
+
+/** The `page` section in English. */
+export const pageEnglish: PageLabels = /* @__PURE__ */ frozen({ page: 'Page', untitled: UNTITLED });
+
+/** The `toc` section in English. */
+export const tocEnglish: TocLabels = /* @__PURE__ */ frozen({
+	toc: 'Table of contents',
+	untitled: UNTITLED,
+	empty: 'Add headings to create a table of contents.'
+});
+
+/** The `pageLink` section in English. */
+export const pageLinkEnglish: PageLinkLabels = /* @__PURE__ */ frozen({ untitled: UNTITLED });
+
+/** The `comments` section in English. */
+export const commentsEnglish: CommentsLabels = /* @__PURE__ */ frozen({
+	comment: 'Comment',
+	sidebar: 'Comments'
+});
+
+/** The `table` section in English. */
+export const tableEnglish: TableLabels = /* @__PURE__ */ frozen({
+	table: 'Table',
+	headerRow: 'Header row',
+	headerColumn: 'Header column',
+	insertRowAbove: 'Insert row above',
+	insertRowBelow: 'Insert row below',
+	insertColumnLeft: 'Insert column left',
+	insertColumnRight: 'Insert column right',
+	deleteRow: 'Delete row',
+	deleteColumn: 'Delete column',
+	resize: 'Resize column',
+	emptyCell: 'Empty cell'
+});
+
+/** The `equation` section in English. */
+export const equationEnglish: EquationLabels = /* @__PURE__ */ frozen({
+	block: 'Block equation',
+	inline: 'Inline equation',
+	blockPlaceholder: 'Add a TeX equation',
+	inlinePlaceholder: 'New equation',
+	invalid: 'Invalid equation'
+});
+
 /**
- * Section `section` of the dictionary with `overrides` over the English one:
- * an entry replaces its English entry, a nested group's entries replace
- * only theirs.
+ * The English dictionary: the default of every section. Frozen: start
+ * yours from a copy (`{ ...englishLabels.richText, checkbox: '…' }`). Each
+ * plugin reads only its own section, so an app ships the words of the
+ * plugins it lists.
  */
-export const labelsWith = <K extends keyof Labels>(
+export const englishLabels: Labels = /* @__PURE__ */ frozen({
+	editor: editorEnglish,
+	richText: richTextEnglish,
+	blockMenu: blockMenuEnglish,
+	image: imageEnglish,
+	media: mediaEnglish,
+	code: codeEnglish,
+	columns: columnsEnglish,
+	page: pageEnglish,
+	toc: tocEnglish,
+	pageLink: pageLinkEnglish,
+	comments: commentsEnglish,
+	table: tableEnglish,
+	equation: equationEnglish
+});
+
+/** Each view's sections, merged once: its `labels` over the English ones. */
+const merged = new WeakMap<PartialLabels, Map<string, object>>();
+
+/**
+ * The words of `section` in `view` (`english` its English words): the
+ * view's `labels` entries over them, a nested group's entries replacing
+ * only theirs. English for no view (a document read without one).
+ */
+export const labelsOf = <K extends keyof Labels>(
+	view: { readonly labels: PartialLabels } | undefined,
 	section: K,
-	overrides: PartialLabels<K> | undefined
+	english: Labels[K]
 ): Labels[K] => {
-	const base = englishLabels[section] as Record<string, unknown>;
-	if (!overrides) return base as Labels[K];
-	const merged: Record<string, unknown> = { ...base };
-	for (const [key, value] of Object.entries(overrides)) {
-		if (value === undefined) continue;
-		const own = base[key];
-		merged[key] = isGroup(own) && isGroup(value) ? { ...own, ...value } : value;
+	const overrides = view?.labels[section] as Record<string, unknown> | undefined;
+	if (!overrides) return english;
+	let sections = merged.get(view!.labels);
+	if (!sections) merged.set(view!.labels, (sections = new Map()));
+	let words = sections.get(section);
+	if (!words) {
+		const base = english as Record<string, unknown>;
+		const out: Record<string, unknown> = { ...base };
+		for (const [key, value] of Object.entries(overrides))
+			if (value !== undefined)
+				out[key] = isGroup(base[key]) && isGroup(value) ? { ...base[key], ...value } : value;
+		sections.set(section, (words = out));
 	}
-	return merged as Labels[K];
+	return words as Labels[K];
 };
 
 /**
- * The keywords of command `id`: `overrides`' entry for it when there is one
- * (it replaces the defaults: list the English ones in it to keep them),
- * else `defaults`.
+ * The slash keywords of command `id` in `view`: its `keywords` entry for
+ * the id when there is one (it replaces the defaults), else `defaults`.
  */
 export const keywordsOf = (
+	view: { readonly labels: PartialLabels } | undefined,
 	id: string,
-	defaults: string[] | undefined,
-	overrides: Partial<Record<string, string[]>> | undefined
-) => overrides?.[id] ?? defaults;
-
-/**
- * One plugin's labels per view: the first plugin of its kind listed in a
- * view claims them, as its kind records (first wins); its components read
- * them through the view they render in, English when none claimed them.
- */
-export const viewLabels = <K extends keyof Labels>(section: K) => {
-	const claimed = new WeakMap<object, Labels[K]>();
-	return {
-		/** `labels` for `view`, unless a plugin listed before claimed it. */
-		claim: (view: object | undefined, labels: Labels[K]) => {
-			if (view && !claimed.has(view)) claimed.set(view, labels);
-		},
-		/** The labels of `view` (English for none, or a view no plugin claimed). */
-		of: (view: object | undefined): Labels[K] =>
-			(view && claimed.get(view)) || englishLabels[section]
-	};
-};
+	defaults: string[] | undefined
+) => view?.labels.keywords?.[id] ?? defaults;

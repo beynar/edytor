@@ -12,13 +12,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { convertBlocks, convertToKind } from '$lib/kinds.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import {
 	dispatchCut,
 	dispatchDomBeforeInput,
@@ -26,6 +23,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import { blockMenuPlugin, codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -71,7 +70,7 @@ const shape = ({ edytor }: View) => {
 };
 const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 const at = async (view: View, id: string, offset: number) => {
-	view.edytor.selection.setAtTextOffset(get(view, id).firstText!, offset);
+	view.edytor.selection.selectText(get(view, id).firstText!, offset);
 	await flushDomUpdates();
 };
 const row = (view: View, label: string) => view.edytor.kinds.find((kind) => kind.label === label)!;
@@ -117,7 +116,7 @@ describe('The horizontal rule on a block holding only an inline atom (BW-01)', (
 		await at(view, 'a', 0);
 		await rule(view);
 		expect(shape(view)).toEqual(['divider ""', 'paragraph "@"', 'paragraph "c"']);
-		expect(view.edytor.selection.state.startBlock?.id).toBe('a');
+		expect(selectionState(view.edytor).startBlock?.id).toBe('a');
 	});
 
 	it('at the root, insertDividerAtSelection does the same', async () => {
@@ -141,7 +140,7 @@ describe('A veto on one block of a command over several (BW-02)', () => {
 
 	it('Mod+Alt+1 over b..d converts b and d, keeps c, and reports applied', async () => {
 		const view = await render([veto], seed());
-		view.edytor.selection.setAtRange(get(view, 'b').firstText!, 0, get(view, 'd').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 0, get(view, 'd').firstText!, 1);
 		await flushDomUpdates();
 		await turnInto('1');
 		expect(shape(view)).toEqual(converted);
@@ -166,7 +165,7 @@ describe('A veto on one block of a command over several (BW-02)', () => {
 
 	it('Tab over a block selection with a gap moves the runs it may move, and reports applied', async () => {
 		const view = await render([veto], [p('z'), p('a', locked), p('m'), p('e')]);
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'e'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'e'));
 		await flushDomUpdates();
 		await tab();
 		expect(shape(view)).toEqual([
@@ -182,9 +181,10 @@ describe('Turn into places the kind a plugin’s replacement names (BW-03)', () 
 	const replacing =
 		(from: string, to: JSONBlock): Plugin =>
 		() => ({
-			onBeforeOperation: ({ operation, payload }) => {
-				const value = (payload as { value?: JSONBlock }).value;
-				if (operation === 'setBlock' && value?.type === from) return { value: { ...value, ...to } };
+			onBeforeOperation: (change) => {
+				if (change.operation !== 'setBlock') return;
+				const [id, value] = change.payload;
+				if (value.type === from) return [id, { ...value, ...to }];
 			}
 		});
 
@@ -217,7 +217,7 @@ describe('A list split by Turn into stays split (BW-05)', () => {
 		expect(convertToKind(view.edytor, get(view, 'b'), row(view, 'Divider'))).toBe(true);
 		await flushDomUpdates();
 		const [, divider, paragraph] = view.edytor.root!.children;
-		view.edytor.deleteBlocks({ blocks: [divider!, paragraph!] });
+		view.edytor.deleteBlocks([divider!.id, paragraph!.id]);
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			[O, ['list-item "a"', 'list-item "b"']],
@@ -263,7 +263,7 @@ describe('Sweep: one emptiness rule, inline atoms count (SW11-kinds-1..3)', () =
 
 	it('Delete after a mention, before a code block, keeps the mention (SW11-kinds-1)', async () => {
 		const view = await render([], [atom('paragraph', 'a'), code('k')]);
-		view.edytor.selection.setAtTextOffset(get(view, 'a').lastText!, 0);
+		view.edytor.selection.selectText(get(view, 'a').lastText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentForward' });
 		expect(shape(view)).toEqual(['paragraph "@"', ['code ""', ['codeLine "x"']]]);
@@ -299,7 +299,7 @@ describe('Sweep: the block menu’s Delete over several blocks is one command (S
 	it('with a locked block selected, nothing is deleted, as with the keyboard', async () => {
 		const view = await render([blockMenuPlugin, lockedBlocks], seed());
 		const blocks = ['a', 'b', 'c'].map((id) => get(view, id));
-		view.edytor.selection.selectBlocks(...blocks);
+		selectBlocks(view.edytor, ...blocks);
 		await flushDomUpdates();
 		view.editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, {
@@ -317,7 +317,7 @@ describe('Sweep: the block menu’s Delete over several blocks is one command (S
 
 	it('the keyboard’s block delete (the reference)', async () => {
 		const view = await render([lockedBlocks], seed());
-		view.edytor.selection.selectBlocks(...['a', 'b', 'c'].map((id) => get(view, id)));
+		selectBlocks(view.edytor, ...['a', 'b', 'c'].map((id) => get(view, id)));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Backspace' });
 		expect(shape(view)).toEqual(unchanged);
@@ -337,7 +337,7 @@ describe('Sweep: formatting and duplicating over several blocks skip a vetoed on
 
 	it('Mod+B over a range across a locked block bolds the others', async () => {
 		const view = await render([veto], [p('a'), p('b', locked), p('c')]);
-		view.edytor.selection.setAtRange(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'a').firstText!, 0, get(view, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'b', ctrlKey: true });
 		expect(bold(view)).toEqual([true, false, true]);
@@ -346,7 +346,7 @@ describe('Sweep: formatting and duplicating over several blocks skip a vetoed on
 	it('the block menu’s Duplicate over a selection with a locked block copies the others', async () => {
 		const view = await render([blockMenuPlugin, veto], [p('a', locked), p('c')]);
 		const blocks = ['a', 'c'].map((id) => get(view, id));
-		view.edytor.selection.selectBlocks(...blocks);
+		selectBlocks(view.edytor, ...blocks);
 		await flushDomUpdates();
 		view.editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, {
@@ -371,7 +371,7 @@ describe('Sweep: the horizontal rule reads the caret’s block offset beside an 
 
 	it('after a mention ending the line, the divider goes after the line', async () => {
 		const view = await render([], [mixed('a', 'ab', '')]);
-		view.edytor.selection.setAtTextOffset(get(view, 'a').lastText!, 0);
+		view.edytor.selection.selectText(get(view, 'a').lastText!, 0);
 		await flushDomUpdates();
 		await rule(view);
 		expect(shape(view)).toEqual(['paragraph "ab@"', 'divider ""', 'paragraph ""']);
@@ -394,7 +394,8 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 				normalizeContent: ({ block }) => {
 					const text = block.firstText;
 					const at = text?.stringContent.indexOf('\n') ?? -1;
-					if (text && at !== -1) return () => text.deleteAt(at, 1);
+					if (text && at !== -1)
+						return () => block.edytor.deleteText(block.id, text.segStart + at, 1);
 				}
 			}
 		}
@@ -420,7 +421,7 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 	});
 
 	it('the markdown shortcut does the same', async () => {
-		const view = await render([task, markdownShortcutsPlugin], [broken('paragraph', 'a')]);
+		const view = await render([task, createMarkdownShortcutsPlugin()], [broken('paragraph', 'a')]);
 		await at(view, 'a', 0);
 		for (const data of ['>', '>', ' '])
 			await dispatchDomBeforeInput(view.editor, { inputType: 'insertText', data });
@@ -431,10 +432,9 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 
 describe('Turn into puts the caret in the block a plugin’s replacement names (DR-code-4)', () => {
 	const retarget: Plugin = () => ({
-		onBeforeOperation: ({ operation, payload }) => {
-			const block = (payload as { block?: JSONBlock }).block;
-			if (operation === 'insertBlockAfter' && block?.type === 'code')
-				return { block: { type: 'quote', content: [{ text: '' }], children: [] } };
+		onBeforeOperation: (change) => {
+			if (change.operation !== 'insertBlocks' || change.payload[1][0]?.type !== 'code') return;
+			return [change.payload[0], [{ type: 'quote', content: [{ text: '' }], children: [] }]];
 		}
 	});
 
@@ -443,7 +443,7 @@ describe('Turn into puts the caret in the block a plugin’s replacement names (
 		expect(convertToKind(view.edytor, get(view, 'a'), row(view, 'Code'))).toBe(true);
 		await flushDomUpdates();
 		expect(shape(view)).toEqual(['paragraph "a"', 'quote ""']);
-		const caret = view.edytor.selection.state.startText?.parent;
+		const caret = selectionState(view.edytor).startText?.parent;
 		expect(caret?.type).toBe('quote');
 	});
 });
@@ -454,7 +454,7 @@ describe('Every block-selection delete runs onDeleteSelectedBlocks (DR-code-2)',
 	const unchanged = ['paragraph "a"', 'paragraph "b"', 'paragraph "c"'];
 	const selectAB = async (view: View) => {
 		const blocks = ['a', 'b'].map((id) => get(view, id));
-		view.edytor.selection.selectBlocks(...blocks);
+		selectBlocks(view.edytor, ...blocks);
 		await flushDomUpdates();
 		return blocks;
 	};

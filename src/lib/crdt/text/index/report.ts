@@ -7,18 +7,16 @@ import { readData } from '../../data.js';
 import type { EngineDoc } from '../../engine-api.js';
 import type { BlockId, ContentItem, ProjectedBlock } from '../../placement/model.js';
 import { callEach } from '../../protocols/observable.js';
-import { protectItems } from '../model.js';
 import type { IndexReport } from '../runs.js';
 import type { IndexCache } from './cache.js';
 import type { IndexFold } from './fold.js';
 import type { IndexPlacement } from './placement.js';
-import { EMPTY_IDS, dataOf, indexChecks, keyOf } from './shared.js';
+import { EMPTY_IDS, checksOf, dataOf, indexChecks, keyOf } from './shared.js';
 import type { IndexState, Published, Tx } from './state.js';
 
 /** The change report of one doc's index. */
 export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & IndexFold) => {
 	const {
-		T,
 		doc,
 		dataRoot,
 		blocks,
@@ -26,10 +24,8 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		dirtyLists,
 		leftLists,
 		candidates,
-		ownShim,
 		ensurePlacements,
 		typeOf,
-		intern,
 		runs,
 		syncAll
 	} = ix;
@@ -39,9 +35,8 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 
 	// ── projection ───────────────────────────────────────────────────
 
-	/** `id`'s visible content items, canonical and frozen. */
-	const itemsOf = (id: BlockId): ContentItem[] =>
-		protectItems(T.readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
+	/** `id`'s visible content items: its runs, as fresh wrappers over their shared payloads. */
+	const itemsOf = (id: BlockId): ContentItem[] => runs(id).map((r) => ({ ...r }));
 
 	const projectBlock = (id: BlockId): ProjectedBlock => {
 		const rec = blocks.get(id)!;
@@ -307,7 +302,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		dirtyLists.clear();
 		leftLists.clear();
 		ix.allListsDirty = false;
-		if (indexChecks.on) ix.checks!.checkPublished(published!);
+		if (indexChecks.on) checksOf(ix).checkPublished(published!);
 		const empty =
 			r.added.size + r.removed.size + r.moved.size + r.meta.size + r.content.size + r.order.size;
 		return empty === 0 && !r.data ? null : r;

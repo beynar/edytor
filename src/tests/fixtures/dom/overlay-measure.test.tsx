@@ -6,12 +6,14 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { Overlay } from '$lib/surface/overlay.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import OverlayProbe from '../../dom/OverlayProbe.svelte';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 

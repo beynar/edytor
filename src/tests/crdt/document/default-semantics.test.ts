@@ -27,19 +27,21 @@ import {
 	type JSONDoc
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-import { filePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
-import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
-import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
-import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+import {
+	audioPlugin,
+	bookmarkPlugin,
+	codePlugin,
+	embedPlugin,
+	equation as createEquationPlugin,
+	filePlugin,
+	imagePlugin,
+	richTextPlugin,
+	tablePlugin,
+	videoPlugin
+} from '../../../routes/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [
@@ -74,8 +76,8 @@ const edits = (semantics?: DocumentSemanticsConfig) => {
 	const statuses = [
 		facade.mergeBackward('p').status,
 		facade.splitBlock('img', 1, 'img2').status,
-		facade.moveBlock('line', { parent: null, index: 0 }).status,
-		facade.moveBlock('q', { parent: 'cols', index: 0 }).status
+		facade.moveBlocks(['line'], { parent: null, index: 0 }).status,
+		facade.moveBlocks(['q'], { parent: 'cols', index: 0 }).status
 	];
 	document.destroy();
 	return statuses;
@@ -93,7 +95,6 @@ const structural = ({ semantics }: EdytorDocument) => ({
 const BUNDLED = {
 	roles: {
 		divider: { void: true, island: false, lines: false },
-		horizontalRule: { void: true, island: false, lines: false },
 		image: { void: true, island: false, lines: false },
 		embed: { void: true, island: false, lines: false },
 		bookmark: { void: true, island: false, lines: false },
@@ -110,7 +111,6 @@ const BUNDLED = {
 	},
 	rendersContent: {
 		divider: false,
-		horizontalRule: false,
 		'ordered-list': false,
 		'unordered-list': false,
 		code: false,
@@ -185,9 +185,9 @@ describe('defaultSemantics on a headless document', () => {
 			codePlugin,
 			imagePlugin,
 			...media,
-			columnsPlugin,
-			pagePlugin,
-			tocPlugin,
+			createColumnsPlugin(),
+			createPagePlugin(),
+			createTocPlugin(),
 			tablePlugin,
 			createEquationPlugin()
 		];

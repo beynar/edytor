@@ -8,6 +8,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { expect } from 'vitest';
+import { changedUnder } from '../../../lib/crdt/structs.js';
 import { createPeerPair, createPeerTriple } from '../harness/peer-set.js';
 import { createModelOps, model } from '../harness/ops/model-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
@@ -308,7 +309,8 @@ export const modelScenarios: Scenario[] = [
 			const { A, B } = set;
 			const handle = ops.resolveBlock(A, 'b1');
 			let deepEvents = 0;
-			handle.observeDeep(() => deepEvents++);
+			// What the node's deep observers heard (fork patch YP19: the commits under it).
+			A.doc.on('commit', (tr: never) => void (changedUnder(tr, [handle]) && deepEvents++));
 			ops.moveBlock(A, 'b1', { parent: 'b3', index: 0 });
 			expect(ops.resolveBlock(A, 'b1')).toBe(handle); // same engine handle
 			expect(deepEvents).toBeGreaterThan(0);

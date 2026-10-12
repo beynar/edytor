@@ -215,7 +215,7 @@ test.describe('the word keys over a block selection (FX-01)', () => {
 				} else
 					await page.evaluate((ids) => {
 						const edytor = (window as any).__EDYTOR__;
-						edytor.selection.selectBlocks(...ids.map((id: string) => edytor.idToBlock.get(id)));
+						edytor.selection.select({ kind: 'blocks', ids });
 					}, select);
 				await expect.poll(() => selectedBlocks(page)).toBeGreaterThan(0);
 				// Word motion is Alt+Arrow on Apple, Ctrl+Arrow elsewhere.
@@ -274,7 +274,10 @@ test.describe('the navigation keys over a selected parent and a lone divider (wa
 			await open(page, parent);
 			await page.evaluate(() => {
 				const edytor = (window as any).__EDYTOR__;
-				edytor.selection.selectBlocks(edytor.idToBlock.get('P'));
+				edytor.selection.select({
+					kind: 'blocks',
+					ids: [edytor.idToBlock.get('P')].map((block) => block.id)
+				});
 			});
 			await expect.poll(() => selectedBlocks(page)).toBe(1);
 			const word = (await page.evaluate(() => /Mac/.test(navigator.platform))) ? 'Alt' : 'Control';

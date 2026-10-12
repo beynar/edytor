@@ -1,7 +1,5 @@
 import * as error from 'lib0-v14/error'
 import * as binary from 'lib0-v14/binary'
-import * as env from 'lib0-v14/environment'
-import * as object from 'lib0-v14/object'
 
 import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
 
@@ -15,8 +13,6 @@ import {
   addChangedTypeToTransaction,
   isKeptReplaced // YP14
 } from '../utils/transaction-helpers.js'
-
-const isDevMode = env.getVariable('node_env') === 'development'
 
 /**
  * @todo This should return several items
@@ -153,12 +149,6 @@ export class Item extends AbstractStruct {
     return (this.info & binary.BIT3) > 0
   }
 
-  set deleted (doDelete) {
-    if (this.deleted !== doDelete) {
-      this.info ^= binary.BIT3
-    }
-  }
-
   markDeleted () {
     this.info |= binary.BIT3
   }
@@ -284,28 +274,6 @@ export class Item extends AbstractStruct {
       // parent is not defined. Integrate GC struct instead
       new GC(this.id, this.length).integrate(transaction, 0)
     }
-  }
-
-  /**
-   * Returns the next non-deleted item
-   */
-  get next () {
-    let n = this.right
-    while (n !== null && n.deleted) {
-      n = n.right
-    }
-    return n
-  }
-
-  /**
-   * Returns the previous non-deleted item
-   */
-  get prev () {
-    let n = this.left
-    while (n !== null && n.deleted) {
-      n = n.left
-    }
-    return n
   }
 
   /**
@@ -467,7 +435,7 @@ export class Item extends AbstractStruct {
    *
    * This is called when this Item is sent to a remote peer.
    *
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder The encoder to write data to.
+   * @param {UpdateEncoder} encoder The encoder to write data to.
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -603,7 +571,7 @@ export class AbstractContent {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder
+   * @param {UpdateEncoder} _encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -628,7 +596,7 @@ export class ContentAny {
      * @type {Array<any>}
      */
     this.arr = arr
-    isDevMode && object.deepFreeze(arr)
+    // YP15: no development-mode deep freeze (a Uint8Array value cannot be frozen)
   }
 
   /**
@@ -692,7 +660,7 @@ export class ContentAny {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -779,7 +747,7 @@ export class ContentBinary {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -868,7 +836,7 @@ export class ContentDeleted {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -881,228 +849,6 @@ export class ContentDeleted {
    */
   getRef () {
     return 1
-  }
-}
-
-/**
- * @private
- */
-export class ContentDoc {
-  /**
-   * @param {string} guid
-   * @param {Object<string,any>} opts
-   */
-  constructor (guid, opts) {
-    /**
-     * @type {Doc?}
-     */
-    this.doc = null
-    this.guid = guid
-    this.opts = opts
-  }
-
-  /**
-   * @return {number}
-   */
-  getLength () {
-    return 1
-  }
-
-  /**
-   * @return {Array<any>}
-   */
-  getContent () {
-    return [this.doc]
-  }
-
-  /**
-   * @return {boolean}
-   */
-  isCountable () {
-    return true
-  }
-
-  /**
-   * @return {ContentDoc}
-   */
-  copy () {
-    return new ContentDoc(this.guid, this.opts)
-  }
-
-  /**
-   * @param {number} _offset
-   * @return {ContentDoc}
-   */
-  splice (_offset) {
-    throw error.methodUnimplemented()
-  }
-
-  /**
-   * @param {ContentDoc} _right
-   * @return {boolean}
-   */
-  mergeWith (_right) {
-    return false
-  }
-
-  /**
-   * @param {Transaction} transaction
-   * @param {Item} item
-   */
-  integrate (transaction, item) {
-    const opts = this.opts
-    if (this.doc == null) {
-      // we get the constructor from the existing doc to avoid import the doc module, leading to a
-      // circular dependency
-      this.doc = /** @type {Doc} */ (new /** @type {any} */ (transaction.doc.constructor)({ guid: this.guid, ...this.opts, shouldLoad: opts.shouldLoad || opts.autoLoad || false }))
-    }
-    this.doc._item = item
-    transaction.subdocsAdded.add(this.doc)
-    if (this.doc.shouldLoad) {
-      transaction.subdocsLoaded.add(this.doc)
-    }
-  }
-
-  /**
-   * @param {Transaction} transaction
-   */
-  delete (transaction) {
-    if (this.doc) {
-      if (transaction.subdocsAdded.has(this.doc)) {
-        transaction.subdocsAdded.delete(this.doc)
-      } else {
-        transaction.subdocsRemoved.add(this.doc)
-      }
-    }
-  }
-
-  /**
-   * @param {Transaction} _tr
-   */
-  gc (_tr) {}
-
-  /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-   * @param {number} _offset
-   * @param {number} _offsetEnd
-   */
-  write (encoder, _offset, _offsetEnd) {
-    encoder.writeString(this.guid)
-    encoder.writeAny(this.opts)
-  }
-
-  /**
-   * @return {9}
-   */
-  getRef () {
-    return 9
-  }
-}
-
-/**
- * @param {Doc} ydoc
- */
-export const createContentDocFromDoc = ydoc => {
-  /**
-   * @type {any}
-   */
-  const opts = {}
-  if (!ydoc.gc) {
-    opts.gc = false
-  }
-  if (ydoc.autoLoad) {
-    opts.autoLoad = true
-  }
-  if (ydoc.meta !== null) {
-    opts.meta = ydoc.meta
-  }
-  const c = new ContentDoc(ydoc.guid, opts)
-  c.doc = ydoc
-  return c
-}
-
-/**
- * @private
- */
-export class ContentEmbed {
-  /**
-   * @param {Object} embed
-   */
-  constructor (embed) {
-    this.embed = embed
-  }
-
-  /**
-   * @return {number}
-   */
-  getLength () {
-    return 1
-  }
-
-  /**
-   * @return {Array<any>}
-   */
-  getContent () {
-    return [this.embed]
-  }
-
-  /**
-   * @return {boolean}
-   */
-  isCountable () {
-    return true
-  }
-
-  /**
-   * @return {ContentEmbed}
-   */
-  copy () {
-    return new ContentEmbed(this.embed)
-  }
-
-  /**
-   * @param {number} _offset
-   * @return {ContentEmbed}
-   */
-  splice (_offset) {
-    throw error.methodUnimplemented()
-  }
-
-  /**
-   * @param {ContentEmbed} _right
-   * @return {boolean}
-   */
-  mergeWith (_right) {
-    return false
-  }
-
-  /**
-   * @param {Transaction} _transaction
-   * @param {Item} _item
-   */
-  integrate (_transaction, _item) {}
-  /**
-   * @param {Transaction} _transaction
-   */
-  delete (_transaction) {}
-  /**
-   * @param {Transaction} _tr
-   */
-  gc (_tr) {}
-  /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-   * @param {number} _offset
-   * @param {number} _offsetEnd
-   */
-  write (encoder, _offset, _offsetEnd) {
-    encoder.writeJSON(this.embed)
-  }
-
-  /**
-   * @return {5}
-   */
-  getRef () {
-    return 5
   }
 }
 
@@ -1168,19 +914,7 @@ export class ContentFormat {
    * @param {Item} item
    */
   integrate (_transaction, item) {
-    // Upstream disabled search markers for rich-text (formatted) documents:
-    // `p._searchMarker = null`. With WU9's format-aware marker snapshots the
-    // marker *index* stays valid across format integrations — ContentFormat
-    // items are non-countable, so no marker position shifts — and the marker
-    // *format snapshots* are kept current by `updateMarkerFormats` at the two
-    // insert sites (`insertFormats`/`insertNegatedFormats`), which fold the
-    // new marker into every snapshot at-or-right of its position — the same
-    // thing a passing cursor would do. Snapshots left of the insertion are
-    // unaffected by construction. Remote applies and undo still clear the
-    // whole pool (`_searchMarker.length = 0`), so no stale snapshot survives
-    // an untracked integration.
-    const p = /** @type {import('../ynode.js').YNode<any>} */ (item.parent)
-    p._hasFormatting = true
+    // Format items are non-countable: no marker index shifts (YP4).
     // YP13: a paired mark's start carries its Lamport timestamp; the document
     // keeps the greatest it saw, so the next mark it writes wins over it.
     if (pairedRole(this) === 0) {
@@ -1199,7 +933,7 @@ export class ContentFormat {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -1213,102 +947,6 @@ export class ContentFormat {
    */
   getRef () {
     return 6
-  }
-}
-
-/**
- * @private
- */
-export class ContentJSON {
-  /**
-   * @param {Array<any>} arr
-   */
-  constructor (arr) {
-    /**
-     * @type {Array<any>}
-     */
-    this.arr = arr
-  }
-
-  /**
-   * @return {number}
-   */
-  getLength () {
-    return this.arr.length
-  }
-
-  /**
-   * @return {Array<any>}
-   */
-  getContent () {
-    return this.arr
-  }
-
-  /**
-   * @return {boolean}
-   */
-  isCountable () {
-    return true
-  }
-
-  /**
-   * @return {ContentJSON}
-   */
-  copy () {
-    return new ContentJSON(this.arr)
-  }
-
-  /**
-   * @param {number} offset
-   * @return {ContentJSON}
-   */
-  splice (offset) {
-    const right = new ContentJSON(this.arr.slice(offset))
-    this.arr = this.arr.slice(0, offset)
-    return right
-  }
-
-  /**
-   * @param {ContentJSON} right
-   * @return {boolean}
-   */
-  mergeWith (right) {
-    this.arr = this.arr.concat(right.arr)
-    return true
-  }
-
-  /**
-   * @param {Transaction} _transaction
-   * @param {Item} _item
-   */
-  integrate (_transaction, _item) {}
-  /**
-   * @param {Transaction} _transaction
-   */
-  delete (_transaction) {}
-  /**
-   * @param {Transaction} _tr
-   */
-  gc (_tr) {}
-  /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
-   * @param {number} offset
-   * @param {number} offsetEnd
-   */
-  write (encoder, offset, offsetEnd) {
-    const end = this.arr.length - offsetEnd
-    encoder.writeLen(end - offset)
-    for (let i = offset; i < end; i++) {
-      const c = this.arr[i]
-      encoder.writeString(c === undefined ? 'undefined' : JSON.stringify(c))
-    }
-  }
-
-  /**
-   * @return {2}
-   */
-  getRef () {
-    return 2
   }
 }
 
@@ -1398,7 +1036,7 @@ export class ContentString {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -1535,7 +1173,7 @@ export class ContentType {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */

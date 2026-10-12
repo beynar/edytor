@@ -38,15 +38,16 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | Member | Type | What it is |
 | --- | --- | --- |
 | `value` | `JSONDoc` | The whole document as JSON, `{ data?, children }` (`data`: the document's properties, when it has some; the object also carries `type: 'root'`), the type the `value` prop takes. Reactive. |
-| `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties), a live proxy: `edytor.data.title = 'Notes'` is a `patchData` command, reads are reactive. `edytor.root.data` is the same proxy. |
+| `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties), read-only and reactive; write them with `edytor.patchData(null, patches)`. `edytor.root.data` is the same value. |
 | `root` | `Block \| undefined` | The handle of the root block. `root.children` are the top-level blocks. |
 | `synced` | `boolean` | The view is bound to a ready document. |
 | `document` | `EdytorDocument` | The document this view renders: shared by every view of it, and usable without a view. Its own operations and reads are the raw document API (see below). |
+| `insertBlocks`, `splitBlock`, `insertText`, `patchData`, `moveBlocks`, … | `DocumentWrites` | The document's operations, dispatched through this view: the same names and arguments as `edytor.document`'s, with hooks, undo, normalization, the caret they decide and the readonly check. Each answers an `OpResult`. See [Editing programmatically](/docs/editor/commands) and [Operations](/docs/plugins/operations#operation-reference). |
 | `selection` | `EdytorSelection` | The selection value and its setters. See [Selection](/docs/editor/selection). |
 | `transact(fn)` | `<T>(fn: () => T) => T` | Run several changes as one transaction and one update. A throw from `fn` does not undo the changes made before it; normalization still runs on them, and `fn`'s error is the one thrown (a normalizer that fails then is logged). |
-| `dispatcher` | `Dispatcher` | Runs every command. `dispatcher.last` is the last command's result; a command of several steps (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) reads `applied` when any step applied. `dispatcher.lead(plan, body)`, `dispatcher.dispatch(operation, payload, context, body, prepare?)` and `dispatcher.caret(text, offset, ops?)` let a plugin issue one refusable command of its own. See [Triggers: one plan](/docs/plugins/operations#triggers-one-plan). |
+| `dispatcher` | `Dispatcher` | Runs every command. `dispatcher.last` is the last command's result; a command of several steps (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) reads `applied` when any step applied. `dispatcher.lead(plan, body)`, `dispatcher.plan(operation, payload, prepare, block?)` and `dispatcher.caret(caret, ops?)` let a plugin issue one refusable command of its own. See [Triggers: one plan](/docs/plugins/operations#triggers-one-plan). |
 | `idToBlock` | `Handles` | Handle lookup: `get(id)` (live blocks only), `block(id)`, `has(id)`. |
-| `canMoveBlocks(req)`, `moveBlocks(req)` | | Relative block moves. See [Commands](/docs/editor/commands#moving-blocks). |
+| `canMove(req)`, `move(req)` | | Block moves relative to a target or one step in a direction, resolved to the document's move and announced. See [Commands](/docs/editor/commands#moving-blocks). |
 | `historyUndo()`, `historyRedo()` | `() => void` | Undo and redo, restoring this view's selection. Each call sets `dispatcher.last`: `applied`, `noop` when the stack is empty, or `refused` in a readonly view or a read-only document. See [History](/docs/editor/history). |
 | `readonly` | `boolean` | Whether the view refuses edits. Follows the `readonly` prop. |
 | `node` | `HTMLElement \| undefined` | The editable root element, once mounted. |
@@ -64,13 +65,13 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 
 `edytor.document` is the `EdytorDocument`: it owns the CRDT document, the shared history, awareness, and the document's operations and reads. Several views can render one document; see [Collaboration](/docs/collaboration).
 
-`edytor.document` is also the raw path: it has every document operation (`insertText`, `formatRange`, `insertBlock`, `moveBlocks`, …) and read (`toJSON`, `childrenIds`, `blockTypeOf`, `anchorAt`, …). Its operations are document writes: they skip plugin hooks, normalization, the undo policy and the view's `readonly`. Handle methods go through the dispatcher and do all of these. [Commands](/docs/editor/commands) compares them. `edytor.document.history` is the raw path for undo in the same way: its `undo()` and `redo()` replay the document's shared history without the view's `readonly` and without restoring a selection; a view undoes with `historyUndo()`/`historyRedo()` ([History](/docs/editor/history)).
+`edytor.document` is also the raw path: it has every document operation (`insertText`, `formatRange`, `insertBlocks`, `moveBlocks`, …) and read (`toJSON`, `childrenIds`, `blockTypeOf`, `anchorAt`, …). Its operations are raw document writes: they skip plugin hooks, normalization, the undo policy and the view's `readonly`. The view has the same operations under the same names (`edytor.insertText(…)`), dispatched: they do all of these. [Commands](/docs/editor/commands) compares them. `edytor.document.history` is the raw path for undo in the same way: its `undo()` and `redo()` replay the document's shared history without the view's `readonly` and without restoring a selection; a view undoes with `historyUndo()`/`historyRedo()` ([History](/docs/editor/history)).
 
 While the document has no block, the view shows a local empty paragraph (its handle is `edytor.root.children[0]`); the first command in it creates the block. The document's own reads do not see it, and the JSON (`edytor.value`) never contains it.
 
 ## Handles
 
-`Block`, `Text` and `InlineBlock` are handles: small objects that name a piece of the document by id and read the current state from the document each time you access a getter.
+`Block`, `Text` and `InlineBlock` are handles: small read-only objects that name a piece of the document by id and read the current state from the document each time you access a getter. To change what they name, pass their ids to the view's operations.
 
 ```ts title="src/lib/read-block.ts" check
 const block = edytor.idToBlock.get('page-title'); // undefined if not live
@@ -83,7 +84,7 @@ if (block) {
 }
 ```
 
-Handle getters are reactive. Read in a template, a `$derived` or an `$effect`, a getter depends on the [cells](#reading-state-reactively) its answer comes from, so `{block.type}` updates when the block is retyped, here or by a peer, and `block.children`, `block.content`, `text.stringContent` or `block.isInTree` follow their commits too. Read anywhere else (an event handler, a command), a getter is a plain read of the document. `block.data`, `atom.data` and `edytor.data` are live proxies whose reads are reactive and whose assignments are commands (see [Properties](/docs/concepts/properties)).
+Handle getters are reactive. Read in a template, a `$derived` or an `$effect`, a getter depends on the [cells](#reading-state-reactively) its answer comes from, so `{block.type}` updates when the block is retyped, here or by a peer, and `block.children`, `block.content`, `text.stringContent` or `block.isInTree` follow their commits too. Read anywhere else (an event handler, a command), a getter is a plain read of the document. `block.data`, `atom.data` and `edytor.data` read reactively too; write them with `patchData` (see [Properties](/docs/concepts/properties)).
 
 ```svelte title="src/lib/BlockBadge.svelte" check
 <script lang="ts">
@@ -101,9 +102,9 @@ What a getter depends on: `type`, `children`, `content` and `isInTree` the block
 
 | Handle | Identity | Useful members |
 | --- | --- | --- |
-| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `isEmpty` (no content and no children; an inline atom is content, so a block holding only a mention is not empty), `hasContent`, `movable`, `convertible` (false for a void block, an island and a list container; true for an emptied document's [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph), which a Turn into creates with its kind; a divider, from Turn into or `insertDividerAtSelection`, is created with a paragraph after it), `isContainer` (it renders only its children, like a list), `isListItem`, `list` (the list an item shows in, also after it was outdented out of a nested list into the item holding it), `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). `setData(data)` runs `patchData` and assigning `type` runs `setBlock`. `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open a closed toggle the block lands in or that adopts blocks, as the keys do. |
-| `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `stringContent`, `length`, `value` (runs), `isInDocument`, `node`, and the text commands (`insertText`, `deleteText`, `markText`, `removeMarksFromText`, `setText`). |
-| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)` (its block's `patchData` command, with `atom`). |
+| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `isEmpty` (no content and no children; an inline atom is content, so a block holding only a mention is not empty), `hasContent`, `movable`, `convertible` (false for a void block, an island and a list container; true for an emptied document's [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph), which a Turn into creates with its kind; a divider, from Turn into or `insertDividerAtSelection`, is created with a paragraph after it), `isContainer` (it renders only its children, like a list), `isListItem`, `list` (the list an item shows in, also after it was outdented out of a nested list into the item holding it), `node`, `textAtOffset(offset)` (the text segment that shows a block offset). It only reads: write with the view's operations and its `id` (`edytor.splitBlock(block.id, …)`). |
+| `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `segStart` (its first block offset: its offset `o` is the block's `segStart + o`), `stringContent`, `length`, `value` (runs), `getMarksAtRange(start, end)`, `isInDocument`, `node`. |
+| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`. Write its data with `edytor.patchData({ block, atom }, patches)`. |
 
 Because a `Text` is a position, don't keep one across edits to find "the same text" later. Keep the block id and an offset, or a selection anchor.
 
@@ -115,7 +116,7 @@ Inside a command, handle getters see the command's own earlier writes, so a norm
 
 Use these in templates, `$derived` and `$effect`:
 
-- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the handle for commands (`undefined` in a suggestion's preview); its getters are reactive too.
+- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the block's handle, for its id and its reads (`undefined` in a suggestion's preview); its getters are reactive too.
 
   ```svelte
   {#snippet callout({ block, content })}
@@ -161,6 +162,6 @@ Use these in templates, `$derived` and `$effect`:
   };
   ```
 
-- **`edytor.selection.value`**, `selection.state` and `selection.projection` are reactive, as are `selection.selectedBlocks` and `selection.focusedBlocks`.
+- **`edytor.selection.value`** and `selection.projection` are reactive, as are `selection.selectedBlocks` and `selection.focusedBlocks`.
 
 Everything else, including the document's reads and definitions, is imperative: read it when you need it.

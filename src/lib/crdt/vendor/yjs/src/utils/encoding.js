@@ -24,18 +24,19 @@ import { getStateVector, StructStore } from './StructStore.js'
 import { getItemCleanStart, getItemCleanEnd } from './transaction-helpers.js'
 import { createIdSet, IdRange, readAndApplyDeleteSet, readIdSet, mergeIdSets, writeIdSet } from './ids.js'
 import { createID, ID } from './ID.js'
-import { UpdateDecoderV1, UpdateDecoderV2, IdSetDecoderV1 } from './UpdateDecoder.js'
-import { UpdateEncoderV1, UpdateEncoderV2, IdSetEncoderV1, IdSetEncoderV2 } from './UpdateEncoder.js'
-import { convertUpdateFormatV2ToV1, LazyStructReader, LazyStructWriter, writeStructToLazyStructWriter, finishLazyStructWriting } from './updates.js'
+import { UpdateDecoder } from './UpdateDecoder.js'
+import { UpdateEncoder } from './UpdateEncoder.js'
+import { LazyStructReader, LazyStructWriter, writeStructToLazyStructWriter, finishLazyStructWriting } from './updates.js'
 import { readBlockSet, writeBlockSet } from './BlockSet.js'
 import { Skip } from '../structs/Skip.js'
 import { Item } from '../structs/Item.js'
 import { GC } from '../structs/GC.js'
 import { Doc } from './Doc.js'
+import { transact } from './Transaction.js'
 import { writeStructs } from './encoding-helpers.js'
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {StructStore} store
  * @param {Map<number,number>} _sm
  *
@@ -237,7 +238,7 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
     }
   }
   if (restStructs.clients.size > 0) {
-    const encoder = new UpdateEncoderV2()
+    const encoder = new UpdateEncoder()
     writeClientsStructs(encoder, restStructs, new Map())
     // write empty deleteset
     // writeDeleteSet(encoder, new DeleteSet())
@@ -255,13 +256,13 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
  * @param {decoding.Decoder} decoder
  * @param {Doc} ydoc
  * @param {any} [transactionOrigin] This will be stored on `transaction.origin` and `.on('update', (update, origin))`
- * @param {UpdateDecoderV1 | UpdateDecoderV2} [structDecoder]
+ * @param {UpdateDecoder} [structDecoder]
  *
  * @function
  */
-export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = new UpdateDecoderV2(decoder)) =>
-  ydoc.transact(transaction => {
-    // force that transaction.local is set to non-local
+export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new UpdateDecoder(decoder)) =>
+  transact(ydoc, transaction => {
+    // force that transaction.local is set to non-local (a nested apply too)
     transaction.local = false
     let retry = false
     const doc = transaction.doc
@@ -304,7 +305,7 @@ export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = n
             pending.missing.set(client, clock)
           }
         }
-        pending.update = mergeUpdatesV2([pending.update, restStructs.update])
+        pending.update = mergeUpdates([pending.update, restStructs.update])
       }
     } else {
       store.pendingStructs = restStructs
@@ -314,12 +315,12 @@ export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = n
     const dsRest = readAndApplyDeleteSet(structDecoder, transaction, store)
     if (store.pendingDs) {
       // @todo we could make a lower-bound state-vector check as we do above
-      const pendingDSUpdate = new UpdateDecoderV2(decoding.createDecoder(store.pendingDs))
+      const pendingDSUpdate = new UpdateDecoder(decoding.createDecoder(store.pendingDs))
       decoding.readVarUint(pendingDSUpdate.restDecoder) // read 0 structs, because we only encode deletes in pendingdsupdate
       const dsRest2 = readAndApplyDeleteSet(pendingDSUpdate, transaction, store)
       if (dsRest && dsRest2) {
         // case 1: ds1 != null && ds2 != null
-        store.pendingDs = mergeUpdatesV2([dsRest, dsRest2])
+        store.pendingDs = mergeUpdates([dsRest, dsRest2])
       } else {
         // case 2: ds1 != null
         // case 3: ds2 != null
@@ -338,7 +339,7 @@ export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = n
     if (retry) {
       const update = /** @type {{update: Uint8Array}} */ (store.pendingStructs).update
       store.pendingStructs = null
-      applyUpdateV2(transaction.doc, update)
+      applyUpdate(transaction.doc, update)
     }
   }, transactionOrigin, false)
 
@@ -350,33 +351,16 @@ export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = n
  * @param {Doc} ydoc
  * @param {Uint8Array} update
  * @param {any} [transactionOrigin] This will be stored on `transaction.origin` and `.on('update', (update, origin))`
- * @param {typeof UpdateDecoderV1 | typeof UpdateDecoderV2} [YDecoder]
  *
  * @function
  */
-export const applyUpdateV2 = (ydoc, update, transactionOrigin, YDecoder = UpdateDecoderV2) => {
-  const decoder = decoding.createDecoder(update)
-  readUpdateV2(decoder, ydoc, transactionOrigin, new YDecoder(decoder))
-}
-
-/**
- * Apply a document update created by, for example, `y.on('update', update => ..)` or `update = encodeStateAsUpdate()`.
- *
- * This function has the same effect as `readUpdate` but accepts an Uint8Array instead of a Decoder.
- *
- * @param {Doc} ydoc
- * @param {Uint8Array} update
- * @param {any} [transactionOrigin] This will be stored on `transaction.origin` and `.on('update', (update, origin))`
- *
- * @function
- */
-export const applyUpdate = (ydoc, update, transactionOrigin) => applyUpdateV2(ydoc, update, transactionOrigin, UpdateDecoderV1)
+export const applyUpdate = (ydoc, update, transactionOrigin) => readUpdate(decoding.createDecoder(update), ydoc, transactionOrigin)
 
 /**
  * Write all the document as a single update message. If you specify the state of the remote client (`targetStateVector`) it will
  * only write the operations that are missing.
  *
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {Doc} doc
  * @param {Map<number,number>} [targetStateVector] The state of the target that receives the update. Leave empty to write all known structs
  *
@@ -395,12 +379,12 @@ export const writeStateAsUpdate = (encoder, doc, targetStateVector = new Map()) 
  *
  * @param {Doc} doc
  * @param {Uint8Array} [encodedTargetStateVector] The state of the target that receives the update. Leave empty to write all known structs
- * @param {UpdateEncoderV1 | UpdateEncoderV2} [encoder]
  * @return {Uint8Array<ArrayBuffer>}
  *
  * @function
  */
-export const encodeStateAsUpdateV2 = (doc, encodedTargetStateVector = new Uint8Array([0]), encoder = new UpdateEncoderV2()) => {
+export const encodeStateAsUpdate = (doc, encodedTargetStateVector = new Uint8Array([0])) => {
+  const encoder = new UpdateEncoder()
   const targetStateVector = decodeStateVector(encodedTargetStateVector)
   writeStateAsUpdate(encoder, doc, targetStateVector)
   const updates = [encoder.toUint8Array()]
@@ -409,74 +393,31 @@ export const encodeStateAsUpdateV2 = (doc, encodedTargetStateVector = new Uint8A
     updates.push(doc.store.pendingDs)
   }
   if (doc.store.pendingStructs) {
-    updates.push(diffUpdateV2(doc.store.pendingStructs.update, encodedTargetStateVector))
+    updates.push(diffUpdate(doc.store.pendingStructs.update, encodedTargetStateVector))
   }
-  if (updates.length > 1) {
-    if (encoder.constructor === UpdateEncoderV1) {
-      return mergeUpdates(updates.map((update, i) => i === 0 ? update : convertUpdateFormatV2ToV1(update)))
-    } else if (encoder.constructor === UpdateEncoderV2) {
-      return mergeUpdatesV2(updates)
-    }
-  }
-  return updates[0]
+  return mergeUpdates(updates)
 }
 
 /**
- * Write all the document as a single update message that can be applied on the remote document. If you specify the state of the remote client (`targetState`) it will
- * only write the operations that are missing.
- *
- * Use `writeStateAsUpdate` instead if you are working with lib0-v14/encoding.js#Encoder
- *
- * @param {Doc} doc
- * @param {Uint8Array} [encodedTargetStateVector] The state of the target that receives the update. Leave empty to write all known structs
- * @return {Uint8Array<ArrayBuffer>}
- *
- * @function
- */
-export const encodeStateAsUpdate = (doc, encodedTargetStateVector) => encodeStateAsUpdateV2(doc, encodedTargetStateVector, new UpdateEncoderV1())
-
-/**
- * Read state vector from Decoder and return as Map
- *
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
- * @return {Map<number,number>} Maps `client` to the number next expected `clock` from that client.
- *
- * @function
- */
-export const readStateVector = decoder => {
-  const ss = new Map()
-  const ssLength = decoding.readVarUint(decoder.restDecoder)
-  for (let i = 0; i < ssLength; i++) {
-    const client = decoding.readVarUint(decoder.restDecoder)
-    const clock = decoding.readVarUint(decoder.restDecoder)
-    ss.set(client, clock)
-  }
-  return ss
-}
-
-/**
- *
- * This function works similarly to `readUpdateV2`.
+ * Merge updates into one.
  *
  * @param {Array<Uint8Array<ArrayBuffer>>} updates
- * @param {typeof UpdateDecoderV1 | typeof UpdateDecoderV2} [YDecoder]
- * @param {typeof UpdateEncoderV1 | typeof UpdateEncoderV2} [YEncoder]
  * @return {Uint8Array<ArrayBuffer>}
  */
-export const mergeUpdatesV2 = (updates, YDecoder = UpdateDecoderV2, YEncoder = UpdateEncoderV2) => {
+export const mergeUpdates = updates => {
   if (updates.length === 1) {
     return updates[0]
   } else if (updates.length === 0) {
-    return encodeStateAsUpdateV2(new Doc(), new Uint8Array([0]), new YEncoder())
+    return encodeStateAsUpdate(new Doc())
   }
-  const updateDecoders = updates.map(update => new YDecoder(decoding.createDecoder(update)))
+  const updateDecoders = updates.map(update => new UpdateDecoder(decoding.createDecoder(update)))
   const blocksets = updateDecoders.map(dec => readBlockSet(dec))
 
   const mergedBlockset = blocksets[0]
   for (let i = 1; i < blocksets.length; i++) {
     mergedBlockset.insertInto(blocksets[i])
   }
-  const updateEncoder = new YEncoder()
+  const updateEncoder = new UpdateEncoder()
   writeBlockSet(updateEncoder, mergedBlockset)
   const dss = updateDecoders.map(decoder => readIdSet(decoder))
   const ds = mergeIdSets(dss)
@@ -485,23 +426,16 @@ export const mergeUpdatesV2 = (updates, YDecoder = UpdateDecoderV2, YEncoder = U
 }
 
 /**
- * @param {Array<Uint8Array<ArrayBuffer>>} updates
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const mergeUpdates = updates => mergeUpdatesV2(updates, UpdateDecoderV1, UpdateEncoderV1)
-
-/**
- * @deprecated
+ * The part of `update` that the state vector `sv` does not cover.
+ *
  * @param {Uint8Array} update
  * @param {Uint8Array} sv
- * @param {typeof UpdateDecoderV1 | typeof UpdateDecoderV2} [YDecoder]
- * @param {typeof UpdateEncoderV1 | typeof UpdateEncoderV2} [YEncoder]
  */
-export const diffUpdateV2 = (update, sv, YDecoder = UpdateDecoderV2, YEncoder = UpdateEncoderV2) => {
+export const diffUpdate = (update, sv) => {
   const state = decodeStateVector(sv)
-  const encoder = new YEncoder()
+  const encoder = new UpdateEncoder()
   const lazyStructWriter = new LazyStructWriter(encoder)
-  const decoder = new YDecoder(decoding.createDecoder(update))
+  const decoder = new UpdateDecoder(decoding.createDecoder(update))
   const reader = new LazyStructReader(decoder, false)
   while (reader.curr) {
     const curr = reader.curr
@@ -541,56 +475,16 @@ export const diffUpdateV2 = (update, sv, YDecoder = UpdateDecoderV2, YEncoder = 
  *
  * @function
  */
-// export const decodeStateVectorV2 = decodedState => readStateVector(new DSDecoderV2(decoding.createDecoder(decodedState)))
-
-/**
- * Read decodedState and return State as Map.
- *
- * @param {Uint8Array} decodedState
- * @return {Map<number,number>} Maps `client` to the number next expected `clock` from that client.
- *
- * @function
- */
-export const decodeStateVector = decodedState => readStateVector(new IdSetDecoderV1(decoding.createDecoder(decodedState)))
-
-/**
- * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
- * @param {Map<number,number>} sv
- * @function
- */
-export const writeStateVector = (encoder, sv) => {
-  encoding.writeVarUint(encoder.restEncoder, sv.size)
-  array.from(sv.entries()).sort((a, b) => b[0] - a[0]).forEach(([client, clock]) => {
-    encoding.writeVarUint(encoder.restEncoder, client) // @todo use a special client decoder that is based on mapping
-    encoding.writeVarUint(encoder.restEncoder, clock)
-  })
-  return encoder
-}
-
-/**
- * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
- * @param {Doc} doc
- *
- * @function
- */
-export const writeDocumentStateVector = (encoder, doc) => writeStateVector(encoder, getStateVector(doc.store))
-
-/**
- * Encode State as Uint8Array.
- *
- * @param {Doc|Map<number,number>} doc
- * @param {IdSetEncoderV1 | IdSetEncoderV2} [encoder]
- * @return {Uint8Array<ArrayBuffer>}
- *
- * @function
- */
-export const encodeStateVectorV2 = (doc, encoder = new IdSetEncoderV2()) => {
-  if (doc instanceof Map) {
-    writeStateVector(encoder, doc)
-  } else {
-    writeDocumentStateVector(encoder, doc)
+export const decodeStateVector = decodedState => {
+  const decoder = decoding.createDecoder(decodedState)
+  const ss = new Map()
+  const ssLength = decoding.readVarUint(decoder)
+  for (let i = 0; i < ssLength; i++) {
+    const client = decoding.readVarUint(decoder)
+    const clock = decoding.readVarUint(decoder)
+    ss.set(client, clock)
   }
-  return encoder.toUint8Array()
+  return ss
 }
 
 /**
@@ -601,7 +495,16 @@ export const encodeStateVectorV2 = (doc, encoder = new IdSetEncoderV2()) => {
  *
  * @function
  */
-export const encodeStateVector = doc => encodeStateVectorV2(doc, new IdSetEncoderV1())
+export const encodeStateVector = doc => {
+  const sv = doc instanceof Map ? doc : getStateVector(doc.store)
+  return encoding.encode(encoder => {
+    encoding.writeVarUint(encoder, sv.size)
+    array.from(sv.entries()).sort((a, b) => b[0] - a[0]).forEach(([client, clock]) => {
+      encoding.writeVarUint(encoder, client)
+      encoding.writeVarUint(encoder, clock)
+    })
+  })
+}
 
 /**
  * Return the creator clientID of the missing op or define missing items and return null.

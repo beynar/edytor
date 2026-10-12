@@ -162,7 +162,7 @@ describe('attack 8: schema manifest coexistence', () => {
 		const src = new Y.Doc();
 		const edSrc = E.create(src);
 		edSrc.init();
-		edSrc.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+		edSrc.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(src));
 
 		const ed = E.create(doc);

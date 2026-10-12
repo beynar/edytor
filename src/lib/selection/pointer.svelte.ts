@@ -3,18 +3,29 @@
  * (`dragStart`, the drag's release, a normalization it held back), a press
  * on a block's non-editable chrome, a triple click, a drag across columns
  * (`acrossColumns`), a drag over inline atoms and `selectstart` on chrome.
- * It writes the selection only through the selection's own setters; the
+ * It writes the selection only through the selection's own writers; the
  * selection's DOM adoption reads `dragging` and `across` and asks `hold()`.
  */
-import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
 import { toTrailingParagraph } from '$lib/session/navigation.js';
-import { isNativeInteractiveEvent } from '$lib/events/nativeInteractiveControl.js';
+import {
+	isNativeInteractiveControl,
+	isNativeInteractiveEvent
+} from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
-import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
+import {
+	caretAtPoint,
+	getDomSelectionSnapshot,
+	type DomSelectionSnapshot
+} from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
-import { getElementFromNode, getYIndex, SUGGESTION } from './selection.utils.js';
+import {
+	getElementFromNode,
+	isTextBoundSelectionPoint,
+	offsetIn,
+	SUGGESTION
+} from './selection.utils.js';
 import type { EdytorSelection } from './selection.svelte.js';
 
 /** A text point under the pointer, with where the pointer was. */
@@ -23,11 +34,6 @@ export type PointerTextPoint = {
 	offset: number;
 	clientX: number;
 	clientY: number;
-};
-
-type DocumentWithCaretPoint = Document & {
-	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-	caretRangeFromPoint?: (x: number, y: number) => Range | null;
 };
 
 /** Where a press was, and its modifiers: what a margin click reads at its release. */
@@ -60,12 +66,7 @@ export class SelectionPointer {
 		this.#held = true;
 	};
 
-	private insideText = (node: Node | null) => {
-		const element = getElementFromNode(node);
-		return Boolean(element?.closest('[data-edytor-text]'));
-	};
-
-	private chromeBlock = (node: Node | null) => {
+	#chromeBlock = (node: Node | null) => {
 		const element = getElementFromNode(node);
 		const nonEditableElement = element?.closest('[contenteditable="false"]');
 		if (
@@ -75,7 +76,7 @@ export class SelectionPointer {
 			return null;
 		}
 		// A suggestion's preview is no block's chrome: a press there is its own (cancelled).
-		if (nonEditableElement.closest(`input, textarea, select, button, a[href], ${SUGGESTION}`)) {
+		if (isNativeInteractiveControl(nonEditableElement) || nonEditableElement.closest(SUGGESTION)) {
 			return null;
 		}
 		const block = this.selection.getBlockOfNode(nonEditableElement);
@@ -199,17 +200,17 @@ export class SelectionPointer {
 		}
 		const box = host.getBoundingClientRect();
 		const x = Math.min(Math.max(at.clientX, box.left + 1), box.right - 1);
-		const point = this.pointAt(x, at.clientY);
+		const point = this.#pointAt(x, at.clientY);
 		if (!point) return;
 		edytor.expectInternalFocus();
 		host.focus({ preventScroll: true });
-		this.selection.setAtTextOffset(point.text, point.offset);
+		this.selection.selectText(point.text, point.offset);
 	};
 
 	/** @internal */
 	chromePress = (event: MouseEvent) => {
 		const targetNode = event.target instanceof Node ? event.target : null;
-		const targetBlock = this.chromeBlock(targetNode);
+		const targetBlock = this.#chromeBlock(targetNode);
 		const targetText = targetBlock?.firstText;
 		// A native control inside the chrome (a void block's input) owns its press.
 		if (!targetText || isNativeInteractiveEvent(event)) {
@@ -221,7 +222,7 @@ export class SelectionPointer {
 		event.preventDefault();
 		this.selection.edytor.expectInternalFocus();
 		this.selection.edytor.node?.focus({ preventScroll: true });
-		this.selection.setAtTextOffset(targetText, 0);
+		this.selection.selectText(targetText, 0);
 	};
 
 	/**
@@ -234,20 +235,17 @@ export class SelectionPointer {
 		if (e.detail < 3) return;
 		const targetNode = e.target instanceof Node ? e.target : null;
 		const clickedBlock = this.selection.getBlockOfNode(targetNode);
-		if (clickedBlock?.definition.void && !this.insideText(targetNode)) {
+		if (clickedBlock?.definition.void && !isTextBoundSelectionPoint(targetNode)) {
 			e.preventDefault();
-			this.selection.selectBlocks(clickedBlock);
+			this.selection.select(blockSelection([clickedBlock.id]));
 			return;
 		}
-
-		const targetBlock =
-			targetNode instanceof Node
-				? (this.selection.getTextOfNode(targetNode)?.parent ??
-					this.selection.getBlockOfNode(targetNode))
-				: this.selection.state.startText?.parent;
-		if (targetBlock) {
-			this.selection.preserveBlockRange(targetBlock);
-		}
+		const { selection } = this;
+		selection.selectLines(
+			targetNode
+				? (selection.getTextOfNode(targetNode)?.parent ?? selection.getBlockOfNode(targetNode))
+				: selection.textAt(selection.projection.start)?.text.parent
+		);
 	};
 
 	/** @internal */
@@ -256,34 +254,23 @@ export class SelectionPointer {
 	};
 
 	/** The text point under the pointer, if any. */
-	pointAt = (clientX: number, clientY: number) => {
-		const ownerDocument = (this.selection.edytor.node?.ownerDocument ??
-			document) as DocumentWithCaretPoint;
-		const caretPosition = ownerDocument.caretPositionFromPoint?.(clientX, clientY);
-		const caretRange = caretPosition ? null : ownerDocument.caretRangeFromPoint?.(clientX, clientY);
-		const node = caretPosition?.offsetNode ?? caretRange?.startContainer ?? null;
-		const domOffset = caretPosition?.offset ?? caretRange?.startOffset ?? null;
-		const text = this.selection.getTextOfNode(node, domOffset ?? undefined);
-
-		if (!text || typeof domOffset !== 'number') {
-			return null;
-		}
-
-		return {
-			text,
-			offset: Math.min(Math.max(getYIndex(text, node, domOffset), 0), text.length),
+	#pointAt = (clientX: number, clientY: number) => {
+		const at = caretAtPoint(
+			this.selection.edytor.node?.ownerDocument ?? document,
 			clientX,
 			clientY
-		};
+		);
+		const text = at && this.selection.getTextOfNode(at.node, at.offset);
+		return text ? { text, offset: offsetIn(text, at.node, at.offset), clientX, clientY } : null;
 	};
 
-	offsetAt = (text: Text, clientX: number, clientY: number) => {
+	#offsetAt = (text: Text, clientX: number, clientY: number) => {
 		const ownerDocument = text.node?.ownerDocument;
 		if (!text.node || !ownerDocument) {
 			return 0;
 		}
 
-		const caretPoint = this.pointAt(clientX, clientY);
+		const caretPoint = this.#pointAt(clientX, clientY);
 		if (caretPoint?.text === text) {
 			return caretPoint.offset;
 		}
@@ -311,7 +298,7 @@ export class SelectionPointer {
 
 	/** @internal */
 	placeAt = (text: Text, clientX: number, clientY: number) => {
-		this.selection.setAtTextOffset(text, this.offsetAt(text, clientX, clientY));
+		this.selection.selectText(text, this.#offsetAt(text, clientX, clientY));
 	};
 
 	/** @internal */
@@ -321,7 +308,7 @@ export class SelectionPointer {
 			return;
 		}
 
-		this.dragStart = this.pointAt(event.clientX, event.clientY);
+		this.dragStart = this.#pointAt(event.clientX, event.clientY);
 		this.#across = false;
 		this.#extending = event.shiftKey;
 	};
@@ -397,12 +384,12 @@ export class SelectionPointer {
 		}
 		this.selection.placedOver = this.selection.value;
 
-		const point = this.pointAt(event.clientX, event.clientY);
+		const point = this.#pointAt(event.clientX, event.clientY);
 		if (!point) {
 			return;
 		}
 
-		this.selection.setAtTextOffset(point.text, point.offset);
+		this.selection.selectText(point.text, point.offset);
 	};
 
 	/** @internal */
@@ -415,7 +402,7 @@ export class SelectionPointer {
 			return;
 		}
 
-		const dragEnd = this.pointAt(event.clientX, event.clientY);
+		const dragEnd = this.#pointAt(event.clientX, event.clientY);
 		if (!dragEnd) {
 			return;
 		}
@@ -428,38 +415,15 @@ export class SelectionPointer {
 			return;
 		}
 
+		// Two texts of one block hold an inline atom between them (a block's
+		// content alternates texts and atoms): the range is the drag's.
 		window.setTimeout(() => {
-			if (dragStart.text.parent !== dragEnd.text.parent) {
-				return;
-			}
-
 			const content = dragStart.text.parent.content;
-			const startIndex = content.indexOf(dragStart.text);
-			const endIndex = content.indexOf(dragEnd.text);
-			const firstTextIndex = Math.min(startIndex, endIndex);
-			const lastTextIndex = Math.max(startIndex, endIndex);
-			const hasInlineAtomBetweenTextPoints = content.some(
-				(part, index) =>
-					part instanceof InlineBlock && index > firstTextIndex && index < lastTextIndex
-			);
-			if (startIndex === -1 || endIndex === -1 || !hasInlineAtomBetweenTextPoints) {
+			const [from, to] = [content.indexOf(dragStart.text), content.indexOf(dragEnd.text)];
+			if (dragStart.text.parent !== dragEnd.text.parent || from < 0 || to < 0 || from === to)
 				return;
-			}
-
-			const isReversed = startIndex > endIndex;
-			const rangeStart = isReversed ? dragEnd : dragStart;
-			const rangeEnd = isReversed ? dragStart : dragEnd;
-			this.selection.clearInlineBlockSelection();
-			this.selection.setAtRange(
-				rangeStart.text,
-				rangeStart.offset,
-				rangeEnd.text,
-				rangeEnd.offset,
-				{
-					isReversed
-				}
-			);
-			this.selection.clearInlineBlockSelection();
+			const [start, end] = from < to ? [dragStart, dragEnd] : [dragEnd, dragStart];
+			this.selection.selectText(start.text, start.offset, end.text, end.offset, from > to);
 		});
 	};
 

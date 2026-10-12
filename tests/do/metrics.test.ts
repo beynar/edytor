@@ -87,7 +87,9 @@ describe('H14 · room metrics and log', () => {
 	it('logs and counts validation denials', async () => {
 		const room = 'locked-metrics';
 		const ada = await join(room, 'ada', { children: [para('p', 'mine')] });
-		ada.document.transact(() => ada.document.facade.setBlockData('p', { lockedBy: 'ada' }));
+		ada.document.transact(() =>
+			ada.document.facade.patchData('p', [{ path: [], value: { lockedBy: 'ada' } }])
+		);
 		const bob = await join(room, 'bob');
 		await vi.waitFor(() =>
 			expect(bob.document.facade.blockDataOf('p')).toEqual({ lockedBy: 'ada' })

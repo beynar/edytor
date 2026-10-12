@@ -11,15 +11,6 @@ importers:
 
   .:
     dependencies:
-      '@atlaskit/pragmatic-drag-and-drop':
-        specifier: 4.0.0
-        version: 4.0.0
-      '@atlaskit/pragmatic-drag-and-drop-auto-scroll':
-        specifier: 3.2.1
-        version: 3.2.1
-      '@atlaskit/pragmatic-drag-and-drop-hitbox':
-        specifier: 3.0.0
-        version: 3.0.0
       '@tanstack/highlight':
         specifier: ^0.1.0
         version: 0.1.0
@@ -142,15 +133,6 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
-
-  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.1':
-    resolution: {integrity: sha512-2fhWAG48EjPoKhoHLG6RcT3/VaCzYEbRb6BtA/Vcfx4FrL0P1KrEgBJ6OAwB0X8MOV6UH22YgjFFHjv8fQD9rA==}
-
-  '@atlaskit/pragmatic-drag-and-drop-hitbox@3.0.0':
-    resolution: {integrity: sha512-AGLp1ewjm07eRN2NL62awllSM19FrWVZMQYfZA/jugQlpaeoTr5ah2DE7zfiEt7yrg34htoKQVM+y6SGIQYs2A==}
-
-  '@atlaskit/pragmatic-drag-and-drop@4.0.0':
-    resolution: {integrity: sha512-pyDo2B5NiaExoKGmgeXKGNUL4aR4UzzSZm8QWWjYTEyBLVqSqKyKUwtVxMw2YEkakagOGFONUdHM32LAH2nPug==}
 
   '@axe-core/playwright@4.13.0':
     resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
@@ -1152,9 +1134,6 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
-  bind-event-listener@3.0.0:
-    resolution: {integrity: sha512-PJvH288AWQhKs2v9zyfYdPzlPqf5bXbGMmhmUIY9x4dAUGIWgomO771oBQNwJnMQSnUIXhKu6sgzpBRXTlvb8Q==}
-
   blake3-wasm@2.1.5:
     resolution: {integrity: sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g==}
 
@@ -1747,9 +1726,6 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  raf-schd@4.0.3:
-    resolution: {integrity: sha512-tQkJl2GRWh83ui2DiPTJz9wEiMN20syf+5oKfB03yYP7ioZcJwsIK8FjrtLwH1m7C7e+Tt2yYBlrOpdT+dyeIQ==}
-
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
@@ -2142,22 +2118,6 @@ snapshots:
       lru-cache: 11.2.7
 
   '@asamuzakjp/nwsapi@2.3.9': {}
-
-  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.1':
-    dependencies:
-      '@atlaskit/pragmatic-drag-and-drop': 4.0.0
-      '@babel/runtime': 7.29.2
-
-  '@atlaskit/pragmatic-drag-and-drop-hitbox@3.0.0':
-    dependencies:
-      '@atlaskit/pragmatic-drag-and-drop': 4.0.0
-      '@babel/runtime': 7.29.2
-
-  '@atlaskit/pragmatic-drag-and-drop@4.0.0':
-    dependencies:
-      '@babel/runtime': 7.29.2
-      bind-event-listener: 3.0.0
-      raf-schd: 4.0.3
 
   '@axe-core/playwright@4.13.0(playwright-core@1.59.1)':
     dependencies:
@@ -2958,8 +2918,6 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  bind-event-listener@3.0.0: {}
-
   blake3-wasm@2.1.5: {}
 
   brace-expansion@5.0.5:
@@ -3505,8 +3463,6 @@ snapshots:
       sade: 1.8.1
 
   punycode@2.3.1: {}
-
-  raf-schd@4.0.3: {}
 
   react-is@17.0.2: {}
 

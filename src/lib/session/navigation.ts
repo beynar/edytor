@@ -4,8 +4,9 @@
  *
  * The stream is the document order of the displayable blocks (a
  * Surface fact: a collapsed toggle's body or a phantom content slot holds no
- * stop), each block's content parts in order: offsets inside its texts at
- * grapheme (or word) boundaries, with the inline atoms between them. A key
+ * stop), each block's stops in block offsets (an inline atom counts 1, as
+ * the projection's points): grapheme (or word) boundaries inside its texts,
+ * the inline atoms between them. A key
  * names a unit (grapheme, word, block edge, document edge) and a direction;
  * the arrow and word keys are visual, resolved once from the focus text's
  * computed direction (RTL).
@@ -22,15 +23,22 @@
  * lands it on no caret stop (`landed`).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { Block } from '$lib/block/block.svelte.js';
-import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { Text } from '$lib/text/text.svelte.js';
-import { getNextGraphemeEnd, getPreviousGraphemeStart } from '$lib/text/text.utils.js';
-import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
+import {
+	getNextGraphemeEnd,
+	getNextWordEndOffset,
+	getPreviousGraphemeStart,
+	getPreviousWordStartOffset
+} from '$lib/text/wordBoundary.js';
 import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
-import type { SelectionValue } from './selection.js';
+import {
+	atomSelection,
+	segmentsOf,
+	type SelectionPoint,
+	type SelectionValue
+} from './selection.js';
 import { untargeted } from './attempt.js';
+import { siblingSlot } from './handles.js';
 
 /**
  * With no target (`untargeted`: the value is `none`, no gesture placed the
@@ -42,75 +50,82 @@ export const stayWithoutTarget = (edytor: Edytor, prevent: () => void) => {
 	if (untargeted(edytor)) prevent();
 };
 
-/** A caret stop: an offset inside one text segment. */
-type Stop = { text: Text; offset: number };
+/** A caret stop: a block and an offset in its content (an inline atom counts 1). */
+type Stop = SelectionPoint;
 export type Dir = 1 | -1;
 type Unit = 'char' | 'word' | 'line' | 'doc';
 
+/** An inline atom in a block's string. */
+const ATOM = '￼';
+
+/** A block's content as one string, each inline atom one `ATOM`. */
+const stringOf = (edytor: Edytor, block: string) =>
+	edytor.facade
+		.contentItems(block)
+		.map((item) => (item.kind === 'text' ? item.text : ATOM))
+		.join('');
+
 /** A block's stop at its edge in `dir` (its end going forward, its start going backward). */
-const edge = (block: Block, dir: Dir): Stop | null => {
-	const texts = block.content.filter((part): part is Text => part instanceof Text);
-	const text = dir > 0 ? texts.at(-1) : texts[0];
-	return text ? { text, offset: dir > 0 ? text.length : 0 } : null;
-};
+const edge = (edytor: Edytor, block: string, dir: Dir): Stop => ({
+	block,
+	offset: dir > 0 ? edytor.facade.displayLength(block) : 0
+});
 
 /** The first displayable block after `from` in document order (`from` null: the document's edge). */
-const displayable = (edytor: Edytor, from: Block | null, dir: Dir): Block | null => {
+const displayable = (edytor: Edytor, from: string | null, dir: Dir): string | null => {
 	const ids = edytor.facade.order();
-	const at = from ? ids.indexOf(from.id) : dir > 0 ? -1 : ids.length;
+	const at = from ? ids.indexOf(from) : dir > 0 ? -1 : ids.length;
 	for (let i = at + dir; i >= 0 && i < ids.length; i += dir)
-		if (edytor.selection.displayable(ids[i]!)) return edytor.idToBlock.get(ids[i]!) ?? null;
+		if (edytor.selection.displayable(ids[i]!)) return ids[i]!;
 	return null;
 };
 
 /**
- * The next stop from `at`: a grapheme or word boundary inside its text, else
- * the near side of the text beyond the atom next to it, else the near edge of
- * the next displayable block.
+ * The next stop from `at`: a grapheme or word boundary inside its text (the
+ * run between the atoms around it), else the near side of the atom next to
+ * it, else the near edge of the next displayable block.
  */
-const step = (edytor: Edytor, { text, offset }: Stop, dir: Dir, unit: 'char' | 'word') => {
-	const value = text.stringContent;
-	if (dir > 0 ? offset < value.length : offset > 0) {
+const step = (
+	edytor: Edytor,
+	{ block, offset }: Stop,
+	dir: Dir,
+	unit: 'char' | 'word'
+): Stop | null => {
+	const value = stringOf(edytor, block);
+	const from = offset && value.lastIndexOf(ATOM, offset - 1) + 1;
+	const to = value.indexOf(ATOM, offset);
+	const text = value.slice(from, to < 0 ? undefined : to);
+	const at = offset - from;
+	if (dir > 0 ? at < text.length : at > 0) {
 		const next =
 			unit === 'word'
-				? (dir > 0 ? getNextWordEndOffset : getPreviousWordStartOffset)(value, offset)
-				: (dir > 0 ? getNextGraphemeEnd : getPreviousGraphemeStart)(value, offset);
-		if (next !== offset) return { text, offset: next };
+				? (dir > 0 ? getNextWordEndOffset : getPreviousWordStartOffset)(text, at)
+				: (dir > 0 ? getNextGraphemeEnd : getPreviousGraphemeStart)(text, at);
+		if (next !== at) return { block, offset: from + next };
 	}
-	const { content } = text.parent;
-	const index = content.indexOf(text);
-	const beyond = content[index + 2 * dir];
-	if (content[index + dir] instanceof InlineBlock)
-		return beyond instanceof Text ? { text: beyond, offset: dir > 0 ? 0 : beyond.length } : null;
-	const block = displayable(edytor, text.parent, dir);
-	return block && edge(block, -dir as Dir);
+	if (value[dir > 0 ? offset : offset - 1] === ATOM) return { block, offset: offset + dir };
+	const next = displayable(edytor, block, dir);
+	return next ? edge(edytor, next, -dir as Dir) : null;
 };
 
-const compare = (a: Stop, b: Stop, edytor: Edytor) =>
-	a.text === b.text
-		? a.offset - b.offset
-		: a.text.parent === b.text.parent
-			? a.text.parent.content.indexOf(a.text) - b.text.parent.content.indexOf(b.text)
-			: edytor.compareBlocks(a.text.parent, b.text.parent);
+const compare = (edytor: Edytor, a: Stop, b: Stop) =>
+	a.block === b.block ? a.offset - b.offset : edytor.facade.compare(a.block, b.block);
 
 /** Select `anchor` → `focus`: a caret, the one atom the range covers, or the range. */
 const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
-	const order = compare(anchor, focus, edytor);
-	if (order === 0) return edytor.selection.setAtTextOffset(focus.text, focus.offset);
-	const [start, end] = order < 0 ? [anchor, focus] : [focus, anchor];
-	const { content } = start.text.parent;
-	const index = content.indexOf(start.text);
-	const atom = content[index + 1];
-	if (
-		atom instanceof InlineBlock &&
-		content[index + 2] === end.text &&
-		start.offset === start.text.length &&
-		end.offset === 0
-	)
-		return edytor.selection.selectInlineBlock(atom, order > 0 ? 'after' : 'before');
-	edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset, {
-		isReversed: order > 0
-	});
+	const { selection } = edytor;
+	const order = compare(edytor, anchor, focus);
+	const [start, end] = order > 0 ? [focus, anchor] : [anchor, focus];
+	const atom =
+		start.block === end.block && end.offset - start.offset === 1
+			? segmentsOf(edytor.facade, start.block).find(
+					(part) => part.kind === 'inline' && part.start === start.offset
+				)
+			: null;
+	if (atom?.kind === 'inline')
+		return selection.select(atomSelection(start.block, atom.id, order > 0 ? 'after' : 'before'));
+	const [from, to] = [selection.textAt(start), selection.textAt(end)];
+	if (from && to) selection.selectText(from.text, from.offset, to.text, to.offset, order > 0);
 };
 
 /**
@@ -126,57 +141,63 @@ export const move = (
 	extend: boolean
 ): boolean => {
 	const { selection } = edytor;
-	const { value, state } = selection;
-	if (value.kind === 'none' || !state.startText || !state.endText) return false;
+	const { value, projection } = selection;
+	let { start, end } = projection;
+	if (value.kind === 'none' || !selection.textAt(start) || !selection.textAt(end)) return false;
 	if (unit === 'char' && value.kind === 'blocks') return false;
 	// A block selection spans its first shown line's start to its last one's
 	// end (a list's items, a code block's lines, never a divider; a
 	// member's own line, never an unselected child's).
 	const blocks = value.kind === 'blocks' && getSelectedBlocksInDocumentOrder(edytor);
-	let first = blocks
-		? blocks.map((block) => shownText(block, 'first')).find(Boolean)
-		: state.startText;
-	let last = blocks
-		? blocks.map((block) => shownText(block, 'last')).findLast(Boolean)
-		: state.endText;
-	if (!first || !last) {
+	if (blocks) {
+		const first = blocks.map((block) => shownText(block, 'first')).find(Boolean);
+		const last = blocks.map((block) => shownText(block, 'last')).findLast(Boolean);
+		if (first && last) {
+			start = { block: first.blockId, offset: first.segStart };
+			end = { block: last.blockId, offset: last.segStart + last.length };
+		}
 		// Voids alone show no line: the blocks stay selected, except for the
 		// document keys, whose target is the document's edge (`select` moves
 		// an anchor left in a void beside it).
-		if (unit !== 'doc') return true;
-		[first, last] = [state.startText, state.endText];
+		else if (unit !== 'doc') return true;
 	}
-	const start = { text: first, offset: blocks ? 0 : state.yStart };
-	const end = { text: last, offset: blocks ? last.length : state.yEnd };
-	const rtl = selection.rtl(state.isReversed ? start.text : end.text);
+	if (!start || !end) return false;
+	const rtl = selection.rtl(selection.textAt(projection.isReversed ? start : end)!.text);
 	const dir: Dir = typeof key === 'number' ? key : (key === 'right') !== rtl ? 1 : -1;
 	// The focus moves; an atom is the range anchored on the side it came from,
 	// a block selection on the side away from the key.
 	const reversed =
-		value.kind === 'atom' ? value.from === 'after' : blocks ? dir < 0 : state.isReversed;
+		value.kind === 'atom' ? value.from === 'after' : blocks ? dir < 0 : projection.isReversed;
 	const [anchor, focus] = reversed ? [end, start] : [start, end];
 	const nodeBound = unit === 'char' && value.kind === 'text' && selection.hasNativeNodeSelection();
-	if (!extend && (blocks || !state.isCollapsed) && unit !== 'line' && unit !== 'doc') {
+	if (!extend && (blocks || !projection.isCollapsed) && unit !== 'line' && unit !== 'doc') {
 		if (unit === 'char' && value.kind === 'text' && !nodeBound) return false;
 		const to = dir > 0 ? end : start;
 		select(edytor, to, to);
 		return true;
 	}
+	const first = unit === 'doc' ? displayable(edytor, null, -dir as Dir) : null;
 	let to =
 		unit === 'line'
-			? edge(focus.text.parent, dir)
-			: unit === 'doc'
-				? (() => {
-						const block = displayable(edytor, null, -dir as Dir);
-						return block && edge(block, dir);
-					})()
-				: step(edytor, focus, dir, unit);
-	// Past a soft break the caret has two DOM positions (the break's node end,
-	// the next line's start): Firefox's forward step only trades one for the
-	// other, so that step is the editor's (a logical step: bidi never reorders
-	// across a line break).
-	const native = unit === 'char' && !nodeBound && to?.text === focus.text && value.kind === 'text';
-	if (native && !(dir > 0 && focus.text.stringContent[focus.offset - 1] === '\n')) return false;
+			? edge(edytor, focus.block, dir)
+			: unit !== 'doc'
+				? step(edytor, focus, dir, unit)
+				: first
+					? edge(edytor, first, dir)
+					: null;
+	// A grapheme step inside the focus's text is the browser's, except past a
+	// soft break, where the caret has two DOM positions (the break's node
+	// end, the next line's start): Firefox's forward step only trades one for
+	// the other, so that step is the editor's (a logical step: bidi never
+	// reorders across a line break).
+	const text = stringOf(edytor, focus.block);
+	const native =
+		unit === 'char' &&
+		!nodeBound &&
+		value.kind === 'text' &&
+		to?.block === focus.block &&
+		text[Math.min(to.offset, focus.offset)] !== ATOM;
+	if (native && !(dir > 0 && text[focus.offset - 1] === '\n')) return false;
 	// A forward node-bound extension never rests on another block's first
 	// stop (a derive maps that end back onto the previous block's end).
 	while (
@@ -184,9 +205,8 @@ export const move = (
 		extend &&
 		to &&
 		to.offset === 0 &&
-		to.text === to.text.parent.content[0] &&
-		to.text.parent !== anchor.text.parent &&
-		compare(anchor, to, edytor) < 0
+		to.block !== anchor.block &&
+		compare(edytor, anchor, to) < 0
 	)
 		to = step(edytor, to, 1, 'char');
 	if (!to) {
@@ -199,77 +219,30 @@ export const move = (
 	return true;
 };
 
-/** A line of a block for vertical motion: text pieces, and `null` for an atom (one column). */
-type Line = Array<{ text: Text; offset: number; length: number } | null>;
-
-/** A block's lines: its texts split at `\n` soft breaks (logical lines, not layout). */
-const linesOf = (block: Block): Line[] => {
-	const lines: Line[] = [[]];
-	for (const part of block.content) {
-		if (!(part instanceof Text)) {
-			lines.at(-1)!.push(null);
-			continue;
-		}
-		let offset = 0;
-		part.stringContent.split('\n').forEach((line, index) => {
-			if (index) lines.push([]);
-			lines.at(-1)!.push({ text: part, offset, length: line.length });
-			offset += line.length + 1;
-		});
-	}
-	return lines;
+/** A block's lines (split at its `\n` soft breaks: logical lines, not layout), as start and end offsets. */
+const linesOf = (edytor: Edytor, block: string) => {
+	let at = 0;
+	return stringOf(edytor, block)
+		.split('\n')
+		.map((line) => [at, (at += line.length + 1) - 1] as const);
 };
 
-/** The stop at `column` of a line; past its end, the end of its last text. */
-const onLine = (line: Line, column: number): Stop | null => {
-	let rest = Math.max(column, 0);
-	let last: Line[number] = null;
-	for (const piece of line) {
-		if (!piece) {
-			rest = Math.max(0, rest - 1);
-			continue;
-		}
-		last = piece;
-		if (piece.length === 0 && rest > 0) continue;
-		if (rest <= piece.length) return { text: piece.text, offset: piece.offset + rest };
-		rest -= piece.length;
-	}
-	return last && { text: last.text, offset: last.offset + last.length };
-};
-
-const islandOf = (edytor: Edytor, block: Block) =>
-	[block.id, ...edytor.facade.ancestorsOf(block.id)].find((id) => edytor.facade.isIsland(id));
-
-/** The line holding `at` and its column there. */
-const locate = (lines: Line[], at: Stop) => {
-	for (const [index, line] of lines.entries()) {
-		let column = 0;
-		for (const piece of line) {
-			if (
-				piece?.text === at.text &&
-				at.offset >= piece.offset &&
-				at.offset <= piece.offset + piece.length
-			)
-				return { index, column: column + at.offset - piece.offset };
-			column += piece ? piece.length : 1;
-		}
-	}
-	return null;
-};
+const islandOf = (edytor: Edytor, block: string) =>
+	[block, ...edytor.facade.ancestorsOf(block)].find((id) => edytor.facade.isIsland(id));
 
 /**
- * The stop one line from `from` in `dir` at `goal` (default: its own column):
- * the next line of its block, else the facing line of the next displayable
- * non-void block inside the same island, else its own block's edge. Every
- * line holds a text, so `onLine` always finds a stop.
+ * The stop one line from `from` in `dir` at `goal` (default: its own column;
+ * an atom is one column): the next line of its block, else the facing line
+ * of the next displayable non-void block inside the same island, else its
+ * own block's edge.
  */
 const lineStop = (edytor: Edytor, from: Stop, dir: Dir, goal?: number) => {
-	const block = from.text.parent;
-	const lines = linesOf(block);
-	const at = locate(lines, from);
-	if (!at) return null;
-	const column = goal ?? at.column;
-	let line: Line | undefined = lines[at.index + dir];
+	const lines = linesOf(edytor, from.block);
+	const index = lines.findIndex(([start, end]) => from.offset >= start && from.offset <= end);
+	if (index < 0) return null;
+	const column = goal ?? from.offset - lines[index]![0];
+	let block = from.block;
+	let line: (typeof lines)[number] | undefined = lines[index + dir];
 	const island = islandOf(edytor, block);
 	for (
 		let next = line ? null : displayable(edytor, block, dir);
@@ -277,10 +250,12 @@ const lineStop = (edytor: Edytor, from: Stop, dir: Dir, goal?: number) => {
 		next = displayable(edytor, next, dir)
 	) {
 		if (islandOf(edytor, next) !== island) break;
-		if (!edytor.facade.isVoid(next.id)) line = linesOf(next).at(dir > 0 ? 0 : -1);
+		if (!edytor.facade.isVoid(next))
+			[block, line] = [next, linesOf(edytor, next).at(dir > 0 ? 0 : -1)];
 	}
-	const to = line ? onLine(line, column) : onLine(lines.at(dir > 0 ? -1 : 0)!, dir * Infinity);
-	return to && { ...to, column };
+	const [start, end] = line ?? lines.at(dir > 0 ? -1 : 0)!;
+	const offset = start + (line ? column : dir * Infinity);
+	return { block, offset: Math.min(Math.max(offset, start), end), column };
 };
 
 const goals = new WeakMap<Edytor, { column: number; value: SelectionValue }>();
@@ -293,11 +268,10 @@ const goals = new WeakMap<Edytor, { column: number; value: SelectionValue }>();
  * moves keep the goal column. Answers whether a text selection moved.
  */
 export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
-	const { value, state } = edytor.selection;
-	if (value.kind !== 'text' || !state.startText || !state.endText) return false;
-	const start = { text: state.startText, offset: state.yStart };
-	const end = { text: state.endText, offset: state.yEnd };
-	const [anchor, focus] = state.isReversed ? [end, start] : [start, end];
+	const { value, projection } = edytor.selection;
+	const { start, end } = projection;
+	if (value.kind !== 'text' || !start || !end) return false;
+	const [anchor, focus] = projection.isReversed ? [end, start] : [start, end];
 	const kept = goals.get(edytor);
 	const to = lineStop(edytor, focus, dir, kept?.value === value ? kept.column : undefined);
 	if (!to) return false;
@@ -321,13 +295,13 @@ const natives = new WeakMap<Edytor, { serial: number; dir: Dir; value: Selection
  * sits in, or another cell of its table row (what follows the last column
  * or the last row is below).
  */
-const stopBelow = (edytor: Edytor, block: Block): boolean => {
+const stopBelow = (edytor: Edytor, block: string): boolean => {
 	const { facade } = edytor;
-	const items = [block.id, ...facade.ancestorsOf(block.id)].filter(
+	const items = [block, ...facade.ancestorsOf(block)].filter(
 		(id) => facade.isLayoutItem(id) || facade.isTableCell(id)
 	);
 	const ids = facade.order();
-	const from = ids.indexOf(block.id);
+	const from = ids.indexOf(block);
 	if (from < 0) return true;
 	for (let i = from + 1; i < ids.length; i++) {
 		const id = ids[i]!;
@@ -351,17 +325,18 @@ const stopBelow = (edytor: Edytor, block: Block): boolean => {
  */
 const leavesLastStop = (edytor: Edytor): boolean => {
 	const { selection, root } = edytor;
-	const { value, state } = selection;
-	if (value.kind !== 'text' || !state.isCollapsed || !state.startText || !root) return false;
+	const { value, projection } = selection;
+	const at = projection.start;
+	const block = at && edytor.idToBlock.get(at.block);
+	if (value.kind !== 'text' || !projection.isCollapsed || !block || !root) return false;
 	if (!edytor.dispatcher.permits()) return false;
-	const at = { text: state.startText, offset: state.yStart };
-	const block = at.text.parent;
 	if (block.parent?.isRoot && block.type === edytor.defaultChild(root)) return false;
-	const lines = linesOf(block);
-	if (locate(lines, at)?.index !== lines.length - 1) return false;
-	const end = edge(block, 1);
-	if (end && edytor.ports.surface.sameLine(at, end) === false) return false;
-	return !stopBelow(edytor, block);
+	const text = stringOf(edytor, at.block);
+	if (text.includes('\n', at.offset)) return false;
+	return (
+		edytor.ports.surface.sameLine(at, { block: at.block, offset: text.length }) !== false &&
+		!stopBelow(edytor, at.block)
+	);
 };
 
 /**
@@ -379,12 +354,13 @@ export const toTrailingParagraph = (edytor: Edytor): boolean => {
 	if (!root || !last) return false;
 	const kind = edytor.defaultChild(root);
 	if (last.type === kind && last.isEmpty && last.firstText) {
-		edytor.selection.setAtTextOffset(last.firstText, 0);
+		edytor.selection.selectText(last.firstText, 0);
 		return true;
 	}
-	const after = last.insertBlockAfter({ block: { type: kind } });
-	if (!after?.firstText) return false;
-	edytor.dispatcher.caret(after.firstText, 0);
+	const { ids } = edytor.insertBlocks(siblingSlot(last), [{ type: kind }]);
+	const text = edytor.idToBlock.get(ids[0] ?? '')?.firstText;
+	if (!text) return false;
+	edytor.dispatcher.caret(text, 0);
 	return true;
 };
 
@@ -415,9 +391,9 @@ export const landed = (edytor: Edytor): boolean => {
 	if (!native || native.serial !== edytor.intentSerial || native.value !== selection.value)
 		return false;
 	natives.delete(edytor);
-	const { startText, endText, yStart, yEnd, isReversed } = selection.state;
-	if (!startText || !endText) return false;
-	const focus = isReversed ? { text: startText, offset: yStart } : { text: endText, offset: yEnd };
+	const { start, end, isReversed } = selection.projection;
+	const focus = isReversed ? start : end;
+	if (!focus) return false;
 	const to = lineStop(edytor, focus, native.dir) ?? focus;
 	select(edytor, to, to);
 	return true;

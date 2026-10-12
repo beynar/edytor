@@ -10,7 +10,7 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createPagePlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createPagePlugin } from 'edytor';
 
 	// Your app's pages: their titles, as reactive state, follow renames.
 	let titles = $state<Record<string, string>>({ 'doc-42': 'Roadmap' });
@@ -28,10 +28,10 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 	});
 </script>
 
-<Edytor plugins={[page, slashMenuPlugin]} />
+<Edytor plugins={[page]} />
 ```
 
-`pagePlugin` is the plugin without options: the block shows the title it stores and opens nothing.
+`createPagePlugin()` is the plugin without options: the block shows the title it stores and opens nothing.
 
 ## Options
 
@@ -55,18 +55,42 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
       type: "() => string | { pageId: string; title?: string } | null | undefined",
       description: "Create a page and answer its id (and title). Adds the \"Page\" command; without it there is none.",
     },
-    labels: {
-      type: "PartialLabels<'page'>",
-      description: "The block's and the command's words over the English ones: `page` (the command, \"Page\") and `untitled` (a page without a title, also its plain text and HTML export, \"Untitled\"). See [Localization](/docs/customization/localization).",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash keywords of `page.new`, which replace its own.",
+    link: {
+      type: "Snippet<[PageBlockLinkPayload]>",
+      description: "The block's link to its page, replacing Notion's row (see [Your link](#your-link)). The first page plugin listed in a view gives it.",
     },
   }}
 />
 
 A `title` answer that differs from the stored title is stored on the block, as one data write outside the undo history, by a view that may write: so a view without the lookup, the room, the HTML export and a readonly viewer show it. An undo never brings back a stale title. A promise's answer is used once it settles, and only for the page it was asked about.
+
+### Your link
+
+`link` is drawn inside the block's void wrapper (`[data-edytor-page]`). It receives a `PageBlockLinkPayload`: `block` (`undefined` in a suggestion's preview), `pageId`, `title` (your lookup's answer, else the stored one), `label` (the title, else the view's `page.untitled`), `href` (your `href`'s URL, if any), `openable` (it names a page and the plugin has `open`), `open(newTab?)` and `control`. Draw an `a` with `href={page.href}` when `href` is set, else a `button`, and give it `{@attach page.control}`, as a menu's row takes its attachment: the marker (`data-edytor-page-link`), `draggable="false"` on a link, `disabled` when it cannot open and a press that keeps the caret on a button, and the click and middle click that open the page as the default row does (a modified or middle click in a new tab, the browser's own on a link).
+
+```svelte title="Pages.svelte" check
+<script lang="ts">
+	import { Edytor, createPagePlugin, type PageBlockLinkPayload } from 'edytor';
+
+	const pages = createPagePlugin({
+		open: (pageId, { newTab }) => window.open(`/p/${pageId}`, newTab ? '_blank' : '_self'),
+		href: (pageId) => `/p/${pageId}`,
+		link
+	});
+</script>
+
+{#snippet link(page: PageBlockLinkPayload)}
+	{#if page.href}
+		<a class="subpage" href={page.href} {@attach page.control}>📄 {page.label}</a>
+	{:else}
+		<button type="button" class="subpage" disabled={!page.openable} {@attach page.control}>
+			📄 {page.label}
+		</button>
+	{/if}
+{/snippet}
+
+<Edytor plugins={[pages]} />
+```
 
 ## The "Page" command
 
@@ -98,8 +122,8 @@ The block is void and shows no text of its own, like a divider: it takes no chil
 | Selector                        | Matches                                         |
 | ------------------------------- | ----------------------------------------------- |
 | `[data-edytor-type='page']`     | The block                                       |
-| `[data-edytor-page-link]`       | The link: an `a` with `href`, else a `button`   |
+| `[data-edytor-page-link]`       | The link: an `a` with `href`, else a `button` (yours too, through `attributes`) |
 | `[data-edytor-page-icon]`       | The page icon (drawn by the theme)              |
 | `[data-edytor-page-title]`      | The title; `[data-untitled]` when it has none   |
 
-The [Notion theme](/docs/customization/styling#notion-theme) draws Notion's page row: the page icon, the title underlined, a hover background.
+The [Notion theme](/docs/customization/styling#notion-theme) draws Notion's page row: the page icon, the title underlined, a hover background. Without it the link is the browser's link or button.

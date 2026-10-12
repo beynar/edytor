@@ -20,8 +20,8 @@ import {
 } from '../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../lib/edytor.svelte.js';
 import { serialize } from '../../lib/session/selection.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { jsonEquals, type JSONDoc } from '../../lib/utils/json.js';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -31,7 +31,7 @@ const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [
 
 /** Write the view's caret (which publishes) and run the one write once more with the same payload. */
 const publishSelection = (view: Edytor, offset = 0) => {
-	view.selection.setAtTextOffset(view.root!.children[0]!.firstText!, offset);
+	view.selection.selectText(view.root!.children[0]!.firstText!, offset);
 	publishPresence(
 		view.awareness,
 		view.presenceKey,

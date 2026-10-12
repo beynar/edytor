@@ -14,11 +14,11 @@
  * wire compatibility is not peer compatibility (presence payload versioning
  * is the presence layer's concern).
  */
+import { jsonEquals } from '../../utils/json.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
-import * as f from 'lib0-v14/function';
 import { IsolatedObservable } from './observable.js';
 
 export const outdatedTimeout = 30000;
@@ -65,7 +65,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 	/** Maps from client id to client state */
 	states: AwarenessStates;
 	meta: Map<number, MetaClientState>;
-	private _checkInterval: ReturnType<typeof setInterval>;
+	#checkInterval: ReturnType<typeof setInterval>;
 	/**
 	 * Idempotence guard — `destroy()` is reachable twice through the
 	 * OWNED-doc + OWNED-awareness composition: `EdytorDocument.destroy()`
@@ -82,7 +82,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		this.clientID = doc.clientID;
 		this.states = new Map();
 		this.meta = new Map();
-		this._checkInterval = setInterval(
+		this.#checkInterval = setInterval(
 			() => {
 				const now = time.getUnixTime();
 				const localMeta = this.meta.get(this.clientID);
@@ -113,7 +113,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		// Node returns a `Timeout` (has `unref`), browsers a number — a stale-
 		// state sweep must never be the thing keeping a node/SSR process alive
 		// (a server-rendered component can't run its client teardown path).
-		(this._checkInterval as { unref?: () => void }).unref?.();
+		(this.#checkInterval as { unref?: () => void }).unref?.();
 		doc.on('destroy', () => {
 			this.destroy();
 		});
@@ -128,7 +128,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		this.emit('destroy', [this]);
 		this.setLocalState(null);
 		super.destroy();
-		clearInterval(this._checkInterval);
+		clearInterval(this.#checkInterval);
 	}
 
 	getLocalState(): Record<string, unknown> | null {
@@ -161,7 +161,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 			}
 		} else {
 			updated.push(clientID);
-			if (!f.equalityDeep(prevState, state)) {
+			if (!jsonEquals(prevState, state)) {
 				filteredUpdated.push(clientID);
 			}
 		}
@@ -216,24 +216,19 @@ export const removeAwarenessStates = (
 	}
 };
 
+/** The update carrying `clients`' entries of `awareness` (their states in `states`). */
 export const encodeAwarenessUpdate = (
 	awareness: Awareness,
 	clients: number[],
 	states: AwarenessStates = awareness.states
-): Uint8Array => {
-	const len = clients.length;
-	const encoder = encoding.createEncoder();
-	encoding.writeVarUint(encoder, len);
-	for (let i = 0; i < len; i++) {
-		const clientID = clients[i];
-		const state = states.get(clientID) || null;
-		const clock = (awareness.meta.get(clientID) as MetaClientState).clock;
-		encoding.writeVarUint(encoder, clientID);
-		encoding.writeVarUint(encoder, clock);
-		encoding.writeVarString(encoder, JSON.stringify(state));
-	}
-	return encoding.toUint8Array(encoder);
-};
+): Uint8Array =>
+	writeAwarenessEntries(
+		clients.map((clientID) => ({
+			clientID,
+			clock: (awareness.meta.get(clientID) as MetaClientState).clock,
+			state: states.get(clientID) || null
+		}))
+	);
 
 /** One awareness entry on the wire: a client's clock and state (`null` = removed). */
 export type AwarenessEntry = {
@@ -256,7 +251,7 @@ export const readAwarenessEntries = (update: Uint8Array): AwarenessEntry[] => {
 	}));
 };
 
-/** Instance-free awareness codec: encode entries as an update (the wire format of {@link encodeAwarenessUpdate}). */
+/** Instance-free awareness codec: encode entries as an update. */
 export const writeAwarenessEntries = (entries: readonly AwarenessEntry[]): Uint8Array =>
 	encoding.encode((encoder) => {
 		encoding.writeVarUint(encoder, entries.length);
@@ -268,18 +263,6 @@ export const writeAwarenessEntries = (entries: readonly AwarenessEntry[]): Uint8
 	});
 
 /**
- * Modify the content of an awareness update before re-encoding it to an
- * awareness update — e.g. a central server preventing identity hijacking.
- */
-export const modifyAwarenessUpdate = (
-	update: Uint8Array,
-	modify: (state: Record<string, unknown> | null) => Record<string, unknown> | null
-): Uint8Array =>
-	writeAwarenessEntries(
-		readAwarenessEntries(update).map((entry) => ({ ...entry, state: modify(entry.state) }))
-	);
-
-/**
  * Apply an encoded awareness update. `origin` is forwarded on the emitted
  * change/update events.
  */
@@ -288,17 +271,14 @@ export const applyAwarenessUpdate = (
 	update: Uint8Array,
 	origin: unknown
 ): void => {
-	const decoder = decoding.createDecoder(update);
 	const timestamp = time.getUnixTime();
 	const added: number[] = [];
 	const updated: number[] = [];
 	const filteredUpdated: number[] = [];
 	const removed: number[] = [];
-	const len = decoding.readVarUint(decoder);
-	for (let i = 0; i < len; i++) {
-		const clientID = decoding.readVarUint(decoder);
-		let clock = decoding.readVarUint(decoder);
-		const state = JSON.parse(decoding.readVarString(decoder));
+	for (const entry of readAwarenessEntries(update)) {
+		const { clientID, state } = entry;
+		let { clock } = entry;
 		const clientMeta = awareness.meta.get(clientID);
 		const prevState = awareness.states.get(clientID);
 		const currClock = clientMeta === undefined ? 0 : clientMeta.clock;
@@ -327,7 +307,7 @@ export const applyAwarenessUpdate = (
 			} else if (clientMeta !== undefined && state === null) {
 				removed.push(clientID);
 			} else if (state !== null) {
-				if (!f.equalityDeep(state, prevState)) {
+				if (!jsonEquals(state, prevState)) {
 					filteredUpdated.push(clientID);
 				}
 				updated.push(clientID);

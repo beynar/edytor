@@ -42,7 +42,10 @@ const remoteInsert = (page: Page, textIndex: number, offset: number, value: stri
 		([index, at, text]) => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const block = edytor.root.children[index];
-			edytor.doc.transact(() => block.firstText.insertAt(at, text), 'remote-peer');
+			edytor.doc.transact(
+				() => edytor.facade.insertText(block.id, block.firstText.segStart + at, text),
+				'remote-peer'
+			);
 		},
 		[textIndex, offset, value] as const
 	);
@@ -192,7 +195,7 @@ test.describe('V4 projector — F-S11 the user’s move survives a remote apply 
 				() =>
 					queueMicrotask(() =>
 						edytor.doc.transact(
-							() => edytor.root.children[0].firstText.insertAt(0, 'Z'),
+							() => edytor.facade.insertText(edytor.root.children[0].id, 0, 'Z'),
 							'remote-peer'
 						)
 					),
@@ -218,7 +221,7 @@ test.describe('V4 projector — F-S11 the user’s move survives a remote apply 
 			const timer = setInterval(
 				() =>
 					edytor.doc.transact(
-						() => edytor.root.children[2].firstText.insertAt(0, 'r'),
+						() => edytor.facade.insertText(edytor.root.children[2].id, 0, 'r'),
 						'remote-peer'
 					),
 				16
@@ -253,7 +256,10 @@ test.describe('V4 projector — F-S11 the user’s move survives a remote apply 
 			const element = document.querySelectorAll('[data-edytor-text="true"]')[0] as HTMLElement;
 			const leaf = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode()!;
 			window.getSelection()!.setBaseAndExtent(leaf, 1, leaf, 3);
-			edytor.doc.transact(() => edytor.root.children[0].firstText.insertAt(0, 'Z'), 'remote-peer');
+			edytor.doc.transact(
+				() => edytor.facade.insertText(edytor.root.children[0].id, 0, 'Z'),
+				'remote-peer'
+			);
 		});
 		// `lead`, 1 → 3 (`ea`), the peer's `Z` before it: 2 → 4.
 		await expectSelection(page, {

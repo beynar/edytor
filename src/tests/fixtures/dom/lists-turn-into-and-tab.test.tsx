@@ -18,10 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { convertBlocks, convertToKind } from '$lib/kinds.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import {
@@ -31,6 +28,8 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks as selectBlockSet } from '../../selection.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -74,19 +73,19 @@ const shape = ({ edytor }: View) => {
 const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 /** The caret's block kind and text, and its offset. */
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart } = edytor.selection.state;
+	const { startBlock, yStart } = selectionState(edytor);
 	return [startBlock?.type, startBlock?.firstText?.stringContent, yStart];
 };
 const at = async (view: View, id: string, offset: number) => {
-	view.edytor.selection.setAtTextOffset(get(view, id).firstText!, offset);
+	view.edytor.selection.selectText(get(view, id).firstText!, offset);
 	await flushDomUpdates();
 };
 const range = async (view: View, from: string, to: string) => {
-	view.edytor.selection.setAtRange(get(view, from).firstText!, 0, get(view, to).firstText!, 1);
+	view.edytor.selection.selectText(get(view, from).firstText!, 0, get(view, to).firstText!, 1);
 	await flushDomUpdates();
 };
 const selectBlocks = async (view: View, ...ids: string[]) => {
-	view.edytor.selection.selectBlocks(...ids.map((id) => get(view, id)));
+	selectBlockSet(view.edytor, ...ids.map((id) => get(view, id)));
 	await flushDomUpdates();
 };
 const type = async (view: View, value: string) => {
@@ -166,7 +165,7 @@ describe('Turn into a kind that replaces the block, in a list (AW-01)', () => {
 	});
 
 	it('typing "---" in an empty item does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed());
+		const view = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'e', 0);
 		await type(view, '---');
 		expect(shape(view)).toEqual(dividerForE);
@@ -193,7 +192,7 @@ describe('Turn into a kind that replaces the block, in a list (AW-01)', () => {
 		await slash(menu, 'code');
 		expect(shape(menu)).toEqual(codeForE);
 		document.body.innerHTML = '';
-		const typed = await render([markdownShortcutsPlugin], seed());
+		const typed = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(typed, 'e', 0);
 		await type(typed, '```');
 		expect(shape(typed)).toEqual(codeForE);
@@ -291,7 +290,7 @@ describe('Tab and Shift+Tab over a text range entering a list (AW-02)', () => {
 		const view = await render([], [p('a', [p('m')]), ul('u', [li('c'), li('d')])]);
 		await range(view, 'm', 'c');
 		await tab(true);
-		const { startBlock, endBlock } = view.edytor.selection.state;
+		const { startBlock, endBlock } = selectionState(view.edytor);
 		expect([startBlock?.id, endBlock?.id]).toEqual(['m', 'c']);
 	});
 });
@@ -320,7 +319,7 @@ describe('A vetoed Turn into of an item of a list nested right in a list (AW-03)
 	});
 
 	it('typing "# " keeps the typed text and the lists', async () => {
-		const view = await render([veto, markdownShortcutsPlugin], seed());
+		const view = await render([veto, createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'c', 0);
 		await type(view, '# ');
 		expect(shape(view)).toEqual([
@@ -357,10 +356,10 @@ describe('A block shed into a list is reordered within it (AW-06)', () => {
 	it('moving it up or down passes its neighbouring items; with an item it moves too', async () => {
 		const view = await render([], seed());
 		const { edytor } = view;
-		expect(edytor.moveBlocks({ blocks: [get(view, 'x')], direction: 'up' }).length).toBe(1);
+		expect(edytor.move({ blocks: [get(view, 'x')], direction: 'up' }).length).toBe(1);
 		expect(shape(view)).toEqual([[U, ['divider ""', 'list-item "a"', 'list-item "c"']]]);
 		expect(
-			edytor.moveBlocks({ blocks: [get(view, 'x'), get(view, 'a')], direction: 'down' }).length
+			edytor.move({ blocks: [get(view, 'x'), get(view, 'a')], direction: 'down' }).length
 		).toBe(2);
 		expect(shape(view)).toEqual([[U, ['list-item "c"', 'divider ""', 'list-item "a"']]]);
 	});
@@ -384,7 +383,7 @@ describe('Tab after a list ending in a block that holds no children (AW-07)', ()
 			target: get(view, 'u'),
 			position: 'inside' as const
 		};
-		expect(view.edytor.canMoveBlocks(request)).toBe(false);
+		expect(view.edytor.canMove(request)).toBe(false);
 	});
 });
 
@@ -439,7 +438,7 @@ describe('Sweep: the list’s own kind on a block shed into it (SW10-lists-1)', 
 	});
 
 	it('typing "- " at its start does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed());
+		const view = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'h', 0);
 		await type(view, '- ');
 		expect(shape(view)).toEqual([[U, ['list-item "a"', 'list-item "h"', 'list-item "c"']]]);
@@ -504,7 +503,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 	/** A document whose only block was deleted: it shows the virtual paragraph. */
 	const emptied = async (plugins: Plugin[] = []) => {
 		const view = await render(plugins, [p('x')]);
-		get(view, 'x').removeBlock();
+		view.edytor.deleteBlock('x');
 		await flushDomUpdates();
 		return view;
 	};
@@ -513,7 +512,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 		const view = await emptied();
 		const [line] = view.edytor.root!.children;
 		expect(line?.convertible).toBe(true);
-		view.edytor.selection.setAtTextOffset(line!.firstText!, 0);
+		view.edytor.selection.selectText(line!.firstText!, 0);
 		await flushDomUpdates();
 		await turnInto('1');
 		expect(shape(view)).toEqual(['heading ""']);
@@ -522,7 +521,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 
 	it('Mod+Alt+8 turns it into a code block', async () => {
 		const view = await emptied();
-		view.edytor.selection.setAtTextOffset(view.edytor.root!.children[0]!.firstText!, 0);
+		view.edytor.selection.selectText(view.edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		await turnInto('8');
 		expect(shape(view)).toEqual([['code ""', ['codeLine ""']]]);
@@ -537,7 +536,7 @@ describe('Tab and Shift+Tab over a text range that runs through a list (DR-behav
 		expect(shape(view)).toEqual([
 			['paragraph "z"', ['paragraph "a"', [U, ['list-item "c"', 'list-item "d"']], 'paragraph "e"']]
 		]);
-		const { startBlock, endBlock } = view.edytor.selection.state;
+		const { startBlock, endBlock } = selectionState(view.edytor);
 		expect([startBlock?.id, endBlock?.id]).toEqual(['a', 'e']);
 	});
 
@@ -567,9 +566,9 @@ describe('Tab and Shift+Tab over a text range that runs through a list (DR-behav
 describe('A divider in an emptied document (DR-behavior-2)', () => {
 	const emptied = async (plugins: Plugin[] = []) => {
 		const view = await render(plugins, [p('x')]);
-		get(view, 'x').removeBlock();
+		view.edytor.deleteBlock('x');
 		await flushDomUpdates();
-		view.edytor.selection.setAtTextOffset(view.edytor.root!.children[0]!.firstText!, 0);
+		view.edytor.selection.selectText(view.edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		return view;
 	};
@@ -616,7 +615,7 @@ describe('Turn into a shed block’s own kind keeps it in its list (DR-behavior-
 	});
 
 	it('typing "## " at its start does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed(heading));
+		const view = await render([createMarkdownShortcutsPlugin()], seed(heading));
 		await at(view, 'h', 0);
 		await type(view, '## ');
 		expect(shape(view)).toEqual(inPlace('heading'));

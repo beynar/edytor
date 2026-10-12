@@ -47,9 +47,10 @@ const commonMarks = (parts: JSONText[]): Marks => {
 
 /** The side the selection admitted for a caret at `text`/`offset`, if it sits there. */
 export const admittedSide = (text: Text, offset: number): EdgeSide | undefined => {
-	const state = text.edytor.selection.state;
-	return state.isCollapsed && state.startText === text && state.yStart === offset
-		? state.edge
+	const { selection } = text.edytor;
+	const { startText, yStart } = selection.textRange();
+	return selection.projection.isCollapsed && startText === text && yStart === offset
+		? selection.edge
 		: undefined;
 };
 
@@ -99,4 +100,17 @@ export const insertionMarks = (edytor: Edytor, snapshot: Attempt): Marks => {
 		side: snapshot.edge,
 		pending: edytor.selection.pending
 	});
+};
+
+/**
+ * The marks of text a view inserts at offset `offset` of block `id` with
+ * none named (`edytor.insertText(id, offset, text)`): the caret's pending
+ * marks when it sits there, else the neighbours' (`marksForInsertion`).
+ */
+export const insertionMarksAt = (edytor: Edytor, id: string, offset: number): Marks => {
+	const at = edytor.idToBlock.get(id)?.textAtOffset(offset);
+	if (!at) return {};
+	const { caret, pending } = edytor.selection;
+	const here = caret?.block.id === id && caret.offset === offset;
+	return marksForInsertion(at.text, at.offset, { pending: here ? pending : undefined });
 };

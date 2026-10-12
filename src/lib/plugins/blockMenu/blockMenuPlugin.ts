@@ -1,12 +1,6 @@
 import type { Plugin } from '$lib/plugins.js';
-import {
-	BLOCK_ACTIVATE_EVENT,
-	BLOCK_ADD_EVENT,
-	type BlockActivation
-} from '../blockHandles/BlockHandleController.svelte.js';
-import { onPress } from '$lib/events/onFocus.js';
+import { handleMenuEvents, mountChrome } from '../chrome.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
-import BlockMenu from './BlockMenu.svelte';
 import {
 	BlockMenuController,
 	colorCommands,
@@ -14,7 +8,7 @@ import {
 } from './BlockMenuController.svelte.js';
 
 /**
- * Notion's block menu: a handle click (without an `onActivate` of your own)
+ * Notion's block menu: a handle click
  * opens it beside the handle — search, Turn into, Color, Duplicate, Move,
  * Delete, and Copy link when `linkTo` is given. Also binds Mod+D (duplicate
  * the selected blocks, or the caret's block), and adds the colours to the
@@ -89,54 +83,43 @@ export const createBlockMenuPlugin =
 
 		return {
 			// Colours by name in the slash menu (`/red`), as in Notion.
-			commands: colorCommands(edytor, controller.labels),
+			commands: colorCommands(edytor),
 			hotkeys: {
 				'mod+d': ({ prevent }) => {
 					if (edytor.readonly) return;
 					const selected = getSelectedBlocksInDocumentOrder(edytor).filter((b) => b.movable);
-					if (selected.length) return prevent(() => controller.duplicateAll(selected));
-					const block = edytor.selection.state.startBlock;
-					if (block?.movable) prevent(() => controller.duplicate(block));
+					if (selected.length) return prevent(() => controller.duplicate(selected, true));
+					const block = edytor.selection.textRange().startText?.parent;
+					if (block?.movable) prevent(() => controller.duplicate([block], false));
 				}
 			},
 			onEdytorAttached: ({ node }) => {
-				const activate = (event: Event) => {
-					// The menu takes the keyboard (its search field).
-					event.preventDefault();
-					const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
-					controller.open(block, anchor);
-					edytor.overlay.invalidate();
-				};
-				const outside = (event: MouseEvent) => {
-					const target = event.target as Element | null;
-					if (
-						controller.isOpen &&
-						!target?.closest?.('[data-edytor-block-menu-host], [data-edytor-block-handle-host]')
-					)
-						controller.close(false);
-				};
-				// A `+` opens its own menu: this one closes.
-				const add = () => controller.close(false);
-				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
-				node.addEventListener(BLOCK_ADD_EVENT, add);
-				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
-				const offPress = onPress(edytor, node.ownerDocument, outside, true);
-				const unmount = edytor.overlay.mount(
-					BlockMenu,
-					{ controller, menu: options.menu },
-					'edytor-block-menu-host',
-					70,
-					place
+				const off = handleMenuEvents(
+					edytor,
+					node,
+					(event) => {
+						// The menu takes the keyboard (its search field).
+						event.preventDefault();
+						controller.open(event.detail.block, event.detail.anchor);
+						edytor.overlay.invalidate();
+					},
+					// A `+` opens its own menu: this one closes.
+					close,
+					'[data-edytor-block-menu-host], [data-edytor-block-handle-host]',
+					() => controller.isOpen && close()
+				);
+				const unmount = mountChrome(
+					edytor,
+					options.menu,
+					controller,
+					() => controller.isOpen,
+					{ name: 'edytor-block-menu-host', zIndex: 70, measure: place },
+					close
 				);
 				return () => {
-					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					node.removeEventListener(BLOCK_ADD_EVENT, add);
-					offPress();
+					off();
 					unmount();
 				};
 			}
 		};
 	};
-
-/** The block menu without a block link. */
-export const blockMenuPlugin = createBlockMenuPlugin();

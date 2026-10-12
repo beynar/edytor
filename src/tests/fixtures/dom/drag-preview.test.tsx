@@ -14,10 +14,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { HIDDEN } from '$lib/selection/visibility.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -193,7 +193,7 @@ describe('the drag ghost', () => {
 			p('d')
 		]);
 		const [a, todo, t] = ['a', 'todo', 't'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.selection.selectBlocks(t!, a!, todo!);
+		selectBlocks(edytor, t!, a!, todo!);
 		await flushDomUpdates();
 		const { image } = await ghostOf(edytor, 'todo');
 

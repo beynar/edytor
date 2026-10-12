@@ -20,11 +20,14 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenu as createBlockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -37,19 +40,19 @@ const todoCommandsPlugin: Plugin = () => ({
 			id: 'todo.toggle',
 			label: 'Toggle to-do',
 			keywords: ['check', 'done'],
-			isEnabled: (edytor) => edytor.selection.state.startBlock?.type === 'todo-item',
+			isEnabled: (edytor) => selectionState(edytor).startBlock?.type === 'todo-item',
 			run: (edytor) => {
-				const block = edytor.selection.state.startBlock;
-				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
+				const block = selectionState(edytor).startBlock;
+				if (block)
+					edytor.setBlock(block.id, { data: { ...block.data, checked: !block.data.checked } });
 			}
 		}
 	]
 });
 /** An extension that refuses every heading. */
 const noHeadings: Plugin = () => ({
-	onBeforeOperation: ({ operation, payload, prevent }) => {
-		const type = (payload as { value?: { type?: string } } | undefined)?.value?.type;
-		if (operation === 'setBlock' && type === 'heading') prevent();
+	onBeforeOperation: (change) => {
+		if (change.operation === 'setBlock' && change.payload[1].type === 'heading') change.prevent();
 	}
 });
 
@@ -59,7 +62,7 @@ const outline = (b: JSONBlock) => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = selectionState(edytor);
 	return `${startText?.parent.id}@${yStart}`;
 };
 const menu = () => document.querySelector('[data-testid="slash-menu"]');
@@ -154,7 +157,7 @@ describe('DR-behavior-2: the + menu closes once its block is gone', () => {
 		const a = edytor.idToBlock.get(edytor.value.children![0]!.id!)!;
 		await plus();
 		expect(menu()).not.toBeNull();
-		a.removeBlock();
+		edytor.deleteBlock(a.id);
 		// The menu's placement (and its close) runs in the overlay's next frame.
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 		await flushDomUpdates();
@@ -172,7 +175,7 @@ describe('DR-behavior-3: one menu at a time, the grip after the +', () => {
 		const a = edytor.idToBlock.get(edytor.value.children![0]!.id!)!;
 		await plus();
 		expect(menu()).not.toBeNull();
-		edytor.selection.selectBlocks(a);
+		selectBlocks(edytor, a);
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block: a, anchor: a.node } })
 		);
@@ -180,32 +183,5 @@ describe('DR-behavior-3: one menu at a time, the grip after the +', () => {
 		expect(menu()).toBeNull();
 		expect(document.querySelector('[data-testid="block-menu"]')).not.toBeNull();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
-	});
-});
-
-describe('DR-behavior-4: an edge divider with only dividers beyond it is left out', () => {
-	it('[x, divider, divider] selected, then left: the range spans x', async () => {
-		const { edytor } = await renderDomEdytor(
-			<root>
-				<paragraph>|</paragraph>
-			</root>,
-			{
-				plugins: [richTextPlugin, mentionPlugin],
-				value: {
-					children: [
-						{ id: 'x', type: 'paragraph', content: [{ text: 'x' }] },
-						{ id: 'd1', type: 'divider' },
-						{ id: 'd2', type: 'divider' }
-					]
-				}
-			}
-		);
-		const [x, d1, d2] = ['x', 'd1', 'd2'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.selection.selectBlocks(x!, d1!, d2!);
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
-		expect(`${startText?.parent.id}@${yStart}…${endText?.parent.id}@${yEnd}`).toBe('x@0…x@1');
 	});
 });

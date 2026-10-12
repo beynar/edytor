@@ -5,9 +5,8 @@
 	// when the document was seeded and its index folded.
 	import { onMount, tick, untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { blockHandlesPlugin, codePlugin, richTextPlugin } from '../../chrome/plugins.js';
+	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createDocument, type EdytorDocument } from '$lib/crdt/index.js';
 	import { applyAwarenessUpdate, encodeAwarenessUpdate } from '$lib/crdt/protocol.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
@@ -35,7 +34,7 @@
 	const value: JSONDoc = {
 		children: Array.from({ length: blocks }, (_, i) => blockAt(i))
 	};
-	const plugins = [codePlugin, columnsPlugin, richTextPlugin];
+	const plugins = [blockHandlesPlugin, codePlugin, createColumnsPlugin(), richTextPlugin];
 
 	const start = performance.now();
 	const main = createDocument({ value, actor: { id: 'ada', name: 'Ada', color: '#2783de' } });
@@ -87,7 +86,7 @@
 	class:edytor-long-page={cv}
 	style="max-width: 720px; margin: 0 auto; padding: 48px 96px;"
 >
-	<Edytor bind:edytor document={main} {plugins} blockHandles />
+	<Edytor bind:edytor document={main} {plugins} />
 	{#if peer}
 		<div data-large-peer style="display: none">
 			<Edytor bind:edytor={peerView} document={peer} {plugins} />

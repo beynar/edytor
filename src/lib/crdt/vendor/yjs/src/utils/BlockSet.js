@@ -17,7 +17,7 @@ import { GC } from '../structs/GC.js'
 import { writeStructs } from './encoding-helpers.js'
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder The decoder object to read data from.
+ * @param {UpdateDecoder} decoder The decoder object to read data from.
  * @return {BlockSet}
  *
  * @private
@@ -82,7 +82,7 @@ export const readBlockSet = (decoder) => {
 }
 
 /**
- * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+ * @param {UpdateEncoder} encoder
  * @param {BlockSet} blocks
  */
 export const writeBlockSet = (encoder, blocks) => {

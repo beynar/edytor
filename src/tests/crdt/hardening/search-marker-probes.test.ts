@@ -19,22 +19,27 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
+import { findMarker } from '../../../lib/crdt/vendor/yjs/src/ynode.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { toDelta, applyDelta } from '../harness/delta.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 900_000;
 
 /** Plant a format-carrying marker by forcing findMarker to walk to `index`. */
 const plantMarkerAt = (t: any, index: number) => {
-	// typeListGet → findMarker(type, index): creates/repositions a marker and
-	// folds ContentFormat items into marker.formats during the rightward walk.
-	t.get(index);
+	// findMarker(type, index) on an empty pool: creates a marker and folds
+	// ContentFormat items into marker.formats during the walk from the start
+	// (a write's marker carries no snapshot since YP19).
+	if (t._searchMarker) t._searchMarker.length = 0;
+	findMarker(t, index);
 };
 
 const seededMarkerCount = (t: any) =>
 	(t._searchMarker ?? []).filter((m: any) => m.formats !== null).length;
 
-const deltaJson = (t: any) => JSON.stringify(t.toDelta().toJSON());
+const deltaJson = (t: any) => JSON.stringify(toDelta(t).toJSON());
 
 const boldRangesOfDelta = (djson: {
 	children?: { insert?: unknown; format?: Record<string, unknown> }[];
@@ -59,8 +64,8 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		docA.clientID = cid++;
 		const tA = docA.get('t');
 		docA.transact(() => {
-			tA.applyDelta(delta.create().insert('x'.repeat(100)));
-			tA.applyDelta(delta.create().retain(40).retain(20, { b: true }));
+			applyDelta(tA, delta.create().insert('x'.repeat(100)));
+			applyDelta(tA, delta.create().retain(40).retain(20, { b: true }));
 		});
 		plantMarkerAt(tA, 50);
 		expect(seededMarkerCount(tA)).toBeGreaterThan(0);
@@ -71,8 +76,8 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		docB.clientID = cid++;
 		const tB = docB.get('t');
 		docB.transact(() => {
-			tB.applyDelta(delta.create().insert('x'.repeat(100)));
-			tB.applyDelta(delta.create().retain(10).retain(80, { i: true }));
+			applyDelta(tB, delta.create().insert('x'.repeat(100)));
+			applyDelta(tB, delta.create().retain(10).retain(80, { i: true }));
 		});
 		const remoteUpdate = Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA));
 
@@ -81,8 +86,8 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		docC.clientID = docA.clientID;
 		const tC = docC.get('t');
 		docC.transact(() => {
-			tC.applyDelta(delta.create().insert('x'.repeat(100)));
-			tC.applyDelta(delta.create().retain(40).retain(20, { b: true }));
+			applyDelta(tC, delta.create().insert('x'.repeat(100)));
+			applyDelta(tC, delta.create().retain(40).retain(20, { b: true }));
 		});
 		tC._searchMarker = null;
 
@@ -99,18 +104,18 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		// iff the clear was skipped. The plain insert at 50 must only negate
 		// `b` (which the snapshot knows); a stale snapshot additionally misses
 		// the remote `i` span [10,90) → the negated-format pass differs.
-		docA.transact(() => tA.applyDelta(delta.create().retain(50).insert('Z')));
-		docC.transact(() => tC.applyDelta(delta.create().retain(50).insert('Z')));
+		docA.transact(() => applyDelta(tA, delta.create().retain(50).insert('Z')));
+		docC.transact(() => applyDelta(tC, delta.create().retain(50).insert('Z')));
 
 		expect(deltaJson(tA)).toBe(deltaJson(tC));
-		// readUpdateV2 forces `transaction.local = false` even when joining an
+		// readUpdate forces `transaction.local = false` even when joining an
 		// outer local transaction — so the observer-time pool clear still runs.
 		// Pin that invariant: if it regresses, the differential above is the
 		// only thing standing between this and silent format corruption.
 		expect(
 			seededBefore,
 			'nested applyUpdate must still clear seeded marker snapshots ' +
-				'(readUpdateV2 sets transaction.local=false on the outer tr)'
+				'(readUpdate sets transaction.local=false on the outer tr)'
 		).toBe(0);
 	});
 
@@ -119,22 +124,22 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		docA.clientID = cid++;
 		const tA = docA.get('t');
 		docA.transact(() => {
-			tA.applyDelta(delta.create().insert('x'.repeat(100)));
-			tA.applyDelta(delta.create().retain(40).retain(20, { b: true }));
+			applyDelta(tA, delta.create().insert('x'.repeat(100)));
+			applyDelta(tA, delta.create().retain(40).retain(20, { b: true }));
 		});
 		// No marker planted → nothing to go stale.
 		const docB = new Y.Doc();
 		docB.clientID = cid++;
 		const tB = docB.get('t');
 		docB.transact(() => {
-			tB.applyDelta(delta.create().insert('x'.repeat(100)));
-			tB.applyDelta(delta.create().retain(10).retain(80, { i: true }));
+			applyDelta(tB, delta.create().insert('x'.repeat(100)));
+			applyDelta(tB, delta.create().retain(10).retain(80, { i: true }));
 		});
 		const remoteUpdate = Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA));
 		docA.transact(() => Y.applyUpdate(docA, remoteUpdate));
-		docA.transact(() => tA.applyDelta(delta.create().retain(50).insert('Z')));
+		docA.transact(() => applyDelta(tA, delta.create().retain(50).insert('Z')));
 		// sanity: bold span intact, 'Z' plain, italic span covers the range
-		const d = tA.toDelta().toJSON();
+		const d = toDelta(tA).toJSON();
 		expect(boldRangesOfDelta(d)).toEqual([
 			[40, 50],
 			[51, 61]
@@ -149,11 +154,11 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 			doc.clientID = 4242;
 			const t = doc.get('t');
 			doc.transact(() => {
-				t.applyDelta(delta.create().insert('x'.repeat(200)));
-				t.applyDelta(delta.create().retain(60).retain(80, { b: true }));
+				applyDelta(t, delta.create().insert('x'.repeat(200)));
+				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);
@@ -166,8 +171,8 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 		step(a, () => plantMarkerAt(a.t, 100));
 		step(b, () => plantMarkerAt(b.t, 100));
 		expect(deltaJson(a.t)).toBe(deltaJson(b.t));
-		step(a, () => a.doc.transact(() => a.t.applyDelta(delta.create().retain(50).delete(100))));
-		step(b, () => b.doc.transact(() => b.t.applyDelta(delta.create().retain(50).delete(100))));
+		step(a, () => a.doc.transact(() => applyDelta(a.t, delta.create().retain(50).delete(100))));
+		step(b, () => b.doc.transact(() => applyDelta(b.t, delta.create().retain(50).delete(100))));
 		expect(deltaJson(a.t)).toBe(deltaJson(b.t));
 		// Undo restores the deleted text AND the format markers (as new items).
 		step(a, () => a.um.undo());
@@ -175,10 +180,10 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 		expect(deltaJson(a.t)).toBe(deltaJson(b.t));
 		// Seeded write where a stale snapshot would mis-fold.
 		step(a, () =>
-			a.doc.transact(() => a.t.applyDelta(delta.create().retain(100).insert('Q', { b: true })))
+			a.doc.transact(() => applyDelta(a.t, delta.create().retain(100).insert('Q', { b: true })))
 		);
 		step(b, () =>
-			b.doc.transact(() => b.t.applyDelta(delta.create().retain(100).insert('Q', { b: true })))
+			b.doc.transact(() => applyDelta(b.t, delta.create().retain(100).insert('Q', { b: true })))
 		);
 		expect(deltaJson(a.t)).toBe(deltaJson(b.t));
 		expect(
@@ -192,26 +197,26 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 			doc.clientID = 4243;
 			const t = doc.get('t');
 			doc.transact(() => {
-				t.applyDelta(delta.create().insert('x'.repeat(200)));
-				t.applyDelta(delta.create().retain(60).retain(80, { b: true }));
+				applyDelta(t, delta.create().insert('x'.repeat(200)));
+				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);
 		const b = mk(false);
 		plantMarkerAt(a.t, 100);
 		plantMarkerAt(b.t, 100);
-		a.doc.transact(() => a.t.applyDelta(delta.create().retain(50).delete(100)));
-		b.doc.transact(() => b.t.applyDelta(delta.create().retain(50).delete(100)));
+		a.doc.transact(() => applyDelta(a.t, delta.create().retain(50).delete(100)));
+		b.doc.transact(() => applyDelta(b.t, delta.create().retain(50).delete(100)));
 		a.um.undo();
 		b.um.undo();
 		a.um.redo();
 		b.um.redo();
 		// Post-redo seeded op
-		a.doc.transact(() => a.t.applyDelta(delta.create().retain(60).insert('R')));
-		b.doc.transact(() => b.t.applyDelta(delta.create().retain(60).insert('R')));
+		a.doc.transact(() => applyDelta(a.t, delta.create().retain(60).insert('R')));
+		b.doc.transact(() => applyDelta(b.t, delta.create().retain(60).insert('R')));
 		expect(deltaJson(a.t)).toBe(deltaJson(b.t));
 	});
 });
@@ -233,7 +238,7 @@ describe('gateH-R1 — marker-seeded anchor serialization (facade writes)', () =
 				}
 			]
 		});
-		ed.setMark('b', 100, 100, 'b', true);
+		ed.formatRange('b', 100, 100, { b: true });
 		// Generate markers via reads at several positions.
 		for (const i of [50, 150, 250]) {
 			const a = ed.anchorAt('b', i);
@@ -270,7 +275,10 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 	// A split's boundary item carries the new block's random incarnation
 	// nonce (R2): the two replicas draw different ones, so it is masked.
 	const facadeDeltaJson = (ed: any, id: string) =>
-		JSON.stringify(contentOf(ed, id)?.toDelta().toJSON())?.replace(/"n":\d+/g, '"n":0');
+		JSON.stringify(contentOf(ed, id) && toDelta(contentOf(ed, id)).toJSON())?.replace(
+			/"n":\d+/g,
+			'"n":0'
+		);
 
 	const MARKS = [undefined, { b: true }, { i: true }, { b: true, u: 1 }, { b: null }];
 
@@ -289,7 +297,7 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 					{ id: 'c', type: 'paragraph', content: [{ kind: 'text', text: 'y'.repeat(60) }] }
 				]
 			});
-			ed.setMark('b', 40, 80, 'b', true);
+			ed.formatRange('b', 40, 80, { b: true });
 			const um = ed.createUndoManager({ captureTimeout: 0 });
 			if (!withMarkers) {
 				for (const id of ['b', 'c']) contentOf(ed, id)._searchMarker = null;
@@ -323,14 +331,14 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 				const pos = Math.floor(draw() * len);
 				const n = Math.floor(draw() * Math.min(20, len - pos));
 				if (n > 0) {
-					if (draw() < 0.5) s.ed.setMark(id, pos, n, 'b', true);
-					else s.ed.unsetMark(id, pos, n, 'b');
+					if (draw() < 0.5) s.ed.formatRange(id, pos, n, { b: true });
+					else s.ed.formatRange(id, pos, n, { b: null });
 				}
 			} else if (roll < 0.92 && lenOf(s, 'b') > 4) {
 				// split then occasionally merge back
 				const at = 1 + Math.floor(draw() * (lenOf(s, 'b') - 1));
 				const newId = `s${Math.floor(draw() * 1e6)}`;
-				s.ed.block('b').split(at, newId);
+				s.ed.splitBlock('b', at, newId);
 			} else if (roll < 0.96) {
 				if (s.um.undoStack.length > 0) s.um.undo();
 			} else {

@@ -54,13 +54,13 @@ import {
 	getYIndex,
 	isTextBoundSelectionPoint
 } from '../selection/selection.utils.js';
-import { project, type SelectionValue } from '../session/selection.js';
+import { project, sameEnds, type SelectionValue } from '../session/selection.js';
+
 import type { Attempt } from '../session/attempt.js';
+import type { RangeEndpoints } from '../selection/replaceSelection.js';
+
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
-import {
-	isKindControl,
-	isNestedForeignEditableTarget
-} from '../events/nativeInteractiveControl.js';
+import { isKindControl, isOwnPoint } from '../events/nativeInteractiveControl.js';
 
 /** What a `selectionchange` is. Drift is displayed again; foreign writes and intent are adopted. */
 export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
@@ -101,8 +101,6 @@ const shown = (text: Text, node: Node) => {
 export class Projector {
 	/** What the last display left in the DOM, and the selection epoch it showed. */
 	#displayed: (Points & { epoch: number }) | null = null;
-	/** The observer holds DOM records it has not reconciled yet (set at attach). */
-	recordsPending: () => boolean = () => false;
 	/** The (request, render, remount) key the last completed pass answered. */
 	#done = '';
 	#request = -1;
@@ -167,14 +165,8 @@ export class Projector {
 		// have mounted in this flush); otherwise an answered key displays nothing.
 		if (key === this.#done && (selection.value.kind === 'none' || selection.projection.start)) {
 			// Nothing to display; a DOM that still shows the value is observed.
-			const { startText, yStart, endText, yEnd, isReversed } = selection.state;
 			const dom = edytor.node && getDomSelection(edytor.node);
-			if (
-				dom &&
-				startText &&
-				endText &&
-				this.#shows(dom, startText, yStart, endText, yEnd, isReversed)
-			)
+			if (dom && this.#shows(dom, selection.textRange(), selection.projection.isReversed))
 				this.#seen = this.#flushes;
 			return;
 		}
@@ -193,7 +185,7 @@ export class Projector {
 	 */
 	mounted = (text: Text) => {
 		const { selection } = this.edytor;
-		const { startText, endText } = selection.state;
+		const { startText, endText } = selection.textRange();
 		const dead = selection.value.kind !== 'none' && !selection.projection.start;
 		if (this.#pending || dead || text === startText || text === endText)
 			this.edytor.surface.update();
@@ -217,19 +209,16 @@ export class Projector {
 	};
 
 	/**
-	 * The user-input window closed (`withUserInput`): a pass it held back (a
+	 * The user-input window closed (`#withUserInput`): a pass it held back (a
 	 * render under the handler that asked for no display, such as a mark
 	 * removal re-rendering the text under a range) runs now. The flag is no
 	 * reactive source, so no later flush is owed: without this, the range the
 	 * render moved (Firefox keeps it where the removed element stood) would be
-	 * adopted as the gesture's when its `selectionchange` lands.
+	 * adopted as the gesture's when its `selectionchange` lands. The observer
+	 * calls it too once it processed DOM records: a display that waits gets a
+	 * pass.
 	 */
 	inputHandled = () => {
-		if (this.#pending) this.edytor.surface.update();
-	};
-
-	/** The observer processed DOM records: a display that waits gets a pass. */
-	recordsChanged = () => {
 		if (this.#pending) this.edytor.surface.update();
 	};
 
@@ -252,9 +241,8 @@ export class Projector {
 		const { selection } = edytor;
 		const node = edytor.node;
 		const anchor = dom?.anchorNode;
-		// Not ours to classify: outside the editor, or in a nested editable island.
-		if (!dom || !anchor || !node?.contains(anchor) || isNestedForeignEditableTarget(node, anchor))
-			return 'foreign';
+		// Not ours to classify: outside the editor, or in a kind's own control.
+		if (!dom || !isOwnPoint(node, anchor)) return 'foreign';
 		if (this.#echoes(dom)) return 'echo';
 		// The one composition branch: a live session's host is the IME's.
 		if (edytor.composition.live) return this.#observed('composition');
@@ -271,7 +259,7 @@ export class Projector {
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
 		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
-		return this.#seen !== this.#flushes || this.recordsPending()
+		return this.#seen !== this.#flushes || this.edytor.surface.pending()
 			? 'drift'
 			: this.#observed('foreign');
 	};
@@ -340,14 +328,12 @@ export class Projector {
 			samePoint(displayed.focus, dom.focusNode, dom.focusOffset)
 		)
 			return true;
-		const { startText, yStart, endText, yEnd, isReversed, isCollapsed } = selection.state;
-		return Boolean(
+		const { isReversed, isCollapsed } = selection.projection;
+		return (
 			!isCollapsed &&
-			startText &&
-			endText &&
 			isTextBoundSelectionPoint(dom.anchorNode) &&
 			isTextBoundSelectionPoint(dom.focusNode) &&
-			this.#shows(dom, startText, yStart, endText, yEnd, isReversed)
+			this.#shows(dom, selection.textRange(), isReversed)
 		);
 	};
 
@@ -379,11 +365,11 @@ export class Projector {
 		)
 			return false;
 		const { attempt } = deleted;
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
 		return Boolean(
 			attempt.isCollapsed &&
 			attempt.yStart === 0 &&
-			isCollapsed &&
+			edytor.selection.projection.isCollapsed &&
 			startText &&
 			startText !== attempt.startText &&
 			edytor.selection.getTextOfNode(dom.anchorNode) === startText &&
@@ -418,52 +404,42 @@ export class Projector {
 		if (this.#composing()) return false;
 		if (!requested && (selection.dragging || edytor.isHandlingUserInput)) return false;
 		const value = selection.value;
-		if (value.kind === 'none') {
-			// No selection shows no DOM range: asked for (a history step giving none
-			// back, a closing menu, a drift over it), a range inside the editor is
-			// cleared, and under the host's focus a caret the browser parks later
-			// is its own (`placed`), whatever key comes before it.
-			const active = getActiveElement(node);
-			if (requested && active && node.contains(active)) this.#parking = true;
-			const dom = getDomSelection(node);
-			if (requested && dom?.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
-				clearDomSelection(node);
-				this.#displayed = null;
-				this.#serial = edytor.intentSerial;
-			}
-			return true;
-		}
-		if (!selection.projection.start) {
+		if (value.kind !== 'none' && !selection.projection.start) {
 			// A value that no longer resolves: the repair lands it (a live
 			// destination may exist only once this flush mounted it).
 			selection.restoreDeadSelectionEndpoints();
 			return false;
 		}
 		const dom = getDomSelection(node);
-		if (!dom) return true;
 		if (value.kind !== 'text') {
-			// A block set or an atom shows as selected elements, not a range.
-			// Displayed even when the DOM already holds no range (the atom's
-			// own pointerdown cleared it): a caret the browser parks later
-			// without a gesture (focusing the host) is then drift, not intent;
-			// the one it parks for the atom's press is drift through its release
-			// (`parked`). An atom asked for under the host's focus (a Shift+arrow
-			// onto it) is the press's case without the press: Chromium parks a
-			// caret at the host's start at the next key, whose `selectionchange`
-			// can land after that key counted as a gesture, so it stays the
-			// browser's (`#parking`), whatever key comes before it, as under none.
+			// None, a block set or an atom shows no DOM range. No selection asked
+			// for (a history step giving none back, a closing menu, a drift over
+			// it) clears a range inside the editor; a block set or an atom is
+			// displayed even when the DOM already holds no range (the atom's own
+			// pointerdown cleared it): a caret the browser parks later without a
+			// gesture (focusing the host) is then drift, not intent; the one it
+			// parks for the atom's press is drift through its release (`parked`).
+			// Under the host's focus, none or an atom asked for (a Shift+arrow
+			// onto it: Chromium parks a caret at the host's start at the next key,
+			// whose `selectionchange` can land after that key counted as a
+			// gesture) leaves any caret the browser parks later its own
+			// (`#parking`, `placed`), whatever key comes before it.
 			const active = getActiveElement(node);
-			if (value.kind === 'atom' && requested && active && node.contains(active))
+			if (requested && value.kind !== 'blocks' && active && node.contains(active))
 				this.#parking = true;
-			const inside = Boolean(dom.anchorNode && node.contains(dom.anchorNode));
-			if ((inside || dom.rangeCount === 0) && this.#ours(requested)) {
+			const inside = !!dom?.anchorNode && node.contains(dom.anchorNode);
+			const clears = value.kind === 'none' ? requested && inside : inside || dom?.rangeCount === 0;
+			if (clears && this.#ours(requested)) {
 				if (inside) clearDomSelection(node);
 				this.#displayed = null;
 				this.#serial = edytor.intentSerial;
 			}
 			return true;
 		}
-		const { startText, yStart, endText, yEnd, isCollapsed, isReversed } = selection.state;
+		if (!dom) return true;
+		const range = selection.textRange();
+		const { startText, yStart, endText, yEnd } = range;
+		const { isCollapsed, isReversed } = selection.projection;
 		if (!startText?.node?.isConnected || !endText?.node?.isConnected) return false;
 		const start = domPointOf(startText.node, yStart);
 		const end = isCollapsed ? start : domPointOf(endText.node, yEnd);
@@ -471,7 +447,7 @@ export class Projector {
 			? { anchor: end, focus: start }
 			: { anchor: start, focus: end };
 		// Already shown: an observation, whoever holds focus.
-		if (!this.#shows(dom, startText, yStart, endText, yEnd, isReversed)) {
+		if (!this.#shows(dom, range, isReversed)) {
 			if (!this.#ours(requested)) return true;
 			const active = getActiveElement(node);
 			if (!(active && node.contains(active))) {
@@ -515,13 +491,11 @@ export class Projector {
 	/** The live DOM selection already shows these endpoints (model coordinates, direction). */
 	#shows = (
 		dom: DomSelectionSnapshot | Selection,
-		startText: Text,
-		yStart: number,
-		endText: Text,
-		yEnd: number,
+		{ startText, yStart, endText, yEnd }: RangeEndpoints,
 		isReversed: boolean
 	) => {
-		if (!dom.anchorNode || !dom.focusNode || dom.rangeCount > 1) return false;
+		if (!startText || !endText || !dom.anchorNode || !dom.focusNode || dom.rangeCount > 1)
+			return false;
 		const collapsed = startText === endText && yStart === yEnd;
 		const [first, last] = isReversed
 			? [[dom.focusNode, dom.focusOffset] as const, [dom.anchorNode, dom.anchorOffset] as const]
@@ -621,15 +595,7 @@ export class Projector {
 		if (!snapshot?.anchorNode || this.#echoes(snapshot)) return;
 		const value = edytor.selection.mint(snapshot);
 		if (!value) return;
-		const minted = project(value, edytor.facade);
-		const current = edytor.selection.projection;
-		if (
-			minted.start?.block === current.start?.block &&
-			minted.start?.offset === current.start?.offset &&
-			minted.end?.block === current.end?.block &&
-			minted.end?.offset === current.end?.offset
-		)
-			return;
+		if (sameEnds(project(value, edytor.facade), edytor.selection.projection)) return;
 		this.#minted = { value, transaction };
 	};
 

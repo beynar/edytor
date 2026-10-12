@@ -17,9 +17,9 @@ import {
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { BlockDefinition, Plugin } from '../../../lib/plugins.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -138,7 +138,7 @@ describe('views sharing one document', () => {
 		// The rule is document-level — enforcement outlives the view.
 		expect(document.facade.isVoid(block.id)).toBe(true);
 		expect(
-			document.facade.insertBlock({ parent: block.id, index: 0 }, { id: 'x', type: 'paragraph' })
+			document.facade.insertBlocks({ parent: block.id, index: 0 }, [{ id: 'x', type: 'paragraph' }])
 				.status
 		).toBe('refused');
 

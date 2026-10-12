@@ -14,23 +14,21 @@
  * through to the document; its JSON never shows the virtual paragraph.
  */
 import type { BlockId, BlockSpec, DocChange, ProjectedBlock } from '../crdt/index.js';
-import type { DocAnchor, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
+import type { DocAnchor, DocFacade, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
 import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
-import { bindNodes } from '../crdt/nodes.js';
 import { applyPatch } from '../crdt/data.js';
+import { REFUSED } from '../crdt/doc/plan.js';
 import { id } from '../utils.js';
 import { asBlockSpec } from '../utils/json.js';
 
 /** A virtual paragraph's id (materialized blocks keep theirs): what a peer's caret names. */
 export const isVirtualId = (value: string): boolean => value.startsWith('v_');
 
-const REFUSED: Prepared = Object.freeze({ status: 'refused', ids: [] });
-
 /** The document as a view reads it: `virtual()` names the shown virtual paragraph, if any. */
-export type ViewDoc = EdytorDoc & { virtual: () => BlockId | null };
+export type ViewDoc = DocFacade & { virtual: () => BlockId | null };
 
 export const virtualLens = (
-	base: EdytorDoc,
+	base: DocFacade,
 	/** The document decided its content (a pending document shows nothing). */
 	ready: () => boolean,
 	/** The root's default child type. */
@@ -87,40 +85,38 @@ export const virtualLens = (
 		(prepare as Record<string, unknown>)[name] = (...args: Parameters<EdytorDoc['prepare'][K]>) =>
 			when(...args) ?? own(...args);
 	};
-	over('insertText', (b, _o, text, marks) =>
-		on(b)
-			? text
-				? create([spec({ content: [{ kind: 'text', text, marks }] })])
-				: noop()
-			: undefined
+	/** An op naming a block first: on the virtual paragraph, `when` plans it from the other arguments. */
+	type Rest<K extends keyof EdytorDoc['prepare']> =
+		Parameters<EdytorDoc['prepare'][K]> extends [unknown, ...infer R] ? R : never;
+	const onIt = <K extends keyof EdytorDoc['prepare']>(
+		name: K,
+		when: (...rest: Rest<K>) => Prepared
+	) => {
+		const plan = when as (...rest: unknown[]) => Prepared;
+		over(name, (b: unknown, ...rest: unknown[]) => (on(b as BlockId) ? plan(...rest) : undefined));
+	};
+	onIt('insertText', (_o, text, marks) =>
+		text ? create([spec({ content: [{ kind: 'text', text, marks }] })]) : noop()
 	);
-	over('insertInline', (b, _o, atom) =>
-		on(b) ? create([spec({ content: [{ kind: 'inline', ...atom }] })]) : undefined
+	onIt('insertInline', (_o, atom) =>
+		create([spec({ content: [{ kind: 'inline', ...atom, id: atom.id ?? id('i') }] })])
 	);
-	over('splitBlock', (b, _o, newId, tail) =>
-		on(b)
-			? create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
-			: undefined
+	onIt('splitBlock', (_o, newId, tail) =>
+		create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
 	);
-	over('setBlockType', (b, t) => (on(b) ? create([spec({ type: t })]) : undefined));
-	over('setBlockData', (b, data) => (on(b) ? create([spec({ data })]) : undefined));
-	over('patchData', (t, ops) => {
-		if (typeof t !== 'string' || !on(t)) return undefined;
+	onIt('setBlockType', (t) => create([spec({ type: t })]));
+	onIt('patchData', (ops) => {
 		const data = applyPatch({}, ops);
 		return data ? create([spec({ data })]) : REFUSED;
 	});
-	over('setBlock', (b, value) =>
-		on(b)
-			? create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])
-			: undefined
+	onIt('setBlock', (value) =>
+		create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])
 	);
-	// Enter at its end builds after it: the line is kept. What goes before it replaces it.
 	over('insertBlocks', (dest, specs) => {
 		if (specs.length > 0 && dest.parent === null && dest.index > 0 && active())
 			return create([spec(), ...specs.map(asBlockSpec)]);
 		return on(dest.parent) ? create([spec({ children: specs.map(asBlockSpec) })]) : undefined;
 	});
-	over('insertBlock', (dest, s) => prepare.insertBlocks(dest, [s]));
 	over('insertFlow', (target: FlowTarget, flow: Flow) => {
 		if ('replace' in target) return target.replace.some(on) ? flowInto(flow, false) : undefined;
 		// At a slot beside or under it (a suggestion), the lines take its place.
@@ -135,21 +131,17 @@ export const virtualLens = (
 	for (const name of [
 		'deleteText',
 		'formatRange',
-		'setMark',
-		'unsetMark',
 		'clearMarks',
 		'removeInline',
-		'setInlineData',
 		'mergeBackward',
 		'mergeForward',
 		'deleteBlock'
 	] as const)
-		over(name, (b: BlockId, ..._: unknown[]) => (on(b) ? noop() : undefined));
+		onIt(name, noop);
 	over('deleteBlocks', (ids) =>
 		ids.some(on) ? prepare.deleteBlocks(ids.filter((i) => !on(i))) : undefined
 	);
-	for (const name of ['moveBlock', 'nestBlock', 'unNestBlock', 'duplicateBlock'] as const)
-		over(name, (b: BlockId, ..._: unknown[]) => (on(b) ? REFUSED : undefined));
+	// A move, nest, outdent or duplicate of it is refused: the document holds no such block.
 
 	const lens: ViewDoc = Object.create(base);
 	const ops = Object.fromEntries(
@@ -159,40 +151,28 @@ export const virtualLens = (
 				base.apply((prepare as Record<string, (...a: unknown[]) => Prepared>)[name]!(...args))
 		])
 	);
-	let nodes: ReturnType<typeof bindNodes> | undefined;
 	Object.assign(lens, ops, {
 		prepare,
 		virtual: () => (active() ? vid : null),
-		block: (b: BlockId) => (nodes ??= bindNodes(lens)).block(b),
 		// ── reads ────────────────────────────────────────────────────────
+		// The document answers an id it does not hold as a block with no
+		// parent, ancestors, neighbours, children, content, data items or
+		// place to move to or merge with: those reads pass through.
 		project: () => (active() ? { children: [projected()] } : base.project()),
-		childrenIds: (p: BlockId | null) =>
-			p === null && active() ? [vid] : on(p) ? [] : base.childrenIds(p),
+		childrenIds: (p: BlockId | null) => (p === null && active() ? [vid] : base.childrenIds(p)),
 		childSlots: (p: BlockId | null) =>
 			p === null && active() ? [{ id: vid, rank: '' }] : base.childSlots(p),
 		order: () => (active() ? [vid] : base.order()),
 		slotOf: (b: BlockId) => (on(b) ? { parent: null, rank: '' } : base.slotOf(b)),
 		positionOf: (b: BlockId) => (on(b) ? { parent: null, index: 0 } : base.positionOf(b)),
 		pathOf: (b: BlockId) => (on(b) ? [0] : base.pathOf(b)),
-		parentOf: (b: BlockId) => (on(b) ? null : base.parentOf(b)),
-		ancestorsOf: (b: BlockId) => (on(b) ? [] : base.ancestorsOf(b)),
 		isVisibleBlock: (b: BlockId) => on(b) || base.isVisibleBlock(b),
-		compare: (a: BlockId, b: BlockId) => (on(a) && on(b) ? 0 : base.compare(a, b)),
-		next: (b: BlockId, ...rest: unknown[]) => (on(b) ? null : base.next(b, ...(rest as []))),
-		previous: (b: BlockId, ...rest: unknown[]) =>
-			on(b) ? null : base.previous(b, ...(rest as [])),
 		blockTypeOf: (b: BlockId) => (on(b) ? type() : base.blockTypeOf(b)),
 		blockDataOf: (b: BlockId) => (on(b) ? {} : base.blockDataOf(b)),
-		dataItemIds: (t: Parameters<EdytorDoc['dataItemIds']>[0], path: readonly string[]) =>
-			typeof t === 'string' && on(t) ? [] : base.dataItemIds(t, path),
 		blockJSON: (b: BlockId) => (on(b) ? { id: vid, type: type(), data: {} } : base.blockJSON(b)),
 		blockText: (b: BlockId) => (on(b) ? '' : base.blockText(b)),
-		displayLength: (b: BlockId) => (on(b) ? 0 : base.displayLength(b)),
-		contentItems: (b: BlockId) => (on(b) ? [] : base.contentItems(b)),
+		// Never computed (and cached) by the index for an id it does not hold.
 		runs: (b: BlockId) => (on(b) ? [] : base.runs(b)),
-		canPlace: (ids: readonly BlockId[], parent?: BlockId | null) =>
-			!ids.some(on) && !on(parent) && base.canPlace(ids, parent),
-		canMerge: (from: BlockId, into: BlockId) => !on(from) && !on(into) && base.canMerge(from, into),
 		anchorAt: (b: BlockId, offset: number, affinity: 'left' | 'right' = 'left') =>
 			on(b)
 				? { b: vid, a: { i: null, a: affinity === 'left' ? -1 : 0 } }

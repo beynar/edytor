@@ -27,8 +27,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
 import {
 	serializeClipboardFragmentToHtml,
@@ -43,6 +41,10 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import {
+	equation as createEquationPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -349,21 +351,21 @@ describe('creating inline equations', () => {
 		const noAtoms: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
 				seen.push(operation);
-				if (operation === 'addInlineBlock') prevent();
+				if (operation === 'insertInline') prevent();
 			}
 		});
 		const { edytor, editor } = await mount([p('a', 'area a^2 here')], [noAtoms, equations]);
 		const text = edytor.idToBlock.get('a')!.firstText!;
 		await setNativeSelection(edytor, text, 5, text, 8);
 		await dispatchDomKeyDown(editor, { key: 'E', metaKey: true, shiftKey: true });
-		expect(seen).toContain('addInlineBlock');
+		expect(seen).toContain('insertInline');
 		expect(contentOf(edytor, 'a')).toEqual([{ text: 'area a^2 here' }]);
 	});
 
 	it('Mod+Shift+E: a hook refusing the deletion keeps the text, and no equation lands', async () => {
 		const noDeletes: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'deleteContentAtRange') prevent();
+				if (operation === 'deleteText') prevent();
 			}
 		});
 		const { edytor, editor } = await mount([p('a', 'area a^2 here')], [noDeletes, equations]);

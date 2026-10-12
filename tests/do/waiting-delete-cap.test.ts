@@ -32,7 +32,7 @@ const syncUpdate = (update: Uint8Array) =>
 
 /** A delete-only update of `count` separate ranges of `client`'s items, from `from` on. */
 const deletesOf = (client: number, count: number, from = 0) => {
-	const body = new Y.UpdateEncoderV1();
+	const body = new Y.UpdateEncoder();
 	encoding.writeVarUint(body.restEncoder, 0); // no structs
 	const deletes = Y.createIdSet();
 	for (let i = 0; i < count; i++) deletes.add(client, from + 2 * i, 1);
@@ -46,7 +46,7 @@ const waitingState = (room: string) =>
 		let ranges = 0;
 		const pending = r.doc!.store.pendingDs;
 		if (pending)
-			for (const ids of Y.decodeUpdateV2(pending).ds.clients.values()) {
+			for (const ids of Y.decodeUpdate(pending).ds.clients.values()) {
 				ranges += ids.getIds().length;
 			}
 		return { ranges, kinds: r.records().map((record) => record.kind) };

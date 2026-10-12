@@ -16,17 +16,27 @@ import { createDocument } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	codePlugin,
+	imagePlugin,
+	richTextPlugin,
+	suggestionsPlugin,
+	suggestionBarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-const PLUGINS: Plugin[] = [codePlugin, suggestionsPlugin, imagePlugin, richTextPlugin];
+const PLUGINS: Plugin[] = [
+	codePlugin,
+	suggestionsPlugin,
+	suggestionBarPlugin,
+	imagePlugin,
+	richTextPlugin
+];
 
 const VALUE = (): JSONDoc => ({
 	children: [
@@ -66,7 +76,7 @@ const group = (editor: HTMLElement, id: string) =>
 const blockEl = (editor: HTMLElement, id: string) =>
 	editor.querySelector<HTMLElement>(`[data-edytor-block][data-edytor-id="${id}"]`);
 const caretIn = (edytor: Edytor, id: string, offset: number) =>
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
@@ -126,7 +136,7 @@ describe('positions — each one previews at its place', () => {
 
 	it('replace marks the blocks it removes and shows the content right after them', async () => {
 		const { edytor, editor } = await mount();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
 		const s = edytor.suggestions.add({ replace: 'selection' }, 'Fresh');
 		await flushDomUpdates();
 		// A block selection resolves to its members (the unselected child k stays).
@@ -227,7 +237,7 @@ describe('accept and discard', () => {
 		expect(JSON.stringify(edytor.value)).not.toContain('"x1"');
 		expect(edytor.undoManager.undoStack.length).toBe(undo + 1);
 		expect(edytor.suggestions.list).toEqual([]);
-		const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+		const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 		expect(startBlock?.type).toBe('quote');
 		expect([yStart, isCollapsed]).toEqual([3, true]);
 		await flushDomUpdates();
@@ -240,8 +250,8 @@ describe('accept and discard', () => {
 	it('typing right after an accept is its own undo step', async () => {
 		const { edytor } = await mount();
 		edytor.suggestions.add({ after: 'b' }, 'New').accept();
-		const { startText, yStart } = edytor.selection.state;
-		startText!.insertText({ value: '!', start: yStart, end: yStart });
+		const { startText, yStart } = selectionState(edytor);
+		edytor.insertText(startText!.parent.id, startText!.segStart + yStart, '!');
 		expect(shape(edytor)).toEqual([BASE[0], BASE[1], 'paragraph:New!', BASE[2]]);
 		edytor.historyUndo();
 		expect(shape(edytor)).toEqual([BASE[0], BASE[1], 'paragraph:New', BASE[2]]);
@@ -279,7 +289,7 @@ describe('accept and discard', () => {
 	it('a text-range replace deletes the range and places the content at its caret, one step', async () => {
 		const { edytor, editor } = await mount();
 		const a = edytor.idToBlock.get('a')!.firstText!;
-		edytor.selection.setAtRange(a, 1, a, 4);
+		edytor.selection.selectText(a, 1, a, 4);
 		const s = edytor.suggestions.add({ replace: 'selection' }, 'LPH');
 		expect(
 			'replace' in s.at && typeof s.at.replace === 'object' && !Array.isArray(s.at.replace)
@@ -316,7 +326,7 @@ describe('session only', () => {
 		const remote = peer(edytor);
 		const s = edytor.suggestions.add({ after: 'b' }, 'Stay');
 		caretIn(edytor, 'a', 2);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('l')!);
+		selectBlocks(edytor, edytor.idToBlock.get('l')!);
 		caretIn(edytor, 'l', 1);
 		remote.facade.insertText('a', 0, 'Remote ');
 		remote.sync();
@@ -330,7 +340,7 @@ describe('session only', () => {
 		edytor.suggestions.add({ after: 'b' }, 'Gone');
 		edytor.suggestions.add({ replace: ['a', 'b'] }, 'Gone too');
 		const kept = edytor.suggestions.add({ end: 'l' }, '!');
-		edytor.deleteBlocks({ blocks: [edytor.idToBlock.get('b')!] });
+		edytor.deleteBlocks(['b']);
 		await flushDomUpdates();
 		expect(edytor.suggestions.list).toEqual([kept]);
 		expect(editor.querySelectorAll('[data-edytor-suggestion]').length).toBe(0);

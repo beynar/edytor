@@ -31,6 +31,7 @@
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -43,11 +44,11 @@ const p = (id: string, text: string, children?: unknown[]) => ({
 	...(children ? { children } : {})
 });
 
-/** A facade with an actor and a lineage ring (so a stamp would be visible) plus its undo manager. */
+/** A facade with an actor (so a stamp would be visible) plus its undo manager. */
 const make = (content: unknown[], clientID = 7) => {
 	const doc = new Y.Doc();
 	doc.clientID = clientID;
-	const ed = E.create(doc, { actor: () => ({ id: 'alice' }), lineageDepth: 3 });
+	const ed = E.create(doc, { actor: () => ({ id: 'alice' }) });
 	ed.init({ content });
 	const um = ed.createUndoManager({ captureTimeout: 0 });
 	return { doc, ed, um };
@@ -95,9 +96,9 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 		["insertText('')", (ed) => ed.insertText('a', 1, '')],
 		['empty delete', (ed) => ed.deleteText('a', 1, 0)],
 		['empty format', (ed) => ed.formatRange('a', 1, 0, { bold: true })],
-		['empty setMark', (ed) => ed.setMark('a', 1, 0, 'bold', true)],
-		['handle: empty delete', (ed) => ed.block('a').deleteText(1, 0)],
-		["handle: insertText('')", (ed) => ed.block('a').insertText(0, '')]
+		['empty setMark', (ed) => ed.formatRange('a', 1, 0, { bold: true })],
+		['handle: empty delete', (ed) => ed.deleteText('a', 1, 0)],
+		["handle: insertText('')", (ed) => ed.insertText('a', 0, '')]
 	];
 
 	for (const [name, run] of EMPTY) {
@@ -111,7 +112,7 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 			um.stopCapturing();
 			const undoDepth = um.undoStack.length;
 			const attribution = ed.blockAttribution('a');
-			const l = ed.model.blockNodeOf(doc, 'a').getAttr('l');
+			const l = blockNodeOf(doc, 'a').getAttr('l');
 
 			const seen = observe(doc, () => run(ed));
 			expectShape(seen.result);
@@ -122,7 +123,7 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 			expect(seen.sameBytes, 'zero bytes').toBe(true);
 			expect(um.undoStack.length, 'no undo step').toBe(undoDepth);
 			expect(ed.blockAttribution('a'), 'no stamp').toEqual(attribution);
-			expect(ed.model.blockNodeOf(doc, 'a').getAttr('l')).toBe(l);
+			expect(blockNodeOf(doc, 'a').getAttr('l')).toBe(l);
 			expect(ed.toJSON().children.map((b) => b.id)).toEqual(['a', 'b']);
 		});
 	}
@@ -141,9 +142,8 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 describe('F-D6 — setBlock with a reused child id refuses before any write; the retry applies', () => {
 	const seed = () => make([p('b', 'bb', [p('c1', 'one')]), p('z', 'zz')]);
 
-	for (const via of ['facade', 'handle'] as const) {
-		const set = (ed, value) =>
-			via === 'facade' ? ed.setBlock('b', value) : ed.block('b').set(value);
+	for (const via of ['facade'] as const) {
+		const set = (ed, value) => ed.setBlock('b', value);
 
 		test(`reused child id → refused (id-collision), zero bytes, c1 intact; fresh ids → applied (${via})`, () => {
 			const { doc, ed, um } = seed();
@@ -223,10 +223,9 @@ describe('F-D6 — setBlock with a reused child id refuses before any write; the
 describe('F-D7 — one ingress normalization for writes and lookups', () => {
 	test("insertBlock({id: 'x\\uD800'}); insertText by the same string and by the returned id both resolve", () => {
 		const { ed } = make([p('a', 'aa')]);
-		const inserted = ed.insertBlock(
-			{ parent: null, index: 1 },
+		const inserted = ed.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'x\uD800', type: 'paragraph' }
-		);
+		]);
 		expect(inserted.status).toBe('applied');
 		expect(inserted.ids).toEqual(['x�']);
 		const stored = inserted.ids[0];
@@ -240,14 +239,13 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 		expect(ed.listBlockIds()).toEqual(['a', stored]);
 	});
 
-	test('the typed handle resolves the same string to the stored block', () => {
+	test('an op resolves the same string to the stored block', () => {
 		const { ed } = make([p('a', 'aa')]);
-		const stored = ed.insertBlock({ parent: null, index: 1 }, { id: 'x\uD800', type: 'paragraph' })
-			.ids[0];
-		const handle = ed.block('x\uD800');
-		expect(handle.id).toBe(stored);
-		expect(handle.insertText(0, 'ab').status).toBe('applied');
-		expect(ed.block(stored).length).toBe(2);
+		const stored = ed.insertBlocks({ parent: null, index: 1 }, [
+			{ id: 'x\uD800', type: 'paragraph' }
+		]).ids[0];
+		expect(ed.insertText('x\uD800', 0, 'ab').status).toBe('applied');
+		expect(ed.displayLength(stored)).toBe(2);
 	});
 
 	test('a split-born id and a move target are normalized the same way', () => {
@@ -256,7 +254,7 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 		expect(split.status).toBe('applied');
 		expect(split.ids).toEqual(['s�']);
 		expect(ed.blockText('s\uDC00')).toBe('cd');
-		expect(ed.moveBlock('s\uDC00', { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['s\uDC00'], { parent: null, index: 0 }).status).toBe('applied');
 		expect(ed.nestBlock('b', 's\uDC00').status).toBe('applied');
 		expect(ed.childrenIds('s\uDC00')).toEqual(['b']);
 		expect(ed.deleteBlock('s\uDC00', { keepChildren: false }).status).toBe('applied');
@@ -322,10 +320,11 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 			const OPS: [string, () => unknown][] = [
 				[
 					'insertBlock',
-					() => ed.insertBlock(dest(), { id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' })
+					() =>
+						ed.insertBlocks(dest(), [{ id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' }])
 				],
 				['insertBlocks', () => ed.insertBlocks(dest(), rand() < 0.3 ? [] : [p(freshId(), 'x')])],
-				['moveBlock', () => ed.moveBlock(id(), dest())],
+				['moveBlock', () => ed.moveBlocks([id()], dest())],
 				['moveBlocks', () => ed.moveBlocks(rand() < 0.2 ? [] : [id(), id()], dest())],
 				['nestBlock', () => ed.nestBlock(id(), id())],
 				['unNestBlock', () => ed.unNestBlock(id())],
@@ -335,7 +334,7 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 				['mergeForward', () => ed.mergeForward(id())],
 				['deleteBlock', () => ed.deleteBlock(id(), { keepChildren: rand() < 0.3 })],
 				['setBlockType', () => ed.setBlockType(id(), pick(['paragraph', 'heading']))],
-				['setBlockData', () => ed.setBlockData(id(), pick([{}, { level: 1 }]))],
+				['setBlockData', () => ed.patchData(id(), [{ path: [], value: pick([{}, { level: 1 }]) }])],
 				[
 					'setBlock',
 					() =>
@@ -351,8 +350,8 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 				['duplicateBlock', () => ed.duplicateBlock(id(), () => freshId())],
 				['insertText', () => ed.insertText(id(), off(), pick(['', 'q', 'zz']))],
 				['deleteText', () => ed.deleteText(id(), off(), len())],
-				['setMark', () => ed.setMark(id(), off(), len(), 'bold', true)],
-				['unsetMark', () => ed.unsetMark(id(), off(), len(), 'bold')],
+				['setMark', () => ed.formatRange(id(), off(), len(), { bold: true })],
+				['unsetMark', () => ed.formatRange(id(), off(), len(), { bold: null })],
 				['formatRange', () => ed.formatRange(id(), off(), len(), { italic: pick([true, null]) })],
 				['clearMarks', () => ed.clearMarks(id(), off(), len())],
 				['insertInline', () => ed.insertInline(id(), off(), { id: freshId(), type: 'mention' })],
@@ -367,15 +366,17 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 					'setInlineData',
 					() => {
 						const b = id();
-						return ed.setInlineData(b, inlineIn(b), pick([{}, { v: 1 }]));
+						return ed.patchData({ block: b, atom: inlineIn(b) }, [
+							{ path: [], value: pick([{}, { v: 1 }]) }
+						]);
 					}
 				],
-				['handle.insertText', () => ed.block(id()).insertText(off(), pick(['', 'h']))],
-				['handle.deleteText', () => ed.block(id()).deleteText(off(), len())],
-				['handle.split', () => ed.block(id()).split(off(), freshId())],
-				['handle.moveTo', () => ed.block(id()).moveTo(dest())],
-				['handle.delete', () => ed.block(id()).delete()],
-				['handle.setType', () => ed.block(id()).setType(pick(['paragraph', 'heading']))]
+				['handle.insertText', () => ed.insertText(id(), off(), pick(['', 'h']))],
+				['handle.deleteText', () => ed.deleteText(id(), off(), len())],
+				['handle.split', () => ed.splitBlock(id(), off(), freshId())],
+				['handle.moveTo', () => ed.moveBlocks([id()], dest())],
+				['handle.delete', () => ed.deleteBlock(id())],
+				['handle.setType', () => ed.setBlockType(id(), pick(['paragraph', 'heading']))]
 			];
 
 			const seen = { refused: 0, noop: 0, applied: 0 };

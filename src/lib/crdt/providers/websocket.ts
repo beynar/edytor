@@ -31,7 +31,7 @@
  * via `'protocol-mismatch'`. A v13
  * y-websocket server in the room therefore cannot feed updates to this
  * provider (and vice versa) — see docs/crdt-v14-providers.md §server
- * classification: only an OPAQUE v1-update relay stays compatible; a server
+ * classification: only an OPAQUE relay stays compatible; a server
  * that participates in sync (like upstream `y-websocket-server`) must itself
  * run the vendored v14 engine + v14 protocol modules.
  *
@@ -46,7 +46,6 @@
  * re-sends a Step1 on the live socket for harnesses that drop frames
  * there (TCP never does).
  */
-import * as bc from 'lib0-v14/broadcastchannel';
 import * as decoding from 'lib0-v14/decoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
@@ -70,6 +69,7 @@ import {
 	assertRoomId,
 	beginDestroy,
 	bindRoomProtocol,
+	tabs,
 	chunkFrame,
 	CLOSE,
 	createChunkReader,
@@ -223,7 +223,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	/** Traffic for the other tabs goes out on the channel. */
 	const toTabs = (provider: Provider, buf: Uint8Array) => {
-		if (provider.bcconnected) bc.publish(provider.bcChannel, buf, provider);
+		if (provider.bcconnected) tabs.publish(provider.bcChannel, buf, provider);
 	};
 
 	/** Room traffic goes to the server and to the other tabs. */
@@ -635,7 +635,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		bcChannel: string;
 		bcconnected = false;
 		disableBc: boolean;
-		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+		_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 		/** The transaction origin of updates heard from another tab. */
 		_fromTab = {};
 		wsUnsuccessfulReconnects = 0;

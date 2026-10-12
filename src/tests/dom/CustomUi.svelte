@@ -3,19 +3,33 @@
 	import { createSlashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { createToolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+	import { createBlockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 
 	/** Every UI plugin with its own markup, through snippets; default plugins on. */
 	let { edytor = $bindable(), value }: { edytor?: EdytorContext; value: JSONDoc } = $props();
 	const plugins = [
-		createSlashMenuPlugin({ item: slashItem }),
+		createBlockHandlesPlugin({ handle }),
+		createSlashMenuPlugin({ menu: slashMenu }),
 		createToolbarPlugin({ toolbar: bar }),
 		createBlockMenuPlugin({ menu: blockMenu })
 	];
 </script>
 
-{#snippet slashItem({ command, selected, run }: import('$lib/plugins/index.js').SlashMenuItem)}
-	<button data-testid="custom-slash" data-selected={selected} onclick={run}>{command.label}</button>
+{#snippet slashMenu(controller: import('$lib/plugins/index.js').SlashMenuController)}
+	<!-- A `+`'s menu holds the keyboard on its own element (typing edits the query). -->
+	<div tabindex="-1" role="presentation" {@attach controller.addition ? controller.keys : null}>
+		<div {@attach controller.popup}>
+			{#each controller.commands as command, index (command.id)}
+				<button
+					data-testid="custom-slash"
+					data-selected={controller.index === index}
+					{@attach controller.option(index)}
+					onclick={() => void controller.run(command)}>{command.label}</button
+				>
+			{/each}
+		</div>
+	</div>
 {/snippet}
 
 {#snippet bar(controller: import('$lib/plugins/index.js').ToolbarController)}
@@ -28,7 +42,7 @@
 
 {#snippet handle({ block, grip, add }: import('$lib/plugins/index.js').BlockHandleSnippetPayload)}
 	<button data-testid="custom-add" data-id={block.id} onclick={() => add()}>+</button>
-	<button data-testid="custom-grip" data-id={block.id} use:grip>⠿</button>
+	<button data-testid="custom-grip" data-id={block.id} {@attach grip}>⠿</button>
 {/snippet}
 
 {#snippet blockMenu(controller: import('$lib/plugins/index.js').BlockMenuController)}
@@ -38,4 +52,4 @@
 	</div>
 {/snippet}
 
-<Edytor bind:edytor {plugins} {value} blockHandles={{ handle }} />
+<Edytor bind:edytor {plugins} {value} />

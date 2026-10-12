@@ -1,22 +1,19 @@
-import { getContext, hasContext, type Snippet, mount, unmount } from 'svelte';
+import { getContext, hasContext, mount, unmount } from 'svelte';
 import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
-import {
-	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
-} from './events/nativeInteractiveControl.js';
+import { isControlEvent, isKindControl } from './events/nativeInteractiveControl.js';
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
-import { attachFocus, selectionIsInside } from './events/onFocus.js';
+import { attachFocus, selectionIsInside, takeKeys } from './events/onFocus.js';
 import { insertLineBreak, runIntent } from './events/beforeInputCommands.js';
 import { textPointAt } from './selection/selection.utils.js';
 import type { SessionPorts } from './session/ports.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
-import { Suggestions } from './session/suggestions.svelte.js';
+import { Suggestions, type SuggestionRange } from './session/suggestions.svelte.js';
 import { type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
@@ -26,7 +23,6 @@ import { virtualLens, type ViewDoc } from './session/virtual.js';
 import {
 	createCells,
 	placeholderOf,
-	segmentDeltas,
 	type Cell,
 	type Cells,
 	type RenderDelta,
@@ -36,12 +32,11 @@ import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
 import { Popups } from './surface/popups.svelte.js';
 import { onOneLine } from './surface/lines.js';
-import { withRulesAndTriggers } from './plugins/triggers/triggers.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
-import { englishLabels, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
+import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
-import SuggestionRanges from './components/SuggestionRanges.svelte';
+import Ranges from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -51,10 +46,8 @@ import { markName } from '$lib/crdt/text/marks.js';
 import { callEach } from '$lib/crdt/protocols/observable.js';
 import {
 	attachDocument,
-	bindCrdt,
 	SemanticConflictError,
 	type Awareness,
-	type Crdt,
 	type DocChange,
 	type DocumentActor,
 	type EdytorDocument,
@@ -68,21 +61,14 @@ import {
 	PresenceWriter,
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
-import { batch } from './block/block.utils.js';
-import {
-	canMoveBlocks as canMoveBlocksRelative,
-	moveBlocks as moveBlocksRelative,
-	type BlockMoveRequest
-} from './session/moves.js';
+import { canMove, move, type BlockMoveRequest } from './session/moves.js';
+import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
 import type {
 	Plugin,
-	BlockSnippetPayload,
 	InitializedPlugin,
-	MarkSnippetPayload,
 	BlockDefinition,
 	MarkDefinition,
 	InlineBlockDefinition,
-	InlineBlockSnippetPayload,
 	EditorCommand,
 	Placeholder
 } from './plugins.js';
@@ -90,16 +76,6 @@ import { on } from 'svelte/events';
 import { Keymap, type HotKey, type HotKeyCombination } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
-import {
-	caretOf,
-	deleteBlocks,
-	deleteContentWithinSelection,
-	insertFlow,
-	rangeCaret,
-	prepareDeleteBlocks,
-	prepareDeleteContent,
-	prepareFlow
-} from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
 import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
@@ -113,46 +89,8 @@ import {
 /** A consumer that is set (a prop or a plugin hook left out is `undefined`). */
 const isListener = <F>(listener: F | undefined): listener is F => listener !== undefined;
 
-export type Snippets = {
-	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
-	// domain patterns, so property lookup intersects the matching arms —
-	// a bare `Snippet<[BlockSnippetPayload]>` on the `*Block` arm would
-	// make `*InlineBlock` props unassignable. Unioning the inline payload
-	// into the `*Block` arm collapses the intersection back to the inline
-	// type while keeping `*Block` overrides precisely typed.
-	[K in
-		| `${string}InlineBlock`
-		| `${string}Block`
-		| `${string}Mark`]: K extends `${string}InlineBlock`
-		? Snippet<[InlineBlockSnippetPayload]>
-		: K extends `${string}Block`
-			? Snippet<[BlockSnippetPayload]> | Snippet<[InlineBlockSnippetPayload]>
-			: Snippet<[MarkSnippetPayload]>;
-};
-
-/** What a snippet override's suffix names (the DEV warning for one that names nothing). */
-const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } as const;
-
-/**
- * Names an earlier release took and what replaced them. An untyped caller
- * still passing one (an option, or an `<Edytor>` prop, which reaches the view
- * among the snippets whatever its value) gets nothing from it and a
- * development warning naming the replacement.
- */
-const RETIRED: Record<string, string> = {
-	hotKeys: '`hotkeys`',
-	blockDnd: '`blockHandles` (`blockHandles={false}` hides the handles)'
-};
-const warnRetired = (source: object | undefined) => {
-	if (!DEV || !source) return;
-	for (const [name, use] of Object.entries(RETIRED))
-		if (Object.hasOwn(source, name))
-			console.warn(`[edytor] \`${name}\` was removed and is ignored: use ${use}.`);
-};
-
 export type EdytorOptions = {
 	readonly?: boolean;
-	snippets?: Snippets;
 	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
@@ -186,9 +124,12 @@ export type EdytorOptions = {
 	 */
 	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
-	placeholder?: Placeholder;
-	/** The words this view says itself (its announcements, a suggestion's name); English by default. */
-	labels?: PartialLabels<'editor'>;
+	/**
+	 * The words the package shows and says in this view, over the English
+	 * ones: any entry of any section (`richText`, `table`, `editor`…), and
+	 * the commands' slash `keywords` by id.
+	 */
+	labels?: PartialLabels;
 };
 
 /**
@@ -204,23 +145,16 @@ export type RootBlock = Block & {
 };
 
 /**
- * One `bindCrdt` binding shared by every `Edytor` — the binding exists for
- * legacy consumers only (peer-facade helpers in tests, migration, provider
- * plumbing), so paying a second binding per view buys nothing.
- *
- * CONTRACT: `crdt.doc.create` on a raw doc already wrapped by an
- * `EdytorDocument` would fork a SECOND maintained run view for that doc —
- * the document's `facade` is the only structural surface and the fork is
- * forbidden. `create` on an UNWRAPPED doc (a remote peer's replica in
- * tests) stays legitimate.
+ * Register definitions, the first extension's fields winning: a field it
+ * leaves out is the next one's (an app's `{ snippet }` listed first restyles
+ * a bundled kind and keeps its roles and presets). A bare snippet is `{ snippet }`.
  */
-const sharedCrdt = bindCrdt(Y);
-
-/** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
 const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
 	for (const [key, value] of Object.entries(definitions))
-		if (!into.has(key))
-			into.set(key, typeof value === 'object' ? value : ({ snippet: value } as T));
+		into.set(key, {
+			...(typeof value === 'object' ? value : { snippet: value }),
+			...into.get(key)
+		});
 };
 
 /**
@@ -236,6 +170,19 @@ class MarkRecords extends Map<string, MarkDefinition> {
 	}
 }
 
+/**
+ * The view writes with the document's operations (`DocumentWrites`), under
+ * the same names and arguments as a bare `EdytorDocument`, dispatched:
+ * readonly and `document.writable` admit them, every extension hook sees
+ * them and their planned steps first, each is one transaction and the undo
+ * policy's step, the blocks it touched are normalized, and the caret it
+ * decides (a range deletion, a placed flow) is selected. Each answers its
+ * `OpResult` (`refused` when the view, a hook or the document refused it);
+ * `dispatcher.last` records it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export interface Edytor extends DocumentWrites {}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare
 export class Edytor {
 	node?: HTMLElement;
 	marks: Map<string, MarkDefinition> = new MarkRecords();
@@ -262,8 +209,6 @@ export class Edytor {
 	get synced(): boolean {
 		return this.root !== undefined;
 	}
-	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
-	readonly edytor = this;
 	selection: EdytorSelection;
 	/** @internal The only writer of the DOM selection (`surface/projector`). */
 	readonly projector: Projector = new Projector(this);
@@ -281,7 +226,7 @@ export class Edytor {
 			parked: () => this.projector.parked(),
 			clear: () => clearDomSelection(this.node),
 			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset),
-			sameLine: (a, b) => onOneLine(a, b)
+			sameLine: (a, b) => onOneLine(this.selection.textAt(a), this.selection.textAt(b))
 		},
 		input: {
 			runIntent: (inputType) => runIntent(this, inputType),
@@ -291,20 +236,19 @@ export class Edytor {
 	/** What the components render: one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
-	private dataRevision = $state(0);
+	#dataRevision = $state(0);
 	/** @internal The document's data, read-your-writes and reactive (`{}` when none). */
 	docData = (): Record<string, unknown> => {
-		void this.dataRevision;
+		void this.#dataRevision;
 		return this.facade.docData();
 	};
 	/**
-	 * The document's properties as a live proxy (`session/props.ts`): read
-	 * and write them like a plain object (`edytor.data.title = 'Notes'`,
-	 * `bind:value={edytor.data.title}`); each write is a `patchData` command
-	 * on the root. Type it by augmenting {@link EdytorDocData}.
+	 * The document's properties, read-your-writes and reactive. Write them
+	 * with `edytor.patchData(null, patches)`. Type them by augmenting
+	 * {@link EdytorDocData}.
 	 */
-	get data(): EdytorDocData {
-		return this.idToBlock.root.data as EdytorDocData;
+	get data(): Readonly<EdytorDocData> {
+		return this.docData() as EdytorDocData;
 	}
 	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
@@ -314,8 +258,8 @@ export class Edytor {
 	readonly popups = new Popups();
 	/** What this view announces to assistive technology (`session/announcer`): its block moves and deletes. */
 	readonly announcer: AnnouncerState = new AnnouncerState(this);
-	/** The words this view says itself (`<Edytor labels>`): its announcements, a suggestion's name. */
-	readonly labels: EditorLabels = englishLabels.editor;
+	/** The words the view was given (`<Edytor labels>`); its plugins read their section through `labelsOf`. */
+	readonly labels: PartialLabels = {};
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	private onDocChange?: (change: DocChange) => void;
@@ -334,7 +278,9 @@ export class Edytor {
 	 * API-driven selection changes must never move the page).
 	 * @internal
 	 */
-	isHandlingUserInput = false;
+	get isHandlingUserInput(): boolean {
+		return this.#userInputHandlingDepth > 0;
+	}
 	/**
 	 * Depth counter suppressing caret scroll during programmatic DOM
 	 * writes — remote mirror flushes and mutation-observer repairs can
@@ -363,7 +309,7 @@ export class Edytor {
 	private lens?: ViewDoc;
 	/**
 	 * The document as this view reads and writes it (the virtual paragraph's
-	 * lens). The public raw path is the document's own operations (`edytor.document.insertBlock(…)`): its writes skip
+	 * lens). The public raw path is the document's own operations (`edytor.document.insertBlocks(…)`): its writes skip
 	 * the dispatcher (no hooks, no readonly admission, no undo policy).
 	 * @internal
 	 */
@@ -390,17 +336,6 @@ export class Edytor {
 		return this.document.awareness;
 	}
 	/**
-	 * Legacy accessor — the view no longer binds the engine (the document
-	 * shares the production binding). Returns the module-level singleton:
-	 * one binding per runtime, not one per view. Do NOT `crdt.doc.create`
-	 * on this view's `doc` — the document's facade is the only maintained
-	 * surface for it (see `sharedCrdt`'s contract note).
-	 * @internal
-	 */
-	get crdt(): Crdt {
-		return sharedCrdt;
-	}
-	/**
 	 * The document's shared undo manager — assigned at the end of `sync()`,
 	 * never in the constructor, so history capture still starts only after
 	 * the document decides its content state (the bootstrap-before-capture
@@ -414,7 +349,7 @@ export class Edytor {
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	/** An outermost `transact` of this view is running. */
-	private transacting = false;
+	#transacting = false;
 	/**
 	 * One transaction of this view. The outermost call runs the normalization
 	 * its operations requested at its end, inside the same transaction (one transaction, normalization once per touched parent): normalizers read
@@ -425,8 +360,8 @@ export class Edytor {
 	 * logged.
 	 */
 	transact = <T>(cb: () => T): T => {
-		if (this.transacting) return this.doc.transact(cb, this.transaction);
-		this.transacting = true;
+		if (this.#transacting) return this.doc.transact(cb, this.transaction);
+		this.#transacting = true;
 		try {
 			return this.doc.transact(() => {
 				let out: T;
@@ -444,15 +379,19 @@ export class Edytor {
 				return out;
 			}, this.transaction);
 		} finally {
-			this.transacting = false;
+			this.#transacting = false;
 		}
 	};
 
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
-	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
+	canMove = (request: BlockMoveRequest): boolean => canMove(this, request);
 
-	/** Move blocks one relative step, or before, after or inside a live target block. */
-	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
+	/**
+	 * Move blocks one relative step, or before, after, inside or beside a live
+	 * target block: resolved to the document's move (`moveBlocks`, an outdent's
+	 * `unNestBlocks`, `placeBeside`) and announced. Answers the moved blocks.
+	 */
+	move = (request: BlockMoveRequest): Block[] => move(this, request);
 
 	/** @internal This view's history (the named exception to commands through the dispatcher): bare engine undo/redo, one restorer. */
 	readonly history = new History(this);
@@ -473,7 +412,6 @@ export class Edytor {
 
 	constructor(options: EdytorOptions) {
 		const {
-			snippets,
 			readonly,
 			hotkeys,
 			plugins,
@@ -486,20 +424,22 @@ export class Edytor {
 			sync,
 			value,
 			onSelectionChange,
-			placeholder,
 			labels,
 			onChange,
 			onDocChange
 		} = options;
-		warnRetired(options);
-		warnRetired(snippets);
-		this.labels = labelsWith('editor', labels);
+		for (const name of DOCUMENT_WRITES)
+			Object.defineProperty(this, name, {
+				value: (...args: never) => this.dispatcher.operate(name, args)
+			});
+		if (labels) this.labels = labels;
 		if (document !== undefined) {
 			if (
-				doc !== undefined ||
-				awareness !== undefined ||
-				actor !== undefined ||
-				requireHydration !== undefined
+				DEV &&
+				(doc !== undefined ||
+					awareness !== undefined ||
+					actor !== undefined ||
+					requireHydration !== undefined)
 			) {
 				throw new Error(
 					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor`/`requireHydration` — ' +
@@ -528,9 +468,8 @@ export class Edytor {
 			// before definition precedence applies: two extensions declaring
 			// different default children for one parent type is an error.
 			const defaultChild: Record<string, string> = {};
-			this.plugins = (plugins || []).map((plugin, at) => {
-				// Its input rules and triggers run through its own hooks, at its place in the list.
-				const initializedPlugin = withRulesAndTriggers(this, plugin(this), at);
+			this.plugins = (plugins || []).map((plugin) => {
+				const initializedPlugin = plugin(this);
 				for (const [type, definition] of Object.entries(initializedPlugin.blocks ?? {})) {
 					const child = typeof definition === 'object' ? definition.defaultChild : undefined;
 					if (child !== undefined && (defaultChild[type] ??= child) !== child) {
@@ -547,41 +486,12 @@ export class Edytor {
 				return initializedPlugin;
 			});
 
-			// The app's snippets override the plugins' after they register: keys are
-			// `{type}{suffix}` over maps keyed by the bare type, suffixes tried in
-			// this order (`mentionInlineBlock` also ends in `Block`). Only the
-			// snippet is replaced: the definition's roles, `transformText` and hooks
-			// survive. An override names a registered kind, mark or atom kind: one
-			// that names none (a typo) registers nothing and warns in development.
-			const overrides = [
-				['Mark', this.marks],
-				['InlineBlock', this.inlineBlocks],
-				['Block', this.blocks]
-			] as const;
-			for (const [key, snippet] of Object.entries(snippets || {})) {
-				if (Object.hasOwn(RETIRED, key)) continue;
-				const override = overrides.find(([suffix]) => key.endsWith(suffix));
-				const name = override && key.slice(0, -override[0].length);
-				if (override && name && override[1].has(name)) {
-					const into = override[1] as Map<string, object>;
-					into.set(name, { ...into.get(name), snippet });
-				} else if (DEV && key !== 'children' && typeof snippet === 'function') {
-					const reason = override
-						? `no ${OVERRIDDEN[override[0]]} "${name}" is registered`
-						: 'its name ends in neither Block, Mark nor InlineBlock';
-					console.warn(
-						`[edytor] the snippet "${key}" overrides nothing: ${reason}. A new kind is a plugin's.`
-					);
-				}
-			}
-
 			// Kind records generate their commands; an extension's own command id wins.
 			this.kinds = kindCatalogue(this.blocks);
 			for (const row of this.kinds)
 				if (!this.commands.has(row.id)) this.commands.set(row.id, kindCommand(this, row));
 
-			this.placeholder =
-				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
+			this.placeholder = this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
 			// Contribute this view's capability to the document — roles,
 			// `rendersContent` and default children outlive any single view.
@@ -623,7 +533,7 @@ export class Edytor {
 			if (this.ownsDocument && !sync) {
 				this.sync(value || { children: [] });
 			} else {
-				this._readinessRelease = whenDocumentReady(this.document, () => {
+				this.#readinessRelease = whenDocumentReady(this.document, () => {
 					if (!this.destroyed) this.sync(value || { children: [] });
 				});
 			}
@@ -647,7 +557,7 @@ export class Edytor {
 	}
 
 	/** Kinds already reported missing (DEV, once each). */
-	private unknownKinds = new Set<string>();
+	#unknownKinds = new Set<string>();
 
 	/**
 	 * The definition of block kind `type` — the one lookup (render, surface,
@@ -658,8 +568,8 @@ export class Edytor {
 	definitionOf = (type: string): BlockDefinition => {
 		const definition = this.blocks.get(type);
 		if (definition) return definition;
-		if (DEV && type && type !== 'root' && !this.unknownKinds.has(type)) {
-			this.unknownKinds.add(type);
+		if (DEV && type && type !== 'root' && !this.#unknownKinds.has(type)) {
+			this.#unknownKinds.add(type);
 			console.warn(
 				`[edytor] block kind "${type}" is not registered by any plugin: it renders as a plain block.`
 			);
@@ -725,7 +635,7 @@ export class Edytor {
 		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
 	/** Releases the readiness wait of a view bound before its document decided. */
-	private _readinessRelease: (() => void) | undefined;
+	#readinessRelease: (() => void) | undefined;
 
 	/** @internal */
 	sync = ({ children = [], data }: JSONDoc = { children: [] }) => {
@@ -740,21 +650,21 @@ export class Edytor {
 		this.history.bind();
 		this.cells = createCells(this.facade, this.surface.patched);
 		this.root = this.idToBlock.root;
-		this.offCommit = this.facade.onChange(this.onCommit);
+		this.#offCommit = this.facade.onChange(this.#onCommit);
 		// A document that is already empty shows its virtual paragraph with the caret in it.
 		this.selection?.restoreDeadSelectionEndpoints();
 	};
 
 	/** The commit subscription: editor-lifetime (a remount's `off` drain never releases it). */
-	private offCommit?: () => void;
+	#offCommit?: () => void;
 
 	/**
 	 * One commit (local, remote, undo/redo): prune the handles of the removed
 	 * blocks, then the selection's seam and the value consumers.
 	 */
-	private onCommit = (change: DocChange) => {
+	#onCommit = (change: DocChange) => {
 		this.valueRevision++;
-		if (change.data) this.dataRevision++;
+		if (change.data) this.#dataRevision++;
 		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
 		// projector displays the current value after that flush.
@@ -786,6 +696,17 @@ export class Edytor {
 		if (values.length > 0) callEach('[edytor] onChange', values, this.value);
 	};
 
+	/** The text each range `replace` suggestion removes when accepted (`Ranges`). */
+	#replaced = () => {
+		void this.suggestions.revision;
+		return this.suggestions.list.flatMap(({ at }) => {
+			if (!('replace' in at) || Array.isArray(at.replace)) return [];
+			const { anchor, focus } = at.replace as SuggestionRange;
+			const [start, end] = [anchor, focus].map(this.selection.resolveTextAnchor);
+			return start && end ? [{ start, end }] : [];
+		});
+	};
+
 	/**
 	 * The placeholder block `id` shows: its cell has one empty
 	 * text and no live composition in it; a function answers per block.
@@ -801,7 +722,7 @@ export class Edytor {
 		if (typeof placeholder === 'string') return placeholder;
 		const { type, data = {} } = cell;
 		const focused = this.idToBlock.block(id).focused;
-		return placeholder({ type, data, focused, empty: true }) || null;
+		return placeholder({ type, data, focused, empty: true }, this) || null;
 	};
 
 	/** @internal */
@@ -820,31 +741,25 @@ export class Edytor {
 	 * runs with the flag cleared so async restores can't trigger typing
 	 * affordances long after the gesture ended.
 	 */
-	private userInputHandlingDepth = 0;
-	private withUserInput = <E extends Event>(
-		handler: (event: E) => unknown,
+	#userInputHandlingDepth = 0;
+	#withUserInput = <A extends unknown[]>(
+		handler: (...args: A) => unknown,
 		opts: { bumpSerial?: boolean } = {}
 	) => {
-		return (event: E): unknown => {
-			// Depth-counted, not boolean: a synchronous wrapped listener
-			// landing inside an awaited handler's hold window must not
-			// clear the flag the outer handler still needs.
-			this.userInputHandlingDepth++;
-			this.isHandlingUserInput = true;
+		return (...args: A): unknown => {
+			// Depth-counted: a synchronous wrapped listener landing inside an
+			// awaited handler's hold window must not end the window the outer
+			// handler still needs.
+			this.#userInputHandlingDepth++;
 			if (opts.bumpSerial !== false) {
 				this.markUserGesture();
 			}
 			const clear = () => {
-				this.userInputHandlingDepth--;
-				if (this.userInputHandlingDepth <= 0) {
-					this.userInputHandlingDepth = 0;
-					this.isHandlingUserInput = false;
-					// A display the window held back gets its pass now.
-					this.projector.inputHandled();
-				}
+				// A display the window held back gets its pass now.
+				if (--this.#userInputHandlingDepth === 0) this.projector.inputHandled();
 			};
 			try {
-				const result = handler(event);
+				const result = handler(...args);
 				// Async handlers keep the flag until they settle — the
 				// awaited model ops + selection writes are still "the
 				// user's input". Timer/rAF-deferred restores run after
@@ -887,18 +802,18 @@ export class Edytor {
 	 * consumed there; the microtask reset covers a focus that never
 	 * fires (element already focused).
 	 */
-	private expectInternalFocusArmed = false;
+	#expectInternalFocusArmed = false;
 	/** @internal */
 	expectInternalFocus = () => {
-		this.expectInternalFocusArmed = true;
+		this.#expectInternalFocusArmed = true;
 		queueMicrotask(() => {
-			this.expectInternalFocusArmed = false;
+			this.#expectInternalFocusArmed = false;
 		});
 	};
 	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
-		const armed = this.expectInternalFocusArmed;
-		this.expectInternalFocusArmed = false;
+		const armed = this.#expectInternalFocusArmed;
+		this.#expectInternalFocusArmed = false;
 		return armed;
 	};
 	/**
@@ -921,8 +836,7 @@ export class Edytor {
 	 */
 	lastUserGestureOutsideEditor = false;
 	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
-	userInput = <T>(body: () => T) =>
-		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
+	userInput = <T>(body: () => T) => this.#withUserInput(body, { bumpSerial: false })();
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
@@ -940,43 +854,29 @@ export class Edytor {
 			(active &&
 				!ours(active) &&
 				!ours(selection?.anchorNode) &&
-				!ours(this.selection.state.startText?.node)) ||
-			(active && isNestedForeignEditableTarget(this.node, active))
+				!ours(this.selection.textRange().startText?.node)) ||
+			isKindControl(this.node, active)
 		)
 			return;
 		this.projector.committed();
-		this.selection.setAtTextOffset(text, Math.min(offset, text.length));
+		this.selection.selectText(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
-	private ownComposition = (event?: Event) =>
-		!event ||
-		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
+	#ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
 
 	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {
-		if (!this.ownComposition(event)) return;
+		if (!this.#ownComposition(event)) return;
 		this.composition.start(() => getDomSelectionSnapshot(this.node));
 	};
 
 	/** @internal `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
 	onCompositionEnd = (event?: CompositionEvent) => {
-		if (!this.ownComposition(event) || this.readonly) return;
+		if (!this.#ownComposition(event) || this.readonly) return;
 		const value = event?.data ?? this.composition.preview;
 		if (value) this.composition.commit(value);
 		else this.composition.cancel();
 	};
-
-	deleteContentWithinSelection = batch(
-		'deleteContentWithinSelection',
-		deleteContentWithinSelection,
-		prepareDeleteContent,
-		rangeCaret
-	);
-
-	/** @internal */
-	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
-
-	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
 	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
@@ -993,9 +893,7 @@ export class Edytor {
 		const at = this.segmentOf(text);
 		if (!at) return [];
 		const { cell, segment } = at;
-		const pinned = this.pin.render(cell.id, segment.key);
-		const transform = this.definitionOf(cell.type).transformText;
-		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
+		return this.pin.shown(cell, segment, this.definitionOf(cell.type).transformText).deltas;
 	};
 
 	/** @internal The handle of inline atom `atom`, shown in block `id`. */
@@ -1009,10 +907,9 @@ export class Edytor {
 	focus = (): void => {
 		if (this.selection.value.kind === 'none') {
 			const text = this.root?.firstText;
-			if (text) this.selection.setAtTextOffset(text, 0);
+			if (text) this.selection.selectText(text, 0);
 		}
-		this.expectInternalFocus();
-		this.node?.focus({ preventScroll: true });
+		takeKeys(this);
 	};
 
 	/**
@@ -1023,18 +920,17 @@ export class Edytor {
 	clear = (): boolean => {
 		const newBlock = this.dispatcher.run('clear', () =>
 			this.transact(() => {
-				const root = this.root!;
-				root.deleteChildren(0, root.children.length);
-				const block = { id: id('b'), type: this.defaultChild(root) };
-				root.insertChildren(0, [block]);
+				for (const child of this.facade.childrenIds(null).reverse())
+					this.deleteBlock(child, { keepChildren: false });
+				const block = { id: id('b'), type: this.defaultChild(this.root!) };
+				this.insertBlocks({ parent: null, index: 0 }, [block]);
 				return this.idToBlock.block(block.id);
 			})
 		);
 		if (!newBlock) return false;
 		this.dispatcher.record({ operation: 'clear', status: 'applied' });
-		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
-		this.expectInternalFocus();
-		this.node?.focus({ preventScroll: true });
+		this.selection.selectText(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		this.focus();
 		return true;
 	};
 
@@ -1046,12 +942,12 @@ export class Edytor {
 		this.node = node;
 		this.selection.init();
 		this.doc.on('beforeAllTransactions', this.projector.opening);
-		this.doc.on('beforeTransaction', this.surface.before);
+		this.doc.on('beforeTransaction', this.surface.pending);
 		this.doc.on('beforeTransaction', this.projector.before);
 		this.doc.on('afterTransaction', this.projector.after);
 		this.off.push(() => {
 			this.doc.off('beforeAllTransactions', this.projector.opening);
-			this.doc.off('beforeTransaction', this.surface.before);
+			this.doc.off('beforeTransaction', this.surface.pending);
 			this.doc.off('beforeTransaction', this.projector.before);
 			this.doc.off('afterTransaction', this.projector.after);
 		});
@@ -1059,9 +955,8 @@ export class Edytor {
 		// composition-phantom swallow — a swallowed trailing Enter/Backspace
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
-		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
+		const keydown = this.#withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const detachSurface = this.surface.attach(node);
-		this.projector.recordsPending = this.surface.pending;
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
 			// capture; the document sees only keys whose path misses it (a
@@ -1079,20 +974,20 @@ export class Edytor {
 			// moment (PM flushes its DOM observer on contextmenu for the
 			// same reason).
 			on(node, 'contextmenu', () => void this.surface.flush()),
-			on(node, 'beforeinput', this.withUserInput(this.onBeforeInput)),
+			on(node, 'beforeinput', this.#withUserInput(this.onBeforeInput)),
 			// An `input` records what the browser did; it says nothing new about
 			// where the user wants the selection (a display still to land wins).
-			on(node, 'input', this.withUserInput(this.onInput, { bumpSerial: false })),
+			on(node, 'input', this.#withUserInput(this.onInput, { bumpSerial: false })),
 			on(node, 'copy', this.onCopy),
-			on(node, 'cut', this.withUserInput(this.onCut)),
-			on(node, 'paste', this.withUserInput(this.onPaste)),
+			on(node, 'cut', this.#withUserInput(this.onCut)),
+			on(node, 'paste', this.#withUserInput(this.onPaste)),
 			on(node, 'dragstart', (event: DragEvent) => onTextDragStart(this, event)),
 			on(node, 'dragend', () => onTextDragEnd(this)),
 			on(node, 'dragover', (event: DragEvent) => preventUnsupportedDrop(event, this)),
 			on(
 				node,
 				'drop',
-				this.withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
+				this.#withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
 			),
 			on(node, 'compositionstart', this.onCompositionStart),
 			on(node, 'compositionend', this.onCompositionEnd),
@@ -1106,9 +1001,9 @@ export class Edytor {
 			props: { edytor: this }
 		});
 		// The text a `replace` suggestion removes, marked beside the host.
-		const ranges = mount(SuggestionRanges, {
+		const ranges = mount(Ranges, {
 			target: this.overlay.layer!,
-			props: { edytor: this }
+			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }
 		});
 		// The polite live region: what this view's block moves and deletes did.
 		const live = mount(Announcer, {
@@ -1168,13 +1063,13 @@ export class Edytor {
 		this.presence.clear();
 
 		// A pending readiness binding must not resurrect a dead view.
-		this._readinessRelease?.();
-		this._readinessRelease = undefined;
+		this.#readinessRelease?.();
+		this.#readinessRelease = undefined;
 
 		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
 		// observer, plugin actions — and empties the array.
 		this.off.splice(0).forEach((off) => off());
-		this.offCommit?.();
+		this.#offCommit?.();
 		this.history.unbind();
 
 		// `selectionchange` listener + the published remote caret.

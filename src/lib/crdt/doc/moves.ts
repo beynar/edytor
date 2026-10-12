@@ -5,7 +5,7 @@
  */
 import { id as newId } from '../../utils.js';
 import { asBlockSpec, sanitizeSpec, type JSONBlock } from '../../utils/json.js';
-import type { BlockId, BlockSpec, Destination } from '../placement/model.js';
+import { collides, type BlockId, type BlockSpec, type Destination } from '../placement/model.js';
 import { ref } from './plan.js';
 import type { Prepared, PlanStep, Plan } from './types.js';
 import type { OpsContext } from './steps.js';
@@ -14,7 +14,6 @@ import type { OpsContext } from './steps.js';
 export const moveOps = (c: OpsContext) => {
 	const {
 		doc,
-		M,
 		blockTypeOf,
 		blockDataOf,
 		childrenIds,
@@ -62,7 +61,7 @@ export const moveOps = (c: OpsContext) => {
 		const clean = specs.map((spec) => sanitizeSpec(asBlockSpec(spec)));
 		if (parent !== null && (isVoid(parent) || isLine(parent))) return REFUSED;
 		if (clean.length === 0) return plan([], []);
-		if ((parent !== null && !live(parent)) || M.collides(doc, clean)) return REFUSED;
+		if ((parent !== null && !live(parent)) || collides(doc, clean)) return REFUSED;
 		const ranks = ranksFor(parent, dest.index, clean.length, [], true);
 		return plan(
 			clean.map((s) => s.id),
@@ -250,7 +249,7 @@ export const moveOps = (c: OpsContext) => {
 		kind = ref(kind);
 		const specs = after.map(sanitizeSpec);
 		const { parent, levels } = landingOf(id, kind, keep);
-		if (!positionOf(id) || M.collides(doc, specs) || !canPlace([id], parent, () => kind))
+		if (!positionOf(id) || collides(doc, specs) || !canPlace([id], parent, () => kind))
 			return REFUSED;
 		return splitOut([id], levels, specs, keep);
 	};
@@ -266,7 +265,8 @@ export const moveOps = (c: OpsContext) => {
 	 */
 	const duplicateBlock = (
 		id: BlockId,
-		freshId: (oldId: string, kind: 'block' | 'inline') => string
+		freshId: (oldId: string, kind: 'block' | 'inline') => string = (_, kind) =>
+			newId(kind === 'block' ? 'b' : 'i')
 	): Prepared => {
 		id = ref(id);
 		const pos = positionOf(id);
@@ -300,8 +300,9 @@ export const moveOps = (c: OpsContext) => {
 		unNestBlocks,
 		unNestBlock,
 		landingOf,
-		splitOut,
 		liftOut,
 		duplicateBlock
 	};
 };
+
+export type MoveOps = ReturnType<typeof moveOps>;

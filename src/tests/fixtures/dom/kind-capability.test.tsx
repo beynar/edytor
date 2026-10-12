@@ -22,9 +22,9 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { d3KindsPlugin } from '../../dom/D3KindsPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** `[type, text]` of each child of the first root block. */
 const listShape = (edytor: Edytor) =>
@@ -94,7 +94,7 @@ describe('F-D4 — same definition, different position (dom)', () => {
 		const list = edytor.root!.children[0]!;
 		const box = list.children[1]!;
 		await setNativeSelection(edytor, box.content[0] as never, 0);
-		box.mergeBlockBackward();
+		edytor.mergeBackward(box.id);
 		await flushDomUpdates();
 		expect(listShape(edytor).map(([type]) => type)).toEqual(['list-item', 'list-item']);
 		expect(listShape(edytor).at(-1)).toEqual(['list-item', 'two']);

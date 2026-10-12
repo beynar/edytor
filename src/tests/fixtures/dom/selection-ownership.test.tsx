@@ -18,6 +18,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -117,17 +118,17 @@ describe('P1-3 — undo-restore timers yield to a newer caret move', () => {
 		// Sanity: the undo restored a range (the end anchor resolves
 		// through dead-backing fallback — 4 vs 5 is resolution accuracy,
 		// not the ownership defect under test).
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 
 		// The user moves the caret to 0 — model and DOM must agree there
 		// AND STAY there once any stray restore timers fire.
 		editor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
 		await setNativeSelection(edytor, text, 0);
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).yStart).toBe(0);
 
 		await sleep(60); // stray 0/30ms restore timers land inside this window
-		expect(edytor.selection.state.yStart).toBe(0); // FAILS — stale restore wrote 1/3
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(0); // FAILS — stale restore wrote 1/3
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 		expectNativeSelection({ collapsed: true, anchorOffset: 0 });
 	});
 });
@@ -144,11 +145,11 @@ describe('P2-6 — async range writes include direction in the staleness guard',
 
 		// The older write awaits endpoint nodes; while it is in flight a
 		// newer BACKWARD write over the same endpoints lands.
-		const staleWrite = selection.setAtRange(text, 1, text, 3, { isReversed: false });
-		selection.setAtRange(text, 1, text, 3, { isReversed: true });
+		const staleWrite = selection.selectText(text, 1, text, 3, false);
+		selection.selectText(text, 1, text, 3, true);
 		await staleWrite;
 		await flushDomUpdates();
 
-		expect(selection.state.isReversed).toBe(true); // FAILS — stale write flipped it forward
+		expect(selection.projection.isReversed).toBe(true); // FAILS — stale write flipped it forward
 	});
 });

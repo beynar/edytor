@@ -2,7 +2,7 @@ import * as math from 'lib0-v14/math'
 import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
-import { foldPaired, pairedRole } from './marks.js' // YP13
+import { foldPaired } from './marks.js' // YP13
 import { compareIDs } from './ID.js' // YP14
 
 
@@ -162,33 +162,6 @@ export const iterateStructs = (transaction, structs, clockStart, len, f) => {
 }
 
 /**
- * Iterate over a range of structs without splitting the structs. You will get content that you did
- * not expect.
- *
- * @param {Array<Item|GC>} structs
- * @param {number} clockStart Inclusive start
- * @param {number} len
- * @param {(struct: GC|Item|Skip, offset:number, len:number)=>void} f
- *
- * @function
- */
-export const iterateStructsWithoutSplits = (structs, clockStart, len, f) => {
-  if (len === 0) {
-    return
-  }
-  const clockEnd = clockStart + len
-  for (
-    let index = findIndexSS(structs, clockStart), struct = structs[index], clock = struct.id.clock;
-    clock < clockEnd;
-    struct = structs[++index], clock = struct.id.clock
-  ) {
-    const offset = clock < clockStart ? clockStart - clock : 0
-    f(struct, offset, math.min(clock + struct.length, clockEnd) - clock)
-    if (index + 1 === structs.length) break
-  }
-}
-
-/**
  * More generalized version of splitItem. Split leftStruct into two structs
  * @param {Transaction?} transaction
  * @param {Item|GC|Skip} leftStruct
@@ -306,111 +279,21 @@ export const tryMerge = (ds, store) => {
 }
 
 /**
- * @param {Transaction} transaction
- * @param {Item | null} item
+ * The live length of `item`: alive countable content counts its length, everything else `0`.
+ *
+ * @param {Item} item
+ * @return {number}
  */
-export const cleanupContextlessFormattingGap = (transaction, item) => {
-  if (!transaction.doc.cleanupFormatting) return 0
-  // iterate until item.right is null or content
-  while (item && item.right && (item.right.deleted || !item.right.countable)) {
-    item = item.right
-  }
-  const attrs = new Set()
-  // iterate back until a content item is found
-  while (item && (item.deleted || !item.countable)) {
-    if (!item.deleted && item.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (item.content)) < 0) { // is a ContentFormat (YP13: never a paired mark)
-      const key = /** @type {ContentFormat} */ (item.content).key
-      if (attrs.has(key)) {
-        item.delete(transaction)
-        transaction.cleanUps.add(item.id.client, item.id.clock, item.length)
-      } else {
-        attrs.add(key)
-      }
-    }
-    item = item.left
-  }
-}
+export const liveLength = item => (item.deleted || !item.content.isCountable()) ? 0 : item.length
 
 /**
+ * Fold mark item `format` into `currentFormats` (YP13, YP19: a mark is a
+ * paired operation; a plain format item is inert).
+ *
  * @param {Map<string,any>} currentFormats
  * @param {ContentFormat} format
  *
  * @private
  * @function
  */
-export const updateCurrentFormats = (currentFormats, format) => {
-  if (foldPaired(currentFormats, format)) return // YP13
-  const { key, value } = format
-  if (value === null) {
-    currentFormats.delete(key)
-  } else {
-    currentFormats.set(key, value)
-  }
-}
-
-/**
- * Call this function after string content has been deleted in order to
- * clean up formatting Items.
- *
- * @param {Transaction} transaction
- * @param {Item} start
- * @param {Item|null} curr exclusive end, automatically iterates to the next Content Item
- * @param {Map<string,any>} startFormats
- * @param {Map<string,any>} currFormats
- * @return {number} The amount of formatting Items deleted.
- *
- * @function
- */
-export const cleanupFormattingGap = (transaction, start, curr, startFormats, currFormats) => {
-  if (!transaction.doc.cleanupFormatting) return 0
-  /**
-   * @type {Item|null}
-   */
-  let end = start
-  /**
-   * @type {Map<string,ContentFormat>}
-   */
-  const endFormats = map.create()
-  while (end && (!end.countable || end.deleted)) {
-    if (!end.deleted && end.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (end.content)) < 0) {
-      const cf = /** @type {ContentFormat} */ (end.content)
-      endFormats.set(cf.key, cf)
-    }
-    end = end.right
-  }
-  let cleanups = 0
-  let reachedCurr = false
-  while (start !== end) {
-    if (curr === start) {
-      reachedCurr = true
-    }
-    if (!start.deleted) {
-      const content = start.content
-      if (content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (content)) >= 0) {
-        // YP13: a paired mark is never redundant — an end closes only its own start
-        if (!reachedCurr) updateCurrentFormats(currFormats, /** @type {ContentFormat} */ (content))
-      } else if (content.getRef() === 6) { // is ContentFormat
-        const { key, value } = /** @type {ContentFormat} */ (content)
-        const startFormatValue = startFormats.get(key) ?? null
-        if (endFormats.get(key) !== content || startFormatValue === value) {
-          // Either this format is overwritten or it is not necessary because the format already existed.
-          start.delete(transaction)
-          transaction.cleanUps.add(start.id.client, start.id.clock, start.length)
-          cleanups++
-          if (!reachedCurr && (currFormats.get(key) ?? null) === value && startFormatValue !== value) {
-            if (startFormatValue === null) {
-              currFormats.delete(key)
-            } else {
-              currFormats.set(key, startFormatValue)
-            }
-          }
-        }
-        if (!reachedCurr && !start.deleted) {
-          updateCurrentFormats(currFormats, /** @type {ContentFormat} */ (content))
-        }
-      }
-    }
-    start = /** @type {Item} */ (start.right)
-  }
-  return cleanups
-}
+export const updateCurrentFormats = (currentFormats, format) => { foldPaired(currentFormats, format) }

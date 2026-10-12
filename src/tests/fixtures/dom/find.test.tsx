@@ -15,10 +15,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { findPlugin, findController } from '$lib/plugins/find/findPlugin.js';
+import { findController } from '$lib/plugins/find/findPlugin.js';
 import { findMatches } from '$lib/plugins/find/search.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
+import { findPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -65,7 +66,7 @@ const texts = (edytor: Edytor) => {
 };
 
 const caretIn = (edytor: Edytor, id: string, offset: number) =>
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 
 const bar = () => document.querySelector<HTMLElement>('[data-edytor-find]');
 const queryField = () => document.querySelector<HTMLInputElement>('[data-edytor-find-query]')!;
@@ -122,7 +123,7 @@ describe('Mod+F — only when the plugin is listed', () => {
 	it('Mod+F over a text range in one block searches for it', async () => {
 		const { edytor, editor } = await mount();
 		const text = edytor.idToBlock.get('a')!.firstText!;
-		edytor.selection.setAtRange(text, 19, text, 24);
+		edytor.selection.selectText(text, 19, text, 24);
 		await flushDomUpdates();
 		await open(editor);
 		expect(queryField().value).toBe('World');
@@ -222,7 +223,7 @@ describe('next and previous — wrapping, revealing a closed toggle’s body', (
 		expect(count()).toBe('5/5');
 		// Searching never touched the document or the editor's selection.
 		expect(texts(edytor).a).toBe('Hello world, hello World');
-		expect(edytor.selection.state.startBlock?.id).toBe('b');
+		expect(selectionState(edytor).startBlock?.id).toBe('b');
 	});
 
 	it('Escape closes the bar and selects the current match in the editor', async () => {
@@ -237,7 +238,7 @@ describe('next and previous — wrapping, revealing a closed toggle’s body', (
 		await frame();
 		expect(bar()).toBeNull();
 		expect(document.querySelectorAll('[data-edytor-find-match]').length).toBe(0);
-		const { startBlock, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		const { startBlock, yStart, yEnd, isCollapsed } = selectionState(edytor);
 		expect([startBlock?.id, yStart, yEnd, isCollapsed]).toEqual(['a', 13, 18, false]);
 		expect(document.activeElement).toBe(editor);
 	});
@@ -300,7 +301,7 @@ describe('replace — one command, one undo step', () => {
 		// One command, its steps shown to hooks under their names.
 		expect(seen.filter((op) => op === 'replaceMatches')).toHaveLength(1);
 		expect(seen.filter((op) => op === 'insertText')).toHaveLength(5);
-		expect(seen.filter((op) => op === 'deleteContentAtRange')).toHaveLength(5);
+		expect(seen.filter((op) => op === 'deleteText')).toHaveLength(5);
 		expect(count()).toBe('No results');
 
 		edytor.historyUndo();

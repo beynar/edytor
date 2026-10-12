@@ -41,10 +41,8 @@
  * - `handlers` — ws adds `messageAuth` (the auth reply exists only on a
  *   server socket — a BC room has no authority to deny).
  */
-import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as env from 'lib0-v14/environment';
 import * as promise from 'lib0-v14/promise';
 import {
 	applyAwarenessUpdate,
@@ -211,6 +209,41 @@ const awarenessFrame = (awareness: Awareness, clients: number[], states?: Awaren
 		encoding.writeVarUint8Array(e, encodeAwarenessUpdate(awareness, clients, states))
 	);
 
+/** A tab channel's subscriber: the bytes and who published them (`null`: another tab). */
+type TabSubscriber = (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
+const channels = new Map<string, { bc: BroadcastChannel; subs: Set<TabSubscriber> }>();
+const channelNamed = (room: string) => {
+	let c = channels.get(room);
+	if (c === undefined) {
+		const subs = new Set<TabSubscriber>();
+		const bc = new BroadcastChannel(room);
+		bc.onmessage = (e: MessageEvent) => subs.forEach((sub) => sub(e.data, null));
+		channels.set(room, (c = { bc, subs }));
+	}
+	return c;
+};
+
+/**
+ * The tabs of one browser, by room name: one `BroadcastChannel` per room,
+ * shared by this tab's subscribers. A publish reaches the other tabs and,
+ * at once, this tab's other subscribers (with the publisher as origin).
+ */
+export const tabs = {
+	subscribe: (room: string, f: TabSubscriber): void => void channelNamed(room).subs.add(f),
+	unsubscribe: (room: string, f: TabSubscriber): void => {
+		const c = channels.get(room);
+		if (c?.subs.delete(f) && c.subs.size === 0) {
+			c.bc.close();
+			channels.delete(room);
+		}
+	},
+	publish: (room: string, data: Uint8Array | ArrayBuffer, origin: unknown = null): void => {
+		const c = channelNamed(room);
+		c.bc.postMessage(data);
+		c.subs.forEach((sub) => sub(data, origin));
+	}
+};
+
 /** The outbound quarantine: a read-only document does not spread. */
 export const quarantined = (doc: YDoc): boolean => checkSchema(asEngineDoc(doc)) !== null;
 
@@ -264,7 +297,7 @@ export const initLifecycle = (
 		};
 	} else {
 		const leave = () => void destroy();
-		const proc = (env.isNode ? (globalThis as { process?: Listeners }).process : undefined) ?? {};
+		const proc = (globalThis as { process?: Listeners }).process ?? {};
 		proc.on?.('exit', leave);
 		host._leave = () => proc.off?.('exit', leave);
 	}
@@ -412,7 +445,7 @@ export type RoomProvider<P> = LifecycleHost & {
 /** A provider that joins the BroadcastChannel room. */
 export type BcMember = {
 	bcconnected: boolean;
-	_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+	_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 };
 
 /** Per-provider hooks — the real differences between the two transports. */
@@ -472,20 +505,9 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				// valid envelope surfaces through 'message-error'.
 				// A pending forged stamp this update would release is discarded
 				// (`discarded`) and reported the same way.
-				// A SyncStep2 is v2 on the wire: converted, then the one inbound path.
-				const payload = decoding.readVarUint8Array(decoder);
+				const update = decoding.readVarUint8Array(decoder);
 				const origin = emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider);
 				const onError = (error: Error) => provider.emit?.('message-error', [error, provider]);
-				let update: Uint8Array;
-				try {
-					update =
-						syncMessageType === syncProtocol.messageYjsSyncStep2
-							? syncProtocol.step2Update(payload)
-							: payload;
-				} catch (error) {
-					onError(error as Error);
-					return;
-				}
 				const { applied, problem, discarded } = syncProtocol.applyRemote(
 					provider.doc,
 					update,
@@ -567,13 +589,13 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 
 	/** The BC subscriber: replies go back on the room channel. */
 	const bcSubscriber = (provider: P) => {
-		const send = (buf: Uint8Array) => bc.publish(channelOf(provider), buf, provider);
-		return (data: ArrayBuffer, origin: unknown): void => {
+		const send = (buf: Uint8Array) => tabs.publish(channelOf(provider), buf, provider);
+		return (data: ArrayBuffer | Uint8Array, origin: unknown): void => {
 			if (origin === provider) return;
 			try {
 				readMessage(provider, new Uint8Array(data), false, send);
 			} catch (error) {
-				// lib0 delivers same-tab publishes synchronously — a malformed
+				// same-tab publishes are delivered synchronously — a malformed
 				// message must not propagate into the publisher's call stack.
 				provider.emit?.('message-error', [error, provider]);
 			}
@@ -625,12 +647,12 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	const connectBc = (provider: P & BcMember): void => {
 		const channel = channelOf(provider);
 		if (!provider.bcconnected) {
-			bc.subscribe(channel, provider._bcSubscriber);
+			tabs.subscribe(channel, provider._bcSubscriber);
 			provider.bcconnected = true;
 		}
 		const [sv, presence] = hello(provider);
 		for (const buf of [sv, frame(messageQueryAwareness, () => {}), presence]) {
-			bc.publish(channel, buf, provider);
+			tabs.publish(channel, buf, provider);
 		}
 	};
 
@@ -645,7 +667,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	const disconnectBc = (provider: P & BcMember): void => {
 		depart(provider);
 		if (provider.bcconnected) {
-			bc.unsubscribe(channelOf(provider), provider._bcSubscriber);
+			tabs.unsubscribe(channelOf(provider), provider._bcSubscriber);
 			provider.bcconnected = false;
 		}
 	};

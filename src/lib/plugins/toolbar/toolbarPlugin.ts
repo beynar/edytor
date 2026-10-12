@@ -1,9 +1,9 @@
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
-import Toolbar from './Toolbar.svelte';
-import LinkCard from './LinkCard.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { mountChrome } from '../chrome.js';
+import { placeNear } from '$lib/surface/overlay.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** A press in a field of the chrome (an input, a select): it takes focus. */
 const isNativeFieldEvent = (event: Event) =>
@@ -13,9 +13,9 @@ const isNativeFieldEvent = (event: Event) =>
 
 export type ToolbarOptions = {
 	/**
-	 * Replace the toolbar; it renders while `controller.isVisible`, placed
-	 * above the selection. A press on it never takes the editor's focus (its
-	 * fields, an input or a select, take their own). Keep the built-in
+	 * The toolbar's markup; it renders while `controller.isVisible`, placed
+	 * above the selection (without it, nothing shows). A press on it never takes the editor's focus (its
+	 * fields, an input or a select, take their own). Give it the
 	 * keyboard and ARIA with its attachments: `{@attach controller.popup}`
 	 * and `{@attach controller.keys}` on the bar (its id, role, placement and
 	 * publication; the shortcut that reaches it, the roving tab stop and
@@ -24,44 +24,34 @@ export type ToolbarOptions = {
 	 */
 	toolbar?: Snippet<[ToolbarController]>;
 	/**
-	 * The card shown under a hovered link, with its URL, Open, Edit (the link
-	 * panel) and Remove (`link.card`). `false` shows none. Default `true`.
-	 */
-	linkCard?: boolean;
-	/**
-	 * Replace the link card's markup; it renders while `controller.card`,
-	 * just below the hovered link (`controller.hoveredHref`, and
-	 * `openHovered`, `editHovered`, `removeHovered`). A press on it never
-	 * takes the editor's focus.
+	 * The card shown under a hovered link (`link.card`): it renders while
+	 * `controller.card`, just below the hovered link (`controller.hoveredHref`,
+	 * and `openHovered`, `editHovered`, `removeHovered`); without it, no
+	 * card. A press on it never takes the editor's focus.
 	 */
 	card?: Snippet<[ToolbarController]>;
-	/** The words the toolbar and the link card show, over the English ones. */
-	labels?: PartialLabels<'toolbar'>;
 };
 
-/** The selection toolbar, with your own markup through a `toolbar` snippet. */
+/** The selection toolbar, drawn by your `toolbar` snippet, and the link card by your `card`. */
 export const createToolbarPlugin =
 	(options: ToolbarOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new ToolbarController(edytor, labelsWith('toolbar', options.labels));
+		const controller = new ToolbarController(edytor);
 
 		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after. */
 		const positionToolbar = (host: HTMLElement) => {
 			const editor = edytor.node;
 			if (!editor || !controller.isVisible) return;
-			const view = editor.ownerDocument.defaultView;
 			const selection = editor.ownerDocument.getSelection();
-			if (!view || !selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
+			if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
 			const range = selection.getRangeAt(0);
 			if (typeof range.getBoundingClientRect !== 'function') return;
-			const rect = range.getBoundingClientRect();
-			// The bar, not its open panel: panels drop over the text below it.
-			const toolbar = host.querySelector('[data-edytor-toolbar-bar]') ?? host.firstElementChild;
-			const width = toolbar?.getBoundingClientRect().width || 460;
-			const height = toolbar?.getBoundingClientRect().height || 40;
-			const left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, view.innerWidth - width - 8))}px`;
-			const top = `${rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8}px`;
-			return () => Object.assign(host.style, { left, top });
+			return placeNear(host, range.getBoundingClientRect(), [460, 40], {
+				above: true,
+				center: true,
+				// The bar, not its open panel: panels drop over the text below it.
+				box: host.querySelector('[data-edytor-toolbar-bar]') ?? host.firstElementChild
+			});
 		};
 
 		/** Just below the hovered link, flush with it (the host's top padding bridges the two). */
@@ -96,14 +86,11 @@ export const createToolbarPlugin =
 			const out = (event: MouseEvent) => {
 				if (!inside(event.relatedTarget) && !linkOf(event.relatedTarget)) controller.hover(null);
 			};
-			node.addEventListener('mouseover', over);
-			node.addEventListener('mouseout', out);
-			card.addEventListener('mouseout', out as EventListener);
-			return () => {
-				node.removeEventListener('mouseover', over);
-				node.removeEventListener('mouseout', out);
-				card.removeEventListener('mouseout', out as EventListener);
-			};
+			return all(
+				listen(node, 'mouseover', over),
+				listen(node, 'mouseout', out),
+				listen(card, 'mouseout', out)
+			);
 		};
 
 		/**
@@ -139,49 +126,47 @@ export const createToolbarPlugin =
 				edytor.overlay.invalidate();
 			},
 			onEdytorAttached: () => {
-				const unmount = edytor.overlay.mount(
-					Toolbar,
-					{ controller, toolbar: options.toolbar },
-					'edytor-toolbar-host',
-					60,
-					positionToolbar
-				);
+				const offs: (() => void)[] = [];
 				// No press on the chrome takes focus, its background and a custom
 				// snippet's markup included (not only its buttons): the editor keeps
 				// its focus and its selection. A field (the link panel's input) takes
 				// its own. Every press has a `mousedown`, WebKit's lone one too
 				// (`onFocus.ts`), so no `pointerdown` is cancelled.
-				const host = edytor.overlay.layer?.querySelector('[data-edytor-toolbar-host]');
 				const keep = (event: Event) => {
 					if (!isNativeFieldEvent(event)) event.preventDefault();
 				};
-				host?.addEventListener('mousedown', keep);
-				if (options.linkCard === false)
-					return () => {
-						host?.removeEventListener('mousedown', keep);
-						unmount();
-					};
-				const unmountCard = edytor.overlay.mount(
-					LinkCard,
-					{ controller, card: options.card },
+				/** Mount `snippet` in the overlay while `shown`, its host keeping the focus on a press. */
+				const mount = (
+					snippet: Snippet<[ToolbarController]> | undefined,
+					shown: () => unknown,
+					name: string,
+					zIndex: number,
+					measure: (host: HTMLElement) => (() => void) | void
+				) => {
+					offs.push(mountChrome(edytor, snippet, controller, shown, { name, zIndex, measure }));
+					const host = snippet && edytor.overlay.layer?.querySelector(`[data-${name}]`);
+					offs.push(listen(host, 'mousedown', keep));
+					return host;
+				};
+				mount(
+					options.toolbar,
+					() => controller.isVisible,
+					'edytor-toolbar-host',
+					60,
+					positionToolbar
+				);
+				const card = mount(
+					options.card,
+					() => controller.card,
 					'edytor-link-card-host',
 					61,
 					positionCard
 				);
-				const cardHost = edytor.overlay.layer?.querySelector('[data-edytor-link-card-host]');
-				cardHost?.addEventListener('mousedown', keep);
-				const untrack = edytor.node && cardHost ? trackLinks(edytor.node, cardHost) : () => {};
+				if (edytor.node && card) offs.push(trackLinks(edytor.node, card));
+				offs.push(() => controller.hover(null));
 				return () => {
-					host?.removeEventListener('mousedown', keep);
-					cardHost?.removeEventListener('mousedown', keep);
-					untrack();
-					controller.hover(null);
-					unmountCard();
-					unmount();
+					for (const off of offs.reverse()) off();
 				};
 			}
 		};
 	};
-
-/** The Notion-style selection toolbar. */
-export const toolbarPlugin = createToolbarPlugin();

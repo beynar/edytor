@@ -1,28 +1,24 @@
 /**
  * One element of the bounded read stream produced by {@link RangeCursor#read}
- * — the read-side analogue of a delta op's content payload, carrying the same
- * attribution inputs `YNode#toDelta` consumes (mode `1` semantics).
+ * — one live piece of content overlapping the range, with the formats folded
+ * at it.
  *
  * @typedef {Object} RangePiece
  * @property {AbstractContent} content - the piece's content object. BORROWED
- *   from the item (never mutated, never copied) or produced by the renderer.
+ *   from the item (never mutated, never copied).
  *   Emit `[offset, offset + len)` of it: slice `content.str` for
- *   `ContentString` (UTF-16 units — identical to clipping a `toDelta` insert
- *   op's string) and index `content.getContent()` for element content.
+ *   `ContentString` (UTF-16 units) and index `content.getContent()` for
+ *   element content.
  * @property {ID} id - replicated id of the first emitted element.
  * @property {number} index - rendered position the emitted range starts at.
  * @property {number} offset - start of the emitted range inside `content`.
- * @property {number} len - rendered length of the emitted range. `0` for
- *   `ContentFormat` markers and for pieces occupying no rendered position
- *   (renderer-hidden or unattributed tombstones).
- * @property {boolean} deleted - effective tombstone flag (renderer-aware: a
- *   restored piece clears it, an attributed tombstone keeps it).
- * @property {Array<ContentAttribute<any>>?} attrs - native attribution
- *   inputs (`createAttributionFromAttributionItems` computes the delta-level
- *   `Attribution` from them); `null` when unattributed.
+ * @property {number} len - rendered length of the emitted range (`0` for a
+ *   live piece occupying no position).
+ * @property {boolean} deleted - always `false`: a read emits live content only.
+ * @property {null} attrs - always `null` (no attribution layer).
  * @property {Object<string,any>|undefined} formats - folded format state at
- *   the piece (the `toDelta` `format` object equivalent). SHARED between
- *   adjacent pieces of one fold state — treat as read-only.
+ *   the piece. SHARED between adjacent pieces of one fold state — treat as
+ *   read-only.
  */
 /**
  * A forward-only, read-only cursor over one `YNode` list. Fields mirror
@@ -32,20 +28,13 @@
  */
 export class RangeCursor {
     /**
-     * @param {YNode<any>} parent - the list node to read.
-     * @param {AbstractRenderer?} [renderer] - defaults to the node's active
-     *   renderer (`this._renderer`), the `toDelta`/`applyDelta` convention.
-     *   Pass `null` to force the generic interpretation.
+     * @param {YNode} parent - the list node to read.
      */
-    constructor(parent: YNode<any>, renderer?: AbstractRenderer | null);
+    constructor(parent: YNode);
     /**
-     * @type {YNode<any>}
+     * @type {YNode}
      */
-    parent: YNode<any>;
-    /**
-     * @type {AbstractRenderer?}
-     */
-    renderer: AbstractRenderer | null;
+    parent: YNode;
     /**
      * The next unprocessed sequence item — a parked cursor keeps `index` at
      * its left edge.
@@ -55,7 +44,7 @@ export class RangeCursor {
     /**
      * Rendered units strictly before `p` — the
      * `ItemTextListPosition#index`/`ArraySearchMarker#index` space
-     * (countable, non-deleted units while `renderer === null`).
+     * (countable, non-deleted units).
      * @type {number}
      */
     index: number;
@@ -83,30 +72,25 @@ export class RangeCursor {
      * from the best engine-owned checkpoint — an `ArraySearchMarker`
      * carrying a `formats` snapshot.
      *
-     * Read-seed eligibility is deliberately WEAKER than `applyDelta`'s
-     * mutation seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
+     * Read-seed eligibility is deliberately WEAKER than the write cursor's
+     * seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
      * of the target — the forward fold reproduces format state from the
      * snapshot — while the mutation cursor must anchor on the FIRST item at
      * the index (its `p.left` must be countable-or-null). Both consume the
      * same marker records and snapshots.
      *
-     * Restricted to `renderer === null` for the same reason the mutation seed
-     * is: `marker.index` records the raw countable space, which a renderer's
-     * `contentLength` can reinterpret.
-     *
      * @param {number} index
      */
     seek(index: number): void;
     /**
-     * Fold one `ContentFormat` piece into the cursor's format state — the
-     * `!deleted` gate mirrors `ItemTextListPosition#forward`/`toDelta`: a
-     * tombstoned marker (or a piece the renderer renders as deleted) applies
-     * nothing.
+     * Fold one `ContentFormat` item into the cursor's format state — the
+     * `!deleted` gate mirrors `ItemTextListPosition#forward`: a tombstoned
+     * marker applies nothing.
      *
-     * @param {AttributedContent<any>} c
+     * @param {import('../structs/Item.js').Item} item
      * @param {{ markers: number }?} stats
      */
-    _foldPiece(c: AttributedContent<any>, stats: {
+    _foldItem(item: import("../structs/Item.js").Item, stats: {
         markers: number;
     } | null): void;
     /**
@@ -122,9 +106,8 @@ export class RangeCursor {
     } | undefined;
     /**
      * Emit the {@link RangePiece}s of `[i0, i1)` — a bounded, read-only walk
-     * of the item list producing the same pieces `toDelta`'s current-state
-     * render consumes (`readItemPieces`), clipped to the range and carrying
-     * folded format state + native attribution inputs.
+     * of the item list producing its live content, clipped to the range and
+     * carrying the folded format state.
      *
      * The cursor is left positioned to serve the NEXT forward read cheaply:
      * items fully consumed advance `p`/`index`; a range ending inside an
@@ -146,16 +129,16 @@ export class RangeCursor {
 }
 /**
  * One element of the bounded read stream produced by {@link RangeCursor#read}
- * — the read-side analogue of a delta op's content payload, carrying the same
- * attribution inputs `YNode#toDelta` consumes (mode `1` semantics).
+ * — one live piece of content overlapping the range, with the formats folded
+ * at it.
  */
 export type RangePiece = {
     /**
      * - the piece's content object. BORROWED
-     * from the item (never mutated, never copied) or produced by the renderer.
+     * from the item (never mutated, never copied).
      * Emit `[offset, offset + len)` of it: slice `content.str` for
-     * `ContentString` (UTF-16 units — identical to clipping a `toDelta` insert
-     * op's string) and index `content.getContent()` for element content.
+     * `ContentString` (UTF-16 units) and index `content.getContent()` for
+     * element content.
      */
     content: AbstractContent;
     /**
@@ -171,26 +154,22 @@ export type RangePiece = {
      */
     offset: number;
     /**
-     * - rendered length of the emitted range. `0` for
-     * `ContentFormat` markers and for pieces occupying no rendered position
-     * (renderer-hidden or unattributed tombstones).
+     * - rendered length of the emitted range (`0` for a
+     * live piece occupying no position).
      */
     len: number;
     /**
-     * - effective tombstone flag (renderer-aware: a
-     * restored piece clears it, an attributed tombstone keeps it).
+     * - always `false`: a read emits live content only.
      */
     deleted: boolean;
     /**
-     * - native attribution
-     * inputs (`createAttributionFromAttributionItems` computes the delta-level
-     * `Attribution` from them); `null` when unattributed.
+     * - always `null` (no attribution layer).
      */
-    attrs: Array<ContentAttribute<any>> | null;
+    attrs: null;
     /**
      * - folded format state at
-     * the piece (the `toDelta` `format` object equivalent). SHARED between
-     * adjacent pieces of one fold state — treat as read-only.
+     * the piece. SHARED between adjacent pieces of one fold state — treat as
+     * read-only.
      */
     formats: {
         [x: string]: any;

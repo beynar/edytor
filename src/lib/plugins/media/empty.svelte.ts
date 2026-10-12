@@ -21,9 +21,8 @@ export const MEDIA_ICONS: Record<MediaKind | 'image', string> = {
  */
 export type MediaEmptyFailure = 'invalid' | 'inline' | 'upload';
 
-/** What an empty block reads of its kind in a view: the app's snippet, how it stores a source. */
+/** What an empty block reads of its kind in a view: how it stores a source. */
 export type EmptyView = {
-	empty?: Snippet<[MediaEmptyController]>;
 	/** Store a link (or the URL an upload of `file` answered) on `block`: why it did not, or `null`. */
 	store: (block: Block, value: string, file?: File) => MediaEmptyFailure | null;
 };

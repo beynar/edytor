@@ -43,7 +43,8 @@ import {
 	richTextPlugin,
 	suggestionsPlugin,
 	video as createVideoPlugin,
-	videoPlugin
+	videoPlugin,
+	mediaEmptyPlugin
 } from '../../../routes/chrome/plugins.js';
 import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
@@ -58,7 +59,7 @@ const mount = async (plugins: Plugin[], children: JSONBlock[], readonly = false)
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [...plugins, richTextPlugin], readonly, value: { children } }
+		{ plugins: [...plugins, mediaEmptyPlugin, richTextPlugin], readonly, value: { children } }
 	);
 
 /** Type `value` into the empty panel's link field and press Enter. */

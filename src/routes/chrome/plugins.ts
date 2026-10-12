@@ -23,7 +23,7 @@ import {
 	createAudioPlugin,
 	type MentionPluginOptions,
 	type PageLinkPluginOptions,
-	type MediaPluginOptions,
+	createMediaEmptyPlugin,
 	createRichTextPlugin,
 	createCalloutIconsPlugin,
 	type CalloutIconsOptions,
@@ -82,13 +82,13 @@ export const tablePlugin = table();
 export const equation = (options: EquationPluginOptions = {}) =>
 	createEquationPlugin({ panel: chrome.equationPanel, ...options });
 export const image = (options: ImagePluginOptions = {}) =>
-	createImagePlugin({ toolbar: chrome.imageToolbar, empty: chrome.mediaEmpty, ...options });
+	createImagePlugin({ toolbar: chrome.imageToolbar, ...options });
 export const imagePlugin = image();
 export const embed = (options: EmbedPluginOptions = {}) =>
-	createEmbedPlugin({ menu: chrome.urlPasteMenu, empty: chrome.mediaEmpty, ...options });
+	createEmbedPlugin({ menu: chrome.urlPasteMenu, ...options });
 export const embedPlugin = embed();
 export const bookmark = (options: BookmarkPluginOptions = {}) =>
-	createBookmarkPlugin({ menu: chrome.urlPasteMenu, empty: chrome.mediaEmpty, ...options });
+	createBookmarkPlugin({ menu: chrome.urlPasteMenu, ...options });
 export const bookmarkPlugin = bookmark();
 export const richText = (options: RichTextPluginOptions = {}) => createRichTextPlugin(options);
 export const richTextPlugin = richText();
@@ -107,15 +107,14 @@ export const mention = (options: MentionPluginOptions) =>
 	createMentionPlugin({ menu: chrome.mentionMenu, ...options });
 export const pageLink = (options: PageLinkPluginOptions) =>
 	createPageLinkPlugin({ menu: chrome.pageLinkMenu, ...options });
-export const file = (options: MediaPluginOptions = {}) =>
-	createFilePlugin({ empty: chrome.mediaEmpty, ...options });
-export const video = (options: MediaPluginOptions = {}) =>
-	createVideoPlugin({ empty: chrome.mediaEmpty, ...options });
-export const audio = (options: MediaPluginOptions = {}) =>
-	createAudioPlugin({ empty: chrome.mediaEmpty, ...options });
+export const file = () => createFilePlugin();
+export const video = () => createVideoPlugin();
+export const audio = () => createAudioPlugin();
 export const filePlugin = file();
 export const videoPlugin = video();
 export const audioPlugin = audio();
+/** Every empty image and media block's panel (the demo's Notion "Add …" panels). */
+export const mediaEmptyPlugin = createMediaEmptyPlugin({ empty: chrome.mediaEmpty });
 export const marquee = (options: MarqueePluginOptions = {}) =>
 	createMarqueePlugin({ box: chrome.marqueeBox, ...options });
 export const marqueePlugin = marquee();

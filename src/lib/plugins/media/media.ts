@@ -38,7 +38,6 @@ export const mediaView = (edytor: Edytor | undefined, kind: MediaKind): MediaVie
 export const mediaPlugin =
 	(
 		kind: MediaKind,
-		options: MediaPluginOptions,
 		keywords: string[],
 		own: (
 			edytor: Edytor,
@@ -55,7 +54,7 @@ export const mediaPlugin =
 		if (claims)
 			views.set(edytor, {
 				...kinds,
-				[kind]: { empty: options.empty, ...view }
+				[kind]: view
 			});
 		return {
 			...hooks,
@@ -106,16 +105,6 @@ export const safeMediaSrc = (value: unknown): string | null => {
 	return origin ? `blob:${origin}` : safeWebUrl(value);
 };
 
-/** The file, video and audio plugins' options (uploads: `createUploadsPlugin`). */
-export type MediaPluginOptions = {
-	/**
-	 * An empty block's markup and its words (its "Add …" button and link panel, its upload's
-	 * progress, or a readonly view's placeholder; without it, nothing): the
-	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
-	 * `embed`, `upload`, `readonly`) is its argument.
-	 */
-	empty?: Snippet<[MediaEmptyController]>;
-};
 
 /** One allowlisted embed provider: which links it plays, and its player. */
 export type EmbedProvider = {

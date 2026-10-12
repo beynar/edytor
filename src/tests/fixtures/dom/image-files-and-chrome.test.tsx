@@ -41,7 +41,8 @@ import { selectBlocks } from '../../selection.js';
 import {
 	image as createImagePlugin,
 	imagePlugin,
-	richTextPlugin
+	richTextPlugin,
+	mediaEmptyPlugin
 } from '../../../routes/chrome/plugins.js';
 import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
@@ -72,7 +73,8 @@ const mount = (upload?: (file: File) => Promise<string>) =>
 			plugins: [
 				...(upload ? [createUploadsPlugin({ upload })] : []),
 				richTextPlugin,
-				createImagePlugin()
+				createImagePlugin(),
+				mediaEmptyPlugin
 			]
 		}
 	);
@@ -296,7 +298,7 @@ describe('a pasted image file goes through `upload` (WU-21)', () => {
 			<root>
 				<paragraph>hello|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin] }
 		);
 		const was = plain.edytor.value;
 		await pasteFiles(plain.editor, [png()]);
@@ -401,7 +403,7 @@ describe('HTML import reads a bare <img> (WU-21, flow.html.void)', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin] }
 		);
 		return edytor;
 	};
@@ -477,7 +479,7 @@ describe('HTML import reads a bare <img> (WU-21, flow.html.void)', () => {
 			<root>
 				<paragraph>hello|</paragraph>
 			</root>,
-			{ plugins: [richTextPlugin, imagePlugin] }
+			{ plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin] }
 		);
 		await dispatchClipboardPaste(editor, { 'text/html': `<img src="${src}" alt="A">` });
 		expect(canonicalTree(edytor).map((block) => block.type)).toEqual([
@@ -497,7 +499,7 @@ describe('alt, width and alignment (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin],
 				value: {
 					children: [
 						{ id: 'img', type: 'image', data: { src, ...data }, content: [{ text: 'cap' }] },
@@ -558,7 +560,7 @@ describe('the image chrome in the overlay (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin],
 				readonly,
 				value: {
 					children: [
@@ -629,7 +631,7 @@ describe('the image chrome in the overlay (WU-21)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [richTextPlugin, imagePlugin],
+				plugins: [richTextPlugin, imagePlugin, mediaEmptyPlugin],
 				value: {
 					children: [
 						{ id: 'a', type: 'image', data: { src }, content: [{ text: '' }] },

@@ -7,6 +7,7 @@
 	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { createEmbedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createMediaEmptyPlugin } from '$lib/plugins/media/MediaEmpty.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { createTablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { createCodePlugin } from '$lib/plugins/code/CodePlugin.svelte';
@@ -57,8 +58,10 @@
 				people.filter((person) => person.label.toLowerCase().includes(query.toLowerCase())),
 			menu: mentionMenu
 		}),
-		createEmbedPlugin({ menu: pasteMenu, empty: mediaEmpty }),
-		createImagePlugin({ toolbar: imageToolbar, empty: imageEmpty }),
+		createEmbedPlugin({ menu: pasteMenu }),
+		createImagePlugin({ toolbar: imageToolbar }),
+		// One snippet for every empty image and media block, by its kind.
+		createMediaEmptyPlugin({ empty: anyEmpty }),
 		createSuggestionsPlugin({ bar: suggestionBar }),
 		createTablePlugin({ grip: tableGrip, menu: tableMenu, add: tableAdd }),
 		createCodePlugin({ header: codeHeader, menu: languageMenu }),
@@ -351,6 +354,10 @@
 			/>
 		{/if}
 	</div>
+{/snippet}
+
+{#snippet anyEmpty(empty: MediaEmptyController)}
+	{#if empty.kind === 'image'}{@render imageEmpty(empty)}{:else}{@render mediaEmpty(empty)}{/if}
 {/snippet}
 
 {#snippet imageEmpty(empty: MediaEmptyController)}

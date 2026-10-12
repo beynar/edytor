@@ -1,7 +1,7 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import MediaEmpty from './MediaEmpty.svelte';
+	import EmptySlot from './EmptySlot.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
@@ -34,12 +34,6 @@
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
-		/**
-		 * An empty block's markup (its "Add …" button and link panel, or a
-		 * readonly view's placeholder; without it, nothing): it receives the block's
-		 * `MediaEmptyController` (`open`, `draft`, `failed`, `embed`, `readonly`).
-		 */
-		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	/** A preview's text field, trimmed and capped: it is stored in the document. */
@@ -72,7 +66,7 @@
 	 * `http(s)` link on an empty line offers "Bookmark".
 	 */
 	export const createBookmarkPlugin = (options: BookmarkPluginOptions = {}): Plugin =>
-		mediaPlugin('bookmark', options, ['link', 'url', 'preview', 'unfurl'], (edytor) => {
+		mediaPlugin('bookmark', ['link', 'url', 'preview', 'unfurl'], (edytor) => {
 			/**
 			 * Ask `unfurl` about `url` and store its answer on `block`, as one
 			 * data write outside the undo history (`UNFURL_ORIGIN`), when the
@@ -164,7 +158,7 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty
+			<EmptySlot
 				block={block.handle}
 				kind="bookmark"
 				viewOf={(edytor) => mediaView(edytor, 'bookmark')}

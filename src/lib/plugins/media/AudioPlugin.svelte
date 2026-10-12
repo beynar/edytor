@@ -1,6 +1,5 @@
 <script module lang="ts">
 	import type { Plugin } from '$lib/plugins.js';
-	import type { MediaPluginOptions } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
 
 	/**
@@ -8,6 +7,6 @@
 	 * through `upload`) in the browser's player, with an editable caption.
 	 * Void: its only text is the caption.
 	 */
-	export const createAudioPlugin = (options: MediaPluginOptions = {}): Plugin =>
-		sourcePlugin('audio', options, ['sound', 'music', 'mp3']);
+	export const createAudioPlugin = (): Plugin =>
+		sourcePlugin('audio', ['sound', 'music', 'mp3']);
 </script>

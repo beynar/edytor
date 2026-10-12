@@ -4,7 +4,7 @@ description: The image plugin adds Notion's image block, a void figure with an e
 icon: image
 ---
 
-`createImagePlugin()` adds Notion's image block: an "Add an image" panel (your `empty` snippet) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. List the uploads plugin, `createUploadsPlugin({ upload })`, and pasted or dropped image files become image blocks too.
+`createImagePlugin()` adds Notion's image block: an "Add an image" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. List the uploads plugin, `createUploadsPlugin({ upload })`, and pasted or dropped image files become image blocks too.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -36,10 +36,6 @@ An image plugin you list (any `createImagePlugin(...)`) replaces the default one
     toolbar: {
       type: "Snippet<[ImageControls]>",
       description: "The alignment buttons and the alt field over the hovered image, placed at its top right (without it, the resize handles alone). Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
-    },
-    empty: {
-      type: "Snippet<[MediaEmptyController]>",
-      description: "An empty image's markup (Add an image, its link panel, a readonly view's placeholder): open, draft, failed, embed, upload, readonly. Without it, an empty image shows nothing. See Menus and handles.",
     },
   }}
 />

@@ -14,6 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+- **Breaking: one snippet for every empty image and media block, `createMediaEmptyPlugin({ empty })`.** The image, embed, bookmark, file, video and audio plugins no longer take `empty` (six copies of one snippet): list `createMediaEmptyPlugin({ empty })` once; your snippet reads `controller.kind` to draw each kind's panel. `createFilePlugin()`, `createVideoPlugin()` and `createAudioPlugin()` take no options (`MediaPluginOptions` is gone). An app with `<Edytor />` ships no empty-block chrome (about 1.4 KB less minified JavaScript).
 - **Breaking: one uploader per view, `createUploadsPlugin({ upload })`.** The image, file, video and audio plugins no longer take `upload`: list `createUploadsPlugin({ upload })` once (the empty blocks' Upload and pasted or dropped files, each placed as a block of the kind that takes it). A kind takes files by its record's `upload` (`KindUpload`: `accepts`, `fallback`, `data`, `filled`, `preview`); your uploader may branch on the file's type. An app with `<Edytor />` ships no upload machinery (about 2 KB less minified JavaScript).
 - **Breaking: the `details` and `horizontalRule` kinds are removed**: they were other names for `toggle` and `divider` (stored ones render as unknown kinds; HTML import already read `<details>` and `<hr>` as those).
 - **Breaking: the callout icon picker is its own plugin.** `createRichTextPlugin({ callout })` takes only `icon` (the default icon); list `createCalloutIconsPlugin({ picker, icons })` for the picker (`picker` your markup, `icons` the choices, `CALLOUT_ICONS` by default) and the block menu's Change icon row. Without it, a callout's icon is no button and an app with `<Edytor />` ships no picker (about 5 KB less minified JavaScript).
@@ -1130,6 +1131,7 @@ Every public change since 0.0.11, by area.
 
 ### Plugins and the extension API
 
+- **Empty image and media blocks** are drawn by one plugin, `createMediaEmptyPlugin({ empty })`: one snippet for every kind (`controller.kind`).
 - **Uploads** are one plugin, `createUploadsPlugin({ upload })`: the view's uploader for the empty blocks' Upload and for pasted and dropped files; a kind's record `upload` (`KindUpload`) says which files it takes.
 - **Callout icons** are their own plugin, `createCalloutIconsPlugin({ picker, icons })`: the picker and the block menu's Change icon row; `createRichTextPlugin({ callout: { icon } })` keeps the default icon.
 - **Restyling a kind** is a plugin listed first that names its `snippet`: definitions are first-wins field by field, so the rest of the kind's definition stays. A placeholder is a plugin's `placeholder` (the first plugin that declares one). `<Edytor>` takes no snippet or `placeholder` prop.

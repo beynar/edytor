@@ -8,7 +8,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
-import { image as createImagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import {
+	image as createImagePlugin,
+	mediaEmptyPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
@@ -26,7 +30,8 @@ const mount = async (readonly: boolean) => {
 				createUploadsPlugin({ upload }),
 				richTextPlugin,
 				mentionPlugin,
-				createImagePlugin()
+				createImagePlugin(),
+				mediaEmptyPlugin
 			],
 			readonly,
 			value: { children: [{ type: 'image', content: [{ text: '' }] }] }

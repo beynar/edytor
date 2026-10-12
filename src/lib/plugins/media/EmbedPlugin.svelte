@@ -1,7 +1,7 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import MediaEmpty from './MediaEmpty.svelte';
+	import EmptySlot from './EmptySlot.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
@@ -34,12 +34,6 @@
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
-		/**
-		 * An empty block's markup (its "Add …" button and link panel, or a
-		 * readonly view's placeholder; without it, nothing): it receives the block's
-		 * `MediaEmptyController` (`open`, `draft`, `failed`, `embed`, `readonly`).
-		 */
-		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	/**
@@ -62,7 +56,6 @@
 		const allowed = options.providers ?? EMBED_PROVIDERS;
 		return mediaPlugin(
 			'embed',
-			options,
 			['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
 			(edytor) => ({
 				providers: allowed,
@@ -138,7 +131,7 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty
+			<EmptySlot
 				block={block.handle}
 				kind="embed"
 				viewOf={(edytor) => mediaView(edytor, 'embed')}

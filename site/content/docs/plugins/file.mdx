@@ -4,7 +4,7 @@ description: The file plugin adds Notion's file block, an attachment uploaded th
 icon: paperclip
 ---
 
-`createFilePlugin()` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+`createFilePlugin()` adds Notion's file block: an empty panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -28,16 +28,8 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
 
 ## Options
 
-`createFilePlugin(options)` takes a `MediaPluginOptions` (shared with [video](/docs/plugins/video) and [audio](/docs/plugins/audio)):
+`createFilePlugin()` takes no options; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
 
-<TypeTable
-  type={{
-    empty: {
-      type: "Snippet<[MediaEmptyController]>",
-      description: "The empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder); without it, an empty block shows nothing. See Menus and handles.",
-    },
-  }}
-/>
 
 ## The kind
 

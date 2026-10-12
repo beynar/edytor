@@ -4,7 +4,7 @@ description: The audio plugin adds Notion's audio block, an audio file in the br
 icon: music
 ---
 
-`createAudioPlugin()` adds Notion's audio block: an "Embed audio" panel (your `empty` snippet) until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
+`createAudioPlugin()` adds Notion's audio block: an "Embed audio" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -18,7 +18,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. Witho
 
 ## Options
 
-`createAudioPlugin(options)` takes a `MediaPluginOptions`: `empty` (a `Snippet<[MediaEmptyController]>`) draws the empty block, without which it shows nothing ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). With the uploads plugin listed, the empty block has an Upload (`accept="audio/*"`) and pasted and dropped audio files become audio blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); the answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createAudioPlugin()` takes no options. The empty block is drawn by the view's media empty plugin ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). With the uploads plugin listed, the empty block has an Upload (`accept="audio/*"`) and pasted and dropped audio files become audio blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); the answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

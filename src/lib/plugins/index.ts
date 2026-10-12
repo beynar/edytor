@@ -95,10 +95,13 @@ export { createAudioPlugin } from './media/AudioPlugin.svelte';
 export {
 	safeWebUrl,
 	safeMediaSrc,
-	type MediaKind,
-	type MediaPluginOptions
+	type MediaKind
 } from './media/media.js';
 export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
+export {
+	createMediaEmptyPlugin,
+	type MediaEmptyOptions
+} from './media/MediaEmpty.svelte';
 export type { UrlPasteController, UrlPasteOffer, UrlPasteOption } from './media/urlPaste.svelte.js';
 export type { ImageControls, ImageBox } from './image/controls.svelte.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';

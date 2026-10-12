@@ -38,7 +38,7 @@ import type {
 	MarqueeBoxPayload,
 	MarqueePluginOptions,
 	MediaEmptyController,
-	MediaPluginOptions,
+	MediaEmptyOptions,
 	MentionItem,
 	MentionPluginOptions,
 	MenuItemPayload,
@@ -77,10 +77,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<EmbedPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<ImagePluginOptions['toolbar']>>().toEqualTypeOf<ImageControls>();
-		expectTypeOf<Payload<ImagePluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
-		expectTypeOf<Payload<MediaPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
-		expectTypeOf<Payload<EmbedPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
-		expectTypeOf<Payload<BookmarkPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
+		expectTypeOf<Payload<MediaEmptyOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<CommentsPluginOptions['card']>>().toEqualTypeOf<CommentCardPayload>();
 		expectTypeOf<Payload<CommentsPluginOptions['header']>>().toEqualTypeOf<CommentsController>();
 		expectTypeOf<Payload<SuggestionsOptions['bar']>>().toEqualTypeOf<SuggestionBarPayload>();

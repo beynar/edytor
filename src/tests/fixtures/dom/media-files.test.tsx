@@ -21,7 +21,8 @@ import {
 	file as createFilePlugin,
 	image as createImagePlugin,
 	richTextPlugin,
-	video as createVideoPlugin
+	video as createVideoPlugin,
+	mediaEmptyPlugin
 } from '../../../routes/chrome/plugins.js';
 import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
@@ -53,7 +54,7 @@ const mount = (plugins: Plugin[], readonly = false) =>
 		<root>
 			<paragraph>hello|</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, ...plugins], readonly }
+		{ plugins: [richTextPlugin, mediaEmptyPlugin, ...plugins], readonly }
 	);
 
 const pasteFiles = async (target: HTMLElement, files: File[]) => {

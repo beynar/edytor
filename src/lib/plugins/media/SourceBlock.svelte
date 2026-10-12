@@ -1,6 +1,6 @@
 <script module lang="ts">
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
-	import MediaEmpty from './MediaEmpty.svelte';
+	import EmptySlot from './EmptySlot.svelte';
 	import { labelsOf, mediaEnglish } from '$lib/labels.js';
 	import {
 		claimed,
@@ -9,8 +9,7 @@
 		mediaPlugin,
 		mediaSourceOf,
 		mediaView,
-		safeMediaSrc,
-		type MediaPluginOptions
+		safeMediaSrc
 	} from './media.js';
 
 	type SourceKind = 'video' | 'audio' | 'file';
@@ -48,7 +47,6 @@
 	 */
 	export const sourcePlugin = (
 		kind: SourceKind,
-		options: MediaPluginOptions,
 		keywords: string[],
 		record: Partial<BlockDefinition> = {
 			html: (block, caption) => {
@@ -63,7 +61,7 @@
 			}
 		}
 	): Plugin =>
-		mediaPlugin(kind, options, keywords, () => {
+		mediaPlugin(kind, keywords, () => {
 			return {
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
@@ -132,7 +130,7 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty
+			<EmptySlot
 				block={block.handle}
 				kind={block.type as SourceKind}
 				viewOf={(edytor) => mediaView(edytor, block.type as SourceKind)}

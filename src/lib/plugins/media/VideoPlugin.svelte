@@ -1,6 +1,5 @@
 <script module lang="ts">
 	import type { Plugin } from '$lib/plugins.js';
-	import type { MediaPluginOptions } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
 
 	/**
@@ -9,6 +8,6 @@
 	 * A YouTube or Vimeo link is an embed (`createEmbedPlugin()`). Void: its only
 	 * text is the caption.
 	 */
-	export const createVideoPlugin = (options: MediaPluginOptions = {}): Plugin =>
-		sourcePlugin('video', options, ['movie', 'mp4', 'clip']);
+	export const createVideoPlugin = (): Plugin =>
+		sourcePlugin('video', ['movie', 'mp4', 'clip']);
 </script>

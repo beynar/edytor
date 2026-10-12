@@ -4,7 +4,7 @@ description: The video plugin adds Notion's video block, a video file in the bro
 icon: video
 ---
 
-`createVideoPlugin()` adds Notion's video block: an "Embed a video" panel (your `empty` snippet) until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
+`createVideoPlugin()` adds Notion's video block: an "Embed a video" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -28,7 +28,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. Witho
 
 ## Options
 
-`createVideoPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="video/*"`) and taking pasted and dropped video files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); and `empty` (a `Snippet<[MediaEmptyController]>`) draws the empty block, without which it shows nothing ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createVideoPlugin()` takes no options. The empty block is drawn by the view's media empty plugin ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)); with the uploads plugin listed, it has an Upload (`accept="video/*"`) and pasted and dropped video files become video blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

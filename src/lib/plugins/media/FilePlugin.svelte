@@ -1,6 +1,6 @@
 <script module lang="ts">
 	import type { Plugin } from '$lib/plugins.js';
-	import { escapeHtml, fileNameOf, safeMediaSrc, type MediaPluginOptions } from './media.js';
+	import { escapeHtml, fileNameOf, safeMediaSrc } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
 
 	/**
@@ -8,8 +8,8 @@
 	 * linked), shown as its name and size, linking to the file, with an
 	 * editable caption. Void: its only text is the caption.
 	 */
-	export const createFilePlugin = (options: MediaPluginOptions = {}): Plugin =>
-		sourcePlugin('file', options, ['attachment', 'upload', 'pdf', 'document'], {
+	export const createFilePlugin = (): Plugin =>
+		sourcePlugin('file', ['attachment', 'upload', 'pdf', 'document'], {
 			html: (block, caption) => {
 				const src = safeMediaSrc(block.data?.src);
 				const name = String(block.data?.name || (src && fileNameOf(src)) || '');

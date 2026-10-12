@@ -4,7 +4,7 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import MediaEmpty from '../media/MediaEmpty.svelte';
+	import EmptySlot from '../media/EmptySlot.svelte';
 	import ImageChrome from './ImageChrome.svelte';
 	import { imageKinds } from '$lib/crdt/semantics.js';
 	import {
@@ -44,14 +44,6 @@
 		 * toolbar and `{@attach controls.altField}` on the alt field.
 		 */
 		toolbar?: Snippet<[ImageControls]>;
-		/**
-		 * An empty image's markup and its words (Notion's "Add an image" and its
-		 * link panel, a pasted or dropped file's upload, or the placeholder of a
-		 * readonly view; without it, nothing): it receives the block's
-		 * `MediaEmptyController` (`kind` `image`; `open`, `draft`, `failed`,
-		 * `pending`, `embed`, `upload`, `readonly`), as a media block's `empty` does.
-		 */
-		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	/** The data an image block reads (all optional). */
@@ -59,7 +51,7 @@
 
 	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
 
-	/** One view's image state: its plugin's `empty` and source rule, the chrome. */
+	/** One view's image state: its source rule, the chrome. */
 	type View = EmptyView & { controls: ImageControls };
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
@@ -75,7 +67,6 @@
 			const labels = labelsOf(edytor, 'image', imageEnglish);
 			const own: View = {
 				controls: new ImageControls(edytor),
-				empty: pluginOptions.empty,
 				// An accepted source; an inline image over the cap is never stored.
 				store: (block, value) => {
 					const src = safeImageSrc(value);
@@ -188,7 +179,7 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>
-			<MediaEmpty
+			<EmptySlot
 				block={block.handle}
 				kind="image"
 				viewOf={(edytor) => (edytor ? views.get(edytor) : undefined)}

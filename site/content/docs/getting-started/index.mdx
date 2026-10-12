@@ -76,13 +76,13 @@ export const ssr = false; // an editable editor is client-only
 
 Turning SSR off renders the whole page in the browser. To keep the rest of the page server-rendered, mount the editor after hydration instead, as the [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) does; [SvelteKit](/docs/getting-started/sveltekit) explains why.
 
-You should see one empty paragraph. Hover it to reveal its block handle (touch devices always show it). An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image, arrow move and suggestions plugins by default, so this is already a working rich text editor.
+You should see one empty paragraph. An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image, arrow move and suggestions plugins by default, so this is already a working rich text editor, with its keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, …). It shows no menu, toolbar or block handle: those are snippets you pass their plugins. The [quick start](/docs/getting-started/quick-start#the-ready-made-menus-and-handles) gets you the demo's ready-made ones in one step.
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Quick start" href="/docs/getting-started/quick-start" icon="zap">
-    Build a full editor with the bundled plugins, content and change handling.
+    Add the ready-made menus and handles, content and change handling.
   </Card>
   <Card title="SvelteKit" href="/docs/getting-started/sveltekit" icon="server">
     Server rendering, readonly output and client-only mounting.

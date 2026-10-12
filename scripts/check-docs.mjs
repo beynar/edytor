@@ -36,6 +36,11 @@
  * `scripts/doc-examples/{app,worker}.d.ts` declare the few names the docs
  * leave to the reader (`// your storage`, your backend, the `Env` that
  * `wrangler types` writes), so the rest of each block is checked as written.
+ *
+ * `$lib/chrome/…` is the demo's chrome as the quick start has the reader
+ * copy it (`src/routes/chrome` into `src/lib/chrome`, its `$lib/index.js`
+ * imports naming `edytor`): it is written beside the examples that way and
+ * checked with them, against the package as a consumer installs it.
  * They declare functions and bindings, never a value a component reads: a
  * component or module that uses `edytor` without binding, importing or
  * declaring it fails, as it would in an app.
@@ -64,6 +69,7 @@ import { buildPackage, ROOT } from './package-declarations.mjs';
 const DOCS = path.join(ROOT, 'site/content/docs');
 const OUT = path.join(ROOT, '.svelte-kit/docexamples');
 const DECLARATIONS = path.join(ROOT, 'scripts/doc-examples');
+const CHROME = path.join(OUT, 'chrome');
 const BIN = path.join(ROOT, 'node_modules/.bin');
 const DIST = path.join(ROOT, 'node_modules/.cache/edytor-docs/dist');
 const keep = process.argv.includes('--keep');
@@ -177,10 +183,26 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
 for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
 	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
 rmSync(OUT, { recursive: true, force: true });
+// The demo's chrome, copied as the quick start says (`$lib/chrome/…`).
+mkdirSync(CHROME, { recursive: true });
+for (const name of readdirSync(path.join(ROOT, 'src/routes/chrome')))
+	writeFileSync(
+		path.join(CHROME, name),
+		readFileSync(path.join(ROOT, 'src/routes/chrome', name), 'utf8').replaceAll(
+			'$lib/index.js',
+			'edytor'
+		)
+	);
 // `$lib/x` names a block of the same page titled `src/lib/x`, as in an app.
 const local = ({ target, base, code }) =>
 	code.replace(/(['"])\$lib\/([^'"]+)\1/g, (whole, quote, rest) => {
-		const named = path.join(base, 'lib', rest);
+		const named = rest.startsWith('chrome/')
+			? path.join(CHROME, rest.slice('chrome/'.length))
+			: path.join(base, 'lib', rest);
+		if (named.startsWith(CHROME + path.sep)) {
+			const relative = path.relative(path.dirname(target), named).replaceAll(path.sep, '/');
+			return `${quote}${relative}${quote}`;
+		}
 		if (![named, `${named}.ts`].some((file) => sourcesOf.has(file))) return whole;
 		const relative = path.relative(path.dirname(target), named).replaceAll(path.sep, '/');
 		return `${quote}${relative.startsWith('.') ? relative : `./${relative}`}${quote}`;
@@ -249,7 +271,7 @@ if (app.length) {
 			extends: path.join(ROOT, 'tsconfig.json'),
 			// `./$types` of a route under `app/` resolves into the project's types.
 			compilerOptions: { paths, rootDirs: [OUT, path.join(KIT, 'types')] },
-			include: [...ambient, ...app.map((example) => example.target)],
+			include: [...ambient, path.join(CHROME, '**/*'), ...app.map((example) => example.target)],
 			exclude: []
 		})
 	);

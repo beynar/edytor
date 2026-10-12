@@ -20,6 +20,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import { identify } from '../chrome.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
 const STOPS = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
@@ -117,12 +118,9 @@ export class ToolbarController {
 			}
 		};
 		rove();
-		node.addEventListener('focusin', focusin);
-		node.addEventListener('keydown', keydown);
-		return () => {
-			node.removeEventListener('focusin', focusin);
-			node.removeEventListener('keydown', keydown);
-		};
+		const off = listen(node, 'focusin', focusin);
+		const off2 = listen(node, 'keydown', keydown);
+		return all(off, off2);
 	};
 
 	/**
@@ -145,8 +143,7 @@ export class ToolbarController {
 				this.closePanel(true);
 			}
 		};
-		node.addEventListener('keydown', keydown);
-		return () => node.removeEventListener('keydown', keydown);
+		return listen(node, 'keydown', keydown);
 	};
 
 	/** Give the keyboard back to the editor (Escape in the bar), over the held selection. */

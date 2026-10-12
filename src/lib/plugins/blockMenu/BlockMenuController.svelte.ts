@@ -32,6 +32,7 @@ import {
 	type OptionAttributes
 } from '../chrome.js';
 import { holdKeys, listPopup, stepRow } from '../list.svelte.js';
+import { listen } from '$lib/utils/listen.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -197,8 +198,7 @@ export class BlockMenuController {
 	flyoutMenu: Attachment<HTMLElement> = (node) => {
 		identify(node, this.flyoutId, 'menu');
 		node.setAttribute('data-edytor-block-menu-flyout', '');
-		node.addEventListener('mousedown', keepFocus);
-		return () => node.removeEventListener('mousedown', keepFocus);
+		return listen(node, 'mousedown', keepFocus);
 	};
 
 	/**

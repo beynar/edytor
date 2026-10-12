@@ -12,6 +12,7 @@ import { Text } from '$lib/text/text.svelte.js';
 import { attribute } from '../chrome.js';
 import { languageOf, type CodeSettings } from './languages.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
 const COPIED_FOR = 1200;
@@ -131,19 +132,15 @@ export class CodeHeader {
 				else return;
 				event.preventDefault();
 			};
-			node.addEventListener('mousedown', mousedown);
-			node.addEventListener('click', click);
-			node.addEventListener('keydown', keydown);
+			const off = listen(node, 'mousedown', mousedown);
+			const off2 = listen(node, 'click', click);
+			const off3 = listen(node, 'keydown', keydown);
 			$effect(() => {
 				const expanded = this.expanded;
 				attribute(node, 'aria-expanded', String(expanded));
 				attribute(node, 'aria-controls', expanded ? this.menu?.listId : undefined);
 			});
-			return () => {
-				node.removeEventListener('mousedown', mousedown);
-				node.removeEventListener('click', click);
-				node.removeEventListener('keydown', keydown);
-			};
+			return all(off, off2, off3);
 		});
 
 	/**

@@ -24,7 +24,14 @@
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
-	import { DEFAULT_CALLOUT_ICON, calloutHtml, calloutIcons, iconOf } from './callouts.js';
+	import {
+		DEFAULT_CALLOUT_ICON,
+		calloutHtml,
+		calloutIcons,
+		calloutPickers,
+		iconOf
+	} from './callouts.js';
+	import { listen } from '$lib/utils/listen.js';
 
 	export { richTextOperations };
 
@@ -337,8 +344,7 @@
 					event.preventDefault();
 					openLink(href, node.ownerDocument.defaultView);
 				};
-				node.addEventListener('click', click);
-				return () => node.removeEventListener('click', click);
+				return listen(node, 'click', click);
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;
@@ -568,6 +574,20 @@
 					presets: presets('callout', [
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
+					// The block menu's Change icon, while the view lists a picker: the keyboard's way to it.
+					menu: (block) => {
+						const picker = calloutPickers.get(edytor);
+						return picker
+							? [
+									{
+										id: 'callout.icon',
+										label: labels.calloutIcon.change,
+										icon: 'block.callout',
+										run: () => picker.open(block)
+									}
+								]
+							: [];
+					},
 					// HTML import: its own export, the icon in its attribute.
 					parse: (el) => {
 						const own = el.getAttribute('data-edytor-callout');

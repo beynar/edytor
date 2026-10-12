@@ -3,6 +3,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { ToolbarController } from './ToolbarController.svelte.js';
 import { mountChrome } from '../chrome.js';
 import { placeNear } from '$lib/surface/overlay.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** A press in a field of the chrome (an input, a select): it takes focus. */
 const isNativeFieldEvent = (event: Event) =>
@@ -85,14 +86,11 @@ export const createToolbarPlugin =
 			const out = (event: MouseEvent) => {
 				if (!inside(event.relatedTarget) && !linkOf(event.relatedTarget)) controller.hover(null);
 			};
-			node.addEventListener('mouseover', over);
-			node.addEventListener('mouseout', out);
-			card.addEventListener('mouseout', out as EventListener);
-			return () => {
-				node.removeEventListener('mouseover', over);
-				node.removeEventListener('mouseout', out);
-				card.removeEventListener('mouseout', out as EventListener);
-			};
+			return all(
+				listen(node, 'mouseover', over),
+				listen(node, 'mouseout', out),
+				listen(card, 'mouseout', out)
+			);
 		};
 
 		/**
@@ -147,8 +145,7 @@ export const createToolbarPlugin =
 				) => {
 					offs.push(mountChrome(edytor, snippet, controller, shown, { name, zIndex, measure }));
 					const host = snippet && edytor.overlay.layer?.querySelector(`[data-${name}]`);
-					host?.addEventListener('mousedown', keep);
-					offs.push(() => host?.removeEventListener('mousedown', keep));
+					offs.push(listen(host, 'mousedown', keep));
 					return host;
 				};
 				mount(

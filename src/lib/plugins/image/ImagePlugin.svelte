@@ -25,6 +25,7 @@
 	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
+	import { listen } from '$lib/utils/listen.js';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -129,9 +130,9 @@
 					const layer = edytor.overlay.layer;
 					// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
 					const offPress = onPress(edytor, node.ownerDocument, controls.pressed, true);
-					node.addEventListener('pointerover', over);
-					node.addEventListener('pointerleave', leave);
-					layer?.addEventListener('pointerleave', leave);
+					const off = listen(node, 'pointerover', over);
+					const off2 = listen(node, 'pointerleave', leave);
+					const off3 = listen(layer, 'pointerleave', leave);
 					const unmount = edytor.overlay.mount(
 						ImageChrome,
 						{ controls, toolbar: pluginOptions.toolbar },
@@ -141,9 +142,9 @@
 						controls.measure
 					);
 					return () => {
-						node.removeEventListener('pointerover', over);
-						node.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerleave', leave);
+						off();
+						off2();
+						off3();
 						offPress();
 						unmount();
 						own.uploads?.destroy();

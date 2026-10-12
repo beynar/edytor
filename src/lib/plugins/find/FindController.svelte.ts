@@ -7,6 +7,7 @@ import type { CommandResult } from '$lib/session/commands.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
+import { listen } from '$lib/utils/listen.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
 export type ReplaceMatches = Commands['replaceMatches'];
@@ -178,8 +179,7 @@ export class FindController {
 			else return;
 			event.preventDefault();
 		};
-		node.addEventListener('keydown', keydown);
-		return () => node.removeEventListener('keydown', keydown);
+		return listen(node, 'keydown', keydown);
 	};
 
 	/** Stop following the document (the editor is going away). */

@@ -3,6 +3,7 @@ import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { MediaKind } from './media.js';
 import { fileUploads, type FileUpload, type Uploader } from '../uploads.svelte.js';
+import { listen } from '$lib/utils/listen.js';
 
 /** Each media kind's icon (the image's too): its menu row, its empty block, its paste offer. */
 export const MEDIA_ICONS: Record<MediaKind | 'image', string> = {
@@ -123,7 +124,6 @@ export class MediaEmptyController {
 			event.preventDefault();
 			this.embed();
 		};
-		node.addEventListener('keydown', keydown);
-		return () => node.removeEventListener('keydown', keydown);
+		return listen(node, 'keydown', keydown);
 	};
 }

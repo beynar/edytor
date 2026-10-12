@@ -7,20 +7,7 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { trackDrag } from '$lib/dnd/track.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
-
-/** Listen for each of the space-separated `types` on `target`; answers the cleanup. */
-export const listen = <E extends Event>(
-	target: EventTarget | null | undefined,
-	types: string,
-	listener: (event: E) => void,
-	capture = false
-) => {
-	const all = types.split(' ');
-	for (const type of all) target?.addEventListener(type, listener as EventListener, capture);
-	return () => {
-		for (const type of all) target?.removeEventListener(type, listener as EventListener, capture);
-	};
-};
+import { all, listen } from '$lib/utils/listen.js';
 
 /**
  * The pointer over a view for its chrome: `over` hears it over the host,
@@ -36,13 +23,13 @@ export const hoverChrome = (
 	drag: (event: Event) => void
 ) => {
 	const out = (event: PointerEvent) => leave(event.relatedTarget);
-	const offs = [
+	const off = all(
 		listen(node, 'pointerover', (event) => over(event.target)),
 		listen(node, 'pointerleave', out),
 		listen(edytor.overlay.layer, 'pointerleave', out),
 		listen(node.ownerDocument, 'dragstart dragend drop', drag, true)
-	];
-	return () => offs.forEach((off) => off());
+	);
+	return off;
 };
 
 /**
@@ -73,14 +60,14 @@ export class BandDrag<D extends { at: number }> {
 	press =
 		(start: (event: PointerEvent | MouseEvent) => void): Attachment<HTMLElement> =>
 		(node) => {
-			const offs = [
+			const off = all(
 				listen(node, 'pointerdown', start),
 				listen(node, 'mousedown', (event: MouseEvent) => {
 					event.preventDefault();
 					if (isLonePress(this.edytor, event)) start(event);
 				})
-			];
-			return () => offs.forEach((off) => off());
+			);
+			return off;
 		};
 
 	/**

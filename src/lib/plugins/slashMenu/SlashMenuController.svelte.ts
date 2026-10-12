@@ -11,6 +11,7 @@ import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.s
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import { attribute, isField, keepFocus } from '../chrome.js';
 import { holdKeys } from '../list.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /**
  * The view a `+`'s menu asks `isEnabled` of: the editor, its selection a
@@ -137,9 +138,9 @@ export class SlashMenuController extends TextTriggerController {
 			const to = event.relatedTarget;
 			if (this.addition && to instanceof Node && !menu.contains(to)) this.dismiss(false);
 		};
-		menu.addEventListener('focusin', focusin);
-		menu.addEventListener('focusout', focusout);
-		menu.addEventListener('mousedown', keepFocus);
+		const off2 = listen(menu, 'focusin', focusin);
+		const off3 = listen(menu, 'focusout', focusout);
+		const off4 = listen(menu, 'mousedown', keepFocus);
 		if (field) attribute(node, 'aria-controls', this.listId);
 		// A field takes the keys of the whole menu (a row a screen reader focused); a wrapper, its own.
 		const off = holdKeys(
@@ -148,12 +149,7 @@ export class SlashMenuController extends TextTriggerController {
 			() => (field && this.count ? this.rowId(this.index) : undefined),
 			field ? menu : node
 		);
-		return () => {
-			off();
-			menu.removeEventListener('focusin', focusin);
-			menu.removeEventListener('focusout', focusout);
-			menu.removeEventListener('mousedown', keepFocus);
-		};
+		return all(off, off2, off3, off4);
 	};
 
 	protected get count() {

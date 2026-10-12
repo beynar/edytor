@@ -48,7 +48,7 @@ import {
 	type DropPlacement
 } from './geometry.js';
 import { stacks } from '../columns/stacking.js';
-import { listen } from '../bands.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /**
  * The DOM event a grip click dispatches on the editor (the one way to
@@ -195,7 +195,7 @@ export class BlockHandleController {
 	 * selects the block and opens its menu, and the Alt+arrow moves.
 	 */
 	grip = (block: Block) => (node: HTMLElement) => {
-		const offs = [
+		const off = all(
 			listen(node, 'click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
@@ -204,8 +204,8 @@ export class BlockHandleController {
 			listen(node, 'pointerdown', (event) => event.stopPropagation()),
 			listen(node, 'keydown', (event: KeyboardEvent) => this.handleKeyDown(event, block)),
 			this.registerHandle(node, block)
-		];
-		return { destroy: () => offs.forEach((off) => off()) };
+		);
+		return { destroy: off };
 	};
 
 	/**

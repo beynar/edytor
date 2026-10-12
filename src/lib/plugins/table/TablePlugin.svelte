@@ -6,6 +6,7 @@
 	import { tableKinds } from '$lib/crdt/semantics.js';
 	import { listedColumns, tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
+	import { all } from '$lib/utils/listen.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import { tableEnglish, keywordsOf, labelsOf, type TableLabels } from '$lib/labels.js';
 	import { hoverChrome } from '../bands.svelte.js';
@@ -238,7 +239,7 @@
 				onEdytorAttached: ({ node }) => {
 					if (chromes.get(edytor) !== chrome) return;
 					const layer = edytor.overlay.layer;
-					const offs = [
+					const off = all(
 						hoverChrome(
 							edytor,
 							node,
@@ -269,8 +270,8 @@
 							6,
 							chrome.measure
 						)
-					];
-					return () => offs.forEach((off) => off());
+					);
+					return off;
 				}
 			};
 		};

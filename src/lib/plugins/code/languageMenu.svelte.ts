@@ -6,6 +6,7 @@ import { attribute, type MenuItemPayload } from '../chrome.js';
 import { ChromeList, holdKeys } from '../list.svelte.js';
 import { Anchored } from '../anchored.svelte.js';
 import { languageOf, type CodeSettings } from './languages.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** A row of the language list: a language id and its label as shown. */
 export type LanguageRow = { id: string; label: string };
@@ -178,14 +179,11 @@ export class LanguageMenu extends ChromeList {
 			node.setAttribute('aria-expanded', 'true');
 			node.setAttribute('aria-autocomplete', 'list');
 			attribute(node, 'aria-controls', this.listId);
-			node.addEventListener('focusout', this.panel.blurred);
+			const off2 = listen(node, 'focusout', this.panel.blurred);
 			const off = holdKeys(node, this.#keydown, () =>
 				this.rows.length ? this.rowId(this.index) : undefined
 			);
-			return () => {
-				off();
-				node.removeEventListener('focusout', this.panel.blurred);
-			};
+			return all(off, off2);
 		});
 
 	/** The search field's keys (`keys`). */

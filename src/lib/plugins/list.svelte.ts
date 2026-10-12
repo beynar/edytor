@@ -21,6 +21,7 @@ import {
 	optionAttributes,
 	type OptionAttributes
 } from './chrome.js';
+import { listen } from '$lib/utils/listen.js';
 
 /**
  * The keyboard's row after `key` among `count` rows from `at`, `undefined`
@@ -97,14 +98,14 @@ export const listPopup =
 		const id = edytor.popups.idOf(owner);
 		node.id = id;
 		if (!node.hasAttribute('role')) node.setAttribute('role', role);
-		node.addEventListener('mousedown', keepFocus);
+		const off = listen(node, 'mousedown', keepFocus);
 		$effect(() => {
 			const popup = open(node);
 			if (!popup) return;
 			edytor.popups.set(owner, { id, haspopup: role, ...popup });
 			return () => edytor.popups.set(owner, null);
 		});
-		return () => node.removeEventListener('mousedown', keepFocus);
+		return off;
 	};
 
 /**
@@ -123,11 +124,11 @@ export const holdKeys = (
 	untrack(() => {
 		if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
 	});
-	keyed.addEventListener('keydown', keydown);
+	const off = listen(keyed, 'keydown', keydown);
 	$effect(() => {
 		if (namesRows(node)) attribute(node, 'aria-activedescendant', inPage(node, active()));
 	});
-	return () => keyed.removeEventListener('keydown', keydown);
+	return off;
 };
 
 /** An open list the editor keeps the keyboard for, as its keys drive it. */

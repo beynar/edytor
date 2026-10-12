@@ -10,6 +10,7 @@ import { createAttachmentKey, type Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import Chrome from './Chrome.svelte';
 import { onPress } from '$lib/events/onFocus.js';
+import { all, listen } from '$lib/utils/listen.js';
 import {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -162,22 +163,16 @@ export const handleMenuEvents = (
 	add: (event: CustomEvent<BlockAddition>) => void,
 	inside: string,
 	outside: () => void
-) => {
-	const on = [
-		[BLOCK_ACTIVATE_EVENT, activate],
-		[BLOCK_ADD_EVENT, add]
-	] as [string, EventListener][];
-	for (const [name, listener] of on) node.addEventListener(name, listener);
-	const off = onPress(
-		edytor,
-		node.ownerDocument,
-		(event) => {
-			if (!(event.target as Element | null)?.closest?.(inside)) outside();
-		},
-		true
+) =>
+	all(
+		listen(node, BLOCK_ACTIVATE_EVENT, activate),
+		listen(node, BLOCK_ADD_EVENT, add),
+		onPress(
+			edytor,
+			node.ownerDocument,
+			(event) => {
+				if (!(event.target as Element | null)?.closest?.(inside)) outside();
+			},
+			true
+		)
 	);
-	return () => {
-		for (const [name, listener] of on) node.removeEventListener(name, listener);
-		off();
-	};
-};

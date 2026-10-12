@@ -18,7 +18,8 @@ import {
 	type OptionAttributes
 } from '../chrome.js';
 import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
-import { BandDrag, bandKey, listen } from '../bands.svelte.js';
+import { BandDrag, bandKey } from '../bands.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 import { dragPreview } from '../blockHandles/dragPreview.js';
 import {
 	caretCell,
@@ -730,7 +731,7 @@ export class TableChrome extends ChromeList {
 			attribute(node, 'aria-controls', open ? this.listId : undefined);
 			attribute(node, 'data-dragging', this.moving?.kind === kind ? 'true' : undefined);
 		});
-		const offs = [
+		const off = all(
 			listen(node, 'click', () => this.toggle(kind)),
 			listen(node, 'keydown', (event: KeyboardEvent) => {
 				// Escape gives the keys back to the editor (closing the menu if open).
@@ -762,8 +763,8 @@ export class TableChrome extends ChromeList {
 						this.edytor.overlay.invalidate();
 					})
 			})
-		];
-		return () => offs.forEach((off) => off());
+		);
+		return off;
 	};
 
 	/**

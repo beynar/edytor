@@ -7,6 +7,7 @@ import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** What a `handle` snippet receives. */
 export type BlockHandleSnippetPayload = {
@@ -146,10 +147,12 @@ export const createBlockHandlesPlugin =
 		return {
 			onEdytorAttached: ({ node }) => {
 				const layer = edytor.overlay.layer!;
-				node.addEventListener('pointerover', hover);
-				node.addEventListener('pointerleave', unhover);
-				layer.addEventListener('pointerover', hoverOverlay);
-				layer.addEventListener('pointerleave', unhover);
+				const offPointer = all(
+					listen(node, 'pointerover', hover),
+					listen(node, 'pointerleave', unhover),
+					listen(layer, 'pointerover', hoverOverlay),
+					listen(layer, 'pointerleave', unhover)
+				);
 				const offNear = measured ? edytor.overlay.add(measureNear) : undefined;
 				const { handle } = options;
 				const component =
@@ -159,10 +162,7 @@ export const createBlockHandlesPlugin =
 						props: { edytor, controller, blocks, near, hovered, handle }
 					});
 				return () => {
-					node.removeEventListener('pointerover', hover);
-					node.removeEventListener('pointerleave', unhover);
-					layer.removeEventListener('pointerover', hoverOverlay);
-					layer.removeEventListener('pointerleave', unhover);
+					offPointer();
 					offNear?.();
 					clearTimeout(afterPaint);
 					afterPaint = undefined;

@@ -11,6 +11,7 @@ import {
 	type ImageAlign
 } from './image.js';
 import { identify, keepFocus } from '../chrome.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** Where a press keeps the alt field open: the toolbar (its Alt button toggles it) and the field's own. */
 const ALT_CHROME =
@@ -208,8 +209,7 @@ export class ImageControls {
 	bar: Attachment<HTMLElement> = (node) => {
 		if (!node.hasAttribute('role')) node.setAttribute('role', 'toolbar');
 		node.setAttribute('data-edytor-image-toolbar', '');
-		node.addEventListener('mousedown', keepFocus);
-		return () => node.removeEventListener('mousedown', keepFocus);
+		return listen(node, 'mousedown', keepFocus);
 	};
 
 	/**
@@ -228,12 +228,9 @@ export class ImageControls {
 			event.preventDefault();
 			this.closeAlt(true);
 		};
-		node.addEventListener('keydown', keydown);
-		node.addEventListener('focusout', this.blurred);
-		return () => {
-			node.removeEventListener('keydown', keydown);
-			node.removeEventListener('focusout', this.blurred);
-		};
+		const off2 = listen(node, 'keydown', keydown);
+		const off3 = listen(node, 'focusout', this.blurred);
+		return all(off2, off3);
 	};
 
 	/** Close the alt field; with `keys`, the editor takes the keys back. */

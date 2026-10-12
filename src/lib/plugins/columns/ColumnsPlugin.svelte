@@ -11,7 +11,8 @@
 	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
-	import { hoverChrome, listen } from '../bands.svelte.js';
+	import { hoverChrome } from '../bands.svelte.js';
+	import { all, listen } from '$lib/utils/listen.js';
 	import { columnsEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 
 	export type ColumnsPluginOptions = {
@@ -143,7 +144,7 @@
 				onSelectionChange: () => edytor.overlay.invalidate(),
 				// The resize bands: in the overlay, for the layout under the pointer.
 				onEdytorAttached: ({ node }) => {
-					const offs = [
+					const off = all(
 						// The overlay (a band, a handle in a gap) keeps the bands while the pointer is on
 						// it; a block drag owns the pointer: no strip takes it meanwhile.
 						hoverChrome(
@@ -168,8 +169,8 @@
 							6,
 							resize.measure
 						)
-					];
-					return () => offs.forEach((off) => off());
+					);
+					return off;
 				},
 				blocks: {
 					columns: {

@@ -7,6 +7,7 @@ import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { Anchored } from '../anchored.svelte.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -317,8 +318,8 @@ export class EquationEditor {
 				this.close();
 			};
 			const element: HTMLElement = node;
-			element.addEventListener('keydown', keydown);
-			element.addEventListener('focusout', this.panel.blurred);
+			const off = listen(element, 'keydown', keydown);
+			const off2 = listen(element, 'focusout', this.panel.blurred);
 			// Each equation the editor opens on: the field takes the focus, the caret at the end.
 			$effect(() => {
 				if (!this.target) return;
@@ -328,10 +329,7 @@ export class EquationEditor {
 					node.setSelectionRange(node.value.length, node.value.length);
 				});
 			});
-			return () => {
-				element.removeEventListener('keydown', keydown);
-				element.removeEventListener('focusout', this.panel.blurred);
-			};
+			return all(off, off2);
 		});
 
 	#block = (target: EquationTarget): Block | undefined => {

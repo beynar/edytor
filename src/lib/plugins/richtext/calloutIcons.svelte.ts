@@ -19,9 +19,9 @@ import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
 import { optionAttributes, type OptionAttributes } from '../chrome.js';
 import { Anchored } from '../anchored.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { labelsOf, richTextEnglish } from '$lib/labels.js';
 import { calloutPickers, iconOf } from './callouts.js';
 import CalloutIconHost from './CalloutIconPicker.svelte';
+import { all, listen } from '$lib/utils/listen.js';
 
 /** The picker's choices unless `createCalloutIconsPlugin({ icons })` names others. */
 export const CALLOUT_ICONS: readonly string[] = [
@@ -221,15 +221,12 @@ export class CalloutIconPicker extends ChromeList {
 		};
 		// Focus leaving for somewhere else closes it (the window going to the background does not).
 		node.tabIndex = -1;
-		node.addEventListener('focusout', this.panel.blurred);
+		const off2 = listen(node, 'focusout', this.panel.blurred);
 		// It gives back the editor's selection as it is now: a block menu that
 		// opened it gave its caret back first.
 		this.#before ??= this.edytor.selection.value;
 		const off = holdKeys(node, keydown, () => this.rowId(this.index));
-		return () => {
-			off();
-			node.removeEventListener('focusout', this.panel.blurred);
-		};
+		return all(off, off2);
 	};
 }
 
@@ -247,8 +244,9 @@ export type CalloutIconsOptions = {
 
 /**
  * Callout icons (Notion's): a callout's icon opens the view's picker, and
- * its block menu has a Change icon row, the keyboard's way to it. The first
- * plugin listed claims the view's picker.
+ * its block menu has a Change icon row (rich text's, while a picker is
+ * listed), the keyboard's way to it. The first plugin listed claims the
+ * view's picker.
  */
 export const createCalloutIconsPlugin =
 	({ picker: menu, icons }: CalloutIconsOptions = {}): Plugin =>
@@ -257,18 +255,6 @@ export const createCalloutIconsPlugin =
 		if (!picker) return {};
 		calloutPickers.set(edytor, picker);
 		return {
-			blocks: {
-				callout: {
-					menu: (block) => [
-						{
-							id: 'callout.icon',
-							label: labelsOf(edytor, 'richText', richTextEnglish).calloutIcon.change,
-							icon: 'block.callout',
-							run: () => picker.open(block)
-						}
-					]
-				}
-			},
 			// With the menus: above the handles and the image chrome.
 			onEdytorAttached: ({ node }) =>
 				menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70)

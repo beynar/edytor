@@ -61,6 +61,8 @@ It also declares the [block colour](#block-colors) tokens with Notion's light va
 
 The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`, `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`, the [marquee](/docs/plugins/marquee)'s `--edytor-marquee-background` and `--edytor-marquee-border` to the same blue, and `--edytor-nest-indent` to `24px` (see [Nested blocks](#nested-blocks)). Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
+The theme also paints the visual cues the plugins place in the [overlay](#the-overlay): a block drag's drop line and nest backdrop, a table's drop line and column resize guide, a layout gap's resize guide, an image's resize pills and other users' carets, ranges and name pills (each in that user's colour, `--edytor-remote-color`). These rules reach the overlay whether `edytor-notion` is on an element around the editor or on the editor itself.
+
 ### Without the theme
 
 Every look is the theme's: a plugin's own stylesheet keeps only what makes its blocks work. Without the theme the blocks work and are unstyled, as the browser draws their elements:
@@ -69,7 +71,41 @@ Every look is the theme's: a plugin's own stylesheet keeps only what makes its b
 - a code block's lines keeping their spaces and scrolling sideways, and its header never selected;
 - a wide equation scrolling sideways, an embed's frame at its provider's aspect ratio or height, a video and an audio player as wide as the block, an image at its width and alignment;
 - an empty body's hint never selected, a mention or page link on one line;
-- the overlay's chrome where it is placed: the block handles' hosts, the drop indicator, the image's resize handles, a column's and a table column's resize guide and a table row's or column's drop line (`--edytor-columns-resize-color`, `--edytor-column-resize-color`, `--edytor-table-resize-color`, `--edytor-table-drop-color`, `--edytor-image-handle-color`), since each shows where a press or a drag lands.
+- the overlay's chrome placed and sized, shown and hidden, and unpainted: the block handles' hosts, the drop line and the nest backdrop, the image's resize handles, a column's and a table column's resize band and guide, a table row's or column's drop line, and other users' carets, ranges and name pills. Each still takes the pointer where it should and says its state (`data-shown`, `data-dragging`, `data-position`, `data-blocked`), but has no colour, radius, shadow or fade.
+
+To paint the cues without the theme, style their elements (they are in the overlay, the root's sibling):
+
+```css
+[data-edytor-overlay] [data-edytor-drop-indicator],
+[data-edytor-overlay] [data-edytor-column-resize-guide],
+[data-edytor-overlay] [data-edytor-table-drop] {
+	background: #2eaadc;
+}
+[data-edytor-overlay] [data-edytor-drop-backdrop] {
+	background: rgba(46, 170, 220, 0.15);
+}
+[data-edytor-overlay] [data-edytor-column-resize]::after,
+[data-edytor-overlay] [data-edytor-table-resize]::after {
+	background: rgba(55, 53, 47, 0.16);
+}
+[data-edytor-overlay] [data-edytor-image-resize]::after {
+	border-radius: 3px;
+	background: #37352f;
+}
+/* Each user's colour is `--edytor-remote-color` on their caret and ranges. */
+[data-edytor-overlay] :is([data-edytor-remote-cursor], [data-edytor-remote-cursor-label]) {
+	background: var(--edytor-remote-color);
+}
+[data-edytor-overlay] [data-edytor-remote-cursor-label] {
+	padding: 0 4px;
+	color: white;
+	font: 11px sans-serif;
+}
+[data-edytor-overlay] [data-edytor-remote-selection] {
+	background: var(--edytor-remote-color);
+	opacity: 0.2;
+}
+```
 
 The controls inside the blocks (a to-do's checkbox, a callout's icon, an empty body's hint, a bookmark's card, a file's row, an unplayable embed's link, a table of contents' entries, a page block's link, an equation's placeholder and error) are the plugins' markup unless you pass your own snippet to the plugin (see each plugin's page); the theme styles the default markup.
 
@@ -266,7 +302,8 @@ Chrome never lives inside the editable root. The editor adds a sibling right aft
 | -------------------------------------- | ---------------------------------------------------------------- |
 | Block handle host                      | `[data-edytor-block-handle-host]`, with `data-block-id` and `data-visible` |
 | Drop indicator                         | `[data-edytor-drop-indicator]`, with `data-position` `before`, `after` or `inside` |
-| Nest backdrop                          | `[data-edytor-drop-backdrop]`, with `data-shown="true"` and the future parent's `data-block-id` while a drop nests |
+| Nest backdrop                          | `[data-edytor-drop-backdrop]`, with `data-shown="true"` and the future parent's `data-block-id` while a drop nests (hidden otherwise) |
+| Another user's caret, range and name   | `[data-edytor-remote-cursor]` (`data-edytor-remote-block` beside a block selection), `[data-edytor-remote-selection]`, `[data-edytor-remote-cursor-label]`, each with `data-client-id` and that user's colour as `--edytor-remote-color` |
 | Slash menu host                        | `[data-edytor-slash-menu-host]`                                  |
 | Toolbar host                           | `[data-edytor-toolbar-host]`                                     |
 | Block menu host                        | `[data-edytor-block-menu-host]`                                  |
@@ -278,10 +315,11 @@ The layer sits at its natural place right after the root and positions chrome re
 
 | Variable                          | Default   | Effect                                                            |
 | --------------------------------- | --------- | ----------------------------------------------------------------- |
-| `--edytor-drop-indicator-color`   | `rgba(35, 131, 226, 0.43)` | The drop indicator's bar: carried from the target block onto `[data-edytor-drop-indicator]`, for your indicator's rule to read (the [block handles](/docs/plugins/block-handles#the-drop-indicator)' look is yours). Set it on the root or any ancestor. |
+| `--edytor-drop-indicator-color`   | `rgba(35, 131, 226, 0.43)` | The drop indicator's bar, which the Notion theme paints with: carried from the target block onto `[data-edytor-drop-indicator]`, for a theme's rule to read. Set it on the root or any ancestor. |
 | `--edytor-nest-indent`            | `24px`    | One nesting step: the `[data-edytor-children]` container's indent, and the drop indicator's inside offset. Set it on the root or any ancestor. |
-| `--edytor-drop-backdrop-color`    | `rgba(35, 131, 226, 0.14)` | The [nest backdrop](/docs/plugins/block-handles#the-nest-backdrop) over the future parent's row: carried from that block onto `[data-edytor-drop-backdrop]`, for your rule to read. Set it on the root or any ancestor. Use one plain color, not `light-dark()`. |
+| `--edytor-drop-backdrop-color`    | `rgba(35, 131, 226, 0.14)` | The [nest backdrop](/docs/plugins/block-handles#the-nest-backdrop) over the future parent's row: carried from that block onto `[data-edytor-drop-backdrop]`, for a theme's rule to read. Set it on the root or any ancestor. Use one plain color, not `light-dark()`. |
 | `--edytor-drop-reach`             | `240px`   | How far a block drag still drops [outside the blocks](/docs/plugins/block-handles#dropping-outside-the-blocks): past the handle column on the left and past the blocks' right edge. Read from the root, so set it on the root or any ancestor. |
+| `--edytor-remote-color`           | the user's | Another user's colour, set inline on their caret and ranges (their name pill inherits it): the Notion theme paints them with it. Read it, do not set it. |
 | `--edytor-marquee-background`     | `rgba(35, 131, 226, 0.14)` | The [marquee](/docs/plugins/marquee)'s rectangle fill. The rectangle is in the overlay, the root's sibling: set it on an element around the editor, not on the root. |
 | `--edytor-marquee-border`         | `1px solid rgba(35, 131, 226, 0.4)` | The marquee's rectangle border (a `border` shorthand); set it around the editor. |
 | `--edytor-marquee-radius`         | `2px`     | The marquee's rectangle corners; set it around the editor. |

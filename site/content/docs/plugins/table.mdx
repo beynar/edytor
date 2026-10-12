@@ -167,14 +167,14 @@ These rules come from the document's roles: list the plugin in every view; a hea
 
 ## Styling
 
-`table.css` lays the table out as a CSS grid of the columns' widths, each row a subgrid, in a box as wide as the table's place: the table gives that box no width of its own (`contain: inline-size`), so a page that sizes the editor by its content does not grow with a wide table, and the grid scrolls sideways inside the box when it is wider. It also places the chrome: the grips, the `+` bars, the menus, a column edge's resize line and a drag's drop line. The table's look (the cells' borders and padding, a header cell's shade) is the [Notion theme](/docs/customization/styling#notion-theme)'s: without it the grid shows its cells unbordered.
+`table.css` lays the table out as a CSS grid of the columns' widths, each row a subgrid, in a box as wide as the table's place: the table gives that box no width of its own (`contain: inline-size`), so a page that sizes the editor by its content does not grow with a wide table, and the grid scrolls sideways inside the box when it is wider. It also places the chrome: the grips, the `+` bars, the menus, a column edge's resize line and a drag's drop line. The table's look (the cells' borders and padding, a header cell's shade, the resize and drop lines' blue) is the [Notion theme](/docs/customization/styling#notion-theme)'s: without it the grid shows its cells unbordered and the lines unpainted.
 
 | Variable | Default | Sets |
 | --- | --- | --- |
 | `--edytor-table-border` | `rgb(233, 233, 231)` | The cells' borders (the Notion theme) |
 | `--edytor-table-header-background` | `rgb(247, 246, 243)` | A header cell's background (the Notion theme) |
-| `--edytor-table-resize-color` | `rgba(35, 131, 226, 0.43)` | A column edge's resize line |
-| `--edytor-table-drop-color` | `rgba(35, 131, 226, 0.43)` | The drop line of a row's or column's drag |
+| `--edytor-table-resize-color` | `rgba(35, 131, 226, 0.43)` | A column edge's resize line (the Notion theme) |
+| `--edytor-table-drop-color` | `rgba(35, 131, 226, 0.43)` | The drop line of a row's or column's drag (the Notion theme) |
 
 | Selector | Matches |
 | --- | --- |
@@ -184,7 +184,7 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | `[data-edytor-table-cell]` | A cell (`data-edytor-column`: its position; `data-edytor-table-header="true"` for a header cell) |
 | `[data-edytor-table-pad]` | A padded cell's placeholder |
 | `[data-edytor-table-scroll]` | The table's box, which scrolls the grid sideways |
-| `[data-edytor-table-resize]` | A column edge's resize band, in the overlay |
+| `[data-edytor-table-resize]` | A column edge's resize band, in the overlay (`data-dragging="true"` while it drags); its `::after` is the line, shown on hover, focus and drag |
 | `[data-edytor-table-grip-host]`, `[data-edytor-table-add-host]`, `[data-edytor-table-menu-host]` | Where your grip (a point it centers on, `data-dragging="true"` on the grip while it drags), `+` bar and menu stand |
 | `[data-edytor-table-drop]` | The drop line of a grip's drag (`row` or `column`, `data-gap`: its position among the rows or columns) |
 | `[data-edytor-drag-preview]` | The picture following the pointer during a grip's drag: the row's or the column's cells as they look, as a block drag's ghost |

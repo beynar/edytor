@@ -118,11 +118,11 @@ The [Notion theme](/docs/customization/styling#notion-theme) styles the block. W
 | `[data-edytor-type='image']`      | The `figure`                           |
 | `[data-edytor-image]`             | The wrapper around the `img` (`data-align`) |
 | `[data-edytor-image-empty]`       | Where the empty state (your `empty` snippet) renders |
-| `[data-edytor-image-resize]`      | A resize handle in the overlay (`="left"`, `="right"`) |
+| `[data-edytor-image-resize]`      | A resize handle in the overlay (`="left"`, `="right"`; `data-dragging="true"` while it drags); its `::after` is the pill |
 | `[data-edytor-image-toolbar-slot]` | Where your `toolbar` renders, at the image's top right |
 | `[data-edytor-image-toolbar]`     | Your toolbar's bar (`toolbar.bar` marks it) |
 | `[data-edytor-image-alt]`         | Your alt text field (`controls.altField` marks it) |
 
-The resize handles read `--edytor-image-handle-color`. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.
+The plugin places the resize handles and their pills; the [Notion theme](/docs/customization/styling#notion-theme) paints the pills (a dark pill with a light ring, `--edytor-image-handle-color`), and without it they are unpainted. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.
 
 To change the markup, list a plugin that names the `image` kind's `snippet` (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)): the default image plugin comes after yours, and its other fields stay. To replace the kind itself, define every field you need in your own plugin: definitions are first-wins, field by field.

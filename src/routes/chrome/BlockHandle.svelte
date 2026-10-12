@@ -102,23 +102,4 @@
 	.edytor-block-handle svg {
 		fill: currentColor;
 	}
-
-	/* Notion's drop bar: plain, 4px, indented when the block nests. */
-	:global([data-edytor-drop-indicator]) {
-		background: var(--edytor-drop-indicator-color, rgba(35, 131, 226, 0.43));
-	}
-
-	/* Notion's nest backdrop: the future parent's own row, softly tinted. */
-	:global([data-edytor-drop-backdrop]) {
-		border-radius: 4px;
-		/* One plain color: lightningcss rewrites light-dark() into variables it
-		 * only defines beside a `color-scheme`, voiding the background. */
-		background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-
-	:global([data-edytor-drop-backdrop][data-shown='true']) {
-		opacity: 1;
-	}
 </style>

@@ -53,7 +53,8 @@
 		pointer-events: none;
 	}
 
-	/* Notion's handle: a dark pill with a light ring, at mid-height, inside the edge. */
+	/* The handle's pill: at mid-height, inside the edge. Painted by a theme
+	 * (`edytor/themes/notion.css`: Notion's dark pill with a light ring). */
 	[data-edytor-image-resize]::after {
 		content: '';
 		position: absolute;
@@ -62,14 +63,5 @@
 		width: 6px;
 		height: min(48px, 50%);
 		transform: translateY(-50%);
-		border-radius: 20px;
-		background: var(--edytor-image-handle-color, rgba(15, 15, 15, 0.6));
-		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
-		opacity: 0.8;
-	}
-
-	[data-edytor-image-resize]:hover::after,
-	[data-edytor-image-resize][data-dragging='true']::after {
-		opacity: 1;
 	}
 </style>

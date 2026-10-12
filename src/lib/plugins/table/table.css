@@ -87,11 +87,13 @@
 [data-edytor-table-chrome][data-selecting='true'] [data-edytor-table-add-host] > * {
 	pointer-events: none;
 }
-/* A grip's drag (`table.drag`): Notion's drop line between two rows or two columns. */
+/*
+ * A grip's drag (`table.drag`): the drop line between two rows or two
+ * columns, and a band's guide; placed here, painted by a theme
+ * (`edytor/themes/notion.css`: Notion's blue line).
+ */
 [data-edytor-table-chrome] [data-edytor-table-drop] {
 	position: absolute;
-	border-radius: 2px;
-	background: var(--edytor-table-drop-color, rgba(35, 131, 226, 0.43));
 	pointer-events: none;
 }
 [data-edytor-table-chrome] [data-edytor-table-drop='row'] {
@@ -111,15 +113,11 @@
 	bottom: 0;
 	left: 3px;
 	width: 2px;
-	background: var(--edytor-table-resize-color, rgba(35, 131, 226, 0.43));
-	opacity: 0;
 	pointer-events: none;
+	visibility: hidden;
 }
 [data-edytor-table-chrome] [data-edytor-table-resize]:hover::after,
 [data-edytor-table-chrome] [data-edytor-table-resize]:focus-visible::after,
 [data-edytor-table-chrome] [data-edytor-table-resize][data-dragging='true']::after {
-	opacity: 1;
-}
-[data-edytor-table-chrome] [data-edytor-table-resize]:focus-visible {
-	outline: none;
+	visibility: visible;
 }

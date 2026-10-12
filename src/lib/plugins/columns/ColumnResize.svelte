@@ -70,7 +70,8 @@
 		pointer-events: none;
 	}
 
-	/* Notion's hover guide: a thin gray rule in the band's middle. */
+	/* The hover guide: a 2px rule in the band's middle, shown on hover (not while
+	 * it drags) and on a keyboard focus. Painted by a theme (`edytor/themes/notion.css`). */
 	[data-edytor-column-resize]::after {
 		content: '';
 		position: absolute;
@@ -78,30 +79,19 @@
 		bottom: 0;
 		left: calc(50% - 1px);
 		width: 2px;
-		background: var(--edytor-columns-resize-color, rgba(55, 53, 47, 0.16));
-		opacity: 0;
 		pointer-events: none;
-		transition: opacity 80ms ease;
+		visibility: hidden;
 	}
 
-	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after {
-		opacity: 1;
-	}
-
-	/* Focused from the keyboard: the guide shows in the resize color. */
-	[data-edytor-column-resize]:focus-visible {
-		outline: none;
-	}
+	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after,
 	[data-edytor-column-resize]:focus-visible::after {
-		opacity: 1;
-		background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
+		visibility: visible;
 	}
 
-	/* Notion's resize line: a thin blue rule where the gap will be. */
+	/* The resize line where the gap will be, while a band drags. */
 	[data-edytor-column-resize-guide] {
 		position: absolute;
 		width: 2px;
-		background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
 		pointer-events: none;
 	}
 </style>

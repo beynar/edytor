@@ -197,13 +197,13 @@ These rules come from the document's roles, so every replica must know the layou
 
 ## Styling
 
-`columns.css` lays the columns out; the [Notion theme](/docs/customization/styling#notion-theme) adds the look: a column's first and last blocks flush with the layout's edges, and one rounded highlight over a layout a block selection stands for (`--notion-block-selection`).
+`columns.css` lays the columns out, and the plugin places its resize bands and their guides in the overlay; the [Notion theme](/docs/customization/styling#notion-theme) adds the look: a column's first and last blocks flush with the layout's edges, one rounded highlight over a layout a block selection stands for (`--notion-block-selection`), and the guides' gray and blue lines. Without the theme a band still resizes (its pointer is `col-resize`) and its guides are unpainted.
 
 | Variable | Default | Sets |
 | --- | --- | --- |
 | `--edytor-columns-gap` | `46px` | The gap between two columns (the resize band takes its left 10px, a block's handle the rest) |
-| `--edytor-columns-resize-color` | `rgba(55, 53, 47, 0.16)` | The gray guide shown over a resize band on hover |
-| `--edytor-column-resize-color` | `rgba(35, 131, 226, 0.43)` | The blue line shown while a resize drags |
+| `--edytor-columns-resize-color` | `rgba(55, 53, 47, 0.16)` | The gray guide shown over a resize band on hover (the Notion theme) |
+| `--edytor-column-resize-color` | `rgba(35, 131, 226, 0.43)` | The blue line shown while a resize drags, and a focused band's guide (the Notion theme) |
 
 | Selector | Matches |
 | --- | --- |
@@ -211,7 +211,7 @@ These rules come from the document's roles, so every replica must know the layou
 | `[data-edytor-columns] > [data-edytor-children]` | The row of columns (a flex row) |
 | `[data-edytor-columns-selected]` | That row while a block selection stands for the layout |
 | `[data-edytor-column]` | A column's block element; its `style` sets `flex` from its weight |
-| `[data-edytor-column-resize]` | A resize band, in the overlay |
+| `[data-edytor-column-resize]` | A resize band, in the overlay (`data-dragging="true"` while it drags); its `::after` is the hover guide, shown on hover and on a keyboard focus |
 | `[data-edytor-column-resize-guide]` | The line shown while a resize drags |
 
 Neither container indents its children: both set their children container's `padding-inline-start` to 0, and a column's first and last blocks lose their outer margin.

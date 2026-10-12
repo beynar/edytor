@@ -240,7 +240,8 @@
 	}
 
 	/* Where a handle's drag lands (`DropIndicator`): the bar (4px) and the nest
-	 * backdrop, placed in the overlay; their look is the app's. */
+	 * backdrop, placed in the overlay and shown (`data-shown`) by the plugin;
+	 * their look is a theme's (`edytor/themes/notion.css`). */
 	:global([data-edytor-drop-indicator]),
 	:global([data-edytor-drop-backdrop]) {
 		position: absolute;
@@ -255,5 +256,9 @@
 
 	:global([data-edytor-drop-backdrop]) {
 		z-index: 99;
+	}
+
+	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
+		visibility: hidden;
 	}
 </style>

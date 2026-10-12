@@ -6,6 +6,7 @@ import {
 	expectSelection,
 	readJsonByTestId,
 	throttleCpu,
+	notionTheme,
 	trackPageIssues,
 	waitForEditorReady
 } from './helpers';
@@ -246,6 +247,8 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		// The backdrop's look is the theme's (its class on the editor: the overlay is its sibling).
+		await notionTheme(page);
 		await settleHandles(page);
 		const parent = page.locator('[data-edytor-block="true"]').first();
 		// Rounded blocks must not bend the backdrop: it is the overlay's, not a block style.

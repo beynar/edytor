@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
 type PageIssues = {
@@ -1229,4 +1230,19 @@ export const dragTo = async (page: Page, x: number, y: number) => {
 		const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
 		return !record.__dragStarted || Math.abs((record.__dragY ?? -Infinity) - y) <= 1;
 	}, y);
+};
+
+/**
+ * Load the Notion theme and put its class on the editor itself (the theme's
+ * documented alternative to an element around it): for a row that reads a
+ * look, which is the theme's, never a plugin's.
+ */
+export const notionTheme = async (page: Page) => {
+	await page.addStyleTag({
+		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
+	});
+	await page
+		.locator('[data-edytor]')
+		.first()
+		.evaluate((node) => node.classList.add('edytor-notion'));
 };

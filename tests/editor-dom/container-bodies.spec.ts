@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from './editorTest';
-import { modKey, trackPageIssues, waitForEditorReady } from './helpers';
+import { modKey, trackPageIssues, waitForEditorReady, notionTheme } from './helpers';
 
 /**
  * A container's body in real browsers (`body.*` and `callout.icon` in
@@ -15,14 +14,6 @@ const open = async (page: Page, children: unknown[], params = '') => {
 		`/test/dom?scenario=dst${params}&dst=${encodeURIComponent(JSON.stringify({ children }))}`
 	);
 	await waitForEditorReady(page, { requireRuntime: true });
-};
-
-/** The Notion theme, its class on the editor itself: a callout's title is semibold there (a look). */
-const notionTheme = async (page: Page) => {
-	await page.addStyleTag({
-		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
-	});
-	await page.locator('[data-edytor]').evaluate((node) => node.classList.add('edytor-notion'));
 };
 
 type Outline = string | [string, Outline[]];

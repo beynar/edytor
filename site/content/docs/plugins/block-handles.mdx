@@ -187,14 +187,14 @@ Beside a list item or a code line, the layout wraps the whole list or code block
 
 ### The drop indicator
 
-The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, its look is yours:
+The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, a theme its look:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
 - **Before a first child** (the lower half of a block whose children show): at that child's top, indented to its column.
 - **After an ancestor** (below the last block of a nested group): below that block's row, indented to the ancestor's level.
 - **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge. With no visible child to measure, the column is one nesting step past the target's text: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px.
 
-Give it a color, as the demo does. The plugin carries the theme's `--edytor-drop-indicator-color` from the target block onto the indicator (the overlay is not inside the editor), so your rule reads the variable your theme sets (the [Notion theme](/docs/customization/styling) sets Notion's `rgba(35, 131, 226, 0.43)`):
+The [Notion theme](/docs/customization/styling) paints it in `--edytor-drop-indicator-color` (Notion's `rgba(35, 131, 226, 0.43)`); the plugin carries that variable from the target block onto the indicator, since the overlay is not inside the editor. Without the theme it is unpainted: give it a color ([Without the theme](/docs/customization/styling#without-the-theme)):
 
 ```css
 [data-edytor-overlay] [data-edytor-drop-indicator] {
@@ -204,16 +204,18 @@ Give it a color, as the demo does. The plugin carries the theme's `--edytor-drop
 
 ### The nest backdrop
 
-When the drop will nest the dragged blocks in another block, that future parent also gets Notion's soft backdrop: a rounded tint over its own row (its own content, not its children), drawn by the same overlay layer as the bar, so block styles cannot distort it. It shows for an **inside** drop (on the target, or, inside a list, on the last item the blocks nest under), and for a before/after drop among the children of a block that is not already their parent; a before/after drop that keeps the blocks' parent, or lands them at the root, shows the bar alone. It fades in and out as the placement changes, and the drop commits the placement it showed. It is `[data-edytor-drop-backdrop]` in the overlay, with `data-shown="true"` and the parent's `data-block-id` while it applies.
+When the drop will nest the dragged blocks in another block, that future parent also gets Notion's soft backdrop: a rounded tint over its own row (its own content, not its children), drawn by the same overlay layer as the bar, so block styles cannot distort it. It shows for an **inside** drop (on the target, or, inside a list, on the last item the blocks nest under), and for a before/after drop among the children of a block that is not already their parent; a before/after drop that keeps the blocks' parent, or lands them at the root, shows the bar alone. The drop commits the placement it showed. It is `[data-edytor-drop-backdrop]` in the overlay, with `data-shown="true"` and the parent's `data-block-id` while it applies; the plugin hides it otherwise.
 
-Its look is yours too; the plugin carries `--edytor-drop-backdrop-color` onto it as it does the bar's. The demo's is Notion's light tint, fading in while it applies:
+Its look is a theme's too, and the plugin carries `--edytor-drop-backdrop-color` onto it as it does the bar's. The Notion theme's is Notion's light tint, fading in and out as the placement changes. Without the theme, paint it yourself, for instance with the same fade:
 
 ```css
 [data-edytor-overlay] [data-edytor-drop-backdrop] {
 	border-radius: 4px;
 	background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
 	opacity: 0;
-	transition: opacity 120ms ease;
+	transition:
+		opacity 120ms ease,
+		visibility 120ms ease;
 }
 [data-edytor-overlay] [data-edytor-drop-backdrop][data-shown='true'] {
 	opacity: 1;

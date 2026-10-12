@@ -110,7 +110,7 @@ The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({
 <Edytor {plugins} />
 ```
 
-A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. The drop indicator and the nest backdrop (the tint on the block a drop nests into) are placed by the plugin and styled by you: `[data-edytor-drop-indicator]` and `[data-edytor-drop-backdrop]`, which carry the `--edytor-drop-indicator-color` and `--edytor-drop-backdrop-color` your theme sets (see [Menus and handles](/docs/customization/menus#block-handle)).
+A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. The drop indicator and the nest backdrop (the tint on the block a drop nests into) are placed by the plugin and painted by the theme: `[data-edytor-drop-indicator]` and `[data-edytor-drop-backdrop]`, which carry the `--edytor-drop-indicator-color` and `--edytor-drop-backdrop-color` the theme sets; without it, style them yourself (see [Without the theme](/docs/customization/styling#without-the-theme)).
 
 ## Restyling a kind
 

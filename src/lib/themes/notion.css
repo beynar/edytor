@@ -889,3 +889,93 @@
 	border-radius: 3px;
 	background: var(--notion-block-selection);
 }
+
+/* ── Visual cues in the overlay ─────────────────────────────────────── */
+/*
+ * The plugins place these and say when they show (`data-shown`,
+ * `data-dragging`, `:hover`); the look is here. The overlay is the editor's
+ * next sibling, so each rule reaches it whether the class is on an element
+ * around the editor or on the editor itself.
+ */
+/* A block drag's drop line: Notion's plain 4px bar. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-drop-indicator] {
+	background: var(--edytor-drop-indicator-color, rgba(35, 131, 226, 0.43));
+}
+/* The nest backdrop: the future parent's own row, softly tinted, fading in and out.
+ * One plain colour: lightningcss rewrites light-dark() into variables it only
+ * defines beside a `color-scheme`, voiding the background. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-drop-backdrop] {
+	border-radius: 4px;
+	background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
+	opacity: 0;
+	transition:
+		opacity 120ms ease,
+		visibility 120ms ease;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-drop-backdrop][data-shown='true'] {
+	opacity: 1;
+}
+/* A table grip's drop line and a column band's guide: Notion's blue. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-table-drop] {
+	border-radius: 2px;
+	background: var(--edytor-table-drop-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-table-resize]::after {
+	background: var(--edytor-table-resize-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-table-resize]:focus-visible {
+	outline: none;
+}
+/* A layout gap's band: a thin gray rule on hover, blue from the keyboard and while it drags. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-column-resize]::after {
+	background: var(--edytor-columns-resize-color, rgba(55, 53, 47, 0.16));
+	opacity: 0;
+	transition:
+		opacity 80ms ease,
+		visibility 80ms ease;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after {
+	opacity: 1;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:focus-visible {
+	outline: none;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	[data-edytor-column-resize]:focus-visible::after {
+	opacity: 1;
+	background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-column-resize-guide] {
+	background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
+}
+/* An image's resize handles: Notion's dark pill with a light ring. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-image-resize]::after {
+	border-radius: 20px;
+	background: var(--edytor-image-handle-color, rgba(15, 15, 15, 0.6));
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+	opacity: 0.8;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay])
+	:is([data-edytor-image-resize]:hover, [data-edytor-image-resize][data-dragging='true'])::after {
+	opacity: 1;
+}
+/* Other users: a caret, a tinted range and a name pill in each one's colour. */
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-selection] {
+	background: var(--edytor-remote-color);
+	opacity: 0.18;
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-cursor] {
+	border-radius: 999px;
+	background: var(--edytor-remote-color);
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-remote-cursor-label] {
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--edytor-remote-color);
+	color: white;
+	font: 500 11px/1.4 sans-serif;
+}

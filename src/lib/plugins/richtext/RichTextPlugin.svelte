@@ -46,7 +46,7 @@
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	/** The kinds drawn as a disclosure: a toggle this view creates opens (`body.open`). */
-	const DISCLOSURES = new Set(['toggle', 'toggle-heading', 'details']);
+	const DISCLOSURES = new Set(['toggle', 'toggle-heading']);
 	/**
 	 * A list's elements without list semantics (`role="none"`): a list's items
 	 * are sibling blocks, never the only children of one `ul` or `ol`, so an
@@ -593,7 +593,6 @@
 					empty: { content: [], children: [] },
 					...rule
 				},
-				details: { snippet: details, ...disclosure },
 				'ordered-list': {
 					...richTextKinds['ordered-list'],
 					itemKind: 'numbered-list-item',
@@ -608,12 +607,7 @@
 					element: unlisted('ul'),
 					html: 'ul'
 				},
-				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' },
-				horizontalRule: {
-					...richTextKinds.horizontalRule,
-					element: 'hr',
-					...rule
-				}
+				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' }
 			}
 		};
 	};

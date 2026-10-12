@@ -337,7 +337,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				type: 'paragraph',
 				content: [{ text: 'hi ' }, { type: 'mention', data: {} }, { text: '' }]
 			},
-			{ type: 'horizontalRule' },
 			{ type: 'image', content: [{ text: 'cap' }] },
 			{ type: 'unordered-list', children: [{ type: 'list-item', content: [{ text: 'u1' }] }] },
 			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'open' }] }
@@ -366,7 +365,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'<p></p><pre><code>let x</code></pre>',
 				'<ol><li>li</li></ol>',
 				'<p>hi <span data-edytor-inline-block="mention"></span></p>',
-				'<hr>',
 				'<figure><figcaption>cap</figcaption></figure>',
 				'<ul><li>u1</li></ul>',
 				'<li data-edytor-todo-item="true"><input type="checkbox">open</li>'
@@ -382,7 +380,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'let x',
 				'li',
 				'hi @mention',
-				'---',
 				'cap',
 				'u1',
 				'[ ] open'

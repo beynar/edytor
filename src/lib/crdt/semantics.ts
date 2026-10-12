@@ -93,7 +93,6 @@ const frozen = <T>(value: T): T => {
 /** `createRichTextPlugin()`'s structural rows (its other kinds are plain). */
 export const richTextKinds = frozen({
 	divider: { void: true, rendersContent: false },
-	horizontalRule: { void: true, rendersContent: false },
 	'ordered-list': { rendersContent: false, defaultChild: 'list-item' },
 	'unordered-list': { rendersContent: false, defaultChild: 'list-item' }
 } satisfies Record<string, KindSemantics>);

@@ -1980,10 +1980,6 @@ declare const richTextKinds: {
         void: true;
         rendersContent: false;
     };
-    horizontalRule: {
-        void: true;
-        rendersContent: false;
-    };
     'ordered-list': {
         rendersContent: false;
         defaultChild: string;

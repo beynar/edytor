@@ -95,7 +95,6 @@ const structural = ({ semantics }: EdytorDocument) => ({
 const BUNDLED = {
 	roles: {
 		divider: { void: true, island: false, lines: false },
-		horizontalRule: { void: true, island: false, lines: false },
 		image: { void: true, island: false, lines: false },
 		embed: { void: true, island: false, lines: false },
 		bookmark: { void: true, island: false, lines: false },
@@ -112,7 +111,6 @@ const BUNDLED = {
 	},
 	rendersContent: {
 		divider: false,
-		horizontalRule: false,
 		'ordered-list': false,
 		'unordered-list': false,
 		code: false,

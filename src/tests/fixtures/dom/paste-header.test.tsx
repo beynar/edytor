@@ -321,14 +321,6 @@ describe("SW18: a paste into a closed toggle's empty header keeps the toggle", (
 		expect(hiddenPasted(edytor)).toEqual([]);
 		expect(caret(edytor)).toBe('b@1');
 	});
-
-	// DR-crdt-2: any closed `<details>` hides its body, the legacy `details` kind too.
-	it('DR-crdt-2: a closed `details` block keeps its kind; its body stays hidden', async () => {
-		const edytor = await closed(true, { 'text/html': '<h2>H</h2>' }, { type: 'details' });
-		expect(doc(edytor)).toEqual([['details "H"', ['paragraph "body"']], 'paragraph "after"']);
-		expect(hiddenPasted(edytor)).toEqual([]);
-		expect(caret(edytor)).toBe('H@1');
-	});
 });
 
 describe('HX-10: a closed toggle keeps its hidden body; the paste goes after it', () => {

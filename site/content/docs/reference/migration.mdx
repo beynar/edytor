@@ -14,6 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+- **Breaking: the published JavaScript shortens internal member names.** Members that no published type declares (the editor's own plumbing) have short names in the package; nothing to change unless your code reached into them untyped. About 2.5 KB less minified JavaScript for `<Edytor />`, 4 KB with every plugin.
 - **Breaking: two misuse checks run in development only.** `new Edytor({ document, doc })` (a `document` with `doc`, `awareness`, `actor` or `requireHydration`) and `dispatcher.outside(body)` called inside a transaction still throw in development; a production build no longer checks (the `document` wins; the body's writes join the open transaction).
 - **Breaking: members only their own class used are private.** `BlockHandleController.activateBlock` and `handleKeyDown`, `BlockMenuController.matchingKinds`, the trigger menus' `activeRange` and `InlineBlock._def` are no longer reachable (each was read only inside its controller or handle), with about a hundred undocumented ones; nothing to change unless your code reached into them.
 - **Breaking: the suggestion bar is its own plugin, `createSuggestionBarPlugin({ bar })`.** `createSuggestionsPlugin()` (a default plugin) takes no options: it is the keys (`SuggestionsOptions` is `SuggestionBarOptions`). An app with `<Edytor />` ships no bar code.
@@ -1136,6 +1137,7 @@ Every public change since 0.0.11, by area.
 
 ### Plugins and the extension API
 
+- **Short internal names.** The published JavaScript gives the members no published type declares short names; the typed surface is unchanged.
 - **Private plumbing.** A controller's or handle's member read only inside its own class is a `#private` field (`BlockHandleController.activateBlock` and `handleKeyDown`, `BlockMenuController.matchingKinds`, the trigger menus' `activeRange`, `InlineBlock._def` among them).
 - **Empty image and media blocks** are drawn by one plugin, `createMediaEmptyPlugin({ empty })`: one snippet for every kind (`controller.kind`).
 - **Uploads** are one plugin, `createUploadsPlugin({ upload })`: the view's uploader for the empty blocks' Upload and for pasted and dropped files; a kind's record `upload` (`KindUpload`) says which files it takes.

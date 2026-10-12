@@ -14,6 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+- **Breaking: two misuse checks run in development only.** `new Edytor({ document, doc })` (a `document` with `doc`, `awareness`, `actor` or `requireHydration`) and `dispatcher.outside(body)` called inside a transaction still throw in development; a production build no longer checks (the `document` wins; the body's writes join the open transaction).
 - **Breaking: members only their own class used are private.** `BlockHandleController.activateBlock` and `handleKeyDown`, `BlockMenuController.matchingKinds`, the trigger menus' `activeRange` and `InlineBlock._def` are no longer reachable (each was read only inside its controller or handle), with about a hundred undocumented ones; nothing to change unless your code reached into them.
 - **Breaking: the suggestion bar is its own plugin, `createSuggestionBarPlugin({ bar })`.** `createSuggestionsPlugin()` (a default plugin) takes no options: it is the keys (`SuggestionsOptions` is `SuggestionBarOptions`). An app with `<Edytor />` ships no bar code.
 - **Breaking: the image toolbar is its own plugin, `createImageToolbarPlugin({ toolbar })`.** `createImagePlugin()` takes no options (`ImagePluginOptions` is gone): its resize handles are the plugin's; the toolbar snippet receives an `ImageToolbar` (`box`, `align`, `alt`, `setAlt`, `editing`, `toggleAlt`, `closeAlt`, `bar`, `altField`, `readonly`), no longer `ImageControls`. An app with `<Edytor />` ships no toolbar code (about 2 KB less minified JavaScript).
@@ -1072,6 +1073,7 @@ Every public change since 0.0.11, by area.
 
 ### Editor view, selection and commands
 
+- **Development-only misuse checks.** Combining `document` with `doc`/`awareness`/`actor`/`requireHydration`, and `dispatcher.outside` inside a transaction, throw in development builds only.
 - **One write API.** `EdytorDocument` carries `DocumentOperations` (`document.insertBlocks(…)`), and the view carries the same writes under the same names (`edytor.insertBlocks(…)`), dispatched: hooks, vetoes, normalization, one undo step, the result caret, `readonly`. Handles only read. `document.facade` is deprecated; the types the operations use are exported from `edytor`. `document.block(id)` (`DocBlock`) is removed.
 - **`selection.select(value)`** takes the value only; the dispatcher publishes `last`, `permits()`, `run`, `each`, `dispatch`, `lead`, `caret` and `outside`, the rest is internal.
 - **`edytor.focus()`** focuses the editor, keeping its selection or putting the caret at the start; `selection.value`, `selectedBlocks`, `focusedBlocks` and `dispatcher.last` are read-only.

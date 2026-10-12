@@ -277,9 +277,7 @@ export type { IndexeddbProvider };
 export const targetOf = (caller: string, options: WebsocketTarget): [string, string] => {
 	const { server, room } = options;
 	if (typeof server !== 'string' || typeof room !== 'string')
-		throw new TypeError(
-			`${caller}: the target is \`server\` and \`room\` (\`serverUrl\` and \`roomName\` are gone)`
-		);
+		throw new TypeError(`${caller}: the target is \`server\` and \`room\``);
 	assertRoomId(room);
 	return [server.replace(/\/+$/, ''), room];
 };

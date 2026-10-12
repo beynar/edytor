@@ -19,6 +19,7 @@
  * The engine surface is injected (`Y: EngineApi`) like every other bound
  * module — this file never imports vendor `.js`.
  */
+import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 
 /**
@@ -52,18 +53,18 @@ export type IdSetLike = {
 
 /**
  * The doc's struct store — vendor-internal (`doc.store.clients`).
- * FAIL-FAST: a missing store means the doc is not a vendored-engine doc
- * (or the vendored layout changed) — either way the only honest response
- * is a descriptive throw, never a silent fallback.
+ * FAIL-FAST in development: a missing store means the doc is not a
+ * vendored-engine doc (or the vendored layout changed) — either way the only
+ * honest response is a descriptive throw, never a silent fallback.
  */
 export const clientsOf = (doc: EngineDoc): Map<number, StoreStruct[]> => {
 	const clients = (doc as { store?: { clients?: Map<number, StoreStruct[]> } }).store?.clients;
-	if (clients === undefined) {
+	if (DEV && clients === undefined) {
 		throw new Error(
 			'structs: doc.store.clients missing — the vendored engine layout changed (or this doc is not a vendored-engine doc)'
 		);
 	}
-	return clients;
+	return clients!;
 };
 
 /**

@@ -435,10 +435,11 @@ export class Edytor {
 		if (labels) this.labels = labels;
 		if (document !== undefined) {
 			if (
-				doc !== undefined ||
-				awareness !== undefined ||
-				actor !== undefined ||
-				requireHydration !== undefined
+				DEV &&
+				(doc !== undefined ||
+					awareness !== undefined ||
+					actor !== undefined ||
+					requireHydration !== undefined)
 			) {
 				throw new Error(
 					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor`/`requireHydration` — ' +

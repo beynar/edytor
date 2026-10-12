@@ -55,9 +55,10 @@ export type { ToolbarController } from './toolbar/ToolbarController.svelte.js';
 export { createBlockMenuPlugin } from './blockMenu/blockMenuPlugin.js';
 export {
 	createSuggestionsPlugin,
-	type SuggestionsOptions,
+	type SuggestionBarOptions,
 	type SuggestionBarPayload
 } from './suggestions/suggestionsPlugin.js';
+export { createSuggestionBarPlugin } from './suggestions/SuggestionBars.svelte';
 export type {
 	BlockMenuOptions,
 	BlockMenuController,

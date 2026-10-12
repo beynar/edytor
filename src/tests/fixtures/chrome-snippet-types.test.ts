@@ -49,7 +49,7 @@ import type {
 	SlashMenuController,
 	SlashMenuOptions,
 	SuggestionBarPayload,
-	SuggestionsOptions,
+	SuggestionBarOptions,
 	ToolbarController,
 	ToolbarOptions,
 	Trigger,
@@ -81,7 +81,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<MediaEmptyOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<CommentsPluginOptions['card']>>().toEqualTypeOf<CommentCardPayload>();
 		expectTypeOf<Payload<CommentsPluginOptions['header']>>().toEqualTypeOf<CommentsController>();
-		expectTypeOf<Payload<SuggestionsOptions['bar']>>().toEqualTypeOf<SuggestionBarPayload>();
+		expectTypeOf<Payload<SuggestionBarOptions['bar']>>().toEqualTypeOf<SuggestionBarPayload>();
 		expectTypeOf<Payload<TablePluginOptions['menu']>>().toEqualTypeOf<TableChrome>();
 		expectTypeOf<Payload<CodePluginOptions['header']>>().toEqualTypeOf<CodeHeader>();
 		expectTypeOf<Payload<CodePluginOptions['menu']>>().toEqualTypeOf<LanguageMenu>();

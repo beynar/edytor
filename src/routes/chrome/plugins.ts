@@ -45,7 +45,7 @@ import {
 	type ToolbarOptions,
 	type SlashMenuOptions,
 	type FindPluginOptions,
-	type SuggestionsOptions
+	createSuggestionBarPlugin
 } from '$lib/index.js';
 import * as chrome from './chrome.svelte';
 
@@ -99,9 +99,9 @@ export const calloutIconsPlugin = calloutIcons();
 export const find = (options: FindPluginOptions = {}) =>
 	createFindPlugin({ bar: chrome.findBar, ...options });
 export const findPlugin = find();
-export const suggestions = (options: SuggestionsOptions = {}) =>
-	createSuggestionsPlugin({ bar: chrome.suggestionBar, ...options });
-export const suggestionsPlugin = suggestions();
+export const suggestionsPlugin = createSuggestionsPlugin();
+/** The bar under each block suggestion. */
+export const suggestionBarPlugin = createSuggestionBarPlugin({ bar: chrome.suggestionBar });
 export const comments = (options: CommentsPluginOptions) =>
 	createCommentsPlugin({ card: chrome.commentCard, header: chrome.commentsHeader, ...options });
 export const mention = (options: MentionPluginOptions) =>

@@ -18,7 +18,8 @@
 		pageLink as createPageLinkPlugin,
 		richText as createRichTextPlugin,
 		slashMenu as createSlashMenuPlugin,
-		suggestions as createSuggestionsPlugin,
+		suggestionsPlugin,
+		suggestionBarPlugin,
 		toolbar as createToolbarPlugin,
 		video as createVideoPlugin
 	} from '../../routes/chrome/plugins.js';
@@ -64,7 +65,8 @@
 		createAudioPlugin(),
 		createCodePlugin({ languages: frLanguages }),
 		createFindPlugin(),
-		createSuggestionsPlugin(),
+		suggestionsPlugin,
+		suggestionBarPlugin,
 		createColumnsPlugin(),
 		createPagePlugin({ create: () => 'page-1' }),
 		createTocPlugin(),

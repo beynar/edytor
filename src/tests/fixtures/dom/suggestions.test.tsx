@@ -22,14 +22,21 @@ import {
 	codePlugin,
 	imagePlugin,
 	richTextPlugin,
-	suggestionsPlugin
+	suggestionsPlugin,
+	suggestionBarPlugin
 } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-const PLUGINS: Plugin[] = [codePlugin, suggestionsPlugin, imagePlugin, richTextPlugin];
+const PLUGINS: Plugin[] = [
+	codePlugin,
+	suggestionsPlugin,
+	suggestionBarPlugin,
+	imagePlugin,
+	richTextPlugin
+];
 
 const VALUE = (): JSONDoc => ({
 	children: [

@@ -42,6 +42,7 @@ import {
 	file as createFilePlugin,
 	richTextPlugin,
 	suggestionsPlugin,
+	suggestionBarPlugin,
 	video as createVideoPlugin,
 	videoPlugin,
 	mediaEmptyPlugin
@@ -294,7 +295,7 @@ describe('embed', () => {
 				url.host === 'docs.example' ? `https://docs.example/embed${url.pathname}` : null
 		};
 		const { edytor } = await mount(
-			[createEmbedPlugin({ providers: [only] }), suggestionsPlugin],
+			[createEmbedPlugin({ providers: [only] }), suggestionsPlugin, suggestionBarPlugin],
 			[{ id: 'p', type: 'paragraph', content: [] }]
 		);
 		edytor.suggestions.add({ after: 'p' }, [

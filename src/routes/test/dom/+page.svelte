@@ -31,6 +31,7 @@
 		calloutIconsPlugin,
 		slashMenuPlugin,
 		suggestionsPlugin,
+		suggestionBarPlugin,
 		tablePlugin,
 		toolbarPlugin
 	} from '../../chrome/plugins.js';
@@ -599,6 +600,7 @@
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
+		suggestionBarPlugin,
 		...(data.columns ? [createColumnsPlugin()] : []),
 		calloutIconsPlugin,
 		richTextPlugin,

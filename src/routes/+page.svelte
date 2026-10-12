@@ -24,6 +24,7 @@
 		calloutIconsPlugin,
 		slashMenuPlugin,
 		suggestionsPlugin,
+		suggestionBarPlugin,
 		tablePlugin,
 		toolbarPlugin
 	} from './chrome/plugins.js';
@@ -102,6 +103,7 @@
 		// KaTeX loads from jsDelivr the first time an equation shows.
 		equation(),
 		suggestionsPlugin,
+		suggestionBarPlugin,
 		calloutIconsPlugin,
 		richTextPlugin
 	];

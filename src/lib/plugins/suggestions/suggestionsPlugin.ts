@@ -1,9 +1,8 @@
-import { mount, unmount, type Snippet } from 'svelte';
+import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { branded } from '../brand.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
-import SuggestionBars from './SuggestionBars.svelte';
 
 /** What a `bar` snippet receives: one block suggestion and its actions. */
 export type SuggestionBarPayload = {
@@ -18,12 +17,9 @@ export type SuggestionBarPayload = {
 	mac: boolean;
 };
 
-export type SuggestionsOptions = {
-	/**
-	 * The bar under each block suggestion and its words (without it, none:
-	 * the keys still accept and discard); placement and keys are the plugin's.
-	 */
-	bar?: Snippet<[SuggestionBarPayload]>;
+export type SuggestionBarOptions = {
+	/** The bar under each block suggestion and its words; its placement is the plugin's. */
+	bar: Snippet<[SuggestionBarPayload]>;
 };
 
 /**
@@ -39,12 +35,11 @@ const endAtCaret = (edytor: Edytor) => {
 };
 
 /**
- * The UI of `edytor.suggestions` (Notion AI's): the app's `bar` under each
- * block suggestion (Accept, Discard, and Try again when the app passed
- * `onRetry`), and keys for the latest one: Mod+Enter accepts, Escape
- * discards; Tab accepts an `end` suggestion at the caret.
+ * The keys of `edytor.suggestions` (Notion AI's), a default plugin: for the
+ * latest one, Mod+Enter accepts and Escape discards; Tab accepts an `end`
+ * suggestion at the caret. Its bar is `createSuggestionBarPlugin`'s.
  */
-export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugin => {
+export const createSuggestionsPlugin = (): Plugin => {
 	const plugin: Plugin = (edytor) => ({
 		hotkeys: {
 			'mod+enter': ({ prevent }) => {
@@ -59,15 +54,6 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 				const suggestion = endAtCaret(edytor);
 				if (suggestion) prevent(() => suggestion.accept());
 			}
-		},
-		onEdytorAttached: () => {
-			const { bar } = options;
-			if (!bar) return;
-			const bars = mount(SuggestionBars, {
-				target: edytor.overlay.layer!,
-				props: { edytor, bar }
-			});
-			return () => void unmount(bars);
 		}
 	});
 	return branded('suggestions', plugin);

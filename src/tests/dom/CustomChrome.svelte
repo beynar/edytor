@@ -10,6 +10,7 @@
 	import { createImageToolbarPlugin } from '$lib/plugins/image/toolbar.svelte.js';
 	import { createMediaEmptyPlugin } from '$lib/plugins/media/MediaEmpty.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { createSuggestionBarPlugin } from '$lib/plugins/suggestions/SuggestionBars.svelte';
 	import { createTablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { createCodePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
@@ -64,7 +65,8 @@
 		createImageToolbarPlugin({ toolbar: imageToolbar }),
 		// One snippet for every empty image and media block, by its kind.
 		createMediaEmptyPlugin({ empty: anyEmpty }),
-		createSuggestionsPlugin({ bar: suggestionBar }),
+		createSuggestionsPlugin(),
+		createSuggestionBarPlugin({ bar: suggestionBar }),
 		createTablePlugin({ grip: tableGrip, menu: tableMenu, add: tableAdd }),
 		createCodePlugin({ header: codeHeader, menu: languageMenu }),
 		createEquationPlugin({ katex: false, panel: equationPanel })

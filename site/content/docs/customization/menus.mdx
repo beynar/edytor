@@ -52,7 +52,7 @@ Two rules hold for every snippet:
 | [Callout icon picker](#callout-icon-picker) | `createCalloutIconsPlugin({ picker })` | `CalloutIconPicker` | `keys`, `popup`, `option(index)` |
 | [Equation editor](#equation-editor) | `createEquationPlugin({ panel })` | `EquationEditor` | `field` |
 | [Comment cards](#comment-cards) | `createCommentsPlugin({ card, header })` | `CommentCardPayload`, `CommentsController` | |
-| [Suggestion bar](#suggestion-bar) | `createSuggestionsPlugin({ bar })` | `SuggestionBarPayload` | |
+| [Suggestion bar](#suggestion-bar) | `createSuggestionBarPlugin({ bar })` | `SuggestionBarPayload` | |
 | [Version history](#version-history) | `new VersionHistory({ client, document })` | your component reads it | `option(index)`, `keys` |
 | [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })` | `BlockHandleSnippetPayload` | `use:grip`; `expanded`, `controls`, `haspopup` |
 | [Marquee rectangle](#marquee-rectangle) | `createMarqueePlugin({ box })` | `MarqueeBoxPayload` | |
@@ -610,13 +610,13 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 
 ## Suggestion bar
 
-`bar` draws the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement and keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards; without a `bar`, the keys still do). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly`, `mac` (Mod is ⌘) and the plugin's `labels`.
+`createSuggestionBarPlugin({ bar })`: `bar` draws the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement, the default suggestions plugin its keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards; without a bar, the keys still do). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly` and `mac` (Mod is ⌘).
 
 ```svelte title="SuggestionsEditor.svelte" check
 <script lang="ts">
-	import { Edytor, createSuggestionsPlugin, type SuggestionBarPayload } from 'edytor';
+	import { Edytor, createSuggestionBarPlugin, type SuggestionBarPayload } from 'edytor';
 
-	const plugins = [createSuggestionsPlugin({ bar })];
+	const plugins = [createSuggestionBarPlugin({ bar })];
 </script>
 
 {#snippet bar({ suggestion, accept, discard, retry, readonly }: SuggestionBarPayload)}

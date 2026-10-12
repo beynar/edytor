@@ -1,3 +1,24 @@
+<script lang="ts" module>
+	import { mount, unmount } from 'svelte';
+	import type { Plugin } from '$lib/plugins.js';
+	import type { SuggestionBarOptions } from './suggestionsPlugin.js';
+	import Self from './SuggestionBars.svelte';
+
+	/**
+	 * The suggestion bar (Notion AI's): your `bar` under each block
+	 * suggestion (Accept, Discard, and Try again when the app passed
+	 * `onRetry`); its keys are the suggestions plugin's.
+	 */
+	export const createSuggestionBarPlugin =
+		({ bar }: SuggestionBarOptions): Plugin =>
+		(edytor) => ({
+			onEdytorAttached: () => {
+				const bars = mount(Self, { target: edytor.overlay.layer!, props: { edytor, bar } });
+				return () => void unmount(bars);
+			}
+		});
+</script>
+
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';

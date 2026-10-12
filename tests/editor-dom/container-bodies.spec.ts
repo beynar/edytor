@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from './editorTest';
 import { modKey, trackPageIssues, waitForEditorReady } from './helpers';
 
@@ -14,6 +15,14 @@ const open = async (page: Page, children: unknown[], params = '') => {
 		`/test/dom?scenario=dst${params}&dst=${encodeURIComponent(JSON.stringify({ children }))}`
 	);
 	await waitForEditorReady(page, { requireRuntime: true });
+};
+
+/** The Notion theme, its class on the editor itself: a callout's title is semibold there (a look). */
+const notionTheme = async (page: Page) => {
+	await page.addStyleTag({
+		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
+	});
+	await page.locator('[data-edytor]').evaluate((node) => node.classList.add('edytor-notion'));
 };
 
 type Outline = string | [string, Outline[]];
@@ -115,6 +124,7 @@ test.describe('container bodies', () => {
 	test("Enter at the end of a callout's title goes into its content", async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page, callout);
+		await notionTheme(page);
 		const title = page.locator('[data-edytor-id="c"] [data-edytor-callout-title]');
 		await expect(title).toHaveCSS('font-weight', '600');
 		await endOf(page, 'c');

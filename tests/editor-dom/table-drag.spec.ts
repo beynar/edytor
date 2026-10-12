@@ -126,12 +126,17 @@ test.describe('table.width.fit: a resize stops at the edge of the table’s plac
 		expect(during.gridRight).toBeLessThanOrEqual(during.right + 0.5);
 		await page.mouse.up();
 		const after = await scroller(page);
+		// The grid's borders are a theme's (none on this page): the clamp reads them.
+		const border = await page.locator('[data-edytor-table-grid]').evaluate((grid) => {
+			const style = getComputedStyle(grid);
+			return parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+		});
 		await expect
 			.poll(async () => (await storedWidths(page))?.[1])
-			.toBeGreaterThan(after.clientWidth - 120 - 1 - 2);
+			.toBeGreaterThan(after.clientWidth - 120 - border - 2);
 		const [, written] = (await storedWidths(page))!;
-		// The 1px border and the first column's 120px: the rest is the second's.
-		expect(written! + 120 + 1).toBeLessThanOrEqual(after.clientWidth);
+		// The grid's borders and the first column's 120px: the rest is the second's.
+		expect(written! + 120 + border).toBeLessThanOrEqual(after.clientWidth);
 		expect(after.scrollWidth).toBeLessThanOrEqual(after.clientWidth);
 		expect(after.gridRight).toBeLessThanOrEqual(after.right + 0.5);
 		// The page's paragraph shares the content column: the table ends inside it.

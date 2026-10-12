@@ -6,15 +6,11 @@
  *   no `value` and no optional plugins can't crash on undefined
  *   `mention`/`code` definitions; the facade seeds the canonical
  *   bootstrap block.
- * - S8: `*InlineBlock` snippet overrides merge over the plugin
- *   definition — `mentionInlineBlock` maps to the bare `mention` type
- *   and replaces only the snippet.
  * - D16: `clear()` reseeds a block of the injected document's semantic
  *   `defaultType` instead of a hardcoded paragraph.
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { expect, test, describe, vi } from 'vitest';
-import { createRawSnippet } from 'svelte';
 
 import EdytorComponent from '$lib/components/Edytor.svelte';
 import { createDocument } from '$lib/crdt/index.js';
@@ -23,7 +19,6 @@ import {
 	BLOCK_ACTIVATE_EVENT,
 	type BlockActivation
 } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import type { InlineBlockSnippetPayload } from '$lib/plugins.js';
 import { renderDomEdytor } from '../../dom/test.utils.js';
 import {
 	blockHandles as createBlockHandlesPlugin,
@@ -60,22 +55,14 @@ describe('component defaults and overrides', () => {
 		});
 	});
 
-	test('a retired `blockDnd={false}` prop hides nothing and warns, naming its replacement', async () => {
-		const warn = vi.spyOn(console, 'warn');
-		try {
-			const rendered = render(EdytorComponent, {
-				props: { plugins: [richTextPlugin, blockHandlesPlugin], ...({ blockDnd: false } as object) }
-			});
-			await waitFor(() => {
-				expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
-			});
-			expect(rendered.container.querySelectorAll('[data-testid="block-handle"]')).toHaveLength(1);
-			expect(warn.mock.calls.map(([message]) => String(message))).toContainEqual(
-				expect.stringMatching(/`blockDnd`.*removed.*`createBlockHandlesPlugin/)
-			);
-		} finally {
-			warn.mockRestore();
-		}
+	test('a retired `blockDnd={false}` prop hides nothing', async () => {
+		const rendered = render(EdytorComponent, {
+			props: { plugins: [richTextPlugin, blockHandlesPlugin], ...({ blockDnd: false } as object) }
+		});
+		await waitFor(() => {
+			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
+		});
+		expect(rendered.container.querySelectorAll('[data-testid="block-handle"]')).toHaveLength(1);
 	});
 
 	test('uses one configured handle plugin when it is supplied explicitly', async () => {
@@ -126,34 +113,6 @@ describe('component defaults and overrides', () => {
 		expect(block.type).toBe('paragraph');
 		expect(block.edytor.selection.selectedBlocks.has(block)).toBe(true);
 		expect(legacyMenuEvents).toBe(0);
-	});
-
-	test('applies a *InlineBlock snippet override over the plugin definition (S8)', async () => {
-		const mentionInlineBlock = createRawSnippet<[InlineBlockSnippetPayload]>(() => ({
-			render: () => '<kbd data-custom-mention>custom mention</kbd>'
-		}));
-
-		const rendered = render(EdytorComponent, {
-			props: {
-				plugins: [richTextPlugin, mentionPlugin],
-				value: {
-					children: [
-						{
-							type: 'paragraph',
-							content: [{ text: 'a ' }, { type: 'mention' }, { text: ' b' }]
-						}
-					]
-				},
-				mentionInlineBlock
-			}
-		});
-
-		await waitFor(() => {
-			expect(rendered.container.querySelector('[data-custom-mention]')).toBeTruthy();
-		});
-		// The override replaces the plugin snippet — the plugin's own
-		// marker never renders.
-		expect(rendered.container.querySelector('[data-edytor-mention]')).toBeNull();
 	});
 
 	test('keeps the plugin inline-block snippet when no override is supplied', async () => {

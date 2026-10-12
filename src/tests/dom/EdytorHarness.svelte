@@ -79,14 +79,17 @@
 <EdytorComponent
 	bind:edytor
 	{value}
-	plugins={blockHandles === false
-		? plugins?.filter((plugin) => !handlePlugins.has(plugin))
-		: plugins?.some((plugin) => handlePlugins.has(plugin))
-			? plugins
-			: [blockHandlesPlugin, ...(plugins ?? [])]}
+	plugins={[
+		// The placeholder is a plugin's (the first listed wins).
+		...(placeholder ? [() => ({ placeholder })] : []),
+		...((blockHandles === false
+			? plugins?.filter((plugin) => !handlePlugins.has(plugin))
+			: plugins?.some((plugin) => handlePlugins.has(plugin))
+				? plugins
+				: [blockHandlesPlugin, ...(plugins ?? [])]) ?? [])
+	]}
 	defaultPlugins={false}
 	{readonly}
-	{placeholder}
 	{translate}
 	{spellcheck}
 	{autocorrect}

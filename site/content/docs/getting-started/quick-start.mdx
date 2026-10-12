@@ -44,6 +44,8 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 
 	// Rich text, images and arrow moves are included by default.
 	const plugins = [
+		// Notion's hints in empty blocks.
+		() => ({ placeholder: richTextPlaceholder }),
 		createCodePlugin(),
 		createMarkdownShortcutsPlugin(),
 		createSlashMenuPlugin({ menu }),
@@ -93,7 +95,7 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 {/snippet}
 
 <div class="edytor-notion">
-	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={richTextPlaceholder} />
+	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" />
 </div>
 
 <style>
@@ -222,7 +224,7 @@ The block element's tag comes from its kind: list items render `li`, a toggle `d
 
 The placeholder is drawn by a `::before` rule the library ships, at 45% opacity. Override `[data-edytor-text][data-placeholder]::before` to restyle it.
 
-To change a kind's markup rather than its styles, override its snippet (see [the component page](/docs/editor/edytor-component#snippets)) or define your own kind in [Custom blocks](/docs/customization/blocks).
+To change a kind's markup rather than its styles, restyle it with a plugin's snippet (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) or define your own kind in [Custom blocks](/docs/customization/blocks).
 
 ## Next steps
 

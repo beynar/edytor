@@ -5,16 +5,12 @@
  *   (`hotKeys`, its alias, is gone: `retired-aliases.test.ts`). The `value` the
  *   view takes and the value `onChange` hands back are one type
  *   (`JSONDoc`), so a saved value goes back in as it is.
- * - API-14 — a snippet override naming no registered kind, mark or inline
- *   kind registers nothing and warns in development (a typo used to
- *   register a phantom kind).
  *
  * The cloudflare renames (`attachRoom`, `moveBlocksBetweenRooms`) are
  * checked against the API report in `public-surface.test.ts` and in the
  * room lane (`tests/do`).
  */
 import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
-import { createRawSnippet } from 'svelte';
 import { createDocument, type EdytorInstance, type JSONDoc, type Plugin } from '$lib/index.js';
 import type { EdytorProps } from '$lib/components/Edytor.svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
@@ -73,33 +69,3 @@ describe('API-13 · value and onChange are one type', () => {
 	});
 });
 
-describe('API-14 · a snippet override names a registered kind', () => {
-	const snippet = createRawSnippet(() => ({ render: () => '<span></span>' }));
-
-	test('an override of a known kind replaces its snippet, silently', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		const edytor = view({ snippets: { paragraphBlock: snippet, boldMark: snippet } });
-		expect(edytor.blocks.get('paragraph')?.snippet).toBe(snippet);
-		expect(edytor.marks.get('bold')?.snippet).toBe(snippet);
-		expect(warn).not.toHaveBeenCalled();
-	});
-
-	test('an override naming no kind registers nothing and warns', () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		const edytor = view({
-			// `boldMrk` is no override name at all: only the `Snippets` cast lets it through.
-			snippets: {
-				paragrphBlock: snippet,
-				boldMrk: snippet,
-				mentonInlineBlock: snippet
-			} as unknown as EdytorOptions['snippets']
-		});
-		expect(edytor.blocks.has('paragrph')).toBe(false);
-		expect(edytor.inlineBlocks.has('menton')).toBe(false);
-		const messages = warn.mock.calls.map((call) => String(call[0]));
-		expect(messages.some((m) => m.includes('paragrphBlock'))).toBe(true);
-		expect(messages.some((m) => m.includes('mentonInlineBlock'))).toBe(true);
-		// `boldMrk` ends in no known suffix: it is no override at all.
-		expect(messages.some((m) => m.includes('boldMrk'))).toBe(true);
-	});
-});

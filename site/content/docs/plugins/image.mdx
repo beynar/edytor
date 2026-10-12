@@ -142,4 +142,4 @@ The [Notion theme](/docs/customization/styling#notion-theme) styles the block. W
 
 The resize handles read `--edytor-image-handle-color`. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.
 
-To change the markup, override the snippet with an `imageBlock` snippet prop (see [the component page](/docs/editor/edytor-component#snippets)). To replace the kind itself, define an `image` kind in your own plugin: the default image plugin comes after yours, and definitions are first-wins.
+To change the markup, list a plugin that names the `image` kind's `snippet` (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)): the default image plugin comes after yours, and its other fields stay. To replace the kind itself, define every field you need in your own plugin: definitions are first-wins, field by field.

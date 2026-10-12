@@ -90,7 +90,7 @@ Pass `defaultPlugins={false}` to get exactly your list. The defaults are added b
 
 The array order is the precedence order. Two rules follow from it:
 
-- **Definitions: first wins.** When two plugins define the same block kind, mark, inline atom or command id, the one listed first is used and the later one is ignored. To replace a definition from a bundled plugin, list your plugin before it.
+- **Definitions: first wins.** When two plugins define the same block kind, mark or inline atom, the fields of the one listed first are used, and a field it leaves out is the later one's: a plugin naming only a kind's `snippet`, listed first, restyles a bundled kind and keeps the rest of its definition ([Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)). A command id is the first plugin's whole.
 - **Prevention: first wins.** Hooks and key bindings run in list order. The first plugin that calls `prevent()` stops the operation or claims the key, and the plugins after it are not asked.
 
 Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list. The four defaults are added after your plugins, so yours already come first; to let a default win over one of your plugins, list the default yourself before it.

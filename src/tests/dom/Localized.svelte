@@ -44,6 +44,8 @@
 	/** An upload, so the panels offer one. */
 	const upload = async () => 'https://example.com/file.bin';
 	const plugins = [
+		// Notion's hints in empty blocks: a plugin's placeholder.
+		() => ({ placeholder: richTextPlaceholder }),
 		blockHandles(),
 		createSlashMenuPlugin(),
 		createToolbarPlugin(),
@@ -76,10 +78,4 @@
 	];
 </script>
 
-<Edytor
-	bind:edytor
-	{plugins}
-	{value}
-	labels={{ ...fr, keywords: frKeywords }}
-	placeholder={richTextPlaceholder}
-/>
+<Edytor bind:edytor {plugins} {value} labels={{ ...fr, keywords: frKeywords }} />

@@ -17,7 +17,7 @@ The core ships almost no visual styles: you style the document with CSS, through
 </script>
 
 <div class="edytor-notion">
-	<Edytor placeholder={richTextPlaceholder} />
+	<Edytor plugins={[() => ({ placeholder: richTextPlaceholder })]} />
 </div>
 ```
 

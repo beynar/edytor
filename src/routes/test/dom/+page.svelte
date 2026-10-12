@@ -1319,7 +1319,7 @@
 	>
 		<Edytor
 			bind:edytor
-			{plugins}
+			plugins={[() => ({ placeholder }), ...plugins]}
 			defaultPlugins={false}
 			document={injectedDocument}
 			{value}
@@ -1332,14 +1332,13 @@
 			{hotkeys}
 			sync={collabSync}
 			class="outline-none"
-			{placeholder}
 		/>
 	</div>
 	{#if data.secondary}
 		<div data-testid="secondary-editor-shell" dir={direction}>
 			<Edytor
 				bind:edytor={secondaryEdytor}
-				{plugins}
+				plugins={[() => ({ placeholder: 'Second editor' }), ...plugins]}
 				defaultPlugins={false}
 				value={secondaryValue}
 				{translate}
@@ -1348,7 +1347,6 @@
 				{autocomplete}
 				{autocapitalize}
 				class="outline-none"
-				placeholder="Second editor"
 			/>
 		</div>
 		<pre data-testid="secondary-value">{serializedSecondaryValue}</pre>

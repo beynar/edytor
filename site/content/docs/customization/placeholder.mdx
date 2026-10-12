@@ -8,30 +8,28 @@ A placeholder is hint text shown in an empty block, such as "Type '/' for comman
 
 ## Setting a placeholder
 
-Pass `placeholder` to `<Edytor>`:
+A placeholder is a plugin's: return `placeholder` from a plugin you list.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 </script>
 
-<Edytor placeholder="Start writing…" />
+<Edytor plugins={[() => ({ placeholder: 'Start writing…' })]} />
 ```
 
 A string shows in every empty block. A function decides per block:
 
-```svelte title="PerBlock.svelte" check
-<script lang="ts">
-	import { Edytor } from 'edytor';
-</script>
+```ts title="hints.ts" check
+import type { Plugin } from 'edytor';
 
-<Edytor
-	placeholder={({ type, data, focused }) => {
+export const hintsPlugin: Plugin = () => ({
+	placeholder: ({ type, data, focused }) => {
 		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;
 		if (type === 'todo-item') return 'To-do';
 		return focused ? "Type '/' for commands" : null;
-	}}
-/>
+	}
+});
 ```
 
 The function receives a view of the empty block and returns the text, or `null` for none:
@@ -45,19 +43,7 @@ The function receives a view of the empty block and returns the text, or `null` 
   }}
 />
 
-The function re-runs when the block's kind, data or focus changes, so a placeholder can follow the caret. The prop itself is read once, when the editor mounts.
-
-A plugin can supply the placeholder instead, with the same string or function:
-
-```ts title="hints.ts" check
-import type { Plugin } from 'edytor';
-
-export const hintsPlugin: Plugin = () => ({
-	placeholder: ({ focused }) => (focused ? 'Press / for blocks, @ to mention' : null)
-});
-```
-
-The `<Edytor>` prop wins over plugins; among plugins, the first one that declares a placeholder wins.
+The function re-runs when the block's kind, data or focus changes, so a placeholder can follow the caret. The plugin list itself is read once, when the editor mounts. Among plugins, the first one that declares a placeholder wins.
 
 ## Notion placeholders
 
@@ -68,7 +54,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 	import { Edytor, richTextPlaceholder } from 'edytor';
 </script>
 
-<Edytor placeholder={richTextPlaceholder} />
+<Edytor plugins={[() => ({ placeholder: richTextPlaceholder })]} />
 ```
 
 | Kind                                          | Placeholder                                   |
@@ -83,7 +69,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 | `image`, `embed`, `bookmark`, `file`, `video`, `audio` (the caption) | "Write a caption…", only while focused |
 | any other kind, such as `paragraph`           | "Type '/' for commands", only while focused   |
 
-Its words are the view's `richText` labels' `placeholders` (`heading` is a function of the level): `<Edytor placeholder={richTextPlaceholder} labels={{ richText: { placeholders: { quote: 'Citation vide' } } }} />`. See [Localization](/docs/customization/localization). A placeholder function receives the empty block's values and the view; to change one case, wrap it: `placeholder={(view, edytor) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view, edytor))}`.
+Its words are the view's `richText` labels' `placeholders` (`heading` is a function of the level): `<Edytor plugins={[() => ({ placeholder: richTextPlaceholder })]} labels={{ richText: { placeholders: { quote: 'Citation vide' } } }} />`. See [Localization](/docs/customization/localization). A placeholder function receives the empty block's values and the view; to change one case, wrap it: `placeholder: (view, edytor) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view, edytor))`.
 
 ## When it shows
 

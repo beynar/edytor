@@ -1,4 +1,4 @@
-import { getContext, hasContext, type Snippet, mount, unmount } from 'svelte';
+import { getContext, hasContext, mount, unmount } from 'svelte';
 import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
@@ -65,13 +65,10 @@ import { canMove, move, type BlockMoveRequest } from './session/moves.js';
 import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
 import type {
 	Plugin,
-	BlockSnippetPayload,
 	InitializedPlugin,
-	MarkSnippetPayload,
 	BlockDefinition,
 	MarkDefinition,
 	InlineBlockDefinition,
-	InlineBlockSnippetPayload,
 	EditorCommand,
 	Placeholder
 } from './plugins.js';
@@ -92,46 +89,8 @@ import {
 /** A consumer that is set (a prop or a plugin hook left out is `undefined`). */
 const isListener = <F>(listener: F | undefined): listener is F => listener !== undefined;
 
-export type Snippets = {
-	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
-	// domain patterns, so property lookup intersects the matching arms —
-	// a bare `Snippet<[BlockSnippetPayload]>` on the `*Block` arm would
-	// make `*InlineBlock` props unassignable. Unioning the inline payload
-	// into the `*Block` arm collapses the intersection back to the inline
-	// type while keeping `*Block` overrides precisely typed.
-	[K in
-		| `${string}InlineBlock`
-		| `${string}Block`
-		| `${string}Mark`]: K extends `${string}InlineBlock`
-		? Snippet<[InlineBlockSnippetPayload]>
-		: K extends `${string}Block`
-			? Snippet<[BlockSnippetPayload]> | Snippet<[InlineBlockSnippetPayload]>
-			: Snippet<[MarkSnippetPayload]>;
-};
-
-/** What a snippet override's suffix names (the DEV warning for one that names nothing). */
-const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } as const;
-
-/**
- * Names an earlier release took and what replaced them. An untyped caller
- * still passing one (an option, or an `<Edytor>` prop, which reaches the view
- * among the snippets whatever its value) gets nothing from it and a
- * development warning naming the replacement.
- */
-const RETIRED: Record<string, string> = {
-	hotKeys: '`hotkeys`',
-	blockDnd: '`createBlockHandlesPlugin({ handle })`'
-};
-const warnRetired = (source: object | undefined) => {
-	if (!source) return;
-	for (const [name, use] of Object.entries(RETIRED))
-		if (Object.hasOwn(source, name))
-			console.warn(`[edytor] \`${name}\` was removed and is ignored: use ${use}.`);
-};
-
 export type EdytorOptions = {
 	readonly?: boolean;
-	snippets?: Snippets;
 	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
@@ -165,7 +124,6 @@ export type EdytorOptions = {
 	 */
 	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
-	placeholder?: Placeholder;
 	/**
 	 * The words the package shows and says in this view, over the English
 	 * ones: any entry of any section (`richText`, `table`, `editor`…), and
@@ -186,11 +144,17 @@ export type RootBlock = Block & {
 	readonly depth: 0;
 };
 
-/** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
+/**
+ * Register definitions, the first extension's fields winning: a field it
+ * leaves out is the next one's (an app's `{ snippet }` listed first restyles
+ * a bundled kind and keeps its roles and presets). A bare snippet is `{ snippet }`.
+ */
 const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
 	for (const [key, value] of Object.entries(definitions))
-		if (!into.has(key))
-			into.set(key, typeof value === 'object' ? value : ({ snippet: value } as T));
+		into.set(key, {
+			...(typeof value === 'object' ? value : { snippet: value }),
+			...into.get(key)
+		});
 };
 
 /**
@@ -448,7 +412,6 @@ export class Edytor {
 
 	constructor(options: EdytorOptions) {
 		const {
-			snippets,
 			readonly,
 			hotkeys,
 			plugins,
@@ -461,15 +424,10 @@ export class Edytor {
 			sync,
 			value,
 			onSelectionChange,
-			placeholder,
 			labels,
 			onChange,
 			onDocChange
 		} = options;
-		if (DEV) {
-			warnRetired(options);
-			warnRetired(snippets);
-		}
 		for (const name of DOCUMENT_WRITES)
 			Object.defineProperty(this, name, {
 				value: (...args: never) => this.dispatcher.operate(name, args)
@@ -527,42 +485,12 @@ export class Edytor {
 				return initializedPlugin;
 			});
 
-			// The app's snippets override the plugins' after they register: keys are
-			// `{type}{suffix}` over maps keyed by the bare type, suffixes tried in
-			// this order (`mentionInlineBlock` also ends in `Block`). Only the
-			// snippet is replaced: the definition's roles, `transformText` and hooks
-			// survive. An override names a registered kind, mark or atom kind: one
-			// that names none (a typo) registers nothing and warns in development.
-			const overrides = [
-				['Mark', this.marks],
-				['InlineBlock', this.inlineBlocks],
-				['Block', this.blocks]
-			] as const;
-			for (const [key, snippet] of Object.entries(snippets || {})) {
-				// A retired key (warned above) is no override, which a production view ignores too.
-				if (DEV && Object.hasOwn(RETIRED, key)) continue;
-				const override = overrides.find(([suffix]) => key.endsWith(suffix));
-				const name = override && key.slice(0, -override[0].length);
-				if (override && name && override[1].has(name)) {
-					const into = override[1] as Map<string, object>;
-					into.set(name, { ...into.get(name), snippet });
-				} else if (DEV && key !== 'children' && typeof snippet === 'function') {
-					const reason = override
-						? `no ${OVERRIDDEN[override[0]]} "${name}" is registered`
-						: 'its name ends in neither Block, Mark nor InlineBlock';
-					console.warn(
-						`[edytor] the snippet "${key}" overrides nothing: ${reason}. A new kind is a plugin's.`
-					);
-				}
-			}
-
 			// Kind records generate their commands; an extension's own command id wins.
 			this.kinds = kindCatalogue(this.blocks);
 			for (const row of this.kinds)
 				if (!this.commands.has(row.id)) this.commands.set(row.id, kindCommand(this, row));
 
-			this.placeholder =
-				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
+			this.placeholder = this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
 			// Contribute this view's capability to the document — roles,
 			// `rendersContent` and default children outlive any single view.

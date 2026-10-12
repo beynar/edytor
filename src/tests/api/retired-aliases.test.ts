@@ -14,15 +14,13 @@
  * - `block.suggestText`, `block.suggestions`, `block.acceptSuggestedText`:
  *   `edytor.suggestions` with `{ end: block.id }`.
  *
- * A retired name passed anyway (an untyped caller: `hotKeys` as an option or
- * a prop, `blockDnd` as a prop, whatever its value) registers nothing and
- * warns in development, naming its replacement.
+ * A retired name passed anyway (an untyped caller) registers nothing.
  *
  * `edytor/cloudflare`'s `attachDocument`, `AttachDocumentOptions` and
  * `moveBlocks` are checked against the API report in
  * `public-surface.test.ts`.
  */
-import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
+import { describe, expect, expectTypeOf, test } from 'vitest';
 import {
 	createDocument,
 	createWebsocketSync,
@@ -40,35 +38,6 @@ import { richTextPlugin } from '../../routes/chrome/plugins.js';
 const value: JSONDoc = { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'aa' }] }] };
 
 describe('retired aliases', () => {
-	afterEach(() => void vi.restoreAllMocks());
-	const warnings = () => {
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		return () => warn.mock.calls.map(([message]) => String(message));
-	};
-
-	test('`hotKeys` as an option warns in development, naming `hotkeys`', () => {
-		const read = warnings();
-		new Edytor({
-			document: createDocument({ value }),
-			plugins: [richTextPlugin],
-			...({ hotKeys: { 'mod+j': () => {} } } as object)
-		});
-		expect(read()).toEqual([expect.stringMatching(/`hotKeys`.*removed.*`hotkeys`/)]);
-	});
-
-	test('`hotKeys` and `blockDnd` as props (an object, a boolean) warn, naming their replacements', () => {
-		const read = warnings();
-		new Edytor({
-			document: createDocument({ value }),
-			plugins: [richTextPlugin],
-			snippets: { hotKeys: { 'mod+j': () => {} }, blockDnd: false } as never
-		});
-		expect(read()).toEqual([
-			expect.stringMatching(/`hotKeys`.*removed.*`hotkeys`/),
-			expect.stringMatching(/`blockDnd`.*removed.*`createBlockHandlesPlugin/)
-		]);
-	});
-
 	test('`hotKeys` is no option or prop, and binds nothing', () => {
 		expectTypeOf<EdytorOptions>().not.toHaveProperty('hotKeys');
 		expectTypeOf<EdytorProps>().not.toHaveProperty('hotKeys');

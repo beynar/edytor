@@ -66,6 +66,8 @@ pnpm add edytor
 		children: [{ type: 'paragraph', content: [{ text: 'Hello, World!' }] }]
 	};
 	const plugins = [
+		// Notion's hints in empty blocks.
+		() => ({ placeholder: richTextPlaceholder }),
 		createCodePlugin(),
 		createMarkdownShortcutsPlugin(),
 		createSlashMenuPlugin({ menu })
@@ -82,12 +84,7 @@ pnpm add edytor
 {/snippet}
 
 <div class="edytor-notion">
-	<Edytor
-		{value}
-		{plugins}
-		placeholder={richTextPlaceholder}
-		onChange={(root) => console.log(root)}
-	/>
+	<Edytor {value} {plugins} onChange={(root) => console.log(root)} />
 </div>
 ```
 

@@ -2,7 +2,7 @@
 	// `EdytorClass` alias: the emitted `.svelte.d.ts` also declares `Edytor`
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
-	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
+	import { Edytor as EdytorClass, useEdytor } from '../edytor.svelte.js';
 	import {
 		SyncRefusedError,
 		type Awareness,
@@ -19,7 +19,7 @@
 	} from '$lib/collaboration/awarenessSelection.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
-	import type { Placeholder, Plugin } from '$lib/plugins.js';
+	import type { Plugin } from '$lib/plugins.js';
 	import { brandOf } from '$lib/plugins/brand.js';
 	import type { PartialLabels } from '$lib/labels.js';
 	import { createRichTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -65,7 +65,7 @@
 		children: []
 	};
 
-	export type EdytorProps = Snippets & {
+	export type EdytorProps = {
 		plugins?: Plugin[];
 		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
@@ -108,7 +108,6 @@
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
-		placeholder?: Placeholder;
 		/**
 		 * The words the package shows and says in this view, over the English
 		 * ones: any entry of any section (`editor`, `richText`, `table`…) and
@@ -205,7 +204,6 @@
 		onChange,
 		onDocChange,
 		onSelectionChange,
-		placeholder,
 		labels,
 		translate = 'no',
 		spellcheck = true,
@@ -213,12 +211,10 @@
 		autocomplete = 'off',
 		autocapitalize = 'none',
 		inputmode,
-		enterkeyhint,
-		...snippets
+		enterkeyhint
 	}: EdytorProps = $props();
 
 	const initialEdytorOptions = untrack(() => ({
-		snippets,
 		readonly,
 		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
@@ -232,7 +228,6 @@
 		onDocChange,
 		sync: !!sync || room !== undefined,
 		value,
-		placeholder,
 		labels
 	}));
 
@@ -396,14 +391,12 @@
 	<!-- The room's JSON, read-only, while this view's document hydrates. -->
 	<div data-edytor-snapshot style="display: contents">
 		<Snapshot
-			{...snippets}
 			{...{
 				value: snapshot,
 				readonly: true,
 				plugins: userPlugins,
 				defaultPlugins,
 				class: className,
-				placeholder,
 				labels,
 				'aria-label': ariaLabel,
 				'aria-labelledby': ariaLabelledby,

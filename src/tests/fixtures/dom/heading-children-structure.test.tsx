@@ -150,19 +150,17 @@ describe('the exported HTML imports back', () => {
 	});
 });
 
-describe('a consumer snippet override keeps the heading tag and the blockquote', () => {
-	it('headingBlock and quoteBlock replace the snippet; h2 and blockquote still wrap the text', async () => {
+describe('a plugin restyling a kind keeps the heading tag and the blockquote', () => {
+	it('a plugin listed first names the heading and quote snippets; h2 and blockquote still wrap the text', async () => {
 		const rendered = mount(Edytor, {
 			props: {
-				plugins: [richTextPlugin],
+				plugins: [() => ({ blocks: { heading: ownBlock, quote: ownBlock } }), richTextPlugin],
 				value: {
 					children: [
 						heading('H', 'h2', [kid('a')]),
 						{ id: 'Q', type: 'quote', content: [{ text: 'Said' }], children: [kid('b')] }
 					]
-				},
-				headingBlock: ownBlock,
-				quoteBlock: ownBlock
+				}
 			} as never
 		});
 		await waitFor(() =>

@@ -73,6 +73,8 @@
 	});
 	// The handles unless `?handles=0`; the demo's chrome draws every menu (`./chrome`).
 	const plugins = [
+		// Notion's hints in empty blocks: a plugin's placeholder.
+		() => ({ placeholder: richTextPlaceholder }),
 		...(page.url.searchParams.get('handles') === '0' ? [] : [blockHandlesPlugin]),
 		createArrowMovePlugin(),
 		imagePlugin,
@@ -358,7 +360,6 @@
 							{sync}
 							class="demo-edytor"
 							aria-label="A calmer place to think"
-							placeholder={richTextPlaceholder}
 							bind:edytor
 						/>
 					{/if}

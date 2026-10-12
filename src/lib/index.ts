@@ -315,7 +315,7 @@ export {
 // The types a consumer meets through a prop, an option, a member or a
 // callback above, exported so an app can name them.
 export type { EdytorProps } from './components/Edytor.svelte';
-export type { EdytorOptions, Snippets } from './edytor.svelte.js';
+export type { EdytorOptions } from './edytor.svelte.js';
 export type {
 	BlockMenuLabels,
 	CodeLabels,

@@ -1,10 +1,10 @@
 ---
 title: The Edytor component
-description: Every prop of the Edytor component, with types and defaults, plus the snippet overrides for blocks, marks and inline blocks.
+description: Every prop of the Edytor component, with types and defaults, and how a plugin restyles a block, mark or inline kind.
 icon: square-pen
 ---
 
-`<Edytor>` renders one editable (or readonly) view of a document. This page lists every prop it accepts and the snippets you can pass to replace how a kind renders.
+`<Edytor>` renders one editable (or readonly) view of a document. This page lists every prop it accepts, and how to replace how a kind renders.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -15,7 +15,7 @@ icon: square-pen
 
 <Edytor
 	value={{ children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }] }}
-	placeholder="Write something…"
+	plugins={[() => ({ placeholder: 'Write something…' })]}
 	onChange={({ data, children }) => save({ data, children })}
 />
 ```
@@ -40,7 +40,6 @@ Most props are read once, when the component is created. Changing them later has
 | `sync` | `EdytorSync` | | | Advanced: a custom provider factory such as `createIndexeddbSync(name)` or `createWebsocketSync(options)`. Attached in the browser when the view is editable; the view renders once the document is ready. See [Collaboration](/docs/collaboration). |
 | `actor` | `DocumentActor` | anonymous | | The local author `{ id, name?, color? }` of the view's own document: per-block attribution and the presence profile peers see. Cannot be combined with `document` (set it in `createDocument`). |
 | `readonly` | `boolean` | `false` | Yes | Render the document without editing. See [Readonly mode](/docs/editor/readonly). |
-| `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
 | `labels` | `PartialLabels` | English | | The words the package shows and says in this view, any entry of any section (the kinds' names, the placeholders, the [announcements](/docs/editor/accessibility#announcements) …), and the commands' slash `keywords` by id. See [Localization](/docs/customization/localization). |
 | `hotkeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). |
 | `onChange` | `(value: JSONDoc) => void` | | | Called after every committed change, local or remote, with the document as a `JSONDoc`, the type `value` takes: `{ data?, children }` (the object also carries `type: 'root'`). `data` holds the document's [properties](/docs/concepts/properties). A stored value opens as `value` as it is. |
@@ -113,36 +112,36 @@ The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({
 
 A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. The drop indicator and the nest backdrop (the tint on the block a drop nests into) are placed by the plugin and styled by you: `[data-edytor-drop-indicator]` and `[data-edytor-drop-backdrop]`, which carry the `--edytor-drop-indicator-color` and `--edytor-drop-backdrop-color` your theme sets (see [Menus and handles](/docs/customization/menus#block-handle)).
 
-## Snippets
+## Restyling a kind
 
-Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element and content element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them. A quote's `content()` still renders inside its `blockquote`, a heading's inside its `h1`–`h3`.
+A kind's markup is its plugin's `snippet`. To replace how a bundled kind renders, list a plugin before it that names only that kind's `snippet`: the first plugin's fields win, and a field it leaves out is the next one's, so the kind keeps its element and content element, `void` and `island` flags, presets, hooks and clipboard forms. A quote's `content()` still renders inside its `blockquote`, a heading's inside its `h1`–`h3`.
 
-```svelte title="Overrides.svelte" check
+```svelte title="Restyled.svelte" check
 <script lang="ts">
-	import { Edytor, type BlockSnippetPayload, type MarkSnippetPayload } from 'edytor';
+	import { Edytor, type BlockSnippetPayload, type MarkSnippetPayload, type Plugin } from 'edytor';
+
+	const restyled: Plugin = () => ({ blocks: { quote: quote }, marks: { bold: bold } });
 </script>
 
-<Edytor>
-	{#snippet quoteBlock({ block, content, children }: BlockSnippetPayload)}
-		<span class="quote-mark" contenteditable="false">“</span>
-		{@render content()}
-		{#if children}<div class="quote-children">{@render children()}</div>{/if}
-	{/snippet}
+{#snippet quote({ content, children }: BlockSnippetPayload)}
+	<span class="quote-mark" contenteditable="false">“</span>
+	{@render content()}
+	{#if children}<div class="quote-children">{@render children()}</div>{/if}
+{/snippet}
 
-	{#snippet boldMark({ content }: MarkSnippetPayload)}
-		<span class="font-semibold">{@render content()}</span>
-	{/snippet}
-</Edytor>
+{#snippet bold({ content }: MarkSnippetPayload)}
+	<span class="font-semibold">{@render content()}</span>
+{/snippet}
+
+<Edytor plugins={[restyled]} />
 ```
 
-| Snippet name | Receives |
+| Definition | Its snippet receives |
 | --- | --- |
-| `<type>Block` | `{ block, content, children }`. `block` is a reactive view (`id`, `type`, `data`, `selected`, `focused`, `handle`); render `content()` for the block's text and `children()` (or `null` when it has none) for nested blocks. |
-| `<type>Mark` | `{ content, mark, text }`. `mark` is the mark's value. The snippet renders inside a `<span data-edytor-mark>` instead of the mark's tag. |
-| `<type>InlineBlock` | `{ block }`, a reactive view with `id`, `type`, `data`, `selected` and `handle`. |
+| `blocks` | `{ block, content, children }`. `block` is a reactive view (`id`, `type`, `data`, `selected`, `focused`, `handle`); render `content()` for the block's text and `children()` (or `null` when it has none) for nested blocks. |
+| `marks` | `{ content, mark, text }`. `mark` is the mark's value. The snippet renders inside a `<span data-edytor-mark>` instead of the mark's tag. |
+| `inlineBlocks` | `{ block }`, a reactive view with `id`, `type`, `data`, `selected` and `handle`. |
 
 The core renders the block element itself (the kind's `element`, a `div` by default) and the element around its text (the kind's `contentElement`, if any), so a block snippet renders only the markup inside the block element. Mark non-editable chrome inside a block with `contenteditable="false"`, or with the `use:block.void` action.
 
-For a type that is not a valid identifier, such as `todo-item`, spread the snippet under its name: `<Edytor {...{ 'todo-itemBlock': todo }} />`.
-
-Content placed inside `<Edytor>` other than these snippets is ignored. A snippet that names no registered kind, mark or inline kind (`paragrphBlock`) overrides nothing and registers nothing; in development it logs a warning naming it. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks). To replace the slash menu, toolbar, block menu or block handle markup, pass snippets to their plugins: see [Menus and handles](/docs/customization/menus).
+To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks). To replace the slash menu, toolbar, block menu or block handle markup, pass snippets to their plugins: see [Menus and handles](/docs/customization/menus).

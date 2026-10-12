@@ -55,7 +55,7 @@ export const myPlugin: Plugin = (edytor) => {
     },
     placeholder: {
       type: "string | ((view) => string | null)",
-      description: "Text shown in empty blocks. The <Edytor> prop wins over a plugin's. See Placeholder.",
+      description: "Text shown in empty blocks; the first plugin that declares one wins. See Placeholder.",
       typeDescriptionLink: "/docs/customization/placeholder",
     },
   }}

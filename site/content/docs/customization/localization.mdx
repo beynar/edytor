@@ -32,7 +32,7 @@ To show another language, give the view its `labels`: any entries of any section
 
 <!-- One word changed: the rest stays English. -->
 <Edytor
-	placeholder={richTextPlaceholder}
+	plugins={[() => ({ placeholder: richTextPlaceholder })]}
 	labels={{ richText: { placeholders: { empty: 'Write, or press / for blocks' } } }}
 />
 ```
@@ -236,6 +236,8 @@ Then give the view its words, and the code plugin its languages. Your chrome's s
 	import { fr, frKeywords, frLanguages } from '$lib/fr';
 
 	const plugins = [
+		// Notion's hints in empty blocks.
+		() => ({ placeholder: richTextPlaceholder }),
 		createCodePlugin({ languages: frLanguages }),
 		createColumnsPlugin(),
 		createPagePlugin(),
@@ -246,7 +248,6 @@ Then give the view its words, and the code plugin its languages. Your chrome's s
 <Edytor
 	{plugins}
 	labels={{ ...fr, keywords: frKeywords }}
-	placeholder={richTextPlaceholder}
 	aria-label="Corps de la page"
 />
 ```

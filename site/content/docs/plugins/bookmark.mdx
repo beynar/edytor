@@ -36,7 +36,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`
     },
     menu: {
       type: "Snippet<[UrlPasteController]>",
-      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
+      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {@attach controller.option(index)}. See Menus and handles.",
     },
     card: {
       type: "Snippet<[BookmarkCardPayload]>",
@@ -51,7 +51,7 @@ Your server endpoint fetches untrusted pages: restrict it to `http(s)` URLs on p
 
 ### Your card
 
-The card is drawn inside the block's void wrapper (`[data-edytor-bookmark]`), above the caption. `card` replaces it with your markup; it receives a `BookmarkCardPayload`: `block` (`undefined` in a suggestion's preview), `url`, the unfurled `title`, `description`, `image` and `icon` (each `undefined` until `unfurl` answers it, every URL already an `http(s)` one), and `link`, the attributes to spread on your `a`: its `href`, `target="_blank"`, `rel="noopener noreferrer nofollow"` and `draggable="false"`.
+The card is drawn inside the block's void wrapper (`[data-edytor-bookmark]`), above the caption. `card` replaces it with your markup; it receives a `BookmarkCardPayload`: `block` (`undefined` in a suggestion's preview), `url`, the unfurled `title`, `description`, `image` and `icon` (each `undefined` until `unfurl` answers it, every URL already an `http(s)` one), and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"` and `draggable="false"`. Render its `href={page.url}` yourself, so a server-rendered readonly view links too.
 
 ```svelte title="Bookmarks.svelte" check
 <script lang="ts">
@@ -61,7 +61,7 @@ The card is drawn inside the block's void wrapper (`[data-edytor-bookmark]`), ab
 </script>
 
 {#snippet card(page: BookmarkCardPayload)}
-	<a class="card" {...page.link}>
+	<a class="card" href={page.url} {@attach page.link}>
 		{#if page.icon}<img src={page.icon} alt="" />{/if}
 		<strong>{page.title ?? page.url}</strong>
 		{#if page.description}<span>{page.description}</span>{/if}

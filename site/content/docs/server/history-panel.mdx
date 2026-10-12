@@ -35,10 +35,10 @@ icon: history
 </script>
 
 <section aria-label="Version history">
-	<ul role="listbox" aria-label="Versions" onkeydown={history.keys}>
+	<ul role="listbox" aria-label="Versions" {@attach history.keys}>
 		{#each history.versions ?? [] as version, index (version.key)}
 			<li role="presentation">
-				<button type="button" {...history.option(index)} onclick={() => void history.select(version.key)}>
+				<button type="button" {@attach history.option(index)} onclick={() => void history.select(version.key)}>
 					{history.dateOf(version)} · {version.slot === 'am' ? 'Morning' : 'Evening'} ·
 					{version.editors.join(', ')}
 				</button>
@@ -138,7 +138,7 @@ export const historyOf = (documentId: string): HistoryClient => {
 
 ## The list
 
-`versions` holds the versions, newest first (`null` while the first list loads). The controller lists them when it is made and selects the newest; `refresh()` lists them again, keeping the selection while it is listed. Write a row with `titleOf(version)`, its date and half of the day (`Oct 6, 2026 · Morning`), in the room's calendar (the history's `timeZone`); `editorsOf(version)`, its editors (`ada, bob +2`, or `No editors` for a slot only the server edited); and `timeOf(version)`, when it was saved, in the reader's time zone. Spread `option(index)` on each row: it is an `option` of your `listbox`, its one tab stop when selected; give the list `onkeydown={history.keys}`: <kbd>↑</kbd> and <kbd>↓</kbd> move the selection, <kbd>Home</kbd> and <kbd>End</kbd> go to the newest and the oldest. A click on a row calls `select(key)`.
+`versions` holds the versions, newest first (`null` while the first list loads). The controller lists them when it is made and selects the newest; `refresh()` lists them again, keeping the selection while it is listed. Write a row with `titleOf(version)`, its date and half of the day (`Oct 6, 2026 · Morning`), in the room's calendar (the history's `timeZone`); `editorsOf(version)`, its editors (`ada, bob +2`, or `No editors` for a slot only the server edited); and `timeOf(version)`, when it was saved, in the reader's time zone. Attach `option(index)` to each row: it is an `option` of your `listbox`, its one tab stop when selected (its highlight is yours, from `version.key === history.selected`); give the list `{@attach history.keys}`: <kbd>↑</kbd> and <kbd>↓</kbd> move the selection, <kbd>Home</kbd> and <kbd>End</kbd> go to the newest and the oldest. A click on a row calls `select(key)`.
 
 ## The preview
 

@@ -8,7 +8,7 @@
 	 * ⋮⋮ grip (drag, click for the block menu, Alt+arrows).
 	 */
 	let { handle }: { handle: BlockHandleSnippetPayload } = $props();
-	const { block, grip } = $derived(handle);
+	const { block, grip, plus } = $derived(handle);
 	const labels = $derived(words.blockHandles);
 </script>
 
@@ -19,17 +19,8 @@
 	hidden={handle.readonly}
 	data-testid="block-add"
 	aria-label={handle.beside ? labels.addBeside(handle.label) : labels.add(handle.label)}
-	aria-expanded={handle.expanded.add ? 'true' : undefined}
-	aria-controls={handle.controls.add}
-	aria-haspopup={handle.haspopup.add}
 	title={handle.beside ? labels.addBesideHint : labels.addHint}
-	onmousedown={(event) => event.preventDefault()}
-	onpointerdown={(event) => event.stopPropagation()}
-	onclick={(event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		handle.add(event.altKey, event.currentTarget);
-	}}
+	{@attach plus}
 >
 	<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
 		<path
@@ -44,16 +35,12 @@
 	type="button"
 	class="edytor-block-handle"
 	contenteditable="false"
-	use:grip
 	hidden={handle.readonly}
 	data-testid="block-handle"
 	data-block-id={block.id}
 	aria-label={labels.grip(handle.label)}
-	aria-expanded={handle.expanded.grip ? 'true' : undefined}
-	aria-controls={handle.controls.grip}
-	aria-haspopup={handle.haspopup.grip}
-	aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowRight Alt+ArrowLeft"
 	data-draggable={handle.draggable ? 'true' : undefined}
+	{@attach grip}
 >
 	<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true" focusable="false">
 		<circle cx="2.5" cy="3" r="1.3" />

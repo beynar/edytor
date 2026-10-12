@@ -11,13 +11,8 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
-import {
-	attribute,
-	optionAttributes,
-	type MenuItemPayload,
-	type OptionAttributes
-} from '../chrome.js';
-import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
+import { attribute, type MenuItemPayload } from '../chrome.js';
+import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
 import { dragPreview } from '../blockHandles/dragPreview.js';
@@ -668,15 +663,15 @@ export class TableChrome extends ChromeList {
 	}
 
 	/**
-	 * The attributes of the open menu's row at `index`: spread them on its
-	 * element (`{...chrome.option(index)}`). Its id, `menuitem` role,
+	 * The attachment of the open menu's row at `index`
+	 * (`{@attach chrome.option(index)}`). Its id, `menuitem` role,
 	 * `aria-disabled` when it cannot run now, `data-selected` for the
 	 * keyboard's row, which scrolls into view. The menu's element takes
 	 * `data-edytor-table-menu` (the kind it is open on) from `popup`.
 	 */
-	option(index: number): OptionAttributes {
+	option(index: number): Attachment<HTMLElement> {
 		const extra = this.#rows[index]?.disabled ? { 'aria-disabled': true } : {};
-		return optionAttributes(this.rowId(index), 'menuitem', index === this.index, extra);
+		return optionAttachment(this.rowId(index), 'menuitem', index === this.index, extra);
 	}
 
 	/**

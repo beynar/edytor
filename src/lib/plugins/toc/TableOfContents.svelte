@@ -4,7 +4,7 @@
 	import { ownText } from '$lib/surface/attributes.js';
 	import { reveal } from '$lib/selection/replaceSelection.js';
 	import { labelsOf, tocEnglish } from '$lib/labels.js';
-	import { keepSelection } from '../chrome.js';
+	import { attach, keepSelection } from '../chrome.js';
 	import { richTextHeadingLevel, tocViews, type TocEntryPayload } from './toc.js';
 
 	/**
@@ -51,22 +51,23 @@
 		text,
 		label: text || labels.untitled,
 		go: () => go(id),
-		attributes: {
-			'data-edytor-toc-entry': '',
-			'data-level': level,
-			'data-untitled': text ? undefined : 'true',
-			style: `--edytor-toc-depth: ${level - top}`,
-			onmousedown: keepSelection,
-			onclick: () => go(id)
-		}
+		control: attach(
+			{ 'data-edytor-toc-entry': '' },
+			{ mousedown: keepSelection, click: () => go(id) }
+		)
 	});
 </script>
 
 {#if entries.length}
 	{#each entries as found (found.id)}
 		{@const payload = payloadOf(found)}
-		{#if entry}{@render entry(payload)}{:else}<button type="button" {...payload.attributes}
-				>{payload.label}</button
+		{#if entry}{@render entry(payload)}{:else}<button
+				type="button"
+				data-edytor-toc-entry
+				data-level={payload.level}
+				data-untitled={payload.text ? undefined : 'true'}
+				style:--edytor-toc-depth={payload.depth}
+				{@attach payload.control}>{payload.label}</button
 			>{/if}
 	{/each}
 {:else if empty}

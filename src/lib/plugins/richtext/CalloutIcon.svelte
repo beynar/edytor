@@ -16,7 +16,10 @@
 </script>
 
 {#if icon.editable}
-	<button type="button" {...icon.attributes}>{icon.icon}</button>
+	<button type="button" {@attach icon.control}>{icon.icon}</button>
 {:else if icon.icon}
-	<span {...icon.attributes}>{icon.icon}</span>
+	<!-- A server render (a readonly view's) shows this one: its marker is written here too. -->
+	<span data-edytor-callout-icon contenteditable="false" aria-hidden="true" {@attach icon.control}
+		>{icon.icon}</span
+	>
 {/if}

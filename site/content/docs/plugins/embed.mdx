@@ -28,7 +28,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and p
     },
     menu: {
       type: "Snippet<[UrlPasteController]>",
-      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
+      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {@attach controller.option(index)}. See Menus and handles.",
     },
     fallback: {
       type: "Snippet<[EmbedFallbackPayload]>",
@@ -37,7 +37,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and p
   }}
 />
 
-`fallback` receives an `EmbedFallbackPayload`: `block` (`undefined` in a suggestion's preview), `url` (an `http(s)` link) and `link`, the attributes to spread on your `a` (`href`, `target="_blank"`, `rel="noopener noreferrer nofollow"`). It is never a frame: only an allowlisted provider plays.
+`fallback` receives an `EmbedFallbackPayload`: `block` (`undefined` in a suggestion's preview), `url` (an `http(s)` link) and `link`, the attachment of your `a` (`target="_blank"`, `rel="noopener noreferrer nofollow"`), as a menu's row takes its own; render its `href={embed.url}` yourself. It is never a frame: only an allowlisted provider plays.
 
 ```svelte title="Embeds.svelte" check
 <script lang="ts">
@@ -47,7 +47,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and p
 </script>
 
 {#snippet fallback(embed: EmbedFallbackPayload)}
-	<a class="unplayable" {...embed.link}>Open {new URL(embed.url).host}</a>
+	<a class="unplayable" href={embed.url} {@attach embed.link}>Open {new URL(embed.url).host}</a>
 {/snippet}
 
 <Edytor plugins={[embeds]} />

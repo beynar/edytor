@@ -13,4 +13,12 @@
 	const box = todoCheckbox(getContext<Edytor>('edytor'), () => block);
 </script>
 
-<input type="checkbox" checked={box.checked} {...box.attributes} />
+<!-- What a server render shows (a readonly view's) is written here; the attachment acts in the browser. -->
+<input
+	type="checkbox"
+	data-edytor-todo-checkbox
+	contenteditable="false"
+	aria-label={box.label}
+	checked={box.checked}
+	{@attach box.control}
+/>

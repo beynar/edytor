@@ -6,7 +6,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
-import type { Popup } from '$lib/surface/popups.svelte.js';
+import type { Attachment } from 'svelte/attachments';
 import { all, listen } from '$lib/utils/listen.js';
 
 /** What a `handle` snippet receives. */
@@ -14,8 +14,19 @@ export type BlockHandleSnippetPayload = {
 	block: Block;
 	/** The block's kind as people read it ("Heading 1", its preset's label): name your controls with it. */
 	label: string;
-	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
-	grip: (node: HTMLElement) => { destroy(): void };
+	/**
+	 * The grip's attachment (`{@attach handle.grip}`): the drag source, a
+	 * click that opens the block's menu, the Alt+arrow moves
+	 * (`aria-keyshortcuts`), and the ARIA of the menu it opened
+	 * (`aria-expanded`, `aria-controls`, `aria-haspopup`).
+	 */
+	grip: Attachment<HTMLElement>;
+	/**
+	 * The `+`'s attachment (`{@attach handle.plus}`): a click calls `add`
+	 * (Alt+click with `true`) with the `+` as the anchor, a press keeps the
+	 * editor's focus, and the ARIA of the menu it opened.
+	 */
+	plus: Attachment<HTMLElement>;
 	/**
 	 * The `+`: the slash menu offers what to add below; with `true` (Alt+click)
 	 * above, or, for a block directly in a layout's column, in a new column
@@ -31,18 +42,6 @@ export type BlockHandleSnippetPayload = {
 	beside: boolean;
 	readonly: boolean;
 	draggable: boolean;
-	/**
-	 * Whether the menu the `+` (`add`) or the grip (`grip`) opened is open
-	 * (reactive): their `aria-expanded`.
-	 */
-	expanded: { add: boolean; grip: boolean };
-	/**
-	 * The id of the menu the `+` or the grip opened, while it is open: their
-	 * `aria-controls`.
-	 */
-	controls: { add: string | undefined; grip: string | undefined };
-	/** What the menu the `+` or the grip opened is, while it is open: their `aria-haspopup`. */
-	haspopup: { add: Popup['haspopup']; grip: Popup['haspopup'] };
 };
 
 export type BlockHandlesOptions = {

@@ -23,7 +23,7 @@
 
 <!--
 	The listbox's id, role and publication to the view's root are the
-	controller's `popup` attachment, a row's attributes its `option(index)`.
+	controller's `popup` attachment, a row's ARIA its `option(index)`.
 	A press in the menu keeps the editor's focus and its caret at the query.
 -->
 <div
@@ -48,7 +48,8 @@
 				<button
 					type="button"
 					class="edytor-trigger-item"
-					{...controller.option(index)}
+					data-selected={controller.index === index}
+					{@attach controller.option(index)}
 					data-testid="trigger-menu-item"
 					onmousemove={() => (controller.index = index)}
 					onclick={() => void controller.pick(item)}

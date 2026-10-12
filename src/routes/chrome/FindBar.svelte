@@ -85,7 +85,7 @@
 			spellcheck="false"
 			value={find.query}
 			oninput={(event) => (find.query = event.currentTarget.value)}
-			use:find.field
+			{@attach find.field}
 		/>
 		<span data-edytor-find-count aria-live="polite">{find.query ? count : ''}</span>
 		{@render buttons(searching)}
@@ -100,7 +100,7 @@
 				autocomplete="off"
 				spellcheck="false"
 				bind:value={find.replacement}
-				use:find.replaceField
+				{@attach find.replaceField}
 			/>
 			{@render buttons(replacing)}
 		</div>

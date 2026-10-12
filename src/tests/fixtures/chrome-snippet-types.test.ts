@@ -43,7 +43,6 @@ import type {
 	MentionItem,
 	MentionPluginOptions,
 	MenuItemPayload,
-	OptionAttributes,
 	PageLinkItem,
 	PageLinkPluginOptions,
 	SlashMenuController,
@@ -57,21 +56,21 @@ import type {
 	UrlPasteController,
 	BookmarkCardPayload,
 	CalloutIconPayload,
-	ControlAttributes,
 	EmbedFallbackPayload,
 	EmptyBodyPayload,
 	EquationErrorPayload,
 	EquationPlaceholderPayload,
 	FilePluginOptions,
 	FileRowPayload,
-	MediaLinkAttributes,
 	PageBlockLinkPayload,
 	PagePluginOptions,
 	RichTextPluginOptions,
 	TocEmptyPayload,
 	TocEntryPayload,
 	TocPluginOptions,
-	TodoCheckboxPayload
+	TodoCheckboxPayload,
+	FindController,
+	VersionHistory
 } from '$lib/index.js';
 
 /** The one argument a snippet option takes. */
@@ -124,21 +123,14 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<MarqueeBoxPayload['adding']>().toEqualTypeOf<boolean>();
 	});
 
-	it('a block handle’s payload says what its `+` and grip opened, and takes the `+` as the anchor', () => {
-		expectTypeOf<BlockHandleSnippetPayload['expanded']>().toEqualTypeOf<{
-			add: boolean;
-			grip: boolean;
-		}>();
-		expectTypeOf<BlockHandleSnippetPayload['controls']>().toEqualTypeOf<{
-			add: string | undefined;
-			grip: string | undefined;
-		}>();
+	it('a block handle’s grip and `+` are attachments, which keep the ARIA of what they opened', () => {
+		expectTypeOf<BlockHandleSnippetPayload['grip']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<BlockHandleSnippetPayload['plus']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<BlockHandleSnippetPayload>().not.toHaveProperty('expanded');
+		expectTypeOf<BlockHandleSnippetPayload>().not.toHaveProperty('controls');
+		expectTypeOf<BlockHandleSnippetPayload>().not.toHaveProperty('haspopup');
 		expectTypeOf<BlockHandleSnippetPayload>().not.toHaveProperty('labels');
 		expectTypeOf<BlockHandleSnippetPayload['beside']>().toEqualTypeOf<boolean>();
-		expectTypeOf<BlockHandleSnippetPayload['haspopup']>().toEqualTypeOf<{
-			add: 'listbox' | 'menu' | 'dialog' | undefined;
-			grip: 'listbox' | 'menu' | 'dialog' | undefined;
-		}>();
 		expectTypeOf<BlockHandleSnippetPayload['add']>().toEqualTypeOf<
 			(alt?: boolean, anchor?: HTMLElement | null) => void
 		>();
@@ -172,7 +164,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<EquationEditor['close']>().toBeFunction();
 	});
 
-	it('the attachments are typed, and a row’s attributes spread', () => {
+	it('the attachments are typed, a row’s too: nothing is spread', () => {
 		expectTypeOf<BlockMenuController['popup']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<BlockMenuController['keys']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<BlockMenuController['flyoutMenu']>().toEqualTypeOf<Attachment<HTMLElement>>();
@@ -185,20 +177,25 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<UrlPasteController['popup']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<ImageToolbar['bar']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<ImageToolbar['altField']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
-		expectTypeOf<BlockMenuController['option']>().returns.toEqualTypeOf<OptionAttributes>();
-		expectTypeOf<SlashMenuController['option']>().returns.toEqualTypeOf<OptionAttributes>();
-		expectTypeOf<UrlPasteController['option']>().returns.toEqualTypeOf<OptionAttributes>();
+		expectTypeOf<BlockMenuController['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<SlashMenuController['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<UrlPasteController['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<TableChrome['popup']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<TableChrome['keys']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<TableChrome['gripOf']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
-		expectTypeOf<TableChrome['option']>().returns.toEqualTypeOf<OptionAttributes>();
+		expectTypeOf<TableChrome['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<CodeHeader['button']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<LanguageMenu['keys']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<LanguageMenu['popup']>().toEqualTypeOf<Attachment<HTMLElement>>();
-		expectTypeOf<LanguageMenu['option']>().returns.toEqualTypeOf<OptionAttributes>();
+		expectTypeOf<LanguageMenu['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<EquationEditor['field']>().toEqualTypeOf<
 			Attachment<HTMLTextAreaElement | HTMLInputElement>
 		>();
+		expectTypeOf<FindController['field']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
+		expectTypeOf<FindController['replaceField']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
+		expectTypeOf<VersionHistory['keys']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<VersionHistory['option']>().returns.toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<MenuItemPayload<unknown>['option']>().toEqualTypeOf<Attachment<HTMLElement>>();
 	});
 });
 
@@ -221,18 +218,28 @@ describe('a control inside a block takes its exported payload, the default marku
 		expectTypeOf<Payload<PagePluginOptions['link']>>().toEqualTypeOf<PageBlockLinkPayload>();
 	});
 
-	it('the action is the payload’s, the marker and ARIA its spread attributes', () => {
+	it('the action is the payload’s, the marker, ARIA and events its attachment', () => {
 		expectTypeOf<TodoCheckboxPayload['toggle']>().toEqualTypeOf<() => void>();
-		expectTypeOf<TodoCheckboxPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<TodoCheckboxPayload['control']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<CalloutIconPayload['toggle']>().toEqualTypeOf<() => void>();
-		expectTypeOf<CalloutIconPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<CalloutIconPayload['control']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<EmptyBodyPayload['open']>().toEqualTypeOf<() => void>();
+		expectTypeOf<EmptyBodyPayload['control']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<TocEntryPayload['go']>().toEqualTypeOf<() => void>();
-		expectTypeOf<TocEntryPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<TocEntryPayload['control']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<PageBlockLinkPayload['open']>().toEqualTypeOf<(newTab?: boolean) => void>();
-		expectTypeOf<BookmarkCardPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
-		expectTypeOf<FileRowPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
-		expectTypeOf<EmbedFallbackPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
+		expectTypeOf<PageBlockLinkPayload['control']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<BookmarkCardPayload['link']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<FileRowPayload['link']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<EmbedFallbackPayload['link']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		for (const payload of [
+			{} as TodoCheckboxPayload,
+			{} as CalloutIconPayload,
+			{} as EmptyBodyPayload,
+			{} as TocEntryPayload,
+			{} as PageBlockLinkPayload
+		])
+			expectTypeOf(payload).not.toHaveProperty('attributes');
 	});
 
 	it('another control’s snippet does not compile', () => {

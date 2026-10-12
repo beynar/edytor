@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import { autoScrollFor } from '$lib/dnd/autoScroll.js';
 
 import type { Block } from '$lib/block/block.svelte.js';
@@ -49,6 +50,7 @@ import {
 } from './geometry.js';
 import { stacks } from '../columns/stacking.js';
 import { all, listen } from '$lib/utils/listen.js';
+import type { Attachment } from 'svelte/attachments';
 
 /**
  * The DOM event a grip click dispatches on the editor (the one way to
@@ -191,22 +193,66 @@ export class BlockHandleController {
 		this.edytor.popups.openedBy(block.id, control);
 
 	/**
-	 * Make `node` the block's grip: dragging (when draggable), a click that
-	 * selects the block and opens its menu, and the Alt+arrow moves.
+	 * The block's grip (`{@attach handle.grip}`): dragging (when draggable),
+	 * a click that selects the block and opens its menu, the Alt+arrow moves
+	 * (`aria-keyshortcuts`), and the ARIA of the menu it opened.
 	 */
-	grip = (block: Block) => (node: HTMLElement) => {
-		const off = all(
-			listen(node, 'click', (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this.#activateBlock(block, node);
-			}),
-			listen(node, 'pointerdown', (event) => event.stopPropagation()),
-			listen(node, 'keydown', (event: KeyboardEvent) => this.#handleKeyDown(event, block)),
-			this.registerHandle(node, block)
-		);
-		return { destroy: off };
-	};
+	grip =
+		(block: Block): Attachment<HTMLElement> =>
+		(node) => {
+			node.setAttribute(
+				'aria-keyshortcuts',
+				'Alt+ArrowUp Alt+ArrowDown Alt+ArrowRight Alt+ArrowLeft'
+			);
+			this.#opener(node, block, 'grip');
+			return untrack(() =>
+				all(
+					listen(node, 'click', (event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						this.#activateBlock(block, node);
+					}),
+					listen(node, 'pointerdown', (event) => event.stopPropagation()),
+					listen(node, 'keydown', (event: KeyboardEvent) => this.#handleKeyDown(event, block)),
+					this.registerHandle(node, block)
+				)
+			);
+		};
+
+	/**
+	 * The block's `+` (`{@attach handle.plus}`): a click offers what to add
+	 * below (Alt+click above, or a column beside: `addBlock`) under it; a
+	 * press keeps the editor's focus; the ARIA of the menu it opened.
+	 */
+	plus =
+		(block: Block): Attachment<HTMLElement> =>
+		(node) => {
+			this.#opener(node, block, 'add');
+			return all(
+				listen(node, 'mousedown', (event) => event.preventDefault()),
+				listen(node, 'pointerdown', (event) => event.stopPropagation()),
+				listen(node, 'click', (event: MouseEvent) => {
+					event.preventDefault();
+					event.stopPropagation();
+					this.addBlock(block, event.altKey, node);
+				})
+			);
+		};
+
+	/**
+	 * Keep `node`'s `aria-expanded`, `aria-controls` and `aria-haspopup` in
+	 * step with the menu its `control` of `block` opened, while it is open.
+	 */
+	#opener(node: HTMLElement, block: Block, control: PopupOpener['control']) {
+		$effect(() => {
+			const popup = this.opened(block, control);
+			const values = { expanded: popup && 'true', controls: popup?.id, haspopup: popup?.haspopup };
+			for (const [name, value] of Object.entries(values)) {
+				if (value === undefined) node.removeAttribute(`aria-${name}`);
+				else node.setAttribute(`aria-${name}`, String(value));
+			}
+		});
+	}
 
 	/**
 	 * Select the block — a block selection holding it stays; over a text

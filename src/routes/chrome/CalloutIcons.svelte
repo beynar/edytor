@@ -20,7 +20,9 @@
 			<button
 				type="button"
 				data-edytor-callout-icon-choice
-				{...picker.option(index)}
+				data-selected={picker.index === index}
+				data-current={icon === picker.current}
+				{@attach picker.option(index)}
 				onmouseenter={() => (picker.index = index)}
 				onclick={() => picker.pick(index)}>{icon}</button
 			>
@@ -30,7 +32,8 @@
 		type="button"
 		class="callout-icons-remove"
 		data-edytor-callout-icon-remove
-		{...picker.option(picker.icons.length)}
+		data-selected={picker.index === picker.icons.length}
+		{@attach picker.option(picker.icons.length)}
 		onmouseenter={() => (picker.index = picker.icons.length)}
 		onclick={() => picker.pick(picker.icons.length)}>{words.calloutIcons.remove}</button
 	>
@@ -84,7 +87,7 @@
 	.callout-icons button[data-selected='true'] {
 		background: rgba(55, 53, 47, 0.08);
 	}
-	.callout-icons button[aria-checked='true'] {
+	.callout-icons button[data-current='true'] {
 		box-shadow: inset 0 0 0 2px rgba(35, 131, 226, 0.57);
 	}
 	.callout-icons-remove {

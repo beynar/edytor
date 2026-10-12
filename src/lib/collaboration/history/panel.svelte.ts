@@ -2,7 +2,7 @@
  * The version history's controller (`VersionHistory`): a room's stored
  * versions, the one previewed and its changes since (`versionDiff`), and
  * Restore / Undo restore. The app draws the panel: the list (its rows'
- * `option(index)` and the list's `keys`), the preview (`<Edytor readonly
+ * `option(index)` and the list's `keys`, attachments), the preview (`<Edytor readonly
  * value={history.preview} plugins={history.previewPlugins}>`), the status.
  */
 import { untrack } from 'svelte';
@@ -18,7 +18,9 @@ import {
 } from './client.js';
 import { versionDiff, type VersionChange } from './diff.js';
 import { versionHighlightsPlugin } from './versionHighlights.js';
-import { optionAttributes, type OptionAttributes } from '$lib/plugins/chrome.js';
+import type { Attachment } from 'svelte/attachments';
+import { optionAttachment } from '$lib/plugins/list.svelte.js';
+import { listen } from '$lib/utils/listen.js';
 
 /**
  * The last outcome to announce (`''`: none): a restore in flight or done
@@ -235,13 +237,14 @@ export class VersionHistory {
 	};
 
 	/**
-	 * The row of the version at `index`: spread it on the row's focusable
-	 * element (`role="option"`, its id, `aria-selected`, the list's one tab
-	 * stop when it is selected, else the first).
+	 * The attachment of the version at `index`'s row
+	 * (`{@attach history.option(index)}`, on its focusable element):
+	 * `role="option"`, its id, `aria-selected`, the list's one tab stop when
+	 * it is selected, else the first.
 	 */
-	option = (index: number): OptionAttributes => {
+	option = (index: number): Attachment<HTMLElement> => {
 		const selected = this.versions?.[index]?.key === this.selected;
-		return optionAttributes(
+		return optionAttachment(
 			`${this.#options.id ?? 'edytor-history'}-version-${index}`,
 			'option',
 			selected,
@@ -250,8 +253,10 @@ export class VersionHistory {
 		);
 	};
 
-	/** The list's keys (its `onkeydown`): the arrows, Home and End move the selection and the focus. */
-	keys = (event: KeyboardEvent) => {
+	/** The list's attachment (`{@attach history.keys}`): the arrows, Home and End move the selection and the focus. */
+	keys: Attachment<HTMLElement> = (node) => listen(node, 'keydown', this.#keydown);
+
+	#keydown = (event: KeyboardEvent) => {
 		const { versions } = this;
 		if (!versions?.length) return;
 		const at = versions.findIndex((entry) => entry.key === this.selected);

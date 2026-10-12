@@ -3,7 +3,7 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { labelsOf, pageEnglish } from '$lib/labels.js';
-	import { keepSelection } from '../chrome.js';
+	import { attach, keepSelection } from '../chrome.js';
 	import {
 		pageHref,
 		pageIdOf,
@@ -115,24 +115,26 @@
 		open: (newTab = false) => {
 			if (pageId && options.open) options.open(pageId, { newTab });
 		},
-		get attributes() {
-			const own = { 'data-edytor-page-link': '', onclick: open, onauxclick: aux };
+		get control() {
+			const on = { click: open, auxclick: aux };
 			return href
-				? { ...own, href, draggable: 'false' }
-				: { ...own, disabled: !openable, onmousedown: keepSelection };
+				? attach({ 'data-edytor-page-link': '', draggable: 'false' }, on)
+				: attach(
+						{ 'data-edytor-page-link': '', disabled: !openable },
+						{ ...on, mousedown: keepSelection }
+					);
 		}
 	};
 </script>
 
 {#if snippet}
 	{@render snippet(payload)}
+{:else if href}
+	<a {href} data-edytor-page-link draggable="false" {@attach payload.control}>{@render label()}</a>
 {:else}
-	{@const own = payload.attributes}
-	{#if href}
-		<a {...own}>{@render label()}</a>
-	{:else}
-		<button type="button" {...own}>{@render label()}</button>
-	{/if}
+	<button type="button" data-edytor-page-link disabled={!openable} {@attach payload.control}
+		>{@render label()}</button
+	>
 {/if}
 
 {#snippet label()}

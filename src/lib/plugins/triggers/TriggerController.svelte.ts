@@ -16,8 +16,7 @@ import type { Trigger, TriggerContext } from '$lib/plugins.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
-import { inPage } from '../chrome.js';
-import { ChromeList } from '../list.svelte.js';
+import { ChromeList, inPage } from '../list.svelte.js';
 
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };

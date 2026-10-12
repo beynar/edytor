@@ -75,7 +75,7 @@ A callout is Notion's: an icon, a title and a content.
 <Edytor plugins={[icons, richText]} />
 ```
 
-`picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, spread `picker.option(i)` on each row, as every menu's rows (its id, role, `data-selected` on the keyboard's row, `aria-checked` on the current icon), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
+`picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, attach `picker.option(i)` to each row, as every menu's rows (its id, role, `aria-selected`, `aria-checked` on the current icon; the highlight is yours, from `picker.index === i`), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
 
 ```svelte title="IconPicker.svelte" check
 <script lang="ts">
@@ -87,11 +87,11 @@ A callout is Notion's: an icon, a title and a content.
 {#snippet iconPicker(picker: CalloutIconPicker)}
 	<div class="icons" aria-label="Callout icons" {@attach picker.keys} {@attach picker.popup}>
 		{#each picker.icons as icon, index (index)}
-			<button type="button" {...picker.option(index)} onclick={() => picker.pick(index)}>{icon}</button>
+			<button type="button" {@attach picker.option(index)} onclick={() => picker.pick(index)}>{icon}</button>
 		{/each}
 		<button
 			type="button"
-			{...picker.option(picker.icons.length)}
+			{@attach picker.option(picker.icons.length)}
 			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
 		>
 	</div>
@@ -106,11 +106,11 @@ Three controls sit inside the rich text blocks: a to-do's checkbox, a callout's 
 
 | Option        | Snippet payload       | What it carries                                                                                                                                       |
 | ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `checkbox`    | `TodoCheckboxPayload` | `block` (`undefined` in a suggestion's preview), `checked`, `label` (the view's `richText.checkbox`), `toggle()`, `attributes`                           |
-| `calloutIcon` | `CalloutIconPayload`  | `block`, `icon` (`''`: none), `editable` (the icon opens the view's picker), `expanded` (the picker is open on it), `label` ("Change icon", "Add icon"), `toggle()`, `attributes` |
-| `emptyBody`   | `EmptyBodyPayload`    | `block`, `kind` (`'toggle'` or `'callout'`), `label` (the view's `richText.emptyBody`), `open()`, `attributes`                                          |
+| `checkbox`    | `TodoCheckboxPayload` | `block` (`undefined` in a suggestion's preview), `checked`, `label` (the view's `richText.checkbox`), `toggle()`, `control`                              |
+| `calloutIcon` | `CalloutIconPayload`  | `block`, `icon` (`''`: none), `editable` (the icon opens the view's picker), `expanded` (the picker is open on it), `label` ("Change icon", "Add icon"), `toggle()`, `control` |
+| `emptyBody`   | `EmptyBodyPayload`    | `block`, `kind` (`'toggle'` or `'callout'`), `label` (the view's `richText.emptyBody`), `open()`, `control`                                             |
 
-Spread `attributes` on the control's element: they carry what the editor reads of it and what keeps it usable. The checkbox's are its marker (`data-edytor-todo-checkbox`), `contenteditable="false"`, its `aria-label`, a press that keeps the caret and a click that runs `toggle()`; on a `button` rather than an `input type="checkbox"` (give that one `checked={checkbox.checked}`), they add `role="checkbox"` and `aria-checked`. The icon's are `data-edytor-callout-icon` (the picker opens under it), `data-empty` without an icon, and where it is `editable`, its name, `aria-haspopup`, `aria-expanded`, `aria-controls`, the press and the click that opens the picker; else `aria-hidden`. The hint's are `data-edytor-empty-body` (a block dragged onto it drops inside), `aria-hidden` and the click that starts the body. Use a `button` or an `input` for a control the keyboard reaches: the editor leaves a form control's keys to it.
+Give the control's element `{@attach payload.control}`, as a menu's row takes `{@attach menu.option(index)}`: it carries what the editor reads of it and what keeps it usable, and you render the rest from the payload's values. The checkbox's are its marker (`data-edytor-todo-checkbox`), `contenteditable="false"`, its `aria-label`, a press that keeps the caret and a click that runs `toggle()`; on a `button` rather than an `input type="checkbox"` (give that one `checked={box.checked}`), it adds `role="checkbox"` and `aria-checked`. The icon's are `data-edytor-callout-icon` (the picker opens under it), `data-empty` without an icon, and where it is `editable`, its name, `aria-haspopup`, `aria-expanded`, `aria-controls`, the press and the click that opens the picker; else `aria-hidden`. The hint's are `data-edytor-empty-body` (a block dragged onto it drops inside), `aria-hidden` and the click that starts the body. Use a `button` or an `input` for a control the keyboard reaches: the editor leaves a form control's keys to it.
 
 The actions are the default markup's: `toggle()` checks the to-do as one undo step (refused in a readonly view), the icon's `toggle()` opens the [callout icon picker](#toggles-and-callouts), `open()` starts the body. The editor still decides when each shows: no hint in a readonly view or a closed toggle, no icon when the callout has none and none can be picked.
 
@@ -130,19 +130,19 @@ The actions are the default markup's: `toggle()` checks the to-do as one undo st
 </script>
 
 {#snippet checkbox(box: TodoCheckboxPayload)}
-	<button type="button" class="check" {...box.attributes}>{box.checked ? '✓' : ''}</button>
+	<button type="button" class="check" {@attach box.control}>{box.checked ? '✓' : ''}</button>
 {/snippet}
 
 {#snippet calloutIcon(icon: CalloutIconPayload)}
 	{#if icon.editable}
-		<button type="button" class="icon" {...icon.attributes}>{icon.icon || '+'}</button>
+		<button type="button" class="icon" {@attach icon.control}>{icon.icon || '+'}</button>
 	{:else}
-		<span class="icon" {...icon.attributes}>{icon.icon}</span>
+		<span class="icon" {@attach icon.control}>{icon.icon}</span>
 	{/if}
 {/snippet}
 
 {#snippet emptyBody(hint: EmptyBodyPayload)}
-	<p class="hint" {...hint.attributes}>{hint.label}</p>
+	<p class="hint" {@attach hint.control}>{hint.label}</p>
 {/snippet}
 
 <Edytor plugins={[icons, richText]} />

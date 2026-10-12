@@ -13,6 +13,7 @@
 		mediaSourceOf,
 		mediaView,
 		safeMediaSrc,
+		LINK_REL,
 		type FileRowPayload,
 		type MediaView
 	} from './media.js';
@@ -119,7 +120,7 @@
 						size === undefined
 							? ''
 							: labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(size),
-					link: mediaLink(src, { draggable: 'false', download: name })
+					link: mediaLink({ draggable: 'false', download: name })
 				}}
 			/>
 		</div>
@@ -154,8 +155,8 @@
 {/snippet}
 
 <!-- A file: its name and size, a link downloading it. -->
-{#snippet initial({ name, sizeLabel, link }: FileRowPayload)}
-	<a {...link}>
+{#snippet initial({ src, name, sizeLabel, link }: FileRowPayload)}
+	<a href={src} target="_blank" rel={LINK_REL} draggable="false" download={name} {@attach link}>
 		<span aria-hidden="true">📎</span>
 		<span data-edytor-file-name>{name}</span>
 		{#if sizeLabel}<span data-edytor-file-size>{sizeLabel}</span>{/if}

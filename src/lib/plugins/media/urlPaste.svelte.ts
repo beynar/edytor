@@ -8,8 +8,8 @@ import { onPress } from '$lib/events/onFocus.js';
 import { convertToKind, holdsNothing } from '$lib/kinds.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import { inPage, mountChrome } from '../chrome.js';
-import { ChromeList, listHotkeys } from '../list.svelte.js';
+import { mountChrome } from '../chrome.js';
+import { ChromeList, inPage, listHotkeys } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {

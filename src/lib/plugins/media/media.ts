@@ -1,7 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { ControlAttributes } from '../chrome.js';
+import type { Attachment } from 'svelte/attachments';
+import { attach } from '../chrome.js';
 import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
@@ -27,20 +28,6 @@ export type MediaView = EmptyView & {
 	fallback?: Snippet<[EmbedFallbackPayload]>;
 };
 
-/**
- * A media block's link to its source, to spread on an `a`
- * (`{...payload.link}`): its `href`, a new tab without the opener
- * (`target`, `rel`), never a drag of its own; a file's `download` name.
- */
-export type MediaLinkAttributes = ControlAttributes & {
-	href: string;
-	target: '_blank';
-	rel: string;
-	/** A bookmark's card and a file's row: the link never drags out of the editor. */
-	draggable?: 'false';
-	download?: string;
-};
-
 /** What a bookmark's `card` snippet receives: the page it links to, as `unfurl` described it. */
 export type BookmarkCardPayload = {
 	/** The bookmark; `undefined` in a suggestion's preview. */
@@ -52,8 +39,11 @@ export type BookmarkCardPayload = {
 	description: string | undefined;
 	image: string | undefined;
 	icon: string | undefined;
-	/** Spread on the card's `a`. */
-	link: MediaLinkAttributes;
+	/**
+	 * The card's link (`<a href={card.url} {@attach card.link}>`): a new tab
+	 * without the opener, never dragged out of the editor.
+	 */
+	link: Attachment<HTMLElement>;
 };
 
 /** What a file block's `row` snippet receives: the file it links to. */
@@ -68,8 +58,12 @@ export type FileRowPayload = {
 	size: number | undefined;
 	/** That size in the view's words (`media.fileSize`), `''` without one. */
 	sizeLabel: string;
-	/** Spread on the row's `a` (it downloads the file under its name). */
-	link: MediaLinkAttributes;
+	/**
+	 * The row's link (`<a href={row.src} {@attach row.link}>`): it downloads
+	 * the file under its name, in a new tab without the opener, never dragged
+	 * out of the editor.
+	 */
+	link: Attachment<HTMLElement>;
 };
 
 /** What an embed's `fallback` snippet receives: a link no allowed provider plays. */
@@ -78,15 +72,21 @@ export type EmbedFallbackPayload = {
 	block: Block | undefined;
 	/** The link (`http(s)`), shown as a link, never in a frame. */
 	url: string;
-	/** Spread on its `a`. */
-	link: MediaLinkAttributes;
+	/** Its link (`<a href={fallback.url} {@attach fallback.link}>`): a new tab without the opener. */
+	link: Attachment<HTMLElement>;
 };
 
-/** The attributes of a media block's link to `href`: a new tab without the opener (and `own`). */
-export const mediaLink = (
-	href: string,
-	own: Pick<MediaLinkAttributes, 'draggable' | 'download'> = {}
-): MediaLinkAttributes => ({ href, target: '_blank', rel: 'noopener noreferrer nofollow', ...own });
+/** A media block's link opens a new tab without the opener (and tells the target nothing). */
+export const LINK_REL = 'noopener noreferrer nofollow';
+
+/**
+ * A media block's link's attachment: a new tab without the opener
+ * (`target`, `rel`), and `own` (`draggable="false"`: no drag of its own; a
+ * file's `download` name). The default markup writes the same, so a server
+ * render's link is safe too; its `href` is the markup's.
+ */
+export const mediaLink = (own: { draggable?: 'false'; download?: string } = {}) =>
+	attach({ target: '_blank', rel: LINK_REL, ...own });
 
 /** The app's markup for a media kind's own control in `view`, if any. */
 export const mediaControl =

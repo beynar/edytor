@@ -13,15 +13,64 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import {
-	attribute,
-	inPage,
-	keepFocus,
-	namesRows,
-	optionAttributes,
-	type OptionAttributes
-} from './chrome.js';
+import { attach, attribute, keepFocus, namesRows } from './chrome.js';
 import { listen } from '$lib/utils/listen.js';
+
+/**
+ * How many rows took their id so far: a row's attachment runs after the
+ * effects of the elements before it (the field naming the highlighted row,
+ * the list's publication), which read it to look again.
+ */
+let named = $state(0);
+
+/** `id` when an element of `node`'s page has it, else `undefined` (looked up again as rows take their ids). */
+export const inPage = (node: Node, id: string | undefined) => {
+	void named;
+	return id && node.ownerDocument?.getElementById(id) ? id : undefined;
+};
+
+/** The ARIA a row may carry beside its role. */
+export type OptionState = {
+	/** `-1` where a field or the editor holds the keyboard; a roving list's own row `0`. */
+	tabindex?: 0 | -1;
+	'aria-checked'?: boolean;
+	/** A row that cannot run now (a table menu's Move up on the first row). */
+	'aria-disabled'?: boolean;
+	'aria-haspopup'?: 'menu';
+	'aria-expanded'?: boolean;
+};
+
+/**
+ * A row's attachment: its id, role, `aria-selected` (a `listbox`'s
+ * option) and `state`; the keyboard's row (`selected`)
+ * scrolls into view when it becomes it, unless `reveal` is `false` (a list
+ * in the page, whose focus scrolls it).
+ */
+export const optionAttachment = (
+	id: string,
+	role: 'option' | 'menuitem' | 'menuitemcheckbox' | 'menuitemradio',
+	selected: boolean,
+	state: OptionState = {},
+	reveal = true
+): Attachment<HTMLElement> => {
+	const own = attach({
+		id,
+		role,
+		tabindex: -1,
+		'aria-selected': role === 'option' ? selected : undefined,
+		'aria-checked': undefined,
+		'aria-disabled': undefined,
+		'aria-haspopup': undefined,
+		'aria-expanded': undefined,
+		...state
+	});
+	return (node) => {
+		const fresh = node.id !== id;
+		own(node);
+		if (fresh) untrack(() => named++);
+		if (selected && reveal) node.scrollIntoView?.({ block: 'nearest' });
+	};
+};
 
 /**
  * The keyboard's row after `key` among `count` rows from `at`, `undefined`
@@ -172,7 +221,7 @@ export const listHotkeys = (
  * A chrome list and its keyboard's row (the trigger and slash menus, the
  * code language list, the callout icon picker, the URL paste menu, a table
  * grip's menu): the list's element (`popup`, its id `listId`), a row's id
- * and attributes (`rowId`, `option`: rows are named by position) and the
+ * and attachment (`rowId`, `option`: rows are named by position) and the
  * step the keys take (`move`). Each controller extends it with its rows,
  * its keys and its actions.
  */
@@ -211,14 +260,13 @@ export abstract class ChromeList {
 	rowId = (index: number) => this.edytor.popups.idOf(`${this.owner}-${index}`);
 
 	/**
-	 * Row `index`'s attributes: spread them on its element
-	 * (`{...controller.option(index)}`): its id, its role, `aria-selected`
-	 * (a `listbox`'s) and `data-selected` for the keyboard's row, which
-	 * scrolls into view.
+	 * Row `index`'s attachment (`{@attach controller.option(index)}`): its
+	 * id, its role, `aria-selected` (a `listbox`'s) and `data-selected` for
+	 * the keyboard's row, which scrolls into view.
 	 */
-	option(index: number): OptionAttributes {
+	option(index: number): Attachment<HTMLElement> {
 		const role = this.role === 'menu' ? 'menuitem' : 'option';
-		return optionAttributes(this.rowId(index), role, index === this.index);
+		return optionAttachment(this.rowId(index), role, index === this.index);
 	}
 
 	/** Move the keyboard's row by `step`, around the ends; `false` when there is no row. */

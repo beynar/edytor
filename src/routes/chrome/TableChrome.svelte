@@ -49,8 +49,9 @@
 				type="button"
 				class="table-menu-row"
 				class:danger={item.danger}
-				{...item.option}
+				data-selected={item.selected}
 				disabled={item.disabled}
+				{@attach item.option}
 				data-testid={`table-menu-${item.item.id}`}
 				style:--table-menu-icon={iconOf(TABLE_ICONS[item.item.id] ?? '')}
 				onmousemove={item.select}

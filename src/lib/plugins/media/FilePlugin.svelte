@@ -1,22 +1,16 @@
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { Plugin } from '$lib/plugins.js';
-	import {
-		escapeHtml,
-		fileNameOf,
-		safeMediaSrc,
-		type FileRowPayload,
-		type MediaLinkAttributes
-	} from './media.js';
+	import { escapeHtml, fileNameOf, safeMediaSrc, type FileRowPayload } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
 
-	export type { FileRowPayload, MediaLinkAttributes };
+	export type { FileRowPayload };
 
 	export type FilePluginOptions = {
 		/**
 		 * A file's row once it has a source (default: Notion's, a paperclip,
-		 * its name and size). Spread `row.link` on its `a`, which downloads
-		 * the file. The first file plugin listed in a view gives its row.
+		 * its name and size): `<a href={row.src} {@attach row.link}>`, which
+		 * downloads the file. The first file plugin listed in a view gives its row.
 		 */
 		row?: Snippet<[FileRowPayload]>;
 	};

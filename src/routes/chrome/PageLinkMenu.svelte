@@ -12,7 +12,8 @@
 		<button
 			type="button"
 			class="row"
-			{...controller.option(index)}
+			data-selected={controller.index === index}
+			{@attach controller.option(index)}
 			data-testid="trigger-menu-item"
 			onmousemove={() => (controller.index = index)}
 			onclick={() => void controller.pick(item)}

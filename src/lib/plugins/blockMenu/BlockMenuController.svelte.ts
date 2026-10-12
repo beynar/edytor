@@ -24,14 +24,8 @@ import {
 import { selectedMembers } from '$lib/selection/visibility.js';
 import { blockMenuEnglish, labelsOf, type BlockMenuLabels } from '$lib/labels.js';
 import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
-import {
-	attribute,
-	identify,
-	keepFocus,
-	optionAttributes,
-	type OptionAttributes
-} from '../chrome.js';
-import { holdKeys, listPopup, stepRow } from '../list.svelte.js';
+import { attribute, identify, keepFocus } from '../chrome.js';
+import { holdKeys, listPopup, optionAttachment, stepRow } from '../list.svelte.js';
 import { listen } from '$lib/utils/listen.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 
@@ -221,20 +215,20 @@ export class BlockMenuController {
 	};
 
 	/**
-	 * The attributes of the row at `index` (of the open flyout's rows with
-	 * `flyout`): spread them on its element (`{...controller.option(index)}`).
+	 * The attachment of the row at `index` (of the open flyout's rows with
+	 * `flyout`): `{@attach controller.option(index)}` on its element.
 	 * Its id, its role (`menuitem`, a switch's `menuitemcheckbox`, a colour's
 	 * `menuitemradio` with its ✓ as `aria-checked`, a flyout's opener with
 	 * `aria-haspopup` and `aria-expanded`), `data-selected` for the keyboard's
 	 * row, which scrolls into view.
 	 */
-	option = (index: number, flyout = false): OptionAttributes => {
+	option = (index: number, flyout = false): Attachment<HTMLElement> => {
 		const row = (flyout ? this.flyoutRows : this.rows)[index];
 		// Only an action has `checked` and `submenu`, only a colour `field`.
 		const { checked, submenu } = (row ?? {}) as BlockMenuAction;
 		const color = row && 'field' in row;
 		const on = color ? this.isCurrentColor(row) : checked;
-		return optionAttributes(
+		return optionAttachment(
 			row
 				? this.rowId(row, flyout)
 				: this.edytor.popups.idOf(`block-menu-${flyout ? 'flyout-' : ''}${index}`),

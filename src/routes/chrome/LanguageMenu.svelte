@@ -24,14 +24,16 @@
 	/>
 	<div data-edytor-code-language-list aria-label={words.code.language} {@attach menu.popup}>
 		{#each menu.items as item, index (item.item.id)}
-			<!-- The field keeps the focus: a row is pressed, never focused. -->
+			<!-- The field keeps the focus (its keys): a row is pressed, never focused. Its
+			role and ARIA are the `option` attachment's. -->
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 			<div
-				{...menu.option(index)}
 				data-edytor-code-language-option={item.item.id}
 				data-current={item.current ? '' : undefined}
+				data-selected={item.selected}
 				onmousemove={item.select}
 				onclick={item.run}
-				role="option"
+				{@attach menu.option(index)}
 			>
 				{item.item.label}
 			</div>
@@ -84,11 +86,11 @@
 		border-color: var(--edytor-code-accent, #2383e2);
 		box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2);
 	}
-	[role='listbox'] {
+	[data-edytor-code-language-list] {
 		max-height: 280px;
 		overflow-y: auto;
 	}
-	[role='option'] {
+	[data-edytor-code-language-option] {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -101,10 +103,10 @@
 		user-select: none;
 	}
 	/* The block's own language. */
-	[role='option'][data-current]::after {
+	[data-edytor-code-language-option][data-current]::after {
 		content: '✓';
 	}
-	[role='option'][aria-selected='true'] {
+	[data-edytor-code-language-option][data-selected='true'] {
 		background: rgba(84, 72, 49, 0.08);
 	}
 	[data-edytor-code-language-empty] {

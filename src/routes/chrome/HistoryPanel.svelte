@@ -122,14 +122,15 @@
 					data-edytor-history-list
 					role="listbox"
 					aria-label={labels.versions}
-					onkeydown={history.keys}
+					{@attach history.keys}
 				>
 					{#each history.versions as entry, index (entry.key)}
 						<li role="presentation">
 							<button
 								type="button"
-								{...history.option(index)}
 								data-edytor-history-version={entry.key}
+								data-selected={entry.key === history.selected}
+								{@attach history.option(index)}
 								onclick={() => void history.select(entry.key)}
 							>
 								{#if row}
@@ -305,7 +306,7 @@
 	[data-edytor-history-list] button:hover {
 		background: var(--edytor-history-hover, rgb(55 53 47 / 0.06));
 	}
-	[data-edytor-history-list] button[aria-selected='true'] {
+	[data-edytor-history-list] button[data-selected='true'] {
 		background: var(--edytor-history-selected, rgb(35 131 226 / 0.14));
 	}
 	[data-edytor-history-version-title] {

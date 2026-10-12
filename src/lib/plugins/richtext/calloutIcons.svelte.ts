@@ -15,8 +15,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
-import { optionAttributes, type OptionAttributes } from '../chrome.js';
+import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.js';
 import { Anchored } from '../anchored.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { calloutPickers, iconOf } from './callouts.js';
@@ -178,13 +177,13 @@ export class CalloutIconPicker extends ChromeList {
 	};
 
 	/**
-	 * What row `index` spreads (`icons.length`: Remove icon), as every menu's
+	 * Row `index`'s attachment (`icons.length`: Remove icon), as every menu's
 	 * rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for
 	 * Remove icon), `data-selected` on the keyboard's row.
 	 */
-	option(index: number): OptionAttributes {
+	option(index: number): Attachment<HTMLElement> {
 		const icon = this.icons[index];
-		return optionAttributes(
+		return optionAttachment(
 			this.rowId(index),
 			icon === undefined ? 'menuitem' : 'menuitemradio',
 			index === this.index,

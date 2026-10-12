@@ -1,5 +1,5 @@
 import type { Snippet } from 'svelte';
-import type { ControlAttributes } from '../chrome.js';
+import type { Attachment } from 'svelte/attachments';
 
 /**
  * A block's level in the table of contents (1 the outermost), or `null`
@@ -20,9 +20,9 @@ export type TocPluginOptions = {
 	headingLevel?: TocHeadingLevel;
 	/**
 	 * One entry (default: a `button` with the heading's text, one nesting
-	 * step in per level under the shallowest). Spread `entry.attributes` on
-	 * it: a click scrolls its heading into view, opening the closed toggles
-	 * it sits in, and the selection stays.
+	 * step in per level under the shallowest). Give it `{@attach
+	 * entry.control}`: a click scrolls its heading into view, opening the
+	 * closed toggles it sits in, and the selection stays.
 	 */
 	entry?: Snippet<[TocEntryPayload]>;
 	/** What shows while the document has no heading (default: a `p` with the view's `toc.empty`). */
@@ -44,12 +44,11 @@ export type TocEntryPayload = {
 	/** Scroll its heading into view (opening the closed toggles it sits in). */
 	go: () => void;
 	/**
-	 * Spread on the entry's element: its marker (`data-edytor-toc-entry`,
-	 * `data-level`, `data-untitled`), `--edytor-toc-depth` (its depth, for
-	 * its indent), a press that keeps the editor's selection, and a click
-	 * that scrolls to it.
+	 * The entry's attachment (`{@attach entry.control}`): its marker
+	 * (`data-edytor-toc-entry`), a press that keeps the editor's selection,
+	 * and a click that scrolls to it.
 	 */
-	attributes: ControlAttributes;
+	control: Attachment<HTMLElement>;
 };
 
 /** What a table of contents' `empty` snippet receives. */

@@ -12,7 +12,7 @@ icon: search
 </script>
 
 {#snippet bar(find: FindController)}
-	<input value={find.query} oninput={(e) => (find.query = e.currentTarget.value)} use:find.field />
+	<input value={find.query} oninput={(e) => (find.query = e.currentTarget.value)} {@attach find.field} />
 	<span>{find.matches.length ? `${find.current + 1} of ${find.matches.length}` : 'None'}</span>
 	<button onclick={find.next}>Next</button>
 	<button onclick={() => find.close()}>Done</button>
@@ -86,5 +86,5 @@ The bar mounts in the editor's [overlay](/docs/customization/styling#the-overlay
 
 ## Markup
 
-`createFindPlugin` takes a `bar` snippet, the bar. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `use:find.field` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `use:find.replaceField` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>. The example at the top of this page uses `field`.
+`createFindPlugin` takes a `bar` snippet, the bar. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `{@attach find.field}` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `{@attach find.replaceField}` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>. The example at the top of this page uses `field`.
 

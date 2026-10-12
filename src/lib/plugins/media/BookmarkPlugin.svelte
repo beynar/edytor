@@ -13,11 +13,11 @@
 		mediaPlugin,
 		mediaView,
 		safeWebUrl,
-		type BookmarkCardPayload,
-		type MediaLinkAttributes
+		LINK_REL,
+		type BookmarkCardPayload
 	} from './media.js';
 
-	export type { BookmarkCardPayload, MediaLinkAttributes };
+	export type { BookmarkCardPayload };
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -43,13 +43,13 @@
 		 * view's one menu takes the first `menu` its embed and bookmark
 		 * plugins pass. Its keys stay the editor's; keep its ARIA with
 		 * `{@attach controller.popup}` on the list and
-		 * `{...controller.option(index)}` on each row.
+		 * `{@attach controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
 		/**
 		 * The card of a bookmark with a link (default: Notion's, the title,
-		 * description and URL beside the cover). Spread `card.link` on its
-		 * `a`. The first bookmark plugin listed in a view gives its card.
+		 * description and URL beside the cover): `<a href={card.url}
+		 * {@attach card.link}>`. The first bookmark plugin listed in a view gives its card.
 		 */
 		card?: Snippet<[BookmarkCardPayload]>;
 	};
@@ -171,7 +171,7 @@
 					description: text(block.data.description, 1000),
 					image: safeWebUrl(block.data.image) ?? undefined,
 					icon: safeWebUrl(block.data.icon) ?? undefined,
-					link: mediaLink(url, { draggable: 'false' })
+					link: mediaLink({ draggable: 'false' })
 				}}
 			/>
 		</div>
@@ -191,7 +191,7 @@
 
 <!-- Notion's card: the page's title, description and URL (with its icon) beside its cover. -->
 {#snippet initial({ url, title, description, image, icon, link }: BookmarkCardPayload)}
-	<a {...link}>
+	<a href={url} target="_blank" rel={LINK_REL} draggable="false" {@attach link}>
 		<span data-edytor-bookmark-text>
 			<span data-edytor-bookmark-title>{title ?? url}</span>
 			{#if description}<span data-edytor-bookmark-description>{description}</span>{/if}

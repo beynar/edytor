@@ -9,7 +9,7 @@
 <!--
 	The editor keeps the keyboard: its keys move and pick (the plugin's
 	hotkeys). The listbox's id, role and publication to the view's root are
-	the controller's `popup` attachment, a row's attributes its
+	the controller's `popup` attachment, a row's ARIA its
 	`option(index)`.
 -->
 <div
@@ -24,7 +24,8 @@
 		<button
 			type="button"
 			class="url-paste-option"
-			{...controller.option(index)}
+			data-selected={controller.index === index}
+			{@attach controller.option(index)}
 			data-edytor-url-paste-option={option.id}
 			onmousemove={() => (controller.index = index)}
 			onclick={() => controller.pick(option)}
@@ -76,7 +77,7 @@
 		place-items: center;
 		width: 20px;
 	}
-	.url-paste-option[aria-selected='true'] {
+	.url-paste-option[data-selected='true'] {
 		background: rgba(84, 72, 49, 0.08);
 	}
 </style>

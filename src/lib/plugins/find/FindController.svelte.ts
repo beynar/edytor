@@ -1,4 +1,5 @@
-import type { Action } from 'svelte/action';
+import { untrack } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import type { Commands } from '$lib/plugins.js';
 import type { DocAnchor } from '$lib/crdt/index.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
@@ -147,21 +148,20 @@ export class FindController {
 	/** Replace every match: one command, one undo step. Answers its status. */
 	replaceAll = (): CommandResult['status'] => this.#replace(this.matches);
 
-	/** The query field (`use:find.field`): focused on each Mod+F; Enter, Shift+Enter, Escape, Mod+F. */
-	field: Action<HTMLInputElement> = (node) => {
-		this.#field = node;
-		this.#focus();
-		const off = this.#keys(node, true);
-		return {
-			destroy: () => {
+	/** The query field (`{@attach find.field}`): focused on each Mod+F; Enter, Shift+Enter, Escape, Mod+F. */
+	field: Attachment<HTMLInputElement> = (node) =>
+		untrack(() => {
+			this.#field = node;
+			this.#focus();
+			const off = this.#keys(node, true);
+			return () => {
 				off();
 				if (this.#field === node) this.#field = null;
-			}
-		};
-	};
+			};
+		});
 
-	/** The replacement field (`use:find.replaceField`): Enter replaces, Escape closes. */
-	replaceField: Action<HTMLInputElement> = (node) => ({ destroy: this.#keys(node, false) });
+	/** The replacement field (`{@attach find.replaceField}`): Enter replaces, Escape closes. */
+	replaceField: Attachment<HTMLInputElement> = (node) => this.#keys(node, false);
 
 	/**
 	 * A field's keys: Enter goes to the next match (Shift+Enter the previous

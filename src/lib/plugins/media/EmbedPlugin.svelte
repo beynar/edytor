@@ -15,6 +15,7 @@
 		escapeHtml,
 		mediaControl,
 		mediaLink,
+		LINK_REL,
 		mediaPlugin,
 		mediaView,
 		safeWebUrl,
@@ -41,13 +42,13 @@
 		 * view's one menu takes the first `menu` its embed and bookmark
 		 * plugins pass. Its keys stay the editor's; keep its ARIA with
 		 * `{@attach controller.popup}` on the list and
-		 * `{...controller.option(index)}` on each row.
+		 * `{@attach controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
 		/**
 		 * An embed whose link no allowed provider plays (a peer may store any),
 		 * or a suggestion's preview: a plain link, never a frame (default: the
-		 * URL as a link). Spread `fallback.link` on its `a`. The first embed
+		 * URL as a link): `<a href={fallback.url} {@attach fallback.link}>`. The first embed
 		 * plugin listed in a view gives it.
 		 */
 		fallback?: Snippet<[EmbedFallbackPayload]>;
@@ -151,7 +152,7 @@
 			<Control
 				own={fallbackOf}
 				{initial}
-				payload={{ block: block.handle, url, link: mediaLink(url) }}
+				payload={{ block: block.handle, url, link: mediaLink() }}
 			/>
 		</div>
 	{:else}
@@ -170,5 +171,5 @@
 
 <!-- The link itself. -->
 {#snippet initial({ url, link }: EmbedFallbackPayload)}
-	<a {...link}>{url}</a>
+	<a href={url} target="_blank" rel={LINK_REL} {@attach link}>{url}</a>
 {/snippet}

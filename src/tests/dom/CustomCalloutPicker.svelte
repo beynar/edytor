@@ -12,14 +12,14 @@
 			<button
 				type="button"
 				data-testid="custom-icon"
-				{...picker.option(index)}
+				{@attach picker.option(index)}
 				onclick={() => picker.pick(index)}>{icon}</button
 			>
 		{/each}
 		<button
 			type="button"
 			data-testid="custom-remove"
-			{...picker.option(picker.icons.length)}
+			{@attach picker.option(picker.icons.length)}
 			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
 		>
 		<button type="button" data-testid="custom-close" onclick={() => picker.close()}>×</button>

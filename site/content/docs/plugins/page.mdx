@@ -66,7 +66,7 @@ A `title` answer that differs from the stored title is stored on the block, as o
 
 ### Your link
 
-`link` is drawn inside the block's void wrapper (`[data-edytor-page]`). It receives a `PageBlockLinkPayload`: `block` (`undefined` in a suggestion's preview), `pageId`, `title` (your lookup's answer, else the stored one), `label` (the title, else the view's `page.untitled`), `href` (your `href`'s URL, if any), `openable` (it names a page and the plugin has `open`), `open(newTab?)` and `attributes`. Draw an `a` when `href` is set, else a `button`, and spread `attributes` on it: the marker (`data-edytor-page-link`), the `href` and `draggable="false"` on a link, `disabled` when it cannot open and a press that keeps the caret on a button, and the click and middle click that open the page as the default row does (a modified or middle click in a new tab, the browser's own on a link).
+`link` is drawn inside the block's void wrapper (`[data-edytor-page]`). It receives a `PageBlockLinkPayload`: `block` (`undefined` in a suggestion's preview), `pageId`, `title` (your lookup's answer, else the stored one), `label` (the title, else the view's `page.untitled`), `href` (your `href`'s URL, if any), `openable` (it names a page and the plugin has `open`), `open(newTab?)` and `control`. Draw an `a` with `href={page.href}` when `href` is set, else a `button`, and give it `{@attach page.control}`, as a menu's row takes its attachment: the marker (`data-edytor-page-link`), `draggable="false"` on a link, `disabled` when it cannot open and a press that keeps the caret on a button, and the click and middle click that open the page as the default row does (a modified or middle click in a new tab, the browser's own on a link).
 
 ```svelte title="Pages.svelte" check
 <script lang="ts">
@@ -81,9 +81,11 @@ A `title` answer that differs from the stored title is stored on the block, as o
 
 {#snippet link(page: PageBlockLinkPayload)}
 	{#if page.href}
-		<a class="subpage" {...page.attributes}>📄 {page.label}</a>
+		<a class="subpage" href={page.href} {@attach page.control}>📄 {page.label}</a>
 	{:else}
-		<button type="button" class="subpage" {...page.attributes}>📄 {page.label}</button>
+		<button type="button" class="subpage" disabled={!page.openable} {@attach page.control}>
+			📄 {page.label}
+		</button>
 	{/if}
 {/snippet}
 

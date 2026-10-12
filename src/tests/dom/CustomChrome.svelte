@@ -74,15 +74,7 @@
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
-{#snippet handle({
-	block,
-	label,
-	grip,
-	add,
-	readonly,
-	expanded,
-	controls
-}: BlockHandleSnippetPayload)}
+{#snippet handle({ block, label, grip, plus, readonly }: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
 			type="button"
@@ -90,20 +82,15 @@
 			data-testid="custom-add"
 			data-block-id={block.id}
 			aria-label={`Add a block below ${label}`}
-			aria-expanded={expanded.add ? 'true' : undefined}
-			aria-controls={controls.add}
-			onmousedown={keep}
-			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
+			{@attach plus}>+</button
 		>
 		<button
 			type="button"
 			class="custom-handle"
 			data-testid="custom-grip"
 			data-block-id={block.id}
-			use:grip
 			aria-label={`${label} block`}
-			aria-expanded={expanded.grip ? 'true' : undefined}
-			aria-controls={controls.grip}>⠿</button
+			{@attach grip}>⠿</button
 		>
 	{/if}
 {/snippet}
@@ -131,7 +118,8 @@
 		{#each chrome.items as item (item.item.id)}
 			<button
 				type="button"
-				{...item.option}
+				data-selected={item.selected}
+				{@attach item.option}
 				data-testid="custom-table-row"
 				data-row={item.item.id}
 				onmousemove={item.select}
@@ -185,8 +173,10 @@
 		/>
 		<ul aria-label="Code language" {@attach menu.popup}>
 			{#each menu.items as item (item.item.id)}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<li
-					{...item.option}
+					data-selected={item.selected}
+					{@attach item.option}
 					data-testid="custom-language-row"
 					data-language={item.item.id}
 					data-current={item.current}
@@ -234,8 +224,10 @@
 		{/if}
 		<ul aria-label="Block commands" {@attach menu.popup}>
 			{#each menu.commands as command, index (command.id)}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<li
-					{...menu.option(index)}
+					data-selected={menu.index === index}
+					{@attach menu.option(index)}
 					data-testid="custom-slash-row"
 					onmousemove={() => (menu.index = index)}
 					onclick={() => void menu.run(command)}
@@ -260,7 +252,8 @@
 			{#each menu.rows as row, index (`${'field' in row ? 'color' : 'value' in row ? 'kind' : 'action'}:${row.id}`)}
 				<button
 					type="button"
-					{...menu.option(index)}
+					data-selected={menu.index === index}
+					{@attach menu.option(index)}
 					data-testid="custom-block-menu-row"
 					onclick={() => {
 						menu.index = index;
@@ -274,7 +267,8 @@
 				{#each menu.flyoutRows as row, index (row.id)}
 					<button
 						type="button"
-						{...menu.option(index, true)}
+						data-selected={menu.flyoutIndex === index}
+						{@attach menu.option(index, true)}
 						onclick={() => {
 							menu.flyoutIndex = index;
 							menu.run(row);
@@ -326,7 +320,14 @@
 {#snippet mentionMenu(menu: TriggerMenuController<MentionItem>)}
 	<ul data-testid="custom-mention-menu" {@attach menu.popup}>
 		{#each menu.items as person, index (person.id)}
-			<li {...menu.option(index)} onclick={() => void menu.pick(person)}>{person.label}</li>
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+			<li
+				data-selected={menu.index === index}
+				{@attach menu.option(index)}
+				onclick={() => void menu.pick(person)}
+			>
+				{person.label}
+			</li>
 		{/each}
 	</ul>
 {/snippet}
@@ -334,7 +335,13 @@
 {#snippet pasteMenu(menu: UrlPasteController)}
 	<ul data-testid="custom-paste-menu" {@attach menu.popup}>
 		{#each menu.open?.options ?? [] as option, index (option.id)}
-			<li {...menu.option(index)} data-option={option.id} onclick={() => menu.pick(option)}>
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+			<li
+				data-selected={menu.index === index}
+				{@attach menu.option(index)}
+				data-option={option.id}
+				onclick={() => menu.pick(option)}
+			>
 				{option.id}
 			</li>
 		{/each}

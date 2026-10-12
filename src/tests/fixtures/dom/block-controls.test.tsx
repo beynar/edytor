@@ -273,8 +273,8 @@ describe('table of contents: the entries and the empty text', () => {
 			['1. Intro', '0'],
 			['2. Untitled', '1']
 		]);
+		// The attachment gives the marker; the markup renders the rest from the payload's values.
 		expect(entries[1]!.hasAttribute('data-edytor-toc-entry')).toBe(true);
-		expect(entries[1]!.getAttribute('data-untitled')).toBe('true');
 		(nodeOf(edytor, 'g') as HTMLDetailsElement).open = false;
 		const before = edytor.selection.value;
 		await press(entries[1]!);

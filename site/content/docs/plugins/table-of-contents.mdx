@@ -59,7 +59,7 @@ export const toc = createTocPlugin({
 
 ### Your entries
 
-`entry` is drawn once per heading, in reading order, inside the block's void wrapper (`[data-edytor-toc]`). It receives a `TocEntryPayload`: the heading's block `id`, its `level`, its `depth` (its level less the shallowest shown: how many steps in it sits), its `text` (`''` when it has none), its `label` (the text, else the view's `toc.untitled`), `go()` (scroll to it, opening the closed toggles it sits in) and `attributes`. Spread `attributes` on a `button`: its marker (`data-edytor-toc-entry`, `data-level`, `data-untitled`), `--edytor-toc-depth` (the depth, for your indent), a press that keeps the caret and a click that runs `go()`.
+`entry` is drawn once per heading, in reading order, inside the block's void wrapper (`[data-edytor-toc]`). It receives a `TocEntryPayload`: the heading's block `id`, its `level`, its `depth` (its level less the shallowest shown: how many steps in it sits), its `text` (`''` when it has none), its `label` (the text, else the view's `toc.untitled`), `go()` (scroll to it, opening the closed toggles it sits in) and `control`. Give a `button` `{@attach heading.control}`, as a menu's row takes its attachment: its marker (`data-edytor-toc-entry`), a press that keeps the caret and a click that runs `go()`. The indent is yours, from `depth` (the default markup sets `--edytor-toc-depth`, which the theme reads).
 
 ```svelte title="Contents.svelte" check
 <script lang="ts">
@@ -74,7 +74,7 @@ export const toc = createTocPlugin({
 </script>
 
 {#snippet entry(heading: TocEntryPayload)}
-	<button type="button" class="entry" {...heading.attributes}>
+	<button type="button" class="entry" style:padding-inline-start="{heading.depth}em" {@attach heading.control}>
 		{'·'.repeat(heading.depth)} {heading.label}
 	</button>
 {/snippet}

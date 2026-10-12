@@ -10,8 +10,8 @@ export type FindPluginOptions = {
 	/**
 	 * The bar's markup and its words; it renders while `find.isOpen`, placed at the
 	 * editor's top right (without it, Mod+F searches and highlights, and
-	 * nothing else shows). Put `use:find.field` on your query input (focused
-	 * on each Mod+F; Enter, Shift+Enter, Escape) and `use:find.replaceField`
+	 * nothing else shows). Put `{@attach find.field}` on your query input (focused
+	 * on each Mod+F; Enter, Shift+Enter, Escape) and `{@attach find.replaceField}`
 	 * on your replacement input.
 	 */
 	bar?: Snippet<[FindController]>;

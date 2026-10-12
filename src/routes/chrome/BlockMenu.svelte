@@ -33,14 +33,15 @@
 	};
 
 	/**
-	 * A row's attributes (`option`, its look, its pointer): hovering makes it
-	 * the keyboard's row (an action's also opens or closes its flyout), a
-	 * click runs it as Enter does.
+	 * A row's own attributes (its look, its pointer; its ARIA is the
+	 * controller's `option` attachment): hovering makes it the keyboard's row
+	 * (an action's also opens or closes its flyout), a click runs it as Enter
+	 * does.
 	 */
 	const attributes = (row: Row, index: number, flyout: boolean) => {
 		const select = () => (flyout ? (controller.flyoutIndex = index) : (controller.index = index));
 		const own = {
-			...controller.option(index, flyout),
+			'data-selected': (flyout ? controller.flyoutIndex : controller.index) === index,
 			onclick: () => {
 				select();
 				controller.run(row);
@@ -99,6 +100,7 @@
 		<button
 			type="button"
 			{...attributes(row, index, flyout)}
+			{@attach controller.option(index, flyout)}
 			style:--block-menu-icon={'field' in row
 				? undefined
 				: iconOf('value' in row ? row.id : row.icon)}

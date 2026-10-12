@@ -58,14 +58,15 @@ The package draws no menu: your snippets do ([Menus and handles](/docs/customiza
 
 - `{@attach controller.popup}` on the list (or the toolbar) gives it its id, and its role and name unless you set them, and publishes it to the root while it is in the page (`aria-controls`, `aria-haspopup`, and `aria-activedescendant` when the root holds the keyboard), withdrawn when it goes.
 - `{@attach controller.keys}` on the element that holds the keyboard (the block menu's or the `+` menu's field, the toolbar) takes the menu's keys, focuses it when it mounts, and makes a field name the list and its highlighted row; on the toolbar, it is the roving tab stop and <kbd>Escape</kbd>.
-- `{...controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a controller's row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
-- The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts.
+- `{@attach controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a controller's row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
+- The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts, and a block handle's `grip` and `plus` keep the `aria-expanded`, `aria-controls` and `aria-haspopup` of the menu they opened.
+- A control inside a block (a to-do's checkbox, a callout's icon…) takes its attachment the same way, `{@attach payload.control}`: a checkbox drawn as a `button` gets `role="checkbox"` and `aria-checked` from it.
 
 The controllers still expose the ids, for markup that names them itself: every list's `listId` and `rowId(index)` (rows are named by position: the slash and trigger menus, the code language list, the callout picker, the pasted-link menu, a table grip's menu), the block menu's `menuId`, `flyoutId` and `rowId(row)`, the toolbar's `barId` and `linkFieldId`. The `popup` attachment is the one way a surface reaches the root.
 
 ## Block handles
 
-Name each handle after its block's kind: your `handle` snippet receives it as `label`, read from the kind's preset label, and names its buttons in its words (the demo's grip "Heading 1 block: drag to move, click for actions", its `+` "Add a block below Heading 1 (Alt: above)"). With a grip focused, <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> move the block (`aria-keyshortcuts` says so); <kbd>Enter</kbd> or <kbd>Space</kbd> opens its block menu. From the text, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block and <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> nest it (see [Hotkeys](/docs/customization/hotkeys)).
+Name each handle after its block's kind: your `handle` snippet receives it as `label`, read from the kind's preset label, and names its buttons in its words (the demo's grip "Heading 1 block: drag to move, click for actions", its `+` "Add a block below Heading 1 (Alt: above)"). With a grip focused, <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> move the block (the grip's attachment sets `aria-keyshortcuts`); <kbd>Enter</kbd> or <kbd>Space</kbd> opens its block menu. From the text, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block and <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> nest it (see [Hotkeys](/docs/customization/hotkeys)).
 
 ## Column widths from the keyboard
 

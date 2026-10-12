@@ -24,8 +24,8 @@
 
 <!--
 	The keys of a `+`'s menu (`keys`), the listbox's id, role and publication
-	to the view's root (`popup`) and a row's attributes (`option(index)`) are
-	the controller's. A press in the menu keeps the focus where it is (its
+	to the view's root (`popup`) and a row's ARIA (`option(index)`) are
+	the controller's attachments. A press in the menu keeps the focus where it is (its
 	field, or the editor's caret).
 -->
 <div
@@ -69,7 +69,8 @@
 					<button
 						type="button"
 						class="slash-item"
-						{...controller.option(index)}
+						data-selected={controller.index === index}
+						{@attach controller.option(index)}
 						data-command-id={command.id}
 						data-icon={command.icon ?? '⋮'}
 						data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}

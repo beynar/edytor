@@ -6,7 +6,7 @@
  * element given its id, role and name).
  */
 import type { Snippet } from 'svelte';
-import { createAttachmentKey, type Attachment } from 'svelte/attachments';
+import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import Chrome from './Chrome.svelte';
 import { onPress } from '$lib/events/onFocus.js';
@@ -63,70 +63,56 @@ export type MenuItemPayload<T> = {
 	/** Make it the keyboard's row (hover). */
 	select: () => void;
 	/**
-	 * The row's attributes: spread them on its element (`{...option}`). Its
-	 * `id`, `role`, `aria-selected` (or `aria-checked`), `tabindex`,
-	 * `data-selected`, and an attachment that scrolls the keyboard's row
-	 * into view.
+	 * The row's attachment (`{@attach item.option}`): its `id`, `role`,
+	 * `aria-selected` (or `aria-checked`) and `tabindex`, and the keyboard's
+	 * row scrolled into view. Its look is yours, from `selected`.
 	 */
-	option: OptionAttributes;
+	option: Attachment<HTMLElement>;
 };
 
-/** A row's attributes (`controller.option(index)`, `item.option`): spread them on the row. */
-export type OptionAttributes = {
-	id: string;
-	role: 'option' | 'menuitem' | 'menuitemcheckbox' | 'menuitemradio';
-	/** `-1` where a field or the editor holds the keyboard; a roving list's own row `0`. */
-	tabindex: 0 | -1;
-	'aria-selected'?: boolean;
-	'aria-checked'?: boolean;
-	/** A row that cannot run now (a table menu's Move up on the first row). */
-	'aria-disabled'?: boolean;
-	'aria-haspopup'?: 'menu';
-	'aria-expanded'?: boolean;
-	'data-selected': boolean;
-	[key: symbol]: Attachment<HTMLElement>;
+/** An attribute's value as an attachment writes it: `undefined` or `null` removes it. */
+type AttributeValue = string | number | boolean | null | undefined;
+
+/**
+ * Write `value` as `node`'s attribute `name`, only when it changes:
+ * `undefined` or `null` removes it; a boolean is an ARIA state's
+ * `"true"`/`"false"`, else present (`true`) or removed (`false`); a
+ * `--custom-property` is set on the element's style.
+ */
+const write = (node: HTMLElement, name: string, value: AttributeValue) => {
+	if (name.startsWith('--')) {
+		if (value === undefined || value === null) node.style.removeProperty(name);
+		else node.style.setProperty(name, String(value));
+		return;
+	}
+	const aria = name.startsWith('aria-');
+	const text =
+		value === undefined || value === null || (value === false && !aria)
+			? undefined
+			: value === true && !aria
+				? ''
+				: String(value);
+	attribute(node, name, text);
 };
 
 /**
- * A control's attributes inside a block (a to-do's checkbox, a page's
- * link, a table of contents' entry…): spread them on the element the
- * control's snippet draws (`{...payload.attributes}`), so custom markup
- * keeps its marker, its ARIA, its press and its action.
+ * The attachment of an element the package needs something of (a row, a
+ * control inside a block): it writes `attributes` (see `write`) and
+ * listens for `on`'s events until it is torn down. Read in a template,
+ * a new attachment replaces the last one when what it reads changes: the
+ * attributes it no longer gives (`undefined`) are removed.
  */
-export type ControlAttributes = {
-	[name: string]: unknown;
-	[key: symbol]: Attachment<HTMLElement>;
-};
-
-/** The key a row's attachment is spread under (one for every row). */
-const REVEAL = createAttachmentKey();
-
-/**
- * A row's attributes: the keyboard's row (`selected`) scrolls into view when
- * it becomes it, unless `reveal` is `false` (a list in the page, whose
- * focus scrolls it).
- */
-export const optionAttributes = (
-	id: string,
-	role: OptionAttributes['role'],
-	selected: boolean,
-	extra: Partial<Omit<OptionAttributes, 'id' | 'role' | 'data-selected'>> = {},
-	reveal = true
-): OptionAttributes => ({
-	id,
-	role,
-	tabindex: -1,
-	...(role === 'option' ? { 'aria-selected': selected } : {}),
-	...extra,
-	'data-selected': selected,
-	...(reveal
-		? {
-				[REVEAL]: (node: HTMLElement) => {
-					if (selected) node.scrollIntoView?.({ block: 'nearest' });
-				}
-			}
-		: {})
-});
+export const attach =
+	(
+		attributes: Record<string, AttributeValue>,
+		on: { [K in keyof HTMLElementEventMap]?: (event: HTMLElementEventMap[K]) => void } = {}
+	): Attachment<HTMLElement> =>
+	(node) => {
+		for (const name in attributes) write(node, name, attributes[name]);
+		return all(
+			...Object.entries(on).map(([type, listener]) => listen(node, type, listener as never))
+		);
+	};
 
 /** A text field: it takes the focus a press gives it. */
 export const isField = (target: EventTarget | null) =>
@@ -158,10 +144,6 @@ export const attribute = (node: HTMLElement, name: string, value: string | undef
 
 /** Whether `node` may name a highlighted row (`aria-activedescendant`): a field, or an element with a role. */
 export const namesRows = (node: HTMLElement) => isField(node) || node.hasAttribute('role');
-
-/** `id` when an element of `node`'s page has it, else `undefined`. */
-export const inPage = (node: Node, id: string | undefined) =>
-	id && node.ownerDocument?.getElementById(id) ? id : undefined;
 
 /**
  * A handle menu's events on the editor `node` (the block menu, the `+`'s

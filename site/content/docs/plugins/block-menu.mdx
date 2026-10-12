@@ -24,7 +24,7 @@ icon: menu
 		<div aria-label="Block actions" {@attach controller.popup}>
 			{#each controller.rows as row, index (`${index}:${row.id}`)}
 				<button
-					{...controller.option(index)}
+					{@attach controller.option(index)}
 					onclick={() => {
 						controller.index = index;
 						controller.run(row);
@@ -36,7 +36,7 @@ icon: menu
 			<div {@attach controller.flyoutMenu}>
 				{#each controller.flyoutRows as row, index (row.id)}
 					<button
-						{...controller.option(index, true)}
+						{@attach controller.option(index, true)}
 						onclick={() => {
 							controller.flyoutIndex = index;
 							controller.run(row);
@@ -176,7 +176,7 @@ The menu mounts in the editor's overlay, in a `position: fixed` host with the at
 
 ## Markup
 
-A `menu` snippet draws the menu. It renders while `controller.isOpen`, in that host. The plugin keeps opening it on a grip click, closing it on a press outside, placing it, and <kbd>Mod</kbd> + <kbd>D</kbd>. The keys in the table above, and the ARIA, are the controller's attachments: `{@attach controller.keys}` on your search field, `{@attach controller.popup}` on the element holding the rows, `{...controller.option(index)}` on each row, `{@attach controller.flyoutMenu}` on an open flyout. The example at the top of this page uses them all.
+A `menu` snippet draws the menu. It renders while `controller.isOpen`, in that host. The plugin keeps opening it on a grip click, closing it on a press outside, placing it, and <kbd>Mod</kbd> + <kbd>D</kbd>. The keys in the table above, and the ARIA, are the controller's attachments: `{@attach controller.keys}` on your search field, `{@attach controller.popup}` on the element holding the rows, `{@attach controller.option(index)}` on each row, `{@attach controller.flyoutMenu}` on an open flyout. The example at the top of this page uses them all.
 
 The snippet receives the `BlockMenuController`:
 

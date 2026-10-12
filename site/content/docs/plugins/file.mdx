@@ -39,7 +39,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
   }}
 />
 
-`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attributes to spread on your `a`: its `href`, `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
+`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
 
 ```svelte title="Files.svelte" check
 <script lang="ts">
@@ -49,7 +49,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
 </script>
 
 {#snippet row(file: FileRowPayload)}
-	<a class="attachment" {...file.link}>
+	<a class="attachment" href={file.src} {@attach file.link}>
 		<span>{file.name}</span>
 		{#if file.sizeLabel}<small>{file.sizeLabel}</small>{/if}
 	</a>

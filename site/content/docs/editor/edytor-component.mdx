@@ -104,7 +104,7 @@ The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({
 </script>
 
 {#snippet handle({ label, grip }: BlockHandleSnippetPayload)}
-	<button use:grip aria-label={`${label} block`}>⠿</button>
+	<button aria-label={`${label} block`} {@attach grip}>⠿</button>
 {/snippet}
 
 <Edytor {plugins} />

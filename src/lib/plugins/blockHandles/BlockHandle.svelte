@@ -15,20 +15,16 @@
 		handle: Snippet<[BlockHandleSnippetPayload]>;
 	} = $props();
 	const grip = $derived(controller.grip(block));
-	/** The menus this handle's `+` and grip opened, while open: their `aria-expanded`. */
-	const added = $derived(controller.opened(block, 'add'));
-	const gripped = $derived(controller.opened(block, 'grip'));
+	const plus = $derived(controller.plus(block));
 </script>
 
 {@render handle({
 	block,
 	label: controller.labelOf(block),
 	grip,
+	plus,
 	add: (alt = false, anchor) => controller.addBlock(block, alt, anchor ?? block.node ?? null),
 	beside: controller.addsColumn(block),
 	readonly: controller.readonly,
-	draggable: controller.draggable,
-	expanded: { add: added !== undefined, grip: gripped !== undefined },
-	controls: { add: added?.id, grip: gripped?.id },
-	haspopup: { add: added?.haspopup, grip: gripped?.haspopup }
+	draggable: controller.draggable
 })}

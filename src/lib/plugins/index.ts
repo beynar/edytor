@@ -15,7 +15,7 @@ export {
 } from './richtext/calloutIcons.svelte.js';
 export { createUploadsPlugin, type UploadsOptions } from './uploads.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
-export type { ControlAttributes, MenuItemPayload, OptionAttributes } from './chrome.js';
+export type { MenuItemPayload } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -97,8 +97,7 @@ export {
 export {
 	createFilePlugin,
 	type FilePluginOptions,
-	type FileRowPayload,
-	type MediaLinkAttributes
+	type FileRowPayload
 } from './media/FilePlugin.svelte';
 export { createVideoPlugin } from './media/VideoPlugin.svelte';
 export { createAudioPlugin } from './media/AudioPlugin.svelte';

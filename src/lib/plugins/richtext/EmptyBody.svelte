@@ -21,5 +21,5 @@
 {#if block.handle && !view.readonly}
 	{@const hint = emptyBody(view, block, kind)!}
 	<!-- A pointer's way into the body: the keyboard's is Enter at the end of the header. -->
-	<div {...hint.attributes}>{hint.label}</div>
+	<div {@attach hint.control}>{hint.label}</div>
 {/if}

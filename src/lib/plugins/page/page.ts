@@ -1,6 +1,6 @@
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { ControlAttributes } from '../chrome.js';
+import type { Attachment } from 'svelte/attachments';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
@@ -31,9 +31,9 @@ export type PagePluginOptions = {
 	create?: () => string | { pageId: string; title?: string } | null | undefined;
 	/**
 	 * The block's link to its page (default: Notion's row, a page icon and
-	 * the title). Spread `link.attributes` on an `a` when `link.href` is
-	 * set, else on a `button`: a click opens the page (`open`), a modified
-	 * or middle click in a new tab. The first page plugin listed in a view
+	 * the title). Give an `a` (`href={link.href}`) when `link.href` is set,
+	 * else a `button`, `{@attach link.control}`: a click opens the page
+	 * (`open`), a modified or middle click in a new tab. The first page plugin listed in a view
 	 * gives it.
 	 */
 	link?: Snippet<[PageBlockLinkPayload]>;
@@ -56,12 +56,12 @@ export type PageBlockLinkPayload = {
 	/** Open the page (`open`), in a new tab when `newTab`. */
 	open: (newTab?: boolean) => void;
 	/**
-	 * Spread on the link's element: its marker (`data-edytor-page-link`), the
-	 * `href` (on an `a`), `draggable="false"`, the click and middle click
-	 * that open it; on a `button`, `disabled` when it cannot open and a press
-	 * that keeps the editor's selection.
+	 * The link's attachment (`{@attach link.control}`): its marker
+	 * (`data-edytor-page-link`), the click and middle click that open it; on
+	 * an `a`, `draggable="false"`; on a `button`, `disabled` when it cannot
+	 * open and a press that keeps the editor's selection.
 	 */
-	attributes: ControlAttributes;
+	control: Attachment<HTMLElement>;
 };
 
 /** Each view's page options (the first page plugin listed sets them). */

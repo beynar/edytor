@@ -78,7 +78,7 @@ pnpm add edytor
 {#snippet menu(slash: SlashMenuController)}
 	<ul {@attach slash.popup}>
 		{#each slash.commands as command, index (command.id)}
-			<li {...slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
+			<li {@attach slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
 		{/each}
 	</ul>
 {/snippet}

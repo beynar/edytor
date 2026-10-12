@@ -23,7 +23,8 @@
 			{#each controller.commands as command, index (command.id)}
 				<button
 					data-testid="custom-slash"
-					{...controller.option(index)}
+					data-selected={controller.index === index}
+					{@attach controller.option(index)}
 					onclick={() => void controller.run(command)}>{command.label}</button
 				>
 			{/each}
@@ -41,7 +42,7 @@
 
 {#snippet handle({ block, grip, add }: import('$lib/plugins/index.js').BlockHandleSnippetPayload)}
 	<button data-testid="custom-add" data-id={block.id} onclick={() => add()}>+</button>
-	<button data-testid="custom-grip" data-id={block.id} use:grip>⠿</button>
+	<button data-testid="custom-grip" data-id={block.id} {@attach grip}>⠿</button>
 {/snippet}
 
 {#snippet blockMenu(controller: import('$lib/plugins/index.js').BlockMenuController)}

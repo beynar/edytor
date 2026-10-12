@@ -30,7 +30,7 @@ icon: at-sign
 {#snippet menu(people: TriggerMenuController<MentionItem>)}
 	<ul {@attach people.popup}>
 		{#each people.items as person, index (person.id)}
-			<li {...people.option(index)} onclick={() => void people.pick(person)}>{person.label}</li>
+			<li {@attach people.option(index)} onclick={() => void people.pick(person)}>{person.label}</li>
 		{:else}
 			<li role="presentation">{people.loading ? 'Searching…' : 'No results'}</li>
 		{/each}
@@ -52,7 +52,7 @@ It is not a default plugin: list it in `plugins`, in every view of a document th
       description: "The people matching the text typed after @. Return a promise to search your server: the newest query's answer wins.",
     },
     char: { type: "string", description: "The character that opens the menu. Default @." },
-    menu: { type: "Snippet<[TriggerMenuController<MentionItem>]>", description: "The menu, at the caret while it is open (without it, nothing shows). Keep its ARIA with {@attach controller.popup} on the list and {...controller.option(index)} on each row. See Menus and handles." },
+    menu: { type: "Snippet<[TriggerMenuController<MentionItem>]>", description: "The menu, at the caret while it is open (without it, nothing shows). Keep its ARIA with {@attach controller.popup} on the list and {@attach controller.option(index)} on each row. See Menus and handles." },
   }}
 />
 

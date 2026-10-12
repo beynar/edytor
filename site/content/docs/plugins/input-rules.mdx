@@ -11,6 +11,12 @@ A plugin declares two kinds of typing behavior as data, wired into its own hooks
 
 Both read and write positions as block offsets: an offset in the block's content, where an inline atom counts as 1. These are the offsets `edytor.document` takes and `edytor.selection.caret` reads ([Selection](/docs/editor/selection#the-caret)).
 
+## Try it
+
+<PluginDemo plugin="input-rules" />
+
+Type `:smile:`, `->` or `(c)` in the empty line, then press Mod+Z to get the typed text back. The editor is local to this page: a reload resets it.
+
 ## Input rules
 
 ```ts title="emoji.ts" check

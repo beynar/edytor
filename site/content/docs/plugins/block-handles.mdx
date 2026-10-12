@@ -6,6 +6,107 @@ icon: grip-vertical
 
 Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block, or every block the selection covers; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). The plugin ships the placement, the hover, the drag and drop and the keys; the two buttons are your `handle` snippet.
 
+## Try it
+
+<PluginDemo plugin="block-handles" />
+
+Hover a block, then drag its grip to reorder, click the grip for the block menu, or click `+` to pick a block to add below. The editor is local to this page: a reload resets it.
+
+## Customize
+
+The `handle` snippet draws both buttons, so they can look like anything. Here, a round indigo `+` and a tinted grip pill that fills on hover; the plugin keeps the placement, the drag and the keys.
+
+<PluginDemo plugin="block-handles" variant="custom" />
+
+```svelte title="HandlesEditor.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createBlockHandlesPlugin,
+		type BlockHandleSnippetPayload,
+		type JSONDoc,
+		type Plugin
+	} from 'edytor';
+
+	// The page's document and the rest of your editor's plugins.
+	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
+
+	// A round + and a tinted grip pill, drawn by the handle snippet below.
+	const handles = createBlockHandlesPlugin({ handle });
+</script>
+
+{#snippet handle({ label, grip, plus, readonly, beside, draggable }: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button
+			class="plus"
+			contenteditable="false"
+			aria-label={beside ? `Add a column beside ${label}` : `Add a block below ${label}`}
+			title="Add below (Alt: above)"
+			{@attach plus}
+		>
+			+
+		</button>
+		<button
+			class="grip"
+			contenteditable="false"
+			data-draggable={draggable ? 'true' : undefined}
+			aria-label={`${label} block: drag to move, click for actions`}
+			title={label}
+			{@attach grip}
+		>
+			<span aria-hidden="true">⠿</span>
+		</button>
+	{/if}
+{/snippet}
+
+<Edytor {value} plugins={[handles, ...plugins]} aria-label="Block handles demo" />
+
+<style>
+	.plus,
+	.grip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 22px;
+		padding: 0;
+		border: 0;
+		cursor: pointer;
+		font: 600 14px/1 system-ui, sans-serif;
+		transition:
+			background-color 80ms ease,
+			color 80ms ease;
+	}
+	.plus {
+		width: 22px;
+		border-radius: 50%;
+		background: #eef0ff;
+		color: #4f46e5;
+	}
+	.grip {
+		width: 20px;
+		margin-left: 2px;
+		border-radius: 6px;
+		background: #f1efe9;
+		color: #8a857b;
+	}
+	.grip[data-draggable='true'] {
+		cursor: grab;
+	}
+	.plus:hover,
+	.plus:focus-visible {
+		background: #4f46e5;
+		color: #fff;
+		outline: 0;
+	}
+	.grip:hover,
+	.grip:focus-visible {
+		background: #4f46e5;
+		color: #fff;
+		outline: 0;
+	}
+</style>
+```
+
 ## Enabling and configuring
 
 List `createBlockHandlesPlugin({ handle })` in `plugins`; `handle` draws the `+` and the grip of each block (without it, no handle shows and no block drags):
@@ -297,5 +398,4 @@ if (target) {
 	edytor.selection.setCaret({ block: target, offset: 0 });
 	edytor.node?.focus({ preventScroll: true });
 }
-
 ```

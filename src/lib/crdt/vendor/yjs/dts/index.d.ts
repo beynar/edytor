@@ -10,7 +10,7 @@ export { AbstractStruct } from "./structs/AbstractStruct.js";
 export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";
 export type ContentIds = import("./utils/ids.js").ContentIds;
-export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
+export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
 export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from "./utils/encoding.js";
 export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { idAtIndex, indexOfId } from "./utils/positions.js";

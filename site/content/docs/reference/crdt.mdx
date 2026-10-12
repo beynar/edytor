@@ -75,7 +75,7 @@ The same document surface as `edytor`, safe to import in Node, SSR and Workers:
 import { createDocument, loadDocument, attachDocument, bindCrdt } from 'edytor/crdt/edytor';
 ```
 
-It exports the document factories and errors (`SchemaMismatchError`, `UnsupportedDocError`, `SyncRefusedError`, …), the document vocabulary types (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `OpResult`, `DocAnchor`, `JSONDoc`, …), the block roles (`defaultSemantics`, `semanticsOf`), `Awareness`, the sync types, attribution, `isLegacyDoc` and `bindCrdt`. The document factories are already bound to the engine: you do not need `bindCrdt` to create, load or edit documents.
+It exports the document factories and errors (`SchemaMismatchError`, `UnsupportedDocError`, `SyncRefusedError`, …), the document vocabulary types (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `OpResult`, `DocAnchor`, `JSONDoc`, …), the block roles (`defaultSemantics`, `semanticsOf`), `Awareness`, the sync types, attribution and `bindCrdt`. The document factories are already bound to the engine: you do not need `bindCrdt` to create, load or edit documents.
 
 ## `edytor/protocol`
 

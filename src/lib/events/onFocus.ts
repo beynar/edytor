@@ -28,23 +28,28 @@ export const selectionIsInside = (node: HTMLElement) => {
 };
 
 /**
- * The editor takes the keys after a pointer gesture on its chrome (a block
- * drop, a column resize, a grip click no menu answers): its host gets the
+ * The editor takes the keys back: after a pointer gesture on its chrome (a
+ * block drop, a column resize, a grip click no menu answers), a menu, panel,
+ * toolbar or field of the chrome giving them back, or `edytor.focus()`. The
+ * one way to focus the host from code: its host gets the
  * focus, without scrolling, as the editor's own focus (`focusin` restores
  * no cached caret and counts no gesture), so Mod+Z, Mod+Shift+Z and the
  * block-selection keys act at once, whatever the selection (a block
  * selection, or none: an undo giving back "no selection" keeps them). The
- * projector stays the only DOM-selection writer. Nothing when the focus is
- * already inside the host, or the view is gone.
+ * caret the browser parks for that focus (at the host's start) is drift,
+ * never adopted, and the value is displayed over it: a key typed right
+ * after lands at the selection, not at the host's start. The projector
+ * stays the only DOM-selection writer. Nothing when the host already has
+ * the focus (a kind's own control inside it does not), or the view is gone.
  */
 export const takeKeys = (edytor: Edytor) => {
 	const node = edytor.node;
 	if (!node?.isConnected || edytor.destroyed) return;
-	const active = getActiveElement(node);
-	if (active instanceof Node && node.contains(active)) return;
+	if (getActiveElement(node) === node) return;
 	edytor.expectInternalFocus();
 	node.focus({ preventScroll: true });
 	edytor.projector.parked();
+	edytor.selection.display();
 };
 
 /*

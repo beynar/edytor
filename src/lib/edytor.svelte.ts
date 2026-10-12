@@ -7,7 +7,7 @@ import { isControlEvent, isKindControl } from './events/nativeInteractiveControl
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
-import { attachFocus, selectionIsInside } from './events/onFocus.js';
+import { attachFocus, selectionIsInside, takeKeys } from './events/onFocus.js';
 import { insertLineBreak, runIntent } from './events/beforeInputCommands.js';
 import { textPointAt } from './selection/selection.utils.js';
 import type { SessionPorts } from './session/ports.js';
@@ -909,8 +909,7 @@ export class Edytor {
 			const text = this.root?.firstText;
 			if (text) this.selection.selectText(text, 0);
 		}
-		this.expectInternalFocus();
-		this.node?.focus({ preventScroll: true });
+		takeKeys(this);
 	};
 
 	/**

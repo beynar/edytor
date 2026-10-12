@@ -184,6 +184,7 @@ This release makes the editor smaller: an app with `<Edytor />` ships about 40% 
 
 - **A text delete no longer throws in a Node process run with `NODE_ENV=development`**: the engine froze the values it stored in that mode, and the editor's delete records cannot be frozen. The engine no longer freezes them.
 - **A semantics conflict names the declarations as given.** A `SemanticConflictError` from `adoptSemantics` (a view's plugin, or a reattach, disagreeing with the document) carries the two declarations in `existing` and `incoming` as they were written, as `mergeSemantics` reports them, instead of their normalized form. Its `subject` and its class are unchanged.
+- **A key typed right after a menu, toolbar, panel or the find bar gives the keys back lands at the caret**, never at the start of the editor: every piece of chrome now returns the focus the way `edytor.focus()` does, so the caret the browser places for that focus is never taken for the user's.
 - **The callout icon picker's `popup` keeps a custom picker's own role and name**, as every other menu's `popup` does, and a press on the picker keeps the focus where it is.
 - **A kind's HTML export escapes its attributes and text** as the rest of the copied HTML does (`&amp;`, `&quot;`): the image, callout, embed, bookmark, file, video and audio exports wrote numeric references (`&#38;`), which read back the same.
 

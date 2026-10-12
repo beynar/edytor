@@ -8,6 +8,7 @@ import { marksForInsertion } from '$lib/session/editing/text.js';
 import { showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
 import { listen } from '$lib/utils/listen.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
 export type ReplaceMatches = Commands['replaceMatches'];
@@ -118,8 +119,7 @@ export class FindController {
 		const end = block?.textAtOffset(match!.offset + match!.length);
 		if (start && end)
 			this.edytor.selection.selectText(start.text, start.offset, end.text, end.offset);
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 	};
 
 	/** The next match becomes the current one (after the last, the first). */

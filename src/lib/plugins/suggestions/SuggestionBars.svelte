@@ -20,6 +20,7 @@
 </script>
 
 <script lang="ts">
+	import { takeKeys } from '$lib/events/onFocus.js';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Suggestion } from '$lib/session/suggestions.svelte.js';
@@ -64,8 +65,7 @@
 		suggestion,
 		accept: () => {
 			suggestion.accept();
-			edytor.expectInternalFocus();
-			edytor.node?.focus({ preventScroll: true });
+			takeKeys(edytor);
 		},
 		discard: suggestion.discard,
 		retry: suggestion.retryable ? suggestion.retry : undefined,

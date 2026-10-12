@@ -259,8 +259,7 @@ export class BlockHandleController {
 			const { dispatcher, facade, selection, undoManager: um } = edytor;
 			const held = selection.value;
 			let refused: CommandResult | undefined;
-			edytor.expectInternalFocus();
-			edytor.node?.focus({ preventScroll: true });
+			takeKeys(edytor);
 			// The addition and `then` are one transaction: one update, one undo
 			// step. Refused with nothing applied, the addition is taken back inside
 			// it, and the history captures nothing (its undo and redo steps stay).

@@ -21,6 +21,7 @@ import type {
 	CommentResult,
 	CommentsClient
 } from '$lib/collaboration/comments/client.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /** Who a comment's author is, as the sidebar shows them. */
 export type CommentUser = {
@@ -418,8 +419,7 @@ export class CommentsController {
 	});
 
 	#refocus = () => {
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 		this.edytor.overlay.invalidate();
 	};
 }

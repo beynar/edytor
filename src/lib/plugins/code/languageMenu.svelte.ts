@@ -205,11 +205,7 @@ export class LanguageMenu extends ChromeList {
 	 */
 	release = () => {
 		this.close();
-		const node = this.edytor.node;
-		if (!node?.isConnected || this.edytor.destroyed) return;
-		this.edytor.expectInternalFocus();
-		node.focus({ preventScroll: true });
-		this.edytor.selection.display();
+		takeKeys(this.edytor);
 	};
 
 	/**

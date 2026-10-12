@@ -12,6 +12,7 @@ import type { Popup } from '$lib/surface/popups.svelte.js';
 import { attribute, isField, keepFocus } from '../chrome.js';
 import { holdKeys } from '../list.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /**
  * The view a `+`'s menu asks `isEnabled` of: the editor, its selection a
@@ -232,8 +233,7 @@ export class SlashMenuController extends TextTriggerController {
 		if (held.kind === 'none' || project(held, this.edytor.facade).start)
 			this.edytor.selection.select(held);
 		if (!focus || this.edytor.readonly) return;
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 	}
 
 	runSelected() {

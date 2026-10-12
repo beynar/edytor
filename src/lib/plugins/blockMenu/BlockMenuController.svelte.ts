@@ -33,6 +33,7 @@ import {
 } from '../chrome.js';
 import { holdKeys, listPopup, stepRow } from '../list.svelte.js';
 import { listen } from '$lib/utils/listen.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -571,7 +572,6 @@ export class BlockMenuController {
 
 	/** Back to the editor: its own focus, not a user gesture (as its selection writes). */
 	private focus() {
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 	}
 }

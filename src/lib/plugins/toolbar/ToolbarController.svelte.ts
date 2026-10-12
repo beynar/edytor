@@ -21,6 +21,7 @@ import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import { identify } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
 const STOPS = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
@@ -151,8 +152,7 @@ export class ToolbarController {
 		const snapshot = this.#selectionSnapshot;
 		this.panel = null;
 		if (snapshot) this.#restoreSelection(snapshot);
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 	}
 
 	updateFromSelection(selection = this.edytor.selection) {
@@ -246,8 +246,7 @@ export class ToolbarController {
 		this.panel = null;
 		const snapshot = this.#selectionSnapshot;
 		if (!focus || this.edytor.readonly) return;
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 		if (snapshot) this.#restoreSelection(snapshot);
 	}
 

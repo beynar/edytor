@@ -2067,6 +2067,18 @@ dragged blocks inside the block (`inside` first in either half,
 `overEmptyBody` in the handles' geometry). Pins:
 `container-bodies.test.tsx`, `container-bodies.spec.ts`.
 
+### `body.down` — ArrowDown from a header goes into its empty body
+
+ArrowDown with a collapsed caret on the last line of a header whose body
+shows and is empty (an open toggle or toggle heading, a callout without
+children) runs the hint's command, `openBody`: a first child of the
+default child kind, the caret in it, one undo step (Notion). A closed
+toggle, a header whose body has a child, a caret above the header's last
+line and a view that may not write keep the key's usual move (the stop
+below). The last line is `onLastLine` (`session/navigation.ts`), the one
+reading `nav.trailing.exit` shares; the binding is the rich text plugin's.
+Pins: `container-bodies.test.tsx`, `container-bodies.spec.ts`.
+
 ### `body.open` — a toggle this view creates opens
 
 A block without children that this view retypes into a disclosure kind
@@ -2264,7 +2276,10 @@ rule of its own (the code block's is gone).
   `ports.surface.sameLine`; an offset where a line wraps counts on the
   line it ends, so a doubt leaves the key to the browser), else after the
   block's last line break — with **no stop below** it, in a block that is
-  **not a top-level block of the root's default kind**.
+  **not a top-level block of the root's default kind**. A header whose
+  empty body shows (an open toggle, a callout without children) goes into
+  that body first (`body.down`, the rich text plugin's binding, which runs
+  before this one).
 - **A stop below** is a displayable block (`selection.displayable`: a
   mounted text not hidden by view state, so a closed toggle's body holds
   none, nor does a void) after the caret's block in document order, unless

@@ -333,7 +333,9 @@ describe('docs drift', () => {
 				(mention) => `${relative(root, path)}: ${mention}`
 			);
 		});
-		expect(mentions.length).toBeGreaterThan(0);
+		// The docs name the version they describe (a release is no pre-release, so
+		// the pattern above does not find it).
+		expect(docs.some((path) => pageText(path).includes(`\`${version}\``))).toBe(true);
 		expect(mentions.filter((mention) => !mention.endsWith(`: ${version}`))).toEqual([]);
 	});
 

@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 1.0.0-rc.3
+
 This release makes the editor smaller: an app with `<Edytor />` ships about 40% less of the editor's own JavaScript, and an app with every plugin about 30% less (701.5 → 429.1 KB and 909.5 → 651.8 KB minified, the Svelte runtime excluded). It gets there by keeping one way to do each thing. The chrome is headless: the package draws no menu, handle, panel or card, each one is a snippet you pass its plugin (the controls inside blocks keep a default your snippet replaces), and [the demo's chrome](https://github.com/beynar/edytor/tree/master/src/routes/chrome) is markup you can copy. There is one write API (the document's operations, under the same names on the view; handles only read), one update encoding and one undo manager. Browsers are Baseline 2024, and stored data of earlier generations is refused instead of converted. Each change below states what the release ships and what an app must do; most apps act first on [Plugins and chrome](#plugins-and-chrome).
 
 #### Breaking changes
@@ -1091,7 +1095,7 @@ Every public change since 0.0.11, by area.
 - **Properties are stored per leaf.** A block's, an inline block's and the document's (root `docdata`) data is one attribute per leaf, `d/` and its JSON pointer; the older whole `data` attribute is no longer read.
 - **Array items are stored per item.** An array is a `[]` leaf and its items: item `id`'s value under `~id`, its position (a rank) in `~id#`, or in `~id>` once moved. An array of the previous pre-release is read as items with ids derived from their indexes and split into them by the first write that removes one. A client of that pre-release reads such an array as an object, so upgrade every client together.
 - **Schema generation 6** (wire word `14006`): one update encoding, the columnar one, on the wire and in storage. Documents, containers, browser stores, history versions and peers of every earlier generation are refused by the generation gate (`GenerationMismatchError`, `schema-mismatch`), never converted: re-import them from JSON. The browser database is `edytor-v14-g6:<name>`; the databases of earlier generations (`edytor-v14:<name>`, `edytor-v14-g5:<name>`) are left as they were, unread. Behind the bumps since 0.0.11: per-writer delete marks (a deleted block is not read as live), the replicated block nonce `n` (attribution records keyed by it), text ownership as streams delimited by boundary items (the `slices` attribute is gone; merge claims live on `claims`), paired marks and shorter ranks.
-- v13 (`yjs`) documents no longer import (they did up to 1.0.0-rc.3).
+- v13 (`yjs`) documents no longer import (they did before 1.0.0).
 - **Deterministic seeds.** `createDocument({ value })` and `<Edytor {value}>` write the value under a writer id hashed from it, so two replicas seeding the same template converge and a late identical seed never erases an edit. See [deterministic seeds](/docs/collaboration/documents#deterministic-seeds).
   - Missing ids are derived from that hash. Seed writer ids sit below 2^26, so a seed never displaces a block a live replica wrote.
   - Seeded blocks carry no attribution stamp (`createdBy` is absent). `BOOTSTRAP_BLOCK_ID` is gone.

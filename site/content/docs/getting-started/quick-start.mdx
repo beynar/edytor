@@ -36,7 +36,7 @@ npx degit beynar/edytor/src/routes/chrome src/lib/chrome
 sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
 ```
 
-Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0-rc.3`): without one you get `master`'s, which follows the next release.
+Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0`): without one you get `master`'s, which follows the next release.
 
 Then pass its plugins: each is the package's factory given the demo's snippets (`slashMenu(options)` and the others take the factory's options too).
 

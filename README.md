@@ -17,7 +17,7 @@
 
 Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable editor with an API to build any kind of collaborative rich text editor.
 
-> **Release candidate.** Edytor `1.0.0-rc.3` is the 1.0 release candidate (`edytor` on npm): its API is frozen, and a change to it before 1.0 is a listed breaking change. It has no production track record yet: read the [limitations](https://edytor.dev/docs/reference/limitations) before you build on it. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
+> **1.0.** Edytor `1.0.0` is on npm as `edytor`: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet: read the [limitations](https://edytor.dev/docs/reference/limitations) before you build on it. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
 
 ## Features
 
@@ -56,7 +56,7 @@ npx degit beynar/edytor/src/routes/chrome src/lib/chrome
 sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
 ```
 
-Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0-rc.3`): without one you get `master`'s, which follows the next release.
+Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0`): without one you get `master`'s, which follows the next release.
 
 ```svelte
 <script lang="ts">

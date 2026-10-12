@@ -8,7 +8,7 @@ The core ships almost no visual styles: you style the document with CSS, through
 
 ## Notion theme
 
-`edytor/themes/notion.css` styles every rich text, image and code kind like Notion's light theme. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
+`edytor/themes/notion.css` styles every bundled kind like Notion's light theme: the rich text kinds, images, code, equations, tables, columns, the media blocks, page blocks, tables of contents, mentions and page links. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -28,13 +28,16 @@ What it sets:
 - one 24px nesting step: a block nested under a paragraph, heading or quote starts 24px in, and a list item's or to-do's marker column is the same step wide;
 - a marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
 - Notion's blue to-do checkbox, with done text struck through and muted;
-- a toggle caret that rotates as the toggle opens (a toggle heading's centred on its heading), a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
-- images with rounded corners and a muted caption, and the empty image's gray "Add an image" panel with its link field and blue buttons;
-- inline code in red on a light tint, links underlined at 0.7 opacity, and blue text and block selections;
-- Notion's page row for a [page block](/docs/plugins/page) and muted entries for a [table of contents](/docs/plugins/table-of-contents);
+- a toggle caret that rotates as the toggle opens (a toggle heading's centred on its heading), a 3px quote bar, a 10px-rounded callout panel with its icon button and semibold title, the empty body's muted hint, and a thin divider;
+- the code panel, its header placed at the panel's top, the monospace font and Notion's light syntax colours (`--edytor-code-background`, `--edytor-code-color`);
+- equations: the hover and editing shade, the empty equation's panel, the source in a monospace font, an unreadable one in red;
+- tables: the cells' borders (`--edytor-table-border`) and padding, a header cell's shade (`--edytor-table-header-background`); columns flush with the layout's edges and one rounded highlight over a selected layout;
+- images with rounded corners and a muted caption; the bookmark card (its border, the cover beside the text), the file row and the unplayable embed's link, each with its hover;
+- inline code in red on a light tint, links underlined at 0.7 opacity, mentions and page links in a line, and blue text and block selections;
+- Notion's page row for a [page block](/docs/plugins/page) and muted, indented entries for a [table of contents](/docs/plugins/table-of-contents);
 - the block colour tokens (below): a callout given a background shows it in place of its panel.
 
-It styles the document only. The block handles, menus, toolbar and panels are your markup, with your styles (see [Menus and handles](/docs/customization/menus); the demo's Notion-style chrome carries its own). Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
+It styles the document only. The empty image and media panels, the block handles, menus, toolbar and panels are your markup, with your styles (see [Menus and handles](/docs/customization/menus); the demo's Notion-style chrome carries its own). Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
 
 Adapt it by overriding its custom properties on `.edytor-notion`:
 
@@ -52,11 +55,23 @@ Adapt it by overriding its custom properties on `.edytor-notion`:
 | `--notion-text-selection`    | `rgba(35, 131, 226, 0.28)`     | Text selection                                   |
 | `--notion-block-selection`   | `rgba(35, 131, 226, 0.14)`     | Selected blocks                                  |
 | `--notion-font`              | Notion's system sans stack     | Body text                                        |
-| `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code                                      |
+| `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code and code blocks                      |
 
 It also declares the [block colour](#block-colors) tokens with Notion's light values, so a theme of yours overrides them in one place (a dark theme, say).
 
 The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`, `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`, the [marquee](/docs/plugins/marquee)'s `--edytor-marquee-background` and `--edytor-marquee-border` to the same blue, and `--edytor-nest-indent` to `24px` (see [Nested blocks](#nested-blocks)). Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
+
+### Without the theme
+
+Every look is the theme's: a plugin's own stylesheet keeps only what makes its blocks work. Without the theme the blocks work and are unstyled, as the browser draws their elements:
+
+- a layout's columns side by side (`--edytor-columns-gap`), stacked under 480px, and a table's grid of its columns' widths, scrolling sideways in its box;
+- a code block's lines keeping their spaces and scrolling sideways, and its header never selected;
+- a wide equation scrolling sideways, an embed's frame at its provider's aspect ratio or height, a video and an audio player as wide as the block, an image at its width and alignment;
+- an empty body's hint never selected, a mention or page link on one line;
+- the overlay's chrome where it is placed: the block handles' hosts, the drop indicator, the image's resize handles, a column's and a table column's resize guide and a table row's or column's drop line (`--edytor-columns-resize-color`, `--edytor-column-resize-color`, `--edytor-table-resize-color`, `--edytor-table-drop-color`, `--edytor-image-handle-color`), since each shows where a press or a drag lands.
+
+The controls inside the blocks (a to-do's checkbox, a callout's icon, an empty body's hint, a bookmark's card, a file's row, an unplayable embed's link, a table of contents' entries, a page block's link, an equation's placeholder and error) are the plugins' markup unless you pass your own snippet to the plugin (see each plugin's page); the theme styles the default markup.
 
 ### Long pages
 

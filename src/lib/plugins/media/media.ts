@@ -1,4 +1,7 @@
+import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import type { ControlAttributes } from '../chrome.js';
 import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
@@ -13,11 +16,83 @@ export { MEDIA_ICONS };
 
 /**
  * A media kind in a view: the first plugin of the kind listed in it claims
- * it, as its kind record (first wins): its empty block's
- * `empty` snippet (none: nothing drawn) and `upload`, how a block of
- * it stores a source, and the embed's allowlist.
+ * it, as its kind record (first wins): how a block of it stores a source,
+ * the embed's allowlist, and the app's markup for the kind's own control
+ * (the bookmark's `card`, the file's `row`, the embed's `fallback`).
  */
-export type MediaView = EmptyView & { providers?: readonly EmbedProvider[] };
+export type MediaView = EmptyView & {
+	providers?: readonly EmbedProvider[];
+	card?: Snippet<[BookmarkCardPayload]>;
+	row?: Snippet<[FileRowPayload]>;
+	fallback?: Snippet<[EmbedFallbackPayload]>;
+};
+
+/**
+ * A media block's link to its source, to spread on an `a`
+ * (`{...payload.link}`): its `href`, a new tab without the opener
+ * (`target`, `rel`), never a drag of its own; a file's `download` name.
+ */
+export type MediaLinkAttributes = ControlAttributes & {
+	href: string;
+	target: '_blank';
+	rel: string;
+	/** A bookmark's card and a file's row: the link never drags out of the editor. */
+	draggable?: 'false';
+	download?: string;
+};
+
+/** What a bookmark's `card` snippet receives: the page it links to, as `unfurl` described it. */
+export type BookmarkCardPayload = {
+	/** The bookmark; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The page's URL (`http(s)`). */
+	url: string;
+	/** Its title, description, cover image and icon, when `unfurl` answered them. */
+	title: string | undefined;
+	description: string | undefined;
+	image: string | undefined;
+	icon: string | undefined;
+	/** Spread on the card's `a`. */
+	link: MediaLinkAttributes;
+};
+
+/** What a file block's `row` snippet receives: the file it links to. */
+export type FileRowPayload = {
+	/** The file block; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The file's URL. */
+	src: string;
+	/** Its name: the uploaded file's, else its URL's last segment. */
+	name: string;
+	/** Its size in bytes, when it was uploaded. */
+	size: number | undefined;
+	/** That size in the view's words (`media.fileSize`), `''` without one. */
+	sizeLabel: string;
+	/** Spread on the row's `a` (it downloads the file under its name). */
+	link: MediaLinkAttributes;
+};
+
+/** What an embed's `fallback` snippet receives: a link no allowed provider plays. */
+export type EmbedFallbackPayload = {
+	/** The embed; `undefined` in a suggestion's preview. */
+	block: Block | undefined;
+	/** The link (`http(s)`), shown as a link, never in a frame. */
+	url: string;
+	/** Spread on its `a`. */
+	link: MediaLinkAttributes;
+};
+
+/** The attributes of a media block's link to `href`: a new tab without the opener (and `own`). */
+export const mediaLink = (
+	href: string,
+	own: Pick<MediaLinkAttributes, 'draggable' | 'download'> = {}
+): MediaLinkAttributes => ({ href, target: '_blank', rel: 'noopener noreferrer nofollow', ...own });
+
+/** The app's markup for a media kind's own control in `view`, if any. */
+export const mediaControl =
+	<K extends 'card' | 'row' | 'fallback'>(kind: MediaKind, control: K) =>
+	(view: Edytor | undefined) =>
+		mediaView(view, kind)?.[control];
 
 const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
 
@@ -41,7 +116,7 @@ export const mediaPlugin =
 		own: (
 			edytor: Edytor,
 			claims: boolean
-		) => Pick<MediaView, 'store' | 'providers'> & {
+		) => Pick<MediaView, 'store' | 'providers' | 'card' | 'row' | 'fallback'> & {
 			hooks?: PluginOperations & PluginDefinitions;
 			record: Partial<BlockDefinition>;
 		}

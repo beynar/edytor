@@ -104,6 +104,14 @@ A press or a focus outside the editor closes it too. After it closes, a block eq
       type: "Snippet<[EquationEditor]>",
       description: "The editor's panel, under the edited equation (without it, nothing opens); `{@attach editor.field}` on your source field keeps its focus and keys. See [Menus and handles](/docs/customization/menus#equation-editor).",
     },
+    placeholder: {
+      type: "Snippet<[EquationPlaceholderPayload]>",
+      description: "An empty equation's markup, replacing the default (`√x` and the view's placeholder): `{ display, label }`, `display` true for a block equation, `label` the view's `equation.blockPlaceholder` or `inlinePlaceholder`. A click on it opens the editor, as on any equation.",
+    },
+    error: {
+      type: "Snippet<[EquationErrorPayload]>",
+      description: "The markup of an equation KaTeX cannot read, replacing the default (its source, KaTeX's message in its title): `{ display, expression, error, label }`, `error` KaTeX's message, `label` the view's `equation.invalid`.",
+    },
   }}
 />
 
@@ -115,6 +123,31 @@ import { createEquationPlugin } from 'edytor';
 export const equations = createEquationPlugin({
 	macros: { '\\RR': '\\mathbb{R}' }
 });
+```
+
+The placeholder and the error are drawn inside the equation, which keeps its click, its selection and its void element: your snippets draw only what shows.
+
+```svelte title="Equations.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createEquationPlugin,
+		type EquationErrorPayload,
+		type EquationPlaceholderPayload
+	} from 'edytor';
+
+	const equations = createEquationPlugin({ placeholder, error });
+</script>
+
+{#snippet placeholder(empty: EquationPlaceholderPayload)}
+	<span class="math-empty">∑ {empty.label}</span>
+{/snippet}
+
+{#snippet error(failed: EquationErrorPayload)}
+	<code class="math-error" title={failed.error}>{failed.expression}</code>
+{/snippet}
+
+<Edytor plugins={[equations]} />
 ```
 
 ## The kinds
@@ -153,9 +186,9 @@ Copying writes each equation as MathML whose `application/x-tex` annotation is i
 | --- | --- |
 | `[data-edytor-equation]` | A block equation's drawing (`[data-empty]` when it has no source, `[data-editing]` while edited) |
 | `[data-edytor-inline-equation]` | An inline equation (`[data-empty]`, `[data-editing]`, `[data-selected]`) |
-| `[data-edytor-equation-placeholder]` | An empty equation's placeholder |
-| `[data-edytor-equation-error]` | TeX KaTeX cannot read, shown as its source |
+| `[data-edytor-equation-placeholder]` | An empty equation's placeholder (the default markup) |
+| `[data-edytor-equation-error]` | TeX KaTeX cannot read, shown as its source (the default markup) |
 | `[data-edytor-equation-source]` | The source shown while KaTeX loads, or without it |
 | `[data-edytor-equation-editor]` | The editor, in the overlay (`data-display="block"` or `"inline"`); `--edytor-equation-editor-background` |
 
-KaTeX's own classes (`.katex`, `.katex-display`) style the drawing, from KaTeX's stylesheet: the plugin adds it to the page's head with the CDN default or a URL (`link[data-edytor-katex]`); with your own loader, your app imports it.
+The plugin's own stylesheet only lets a wide block equation scroll sideways; the rest (the hover and editing shade, the centred drawing, the placeholder's panel, the source's monospace font, the error's red) is the [Notion theme](/docs/customization/styling#notion-theme)'s. KaTeX's own classes (`.katex`, `.katex-display`) style the drawing, from KaTeX's stylesheet: the plugin adds it to the page's head with the CDN default or a URL (`link[data-edytor-katex]`); with your own loader, your app imports it.

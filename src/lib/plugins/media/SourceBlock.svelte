@@ -1,18 +1,26 @@
 <script module lang="ts">
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 	import EmptySlot from './EmptySlot.svelte';
+	import Control from '../Control.svelte';
 	import { labelsOf, mediaEnglish } from '$lib/labels.js';
 	import {
 		claimed,
 		escapeHtml,
 		fileNameOf,
+		mediaControl,
+		mediaLink,
 		mediaPlugin,
 		mediaSourceOf,
 		mediaView,
-		safeMediaSrc
+		safeMediaSrc,
+		type FileRowPayload,
+		type MediaView
 	} from './media.js';
 
 	type SourceKind = 'video' | 'audio' | 'file';
+
+	/** The view's file row markup, if the app gave one. */
+	const rowOf = mediaControl('file', 'row');
 
 	/** The files each kind takes: a video, an audio track, any other file. */
 	const ACCEPTS: Record<SourceKind, (file: File) => boolean> = {
@@ -43,7 +51,7 @@
 	 * (`media.files`, its first listing in a view). A video or an audio track
 	 * exports as its tag in a `figure` and imports from one (bare, or in a
 	 * `figure`) with a safe `src` or `source`; the file kind brings its own
-	 * (`record`).
+	 * (`record`), and its `row` markup (`own`).
 	 */
 	export const sourcePlugin = (
 		kind: SourceKind,
@@ -59,10 +67,12 @@
 				const src = mediaSourceOf(claimed(el, kind));
 				return src ? { src } : undefined;
 			}
-		}
+		},
+		own: Pick<MediaView, 'row'> = {}
 	): Plugin =>
 		mediaPlugin(kind, keywords, () => {
 			return {
+				...own,
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
 					if (!data) return 'invalid';
@@ -95,22 +105,23 @@
 	{#if src && block.type === 'file'}
 		{@const name =
 			typeof block.data.name === 'string' && block.data.name ? block.data.name : fileNameOf(src)}
-		{@const size =
-			typeof block.data.size === 'number'
-				? labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(block.data.size)
-				: ''}
+		{@const size = typeof block.data.size === 'number' ? block.data.size : undefined}
 		<div use:block.void data-edytor-file>
-			<a
-				href={src}
-				target="_blank"
-				rel="noopener noreferrer nofollow"
-				download={name}
-				draggable="false"
-			>
-				<span aria-hidden="true">📎</span>
-				<span data-edytor-file-name>{name}</span>
-				{#if size}<span data-edytor-file-size>{size}</span>{/if}
-			</a>
+			<Control
+				own={rowOf}
+				{initial}
+				payload={{
+					block: block.handle,
+					src,
+					name,
+					size,
+					sizeLabel:
+						size === undefined
+							? ''
+							: labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(size),
+					link: mediaLink(src, { draggable: 'false', download: name })
+				}}
+			/>
 		</div>
 	{:else if src && block.type === 'video'}
 		<div use:block.void data-edytor-video>
@@ -140,4 +151,13 @@
 	<!-- The core renders the kind's <figure> around this markup. -->
 	<!-- svelte-ignore a11y_figcaption_parent -->
 	<figcaption>{@render content()}</figcaption>
+{/snippet}
+
+<!-- A file: its name and size, a link downloading it. -->
+{#snippet initial({ name, sizeLabel, link }: FileRowPayload)}
+	<a {...link}>
+		<span aria-hidden="true">📎</span>
+		<span data-edytor-file-name>{name}</span>
+		{#if sizeLabel}<span data-edytor-file-size>{sizeLabel}</span>{/if}
+	</a>
 {/snippet}

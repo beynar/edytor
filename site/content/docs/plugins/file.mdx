@@ -28,7 +28,35 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
 
 ## Options
 
-`createFilePlugin()` takes no options; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
+`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
+
+<TypeTable
+  type={{
+    row: {
+      type: "Snippet<[FileRowPayload]>",
+      description: "The row of a file block with a source, replacing Notion's (a paperclip, the name and the size). The first file plugin listed in a view gives it.",
+    },
+  }}
+/>
+
+`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attributes to spread on your `a`: its `href`, `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
+
+```svelte title="Files.svelte" check
+<script lang="ts">
+	import { Edytor, createFilePlugin, type FileRowPayload } from 'edytor';
+
+	const files = createFilePlugin({ row });
+</script>
+
+{#snippet row(file: FileRowPayload)}
+	<a class="attachment" {...file.link}>
+		<span>{file.name}</span>
+		{#if file.sizeLabel}<small>{file.sizeLabel}</small>{/if}
+	</a>
+{/snippet}
+
+<Edytor plugins={[files]} />
+```
 
 
 ## The kind
@@ -55,4 +83,4 @@ The block is void like the [image](/docs/plugins/image), and its only text is th
 | `[data-edytor-file-name]`   | The name                        |
 | `[data-edytor-file-size]`   | The size (`5 B`, `1.2 MB`)      |
 
-The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).
+The row's look (its shade, the hover, the muted size) is the [Notion theme](/docs/customization/styling#notion-theme)'s. The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

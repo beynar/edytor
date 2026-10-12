@@ -6,7 +6,7 @@ icon: panels-top-left
 
 Edytor's chrome is headless: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, a table's grips, menus and `+` bars, a code block's header and language list, the callout icon picker, the equation editor, the comment cards, the suggestion bar, the version history, the block handles and the marquee's rectangle are drawn by your snippets. The package ships the behavior: when the UI opens, where it is placed, the keys it claims, the commands it runs, and the keyboard and ARIA your markup takes through a few attachments its controller hands you. It ships no markup for them.
 
-**Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours.
+**Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours. The controls inside a block (a to-do's checkbox, a callout's icon, a bookmark's card…) are drawn by the package and take your snippet in their place: see [Controls inside blocks](#controls-inside-blocks).
 
 The examples below are the short version of each surface. The complete Notion-style markup of every surface, with its styles, is the demo's: [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) in the repository (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory). Copy what you need.
 
@@ -744,3 +744,21 @@ A drag's drop indicator is placed by the plugin too: style `[data-edytor-drop-in
 	}
 </style>
 ```
+
+## Controls inside blocks
+
+The controls inside a few kinds are different: they belong to the block's content, so the package draws them by default, and each takes your snippet instead. One option per control, typed by an exported payload that carries the control's state, its action (which still writes through the document, or reaches your callback), the words it reads, and `attributes` (or `link`) to spread on your element: its marker, its ARIA, the press that keeps the caret and the click that runs the action. The kind keeps its element, its void wrapper and when the control shows.
+
+| Control | Option | Receives |
+| --- | --- | --- |
+| A to-do's checkbox | `createRichTextPlugin({ checkbox })` | `TodoCheckboxPayload` |
+| A callout's icon | `createRichTextPlugin({ calloutIcon })` | `CalloutIconPayload` |
+| An empty body's hint | `createRichTextPlugin({ emptyBody })` | `EmptyBodyPayload` |
+| An empty equation, an unreadable one | `createEquationPlugin({ placeholder, error })` | `EquationPlaceholderPayload`, `EquationErrorPayload` |
+| A bookmark's card | `createBookmarkPlugin({ card })` | `BookmarkCardPayload` |
+| A file's row | `createFilePlugin({ row })` | `FileRowPayload` |
+| An embed no provider plays | `createEmbedPlugin({ fallback })` | `EmbedFallbackPayload` |
+| A table of contents' entries, its empty text | `createTocPlugin({ entry, empty })` | `TocEntryPayload`, `TocEmptyPayload` |
+| A page block's link | `createPagePlugin({ link })` | `PageBlockLinkPayload` |
+
+Each plugin's page has the payload and an example: [rich text](/docs/plugins/rich-text#your-markup-for-its-controls), [equations](/docs/plugins/equation#options), [bookmark](/docs/plugins/bookmark#your-card), [file](/docs/plugins/file#options), [embed](/docs/plugins/embed#options), [table of contents](/docs/plugins/table-of-contents#your-entries), [page](/docs/plugins/page#your-link). The block content itself (the text, KaTeX's drawing, the image, the players, the embed's frame, the table's grid) stays the package's: restyle a kind's whole markup through its snippet instead ([Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)).

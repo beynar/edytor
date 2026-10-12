@@ -1,16 +1,20 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import { pageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
-	import { pageHtml, pageIdOf, pageTitleOf, type PagePluginOptions } from './page.js';
+	import {
+		pageHtml,
+		pageIdOf,
+		pageTitleOf,
+		pageOptions as optionsOf,
+		type PageBlockLinkPayload,
+		type PagePluginOptions
+	} from './page.js';
 
-	export type { PagePluginOptions };
-
-	const optionsOf = new WeakMap<Edytor, PagePluginOptions>();
+	export type { PageBlockLinkPayload, PagePluginOptions };
 
 	/**
 	 * Notion's subpage block: a `page` block links to another document by

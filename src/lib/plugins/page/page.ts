@@ -1,4 +1,6 @@
+import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
+import type { ControlAttributes } from '../chrome.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
@@ -27,7 +29,43 @@ export type PagePluginOptions = {
 	 * it. Without it there is no such command; insert page blocks yourself.
 	 */
 	create?: () => string | { pageId: string; title?: string } | null | undefined;
+	/**
+	 * The block's link to its page (default: Notion's row, a page icon and
+	 * the title). Spread `link.attributes` on an `a` when `link.href` is
+	 * set, else on a `button`: a click opens the page (`open`), a modified
+	 * or middle click in a new tab. The first page plugin listed in a view
+	 * gives it.
+	 */
+	link?: Snippet<[PageBlockLinkPayload]>;
 };
+
+/** What a page block's `link` snippet receives: the page it links to. */
+export type PageBlockLinkPayload = {
+	/** The page block; `undefined` in a suggestion's preview (it opens nothing). */
+	block: Block | undefined;
+	/** The page's id (`null`: the block names none). */
+	pageId: string | null;
+	/** Its title: your `title` lookup's answer, else the one the block stores. */
+	title: string | undefined;
+	/** What it reads: its title, else the view's `page.untitled`. */
+	label: string;
+	/** The page's URL (`href`), if any: draw an `a`. */
+	href: string | undefined;
+	/** A click may open it: it names a page and the plugin has `open`. */
+	openable: boolean;
+	/** Open the page (`open`), in a new tab when `newTab`. */
+	open: (newTab?: boolean) => void;
+	/**
+	 * Spread on the link's element: its marker (`data-edytor-page-link`), the
+	 * `href` (on an `a`), `draggable="false"`, the click and middle click
+	 * that open it; on a `button`, `disabled` when it cannot open and a press
+	 * that keeps the editor's selection.
+	 */
+	attributes: ControlAttributes;
+};
+
+/** Each view's page options (the first page plugin listed sets them). */
+export const pageOptions = new WeakMap<object, PagePluginOptions>();
 
 /** A stored page id: a non-empty string of at most 256 characters (a room id's bounds), else `null`. */
 export const pageIdOf = (value: unknown): string | null =>

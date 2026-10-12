@@ -1,14 +1,18 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tocKinds } from '$lib/crdt/semantics.js';
 	import { tocEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import TableOfContents from './TableOfContents.svelte';
-	import { richTextHeadingLevel, type TocHeadingLevel, type TocPluginOptions } from './toc.js';
+	import {
+		richTextHeadingLevel,
+		type TocEmptyPayload,
+		type TocEntryPayload,
+		type TocHeadingLevel,
+		type TocPluginOptions,
+		tocViews as views
+	} from './toc.js';
 
-	export type { TocHeadingLevel, TocPluginOptions };
-
-	const levelOf = new WeakMap<Edytor, TocHeadingLevel>();
+	export type { TocEmptyPayload, TocEntryPayload, TocHeadingLevel, TocPluginOptions };
 
 	/**
 	 * Notion's table of contents: a `toc` block lists the document's
@@ -22,7 +26,12 @@
 		(options: TocPluginOptions = {}): Plugin =>
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
-			if (!levelOf.has(edytor)) levelOf.set(edytor, options.headingLevel ?? richTextHeadingLevel);
+			if (!views.has(edytor))
+				views.set(edytor, {
+					headingLevel: options.headingLevel ?? richTextHeadingLevel,
+					entry: options.entry,
+					empty: options.empty
+				});
 			const labels = labelsOf(edytor, 'toc', tocEnglish);
 			return {
 				blocks: {
@@ -56,8 +65,7 @@
 </script>
 
 {#snippet toc({ block }: BlockSnippetPayload)}
-	{@const level = (block.handle && levelOf.get(block.handle.edytor)) || richTextHeadingLevel}
 	<div use:block.void data-edytor-toc>
-		<TableOfContents {level} />
+		<TableOfContents />
 	</div>
 {/snippet}

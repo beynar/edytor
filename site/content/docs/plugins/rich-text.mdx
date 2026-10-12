@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-`createRichTextPlugin({ callout })` builds it with other callout icons (see [Toggles and callouts](#toggles-and-callouts)). Its words (the presets, the toolbar's mark buttons, the to-do checkbox, the placeholders) are the view's `richText` labels, and its slash keywords the view's `keywords` (see [Localization](/docs/customization/localization)). A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ callout })` builds it with other callout icons (see [Toggles and callouts](#toggles-and-callouts)), and `createRichTextPlugin({ checkbox, calloutIcon, emptyBody })` with your markup for the controls inside its blocks (see [Your markup for its controls](#your-markup-for-its-controls)). Its words (the presets, the toolbar's mark buttons, the to-do checkbox, the placeholders) are the view's `richText` labels, and its slash keywords the view's `keywords` (see [Localization](/docs/customization/localization)). A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 
@@ -54,7 +54,7 @@ Behavior worth knowing:
 
 ## Toggles and callouts
 
-A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it).
+A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it; the `emptyBody` option replaces its markup, see [Your markup for its controls](#your-markup-for-its-controls)).
 
 A callout is Notion's: an icon, a title and a content.
 
@@ -99,6 +99,56 @@ A callout is Notion's: an icon, a title and a content.
 
 <Edytor plugins={[icons]} />
 ```
+
+## Your markup for its controls
+
+Three controls sit inside the rich text blocks: a to-do's checkbox, a callout's icon and an empty body's hint. The plugin draws them (a native checkbox, a button showing the icon, a `div` with the hint), and each option replaces one with your snippet, used wherever the view renders the kind, a suggestion's preview included:
+
+| Option        | Snippet payload       | What it carries                                                                                                                                       |
+| ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkbox`    | `TodoCheckboxPayload` | `block` (`undefined` in a suggestion's preview), `checked`, `label` (the view's `richText.checkbox`), `toggle()`, `attributes`                           |
+| `calloutIcon` | `CalloutIconPayload`  | `block`, `icon` (`''`: none), `editable` (the icon opens the view's picker), `expanded` (the picker is open on it), `label` ("Change icon", "Add icon"), `toggle()`, `attributes` |
+| `emptyBody`   | `EmptyBodyPayload`    | `block`, `kind` (`'toggle'` or `'callout'`), `label` (the view's `richText.emptyBody`), `open()`, `attributes`                                          |
+
+Spread `attributes` on the control's element: they carry what the editor reads of it and what keeps it usable. The checkbox's are its marker (`data-edytor-todo-checkbox`), `contenteditable="false"`, its `aria-label`, a press that keeps the caret and a click that runs `toggle()`; on a `button` rather than an `input type="checkbox"` (give that one `checked={checkbox.checked}`), they add `role="checkbox"` and `aria-checked`. The icon's are `data-edytor-callout-icon` (the picker opens under it), `data-empty` without an icon, and where it is `editable`, its name, `aria-haspopup`, `aria-expanded`, `aria-controls`, the press and the click that opens the picker; else `aria-hidden`. The hint's are `data-edytor-empty-body` (a block dragged onto it drops inside), `aria-hidden` and the click that starts the body. Use a `button` or an `input` for a control the keyboard reaches: the editor leaves a form control's keys to it.
+
+The actions are the default markup's: `toggle()` checks the to-do as one undo step (refused in a readonly view), the icon's `toggle()` opens the [callout icon picker](#toggles-and-callouts), `open()` starts the body. The editor still decides when each shows: no hint in a readonly view or a closed toggle, no icon when the callout has none and none can be picked.
+
+```svelte title="Controls.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createCalloutIconsPlugin,
+		createRichTextPlugin,
+		type CalloutIconPayload,
+		type EmptyBodyPayload,
+		type TodoCheckboxPayload
+	} from 'edytor';
+
+	const richText = createRichTextPlugin({ checkbox, calloutIcon, emptyBody });
+	const icons = createCalloutIconsPlugin();
+</script>
+
+{#snippet checkbox(box: TodoCheckboxPayload)}
+	<button type="button" class="check" {...box.attributes}>{box.checked ? '✓' : ''}</button>
+{/snippet}
+
+{#snippet calloutIcon(icon: CalloutIconPayload)}
+	{#if icon.editable}
+		<button type="button" class="icon" {...icon.attributes}>{icon.icon || '+'}</button>
+	{:else}
+		<span class="icon" {...icon.attributes}>{icon.icon}</span>
+	{/if}
+{/snippet}
+
+{#snippet emptyBody(hint: EmptyBodyPayload)}
+	<p class="hint" {...hint.attributes}>{hint.label}</p>
+{/snippet}
+
+<Edytor plugins={[icons, richText]} />
+```
+
+The first rich text plugin listed in a view gives its controls, as it gives the kinds.
 
 ## Marks
 

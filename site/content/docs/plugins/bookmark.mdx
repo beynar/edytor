@@ -38,6 +38,10 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`
       type: "Snippet<[UrlPasteController]>",
       description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
     },
+    card: {
+      type: "Snippet<[BookmarkCardPayload]>",
+      description: "The card of a bookmark with a link, replacing Notion's (see [Your card](#your-card)). The first bookmark plugin listed in a view gives it.",
+    },
   }}
 />
 
@@ -45,10 +49,32 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`
 
 Your server endpoint fetches untrusted pages: restrict it to `http(s)` URLs on public hosts (no private or loopback addresses), cap the response size and time, and read only the metadata (`<title>`, `og:title`, `og:description`, `og:image`, the icon link).
 
+### Your card
+
+The card is drawn inside the block's void wrapper (`[data-edytor-bookmark]`), above the caption. `card` replaces it with your markup; it receives a `BookmarkCardPayload`: `block` (`undefined` in a suggestion's preview), `url`, the unfurled `title`, `description`, `image` and `icon` (each `undefined` until `unfurl` answers it, every URL already an `http(s)` one), and `link`, the attributes to spread on your `a`: its `href`, `target="_blank"`, `rel="noopener noreferrer nofollow"` and `draggable="false"`.
+
+```svelte title="Bookmarks.svelte" check
+<script lang="ts">
+	import { Edytor, createBookmarkPlugin, type BookmarkCardPayload } from 'edytor';
+
+	const bookmarks = createBookmarkPlugin({ card });
+</script>
+
+{#snippet card(page: BookmarkCardPayload)}
+	<a class="card" {...page.link}>
+		{#if page.icon}<img src={page.icon} alt="" />{/if}
+		<strong>{page.title ?? page.url}</strong>
+		{#if page.description}<span>{page.description}</span>{/if}
+	</a>
+{/snippet}
+
+<Edytor plugins={[bookmarks]} />
+```
+
 ## Security
 
 - The block stores and renders only an absolute `http:`/`https:` link with a host, read by the link sanitizer's rules (`safeWebUrl`): a `javascript:` or `data:` link a collaborator stores renders no card.
-- The card is an `a` with `target="_blank"` and `rel="noopener noreferrer nofollow"`.
+- The card is an `a` with `target="_blank"` and `rel="noopener noreferrer nofollow"` (your `card`'s too, through `link`).
 - An unfurled `image` or `icon` is kept only when it is an `http(s)` URL; the title (300 characters) and description (1,000) are capped, and rendered as text.
 
 ## The kind
@@ -75,4 +101,4 @@ The block is void like the [image](/docs/plugins/image): it takes no children an
 | `[data-edytor-bookmark-url]`          | The icon and URL line                   |
 | `[data-edytor-bookmark-cover]`        | The cover image                         |
 
-The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).
+The card's look (its border, the cover beside the text, the clamped description, the hover) is the [Notion theme](/docs/customization/styling#notion-theme)'s: without it the card is its unstyled link. The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

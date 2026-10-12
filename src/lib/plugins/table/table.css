@@ -1,16 +1,13 @@
 /*
- * Tables (`table.*` in the delete contract): Notion's simple table. The
- * table's grid is a CSS grid of its columns' widths (the template the kind
- * sets from `data.columns`); each row is a subgrid of it, its cells and its
+ * Tables (`table.*` in the delete contract): the table's grid is a CSS
+ * grid of its columns' widths (the template the kind sets from
+ * `data.columns`); each row is a subgrid of it, its cells and its
  * placeholders (`table.pad`) items of that row: a placeholder sits at its
- * column, the cells fill the others in order. Neither the grid nor a row is
- * a nesting step: their indent is zeroed. Wider than the page, the table
- * scrolls sideways.
+ * column, the cells fill the others in order. Neither the grid nor a cell
+ * is a nesting step: their indent is zeroed. Wider than the page, the
+ * table scrolls sideways. The look (borders, the cells' padding, a header
+ * cell's shade) is a theme's: `edytor/themes/notion.css`.
  */
-[data-edytor-block][data-edytor-table][data-edytor-type] {
-	padding-inline: 0;
-	--edytor-table-border-color: var(--edytor-table-border, rgb(233, 233, 231));
-}
 [data-edytor-table-scroll] {
 	/*
 	 * The table's place sizes the box, never its columns (`table.overflow`):
@@ -28,16 +25,11 @@
 	display: grid;
 	width: max-content;
 	padding-inline-start: 0;
-	border-top: 1px solid var(--edytor-table-border-color);
-	border-left: 1px solid var(--edytor-table-border-color);
 }
 [data-edytor-block][data-edytor-table-row][data-edytor-type] {
 	display: grid;
 	grid-column: 1 / -1;
 	grid-template-columns: subgrid;
-	margin: 0;
-	padding: 0;
-	border-radius: 0;
 }
 [data-edytor-table-row] > [data-edytor-children][data-edytor-table-cells] {
 	display: contents;
@@ -46,12 +38,6 @@
 [data-edytor-table-pad] {
 	grid-row: 1;
 	min-width: 0;
-	min-height: 33px;
-	margin: 0;
-	padding: 7px 9px;
-	border-radius: 0;
-	border-right: 1px solid var(--edytor-table-border-color);
-	border-bottom: 1px solid var(--edytor-table-border-color);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 	box-sizing: border-box;
@@ -60,11 +46,6 @@
 	cursor: text;
 	user-select: none;
 	-webkit-user-select: none;
-}
-/* A header row's or header column's cells: Notion's gray, a little bolder. */
-[data-edytor-block][data-edytor-table-cell][data-edytor-table-header='true'] {
-	background: var(--edytor-table-header-background, rgb(247, 246, 243));
-	font-weight: 600;
 }
 [data-edytor-table-row] [data-edytor-table-cell] > [data-edytor-children] {
 	padding-inline-start: 0;

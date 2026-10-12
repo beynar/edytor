@@ -2,7 +2,10 @@ export {
 	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
-	type RichTextPluginOptions
+	type RichTextPluginOptions,
+	type TodoCheckboxPayload,
+	type CalloutIconPayload,
+	type EmptyBodyPayload
 } from './richtext/RichTextPlugin.svelte';
 export {
 	CALLOUT_ICONS,
@@ -12,7 +15,7 @@ export {
 } from './richtext/calloutIcons.svelte.js';
 export { createUploadsPlugin, type UploadsOptions } from './uploads.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
-export type { MenuItemPayload, OptionAttributes } from './chrome.js';
+export type { ControlAttributes, MenuItemPayload, OptionAttributes } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -82,14 +85,21 @@ export {
 	EMBED_ALLOW,
 	embedSourceOf,
 	type EmbedProvider,
-	type EmbedPluginOptions
+	type EmbedPluginOptions,
+	type EmbedFallbackPayload
 } from './media/EmbedPlugin.svelte';
 export {
 	createBookmarkPlugin,
 	type BookmarkPluginOptions,
-	type BookmarkPreview
+	type BookmarkPreview,
+	type BookmarkCardPayload
 } from './media/BookmarkPlugin.svelte';
-export { createFilePlugin } from './media/FilePlugin.svelte';
+export {
+	createFilePlugin,
+	type FilePluginOptions,
+	type FileRowPayload,
+	type MediaLinkAttributes
+} from './media/FilePlugin.svelte';
 export { createVideoPlugin } from './media/VideoPlugin.svelte';
 export { createAudioPlugin } from './media/AudioPlugin.svelte';
 export { safeWebUrl, safeMediaSrc, type MediaKind } from './media/media.js';
@@ -122,11 +132,17 @@ export type {
 	CommentUser,
 	PlacedThread
 } from './comments/CommentsController.svelte.js';
-export { createPagePlugin, type PagePluginOptions } from './page/PagePlugin.svelte';
+export {
+	createPagePlugin,
+	type PagePluginOptions,
+	type PageBlockLinkPayload
+} from './page/PagePlugin.svelte';
 export {
 	createTocPlugin,
 	type TocPluginOptions,
-	type TocHeadingLevel
+	type TocHeadingLevel,
+	type TocEntryPayload,
+	type TocEmptyPayload
 } from './toc/TocPlugin.svelte';
 export { createTablePlugin, type TablePluginOptions } from './table/TablePlugin.svelte';
 // The table ops, prepared over any document (`document.apply(insertTableRow(document, …))`).
@@ -156,6 +172,8 @@ export {
 	type EquationPluginOptions,
 	type EquationData,
 	type EquationEditor,
+	type EquationErrorPayload,
+	type EquationPlaceholderPayload,
 	type EquationTarget,
 	type KatexLike,
 	type KatexLoader

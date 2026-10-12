@@ -54,7 +54,24 @@ import type {
 	ToolbarOptions,
 	Trigger,
 	TriggerMenuController,
-	UrlPasteController
+	UrlPasteController,
+	BookmarkCardPayload,
+	CalloutIconPayload,
+	ControlAttributes,
+	EmbedFallbackPayload,
+	EmptyBodyPayload,
+	EquationErrorPayload,
+	EquationPlaceholderPayload,
+	FilePluginOptions,
+	FileRowPayload,
+	MediaLinkAttributes,
+	PageBlockLinkPayload,
+	PagePluginOptions,
+	RichTextPluginOptions,
+	TocEmptyPayload,
+	TocEntryPayload,
+	TocPluginOptions,
+	TodoCheckboxPayload
 } from '$lib/index.js';
 
 /** The one argument a snippet option takes. */
@@ -182,6 +199,53 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<EquationEditor['field']>().toEqualTypeOf<
 			Attachment<HTMLTextAreaElement | HTMLInputElement>
 		>();
+	});
+});
+
+describe('a control inside a block takes its exported payload, the default markup without one', () => {
+	it('each option receives its payload', () => {
+		expectTypeOf<Payload<RichTextPluginOptions['checkbox']>>().toEqualTypeOf<TodoCheckboxPayload>();
+		expectTypeOf<
+			Payload<RichTextPluginOptions['calloutIcon']>
+		>().toEqualTypeOf<CalloutIconPayload>();
+		expectTypeOf<Payload<RichTextPluginOptions['emptyBody']>>().toEqualTypeOf<EmptyBodyPayload>();
+		expectTypeOf<
+			Payload<EquationPluginOptions['placeholder']>
+		>().toEqualTypeOf<EquationPlaceholderPayload>();
+		expectTypeOf<Payload<EquationPluginOptions['error']>>().toEqualTypeOf<EquationErrorPayload>();
+		expectTypeOf<Payload<BookmarkPluginOptions['card']>>().toEqualTypeOf<BookmarkCardPayload>();
+		expectTypeOf<Payload<FilePluginOptions['row']>>().toEqualTypeOf<FileRowPayload>();
+		expectTypeOf<Payload<EmbedPluginOptions['fallback']>>().toEqualTypeOf<EmbedFallbackPayload>();
+		expectTypeOf<Payload<TocPluginOptions['entry']>>().toEqualTypeOf<TocEntryPayload>();
+		expectTypeOf<Payload<TocPluginOptions['empty']>>().toEqualTypeOf<TocEmptyPayload>();
+		expectTypeOf<Payload<PagePluginOptions['link']>>().toEqualTypeOf<PageBlockLinkPayload>();
+	});
+
+	it('the action is the payload’s, the marker and ARIA its spread attributes', () => {
+		expectTypeOf<TodoCheckboxPayload['toggle']>().toEqualTypeOf<() => void>();
+		expectTypeOf<TodoCheckboxPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<CalloutIconPayload['toggle']>().toEqualTypeOf<() => void>();
+		expectTypeOf<CalloutIconPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<EmptyBodyPayload['open']>().toEqualTypeOf<() => void>();
+		expectTypeOf<TocEntryPayload['go']>().toEqualTypeOf<() => void>();
+		expectTypeOf<TocEntryPayload['attributes']>().toEqualTypeOf<ControlAttributes>();
+		expectTypeOf<PageBlockLinkPayload['open']>().toEqualTypeOf<(newTab?: boolean) => void>();
+		expectTypeOf<BookmarkCardPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
+		expectTypeOf<FileRowPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
+		expectTypeOf<EmbedFallbackPayload['link']>().toEqualTypeOf<MediaLinkAttributes>();
+	});
+
+	it('another control’s snippet does not compile', () => {
+		const options = (checkbox: Snippet<[TodoCheckboxPayload]>) => {
+			// @ts-expect-error a callout's icon takes its CalloutIconPayload
+			const richText: RichTextPluginOptions = { calloutIcon: checkbox };
+			// @ts-expect-error a table of contents' entry takes its TocEntryPayload
+			const toc: TocPluginOptions = { entry: checkbox };
+			// @ts-expect-error a file's row takes its FileRowPayload
+			const file: FilePluginOptions = { row: checkbox };
+			return [richText, toc, file];
+		};
+		expectTypeOf(options).toBeFunction();
 	});
 });
 

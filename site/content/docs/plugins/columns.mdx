@@ -197,14 +197,13 @@ These rules come from the document's roles, so every replica must know the layou
 
 ## Styling
 
-`columns.css` lays the columns out; the [Notion theme](/docs/customization/styling#notion-theme) adds the selection highlight's look.
+`columns.css` lays the columns out; the [Notion theme](/docs/customization/styling#notion-theme) adds the look: a column's first and last blocks flush with the layout's edges, and one rounded highlight over a layout a block selection stands for (`--notion-block-selection`).
 
 | Variable | Default | Sets |
 | --- | --- | --- |
 | `--edytor-columns-gap` | `46px` | The gap between two columns (the resize band takes its left 10px, a block's handle the rest) |
 | `--edytor-columns-resize-color` | `rgba(55, 53, 47, 0.16)` | The gray guide shown over a resize band on hover |
 | `--edytor-column-resize-color` | `rgba(35, 131, 226, 0.43)` | The blue line shown while a resize drags |
-| `--edytor-block-selection` | `rgba(35, 131, 226, 0.14)` | The highlight of a block selection standing for a layout |
 
 | Selector | Matches |
 | --- | --- |

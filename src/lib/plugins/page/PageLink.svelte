@@ -3,11 +3,14 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { labelsOf, pageEnglish } from '$lib/labels.js';
+	import { keepSelection } from '../chrome.js';
 	import {
 		pageHref,
 		pageIdOf,
+		pageOptions,
 		pageTitleOf,
 		storePageTitle,
+		type PageBlockLinkPayload,
 		type PagePluginOptions
 	} from './page.js';
 
@@ -16,7 +19,7 @@
 	 * which open the page. The title is your `title(pageId)`'s answer while it
 	 * gives one (a reactive read follows renames), else the one the block
 	 * stores; a different answer is stored, outside the history, by a view
-	 * that may write.
+	 * that may write. The app's `link` snippet draws it, else this markup.
 	 */
 	let {
 		data,
@@ -28,8 +31,10 @@
 		handle: Block | undefined;
 		options: PagePluginOptions;
 	} = $props();
-	/** The view's words (a suggestion's preview, with no handle, speaks them too). */
-	const labels = labelsOf(getContext<Edytor>('edytor'), 'page', pageEnglish);
+	/** The view's words and markup (a suggestion's preview, with no handle, has them too). */
+	const view = getContext<Edytor>('edytor');
+	const labels = labelsOf(view, 'page', pageEnglish);
+	const snippet = pageOptions.get(view)?.link;
 
 	const pageId = $derived(pageIdOf(data.pageId));
 	const stored = $derived(pageTitleOf(data.title));
@@ -86,44 +91,53 @@
 	const aux = (event: MouseEvent) => {
 		if (event.button === 1) open(event);
 	};
+	const openable = $derived(Boolean(pageId && options.open));
+
+	const payload: PageBlockLinkPayload = {
+		get block() {
+			return handle;
+		},
+		get pageId() {
+			return pageId;
+		},
+		get title() {
+			return title;
+		},
+		get label() {
+			return title ?? labels.untitled;
+		},
+		get href() {
+			return href;
+		},
+		get openable() {
+			return openable;
+		},
+		open: (newTab = false) => {
+			if (pageId && options.open) options.open(pageId, { newTab });
+		},
+		get attributes() {
+			const own = { 'data-edytor-page-link': '', onclick: open, onauxclick: aux };
+			return href
+				? { ...own, href, draggable: 'false' }
+				: { ...own, disabled: !openable, onmousedown: keepSelection };
+		}
+	};
 </script>
+
+{#if snippet}
+	{@render snippet(payload)}
+{:else}
+	{@const own = payload.attributes}
+	{#if href}
+		<a {...own}>{@render label()}</a>
+	{:else}
+		<button type="button" {...own}>{@render label()}</button>
+	{/if}
+{/if}
 
 {#snippet label()}
 	<span data-edytor-page-icon aria-hidden="true"></span><span
 		data-edytor-page-title
-		data-untitled={title ? undefined : 'true'}>{title ?? labels.untitled}</span
+		data-untitled={title ? undefined : 'true'}>{payload.label}</span
 	>
 {/snippet}
-
-{#if href}
-	<a data-edytor-page-link {href} draggable="false" onclick={open} onauxclick={aux}
-		>{@render label()}</a
-	>
-{:else}
-	<button
-		type="button"
-		data-edytor-page-link
-		disabled={!pageId || !options.open}
-		onmousedown={(event) => event.preventDefault()}
-		onclick={open}
-		onauxclick={aux}>{@render label()}</button
-	>
-{/if}
-
-<style>
-	/* The link's structure, at zero specificity (`:where`); a theme draws it (`themes/notion.css`). */
-	:global(:where([data-edytor-page-link])) {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		background: none;
-		color: inherit;
-		font: inherit;
-		text-align: start;
-		text-decoration: none;
-		cursor: pointer;
-	}
-</style>

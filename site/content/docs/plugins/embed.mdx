@@ -30,8 +30,28 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and p
       type: "Snippet<[UrlPasteController]>",
       description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
     },
+    fallback: {
+      type: "Snippet<[EmbedFallbackPayload]>",
+      description: "What an embed shows for a link no allowed provider plays (a collaborator may store any), replacing the plain link. The first embed plugin listed in a view gives it.",
+    },
   }}
 />
+
+`fallback` receives an `EmbedFallbackPayload`: `block` (`undefined` in a suggestion's preview), `url` (an `http(s)` link) and `link`, the attributes to spread on your `a` (`href`, `target="_blank"`, `rel="noopener noreferrer nofollow"`). It is never a frame: only an allowlisted provider plays.
+
+```svelte title="Embeds.svelte" check
+<script lang="ts">
+	import { Edytor, createEmbedPlugin, type EmbedFallbackPayload } from 'edytor';
+
+	const embeds = createEmbedPlugin({ fallback });
+</script>
+
+{#snippet fallback(embed: EmbedFallbackPayload)}
+	<a class="unplayable" {...embed.link}>Open {new URL(embed.url).host}</a>
+{/snippet}
+
+<Edytor plugins={[embeds]} />
+```
 
 ## Providers
 
@@ -95,8 +115,8 @@ In the empty block, `empty.embed()` (the demo's link field, "Paste the link…")
 | Selector                              | Matches                                         |
 | ------------------------------------- | ----------------------------------------------- |
 | `[data-edytor-type='embed']`          | The `figure`                                    |
-| `[data-edytor-embed]`                 | The frame's wrapper (its aspect ratio or height) |
-| `[data-edytor-embed-unsupported]`     | The link shown for a URL no provider plays      |
+| `[data-edytor-embed]`                 | The frame's wrapper (its aspect ratio or height, which the plugin sets) |
+| `[data-edytor-embed-unsupported]`     | The link (your `fallback`) shown for a URL no provider plays |
 | `[data-edytor-media-empty]`           | Where the empty state (your `empty` snippet) renders |
 
-The [Notion theme](/docs/customization/styling#notion-theme) styles the blocks; the empty state's look is your markup's (the demo's `MediaEmpty.svelte`, shared by every media block: [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).
+The [Notion theme](/docs/customization/styling#notion-theme) styles the blocks (the plugin keeps only the frame's size: its provider's aspect ratio or height); the empty state's look is your markup's (the demo's `MediaEmpty.svelte`, shared by every media block: [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).

@@ -48,7 +48,7 @@ A page link is an inline block of type `pageLink` whose data is `{ id, title, hr
 { "type": "pageLink", "data": { "id": "p1", "title": "Roadmap", "href": "/pages/p1", "icon": "🗺️" } }
 ```
 
-It renders an `<a class="edytor-page-link" data-edytor-page-link href="…">` holding the icon and the title, and copies as plain text as its title. The `href` goes through the link sanitizer when it is stored and when it is rendered: a `javascript:` or other script URL is dropped, and the atom renders without one. The title is the one stored when it was picked: to show a page's current title, render your own snippet (`pageLinkInlineBlock`) that looks it up by `data.id`.
+It renders an `<a class="edytor-page-link" data-edytor-page-link href="…">` holding the icon (`.icon`) and the title (`.title`), with `data-selected="true"` while the atom is selected (the [Notion theme](/docs/customization/styling#notion-theme) draws the underlined title and the selection), and copies as plain text as its title. The `href` goes through the link sanitizer when it is stored and when it is rendered: a `javascript:` or other script URL is dropped, and the atom renders without one. The title is the one stored when it was picked: to show a page's current title, render your own snippet (`pageLinkInlineBlock`) that looks it up by `data.id`.
 
 ## Behavior
 

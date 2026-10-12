@@ -2,6 +2,7 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import EmptySlot from './EmptySlot.svelte';
+	import Control from '../Control.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import {
@@ -12,13 +13,23 @@
 		claimed,
 		embedSourceOf,
 		escapeHtml,
+		mediaControl,
+		mediaLink,
 		mediaPlugin,
 		mediaView,
 		safeWebUrl,
+		type EmbedFallbackPayload,
 		type EmbedProvider
 	} from './media.js';
 
-	export { EMBED_ALLOW, EMBED_PROVIDERS, EMBED_SANDBOX, embedSourceOf, type EmbedProvider };
+	export {
+		EMBED_ALLOW,
+		EMBED_PROVIDERS,
+		EMBED_SANDBOX,
+		embedSourceOf,
+		type EmbedFallbackPayload,
+		type EmbedProvider
+	};
 
 	export type EmbedPluginOptions = {
 		/** The allowlist (default {@link EMBED_PROVIDERS}); a link none of them plays shows no frame. */
@@ -33,7 +44,17 @@
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
+		/**
+		 * An embed whose link no allowed provider plays (a peer may store any),
+		 * or a suggestion's preview: a plain link, never a frame (default: the
+		 * URL as a link). Spread `fallback.link` on its `a`. The first embed
+		 * plugin listed in a view gives it.
+		 */
+		fallback?: Snippet<[EmbedFallbackPayload]>;
 	};
+
+	/** The view's fallback markup, if the app gave one. */
+	const fallbackOf = mediaControl('embed', 'fallback');
 
 	/**
 	 * The view's allowlist: the first embed plugin listed in it (first wins,
@@ -58,6 +79,7 @@
 			['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
 			(edytor) => ({
 				providers: allowed,
+				fallback: options.fallback,
 				// The block's link, when a provider plays it.
 				store: (block, value) => {
 					const url = safeWebUrl(value);
@@ -126,7 +148,11 @@
 		<!-- A link no provider plays (a peer may store any), or a suggestion's preview (no handle, so no
 		view's allowlist): a plain link, never a frame. -->
 		<div use:block.void data-edytor-embed-unsupported>
-			<a href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a>
+			<Control
+				own={fallbackOf}
+				{initial}
+				payload={{ block: block.handle, url, link: mediaLink(url) }}
+			/>
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
@@ -140,4 +166,9 @@
 	<!-- The core renders the kind's <figure> around this markup. -->
 	<!-- svelte-ignore a11y_figcaption_parent -->
 	<figcaption>{@render content()}</figcaption>
+{/snippet}
+
+<!-- The link itself. -->
+{#snippet initial({ url, link }: EmbedFallbackPayload)}
+	<a {...link}>{url}</a>
 {/snippet}

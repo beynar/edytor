@@ -94,7 +94,7 @@
 {#snippet pageLink({ block }: InlineBlockSnippetPayload<Partial<PageLinkData>>)}
 	<a
 		class="edytor-page-link"
-		class:selected={block.selected}
+		data-selected={block.selected ? 'true' : undefined}
 		href={sanitizeLinkHref(block.data.href) ?? undefined}
 		data-edytor-page-link
 		data-page-id={block.data.id}
@@ -106,20 +106,8 @@
 {/snippet}
 
 <style>
+	/* One unit, on one line; its look is a theme's. */
 	.edytor-page-link {
-		color: inherit;
-		text-decoration: none;
 		white-space: nowrap;
-	}
-	.edytor-page-link .title {
-		border-bottom: 1px solid rgba(55, 53, 47, 0.25);
-		font-weight: 500;
-	}
-	.edytor-page-link .icon {
-		margin-right: 2px;
-	}
-	.edytor-page-link.selected {
-		border-radius: 3px;
-		background: rgba(35, 131, 226, 0.14);
 	}
 </style>

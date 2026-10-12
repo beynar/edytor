@@ -45,6 +45,7 @@ import {
 	type ToolbarOptions,
 	type SlashMenuOptions,
 	type FindPluginOptions,
+	type FilePluginOptions,
 	createSuggestionBarPlugin
 } from '$lib/index.js';
 import * as chrome from './chrome.svelte';
@@ -108,7 +109,7 @@ export const mention = (options: MentionPluginOptions) =>
 	createMentionPlugin({ menu: chrome.mentionMenu, ...options });
 export const pageLink = (options: PageLinkPluginOptions) =>
 	createPageLinkPlugin({ menu: chrome.pageLinkMenu, ...options });
-export const file = () => createFilePlugin();
+export const file = (options: FilePluginOptions = {}) => createFilePlugin(options);
 export const video = () => createVideoPlugin();
 export const audio = () => createAudioPlugin();
 export const filePlugin = file();

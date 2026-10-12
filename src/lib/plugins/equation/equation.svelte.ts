@@ -44,6 +44,37 @@ export type EquationPluginOptions = {
 	 * `{@attach editor.field}` on the source's field.
 	 */
 	panel?: Snippet<[EquationEditor]>;
+	/**
+	 * An empty equation's placeholder (default: `√x` and the view's
+	 * `equation.blockPlaceholder` or `inlinePlaceholder`). A click on it
+	 * opens the editor, as on any equation.
+	 */
+	placeholder?: Snippet<[EquationPlaceholderPayload]>;
+	/**
+	 * An equation KaTeX cannot read (default: its source, marked invalid,
+	 * KaTeX's message in its title).
+	 */
+	error?: Snippet<[EquationErrorPayload]>;
+};
+
+/** What an equation's `placeholder` snippet receives. */
+export type EquationPlaceholderPayload = {
+	/** A block equation (`true`) or an inline one. */
+	display: boolean;
+	/** The view's placeholder for it (`equation.blockPlaceholder`, `inlinePlaceholder`). */
+	label: string;
+};
+
+/** What an equation's `error` snippet receives. */
+export type EquationErrorPayload = {
+	/** A block equation (`true`) or an inline one. */
+	display: boolean;
+	/** Its TeX source. */
+	expression: string;
+	/** KaTeX's message. */
+	error: string;
+	/** The view's word for it (`equation.invalid`). */
+	label: string;
 };
 
 /** The data of a block equation and of an inline one: its TeX source. */
@@ -362,7 +393,13 @@ const offsetOf = (block: Block, atom: InlineBlock) => {
 };
 
 /** A view's equations: the first equation plugin listed in it owns them, as its kinds. */
-export type EquationView = { renderer: EquationRenderer; editor: EquationEditor };
+export type EquationView = {
+	renderer: EquationRenderer;
+	editor: EquationEditor;
+	/** The app's markup for an empty equation and an unreadable one, if any. */
+	placeholder?: Snippet<[EquationPlaceholderPayload]>;
+	error?: Snippet<[EquationErrorPayload]>;
+};
 
 /** By view. */
 export const equationViews = new WeakMap<Edytor, EquationView>();

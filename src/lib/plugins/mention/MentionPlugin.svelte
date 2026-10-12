@@ -84,20 +84,15 @@
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}
 	<span
 		class="edytor-mention"
-		class:selected={block.selected}
+		data-selected={block.selected ? 'true' : undefined}
 		data-edytor-mention
 		data-mention-id={block.data.id}>@{block.data.label ?? ''}</span
 	>
 {/snippet}
 
 <style>
+	/* One unit, on one line; its look is a theme's. */
 	.edytor-mention {
-		color: rgba(55, 53, 47, 0.65);
-		font-weight: 500;
 		white-space: nowrap;
-	}
-	.edytor-mention.selected {
-		border-radius: 3px;
-		background: rgba(35, 131, 226, 0.14);
 	}
 </style>

@@ -87,6 +87,17 @@ export type OptionAttributes = {
 	[key: symbol]: Attachment<HTMLElement>;
 };
 
+/**
+ * A control's attributes inside a block (a to-do's checkbox, a page's
+ * link, a table of contents' entry…): spread them on the element the
+ * control's snippet draws (`{...payload.attributes}`), so custom markup
+ * keeps its marker, its ARIA, its press and its action.
+ */
+export type ControlAttributes = {
+	[name: string]: unknown;
+	[key: symbol]: Attachment<HTMLElement>;
+};
+
 /** The key a row's attachment is spread under (one for every row). */
 const REVEAL = createAttachmentKey();
 
@@ -129,6 +140,9 @@ export const isField = (target: EventTarget | null) =>
 export const keepFocus = (event: MouseEvent) => {
 	if (!isField(event.target)) event.preventDefault();
 };
+
+/** A press on a control inside a block keeps the editor's selection (and its focus). */
+export const keepSelection = (event: MouseEvent) => event.preventDefault();
 
 /** Give `node` the id the controller names it by (`aria-controls`), and the role it lacks. */
 export const identify = (node: HTMLElement, id: string, role?: string) => {

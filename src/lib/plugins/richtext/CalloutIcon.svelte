@@ -2,37 +2,21 @@
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { BlockView } from '$lib/plugins.js';
-	import { labelsOf, richTextEnglish } from '$lib/labels.js';
-	import { calloutPickers, iconOf } from './callouts.js';
+	import { calloutIcon } from './controls.svelte.js';
 
 	/**
-	 * A callout's icon (`callout.icon`): its `data.icon`, the view's default
-	 * without one, none when it is `''`. In an editable view it is a button
-	 * (a kind's own control) opening the view's picker, named Change icon, or
-	 * Add icon over an empty slot; a readonly view, or a suggestion's preview,
-	 * shows the icon alone.
+	 * A callout's icon (`callout.icon`, the default; an app's `calloutIcon`
+	 * snippet replaces it, `RichTextControl`): in an editable view a button
+	 * (a kind's own control) opening the view's picker, named Change icon,
+	 * or Add icon over an empty slot; a readonly view, or a suggestion's
+	 * preview, shows the icon alone.
 	 */
 	let { block }: { block: BlockView<{ icon?: string }> } = $props();
-	const edytor = getContext<Edytor>('edytor');
-	const labels = labelsOf(edytor, 'richText', richTextEnglish).calloutIcon;
-	const picker = calloutPickers.get(edytor);
-	const icon = $derived(iconOf(block.data, edytor));
-	const open = $derived(picker?.target === block.id);
+	const icon = calloutIcon(getContext<Edytor>('edytor'), () => block);
 </script>
 
-{#if block.handle && picker && !edytor.readonly}
-	<button
-		type="button"
-		contenteditable="false"
-		data-edytor-callout-icon
-		data-empty={icon ? undefined : ''}
-		aria-label={icon ? labels.change : labels.add}
-		aria-haspopup="menu"
-		aria-expanded={open}
-		aria-controls={open ? picker.listId : undefined}
-		onmousedown={(event) => event.preventDefault()}
-		onclick={() => block.handle && picker.toggle(block.handle)}>{icon}</button
-	>
-{:else if icon}
-	<span contenteditable="false" data-edytor-callout-icon aria-hidden="true">{icon}</span>
+{#if icon.editable}
+	<button type="button" {...icon.attributes}>{icon.icon}</button>
+{:else if icon.icon}
+	<span {...icon.attributes}>{icon.icon}</span>
 {/if}

@@ -34,8 +34,18 @@ A click scrolls the heading to the top of the view, smoothly, and opens the clos
       type: "(block: { type: string; data: Record<string, unknown> }) => number | null",
       description: "Which blocks the table lists, and how deep (1 the outermost), else `null`. By default the rich text headings and toggle headings by their `data.level`: `h1` 1, `h2` 2, any other 3, as they are drawn.",
     },
+    entry: {
+      type: "Snippet<[TocEntryPayload]>",
+      description: "One entry's markup, replacing the default button (see [Your entries](#your-entries)).",
+    },
+    empty: {
+      type: "Snippet<[TocEmptyPayload]>",
+      description: "What shows while the document has no heading, replacing the default paragraph: `{ label }`, the view's `toc.empty`.",
+    },
   }}
 />
+
+The first table of contents plugin listed in a view gives all three.
 
 ```ts title="toc.ts" check
 import { createTocPlugin } from 'edytor';
@@ -45,6 +55,35 @@ export const toc = createTocPlugin({
 	headingLevel: ({ type, data }) =>
 		type === 'chapter' ? 1 : type === 'heading' ? (data.level === 'h1' ? 1 : 2) : null
 });
+```
+
+### Your entries
+
+`entry` is drawn once per heading, in reading order, inside the block's void wrapper (`[data-edytor-toc]`). It receives a `TocEntryPayload`: the heading's block `id`, its `level`, its `depth` (its level less the shallowest shown: how many steps in it sits), its `text` (`''` when it has none), its `label` (the text, else the view's `toc.untitled`), `go()` (scroll to it, opening the closed toggles it sits in) and `attributes`. Spread `attributes` on a `button`: its marker (`data-edytor-toc-entry`, `data-level`, `data-untitled`), `--edytor-toc-depth` (the depth, for your indent), a press that keeps the caret and a click that runs `go()`.
+
+```svelte title="Contents.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createTocPlugin,
+		type TocEmptyPayload,
+		type TocEntryPayload
+	} from 'edytor';
+
+	const toc = createTocPlugin({ entry, empty });
+</script>
+
+{#snippet entry(heading: TocEntryPayload)}
+	<button type="button" class="entry" {...heading.attributes}>
+		{'·'.repeat(heading.depth)} {heading.label}
+	</button>
+{/snippet}
+
+{#snippet empty(none: TocEmptyPayload)}
+	<p class="entry-none">{none.label}</p>
+{/snippet}
+
+<Edytor plugins={[toc]} />
 ```
 
 ## The kind
@@ -67,4 +106,4 @@ Copying exports an empty `<nav data-edytor-toc></nav>` (its list is drawn, never
 | `[data-edytor-toc-entry]`      | One entry: `data-level` is its heading's level, `--edytor-toc-depth` its steps in, `[data-untitled]` for an empty heading |
 | `[data-edytor-toc-empty]`      | The hint shown with no heading                                            |
 
-Without a theme the entries are plain lines, indented by `--edytor-toc-depth` times `--edytor-nest-indent`. The [Notion theme](/docs/customization/styling#notion-theme) draws them in Notion's secondary text colour, with a hover background.
+Without a theme the entries are the browser's buttons, one after the other. The [Notion theme](/docs/customization/styling#notion-theme) draws them as Notion's lines, indented by `--edytor-toc-depth` times `--edytor-nest-indent`, in its secondary text colour, with a hover background.

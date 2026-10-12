@@ -1,77 +1,16 @@
 /*
- * Code blocks, Notion style: a warm gray panel (room at the top for the
- * app's header) and Notion's light syntax theme (Prism's palette, each
- * color darkened to a 4.5:1 contrast on the panel, WCAG AA) over TanStack
- * Highlight's `th-*` token classes. The panel's colors are custom
- * properties a theme may set: `--edytor-code-background`,
- * `--edytor-code-color` (the panel and its text). The header is placed at
- * the panel's top (`[data-edytor-code-header]`); its markup is the app's.
+ * Code blocks: what makes them work. The code keeps its spaces and lines
+ * and scrolls sideways; the header (the app's markup, `[data-edytor-code-
+ * header]`) is chrome, never selected text. The look (the panel, the
+ * header's place over it, the font and the syntax colours over TanStack
+ * Highlight's `th-*` classes) is a theme's: `edytor/themes/notion.css`.
  */
-[data-edytor-type='code'] {
-	position: relative;
-	margin: 4px 0;
-	padding: 34px 16px 32px 32px;
-	border-radius: 10px;
-	background: var(--edytor-code-background, #f7f6f3);
-	color: var(--edytor-code-color, #2c2c2b);
-}
 [data-edytor-code-header] {
-	position: absolute;
-	top: 6px;
-	left: 10px;
-	right: 8px;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
 	user-select: none;
 }
 pre.th-code {
-	margin: 0;
 	overflow-x: auto;
-	color: inherit;
-	font-family: 'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
-	font-size: 85%;
-	line-height: 1.5;
-	text-align: left;
 	white-space: pre;
 	word-break: normal;
 	tab-size: 2;
-	hyphens: none;
-}
-pre.th-code code {
-	font: inherit;
-	background: none;
-	color: inherit;
-	padding: 0;
-}
-.th-comment,
-.th-meta {
-	color: #63717f;
-}
-.th-keyword,
-.th-link {
-	color: #0077aa;
-}
-.th-string,
-.th-attr,
-.th-selector,
-.th-inserted {
-	color: #527a00;
-}
-.th-function,
-.th-type {
-	color: #c2415c;
-}
-.th-number,
-.th-literal,
-.th-tag,
-.th-property,
-.th-deleted {
-	color: #990055;
-}
-.th-variable {
-	color: #9b6300;
-}
-.th-operator {
-	color: #916737;
 }

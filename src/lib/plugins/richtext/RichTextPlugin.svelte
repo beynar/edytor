@@ -1,7 +1,6 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
-	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { presetId } from '$lib/kinds.js';
 	import type { Text } from '$lib/text/text.svelte.js';
@@ -24,6 +23,7 @@
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
+	import RichTextControl from './RichTextControl.svelte';
 	import {
 		DEFAULT_CALLOUT_ICON,
 		calloutHtml,
@@ -32,6 +32,16 @@
 		iconOf
 	} from './callouts.js';
 	import { listen } from '$lib/utils/listen.js';
+	import type { Snippet } from 'svelte';
+	import {
+		richTextControls,
+		toggleTodo,
+		type CalloutIconPayload,
+		type EmptyBodyPayload,
+		type TodoCheckboxPayload
+	} from './controls.svelte.js';
+
+	export type { CalloutIconPayload, EmptyBodyPayload, TodoCheckboxPayload };
 
 	export { richTextOperations };
 
@@ -145,11 +155,28 @@
 			 */
 			icon?: string;
 		};
+		/**
+		 * A to-do's checkbox (default: a native `input type="checkbox"`). Spread
+		 * `checkbox.attributes` on the control, an `input` (with
+		 * `checked={checkbox.checked}`) or a `button`: its click checks the to-do
+		 * through the document.
+		 */
+		checkbox?: Snippet<[TodoCheckboxPayload]>;
+		/**
+		 * A callout's icon (default: a `button` showing it, or the icon alone
+		 * where it cannot be picked). Spread `icon.attributes` on its element:
+		 * a click opens the view's picker (`createCalloutIconsPlugin`), which
+		 * opens under it.
+		 */
+		calloutIcon?: Snippet<[CalloutIconPayload]>;
+		/**
+		 * The hint an open toggle's or a callout's empty body shows (default: a
+		 * `div` with the view's `richText.emptyBody` words). Spread
+		 * `hint.attributes` on it: a click starts the body, a dragged block
+		 * drops inside.
+		 */
+		emptyBody?: Snippet<[EmptyBodyPayload]>;
 	};
-
-	// One key patched: a peer's concurrent edit of another key is kept.
-	const toggleTodo = (block: Block) =>
-		block.edytor.patchData(block.id, [{ path: ['checked'], value: !block.data.checked }]);
 
 	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids, by digit). */
 	const TURN_INTO = [
@@ -171,9 +198,12 @@
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'richText', richTextEnglish);
-			// The view's default callout icon: the first rich text plugin listed sets it.
-			if (edytor && !calloutIcons.has(edytor))
+			// The view's default callout icon and its controls' markup: the first rich text plugin listed sets them.
+			if (edytor && !calloutIcons.has(edytor)) {
 				calloutIcons.set(edytor, options.callout?.icon ?? DEFAULT_CALLOUT_ICON);
+				const { checkbox, calloutIcon, emptyBody } = options;
+				richTextControls.set(edytor, { checkbox, calloutIcon, emptyBody });
+			}
 			return richText(edytor, labels, options);
 		};
 		return branded('richText', plugin);
@@ -183,7 +213,7 @@
 	const richText = (
 		edytor: Edytor,
 		labels: RichTextLabels,
-		{ callout: calloutOptions }: RichTextPluginOptions
+		{ callout: calloutOptions, checkbox, calloutIcon, emptyBody }: RichTextPluginOptions
 	): ReturnType<Plugin> => {
 		const { kinds, marks: words } = labels;
 		/** A new callout's icon. */
@@ -496,7 +526,8 @@
 				},
 				'todo-item': {
 					continues: true,
-					snippet: todoItem,
+					// The app's control markup, if any, through its own snippet: the default costs no branch.
+					snippet: checkbox ? todoItemOwn : todoItem,
 					presets: presets('todo-item', [
 						{
 							label: kinds.todoList,
@@ -516,7 +547,7 @@
 				toggle: {
 					continues: true,
 					container: true,
-					snippet: details,
+					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
 					presets: presets('toggle', [
 						{
@@ -533,7 +564,7 @@
 				// line is a toggle heading 1.
 				'toggle-heading': {
 					container: true,
-					snippet: details,
+					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
 					contentElement: (data) => headingLevel(data.level),
 					presets: presets(
@@ -570,7 +601,7 @@
 				callout: {
 					container: true,
 					body: true,
-					snippet: callout,
+					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
 					presets: presets('callout', [
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
@@ -684,9 +715,35 @@
 
 <!-- prettier-ignore -->
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
---><TodoCheckbox {block} toggle={toggleTodo} /><!--
+--><TodoCheckbox {block} /><!--
 --><div>{@render content()}</div><!--
 -->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
+
+<!--
+	The same kinds, their controls drawn by the app's snippets (`checkbox`,
+	`calloutIcon`, `emptyBody`) where it passes them.
+-->
+<!-- prettier-ignore -->
+{#snippet todoItemOwn({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
+--><RichTextControl {block} control="checkbox" /><!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
+
+<!-- prettier-ignore -->
+{#snippet detailsOwn({ block, content, children }: BlockSnippetPayload)}<!--
+--><summary>{@render content()}</summary><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<RichTextControl {block} control="toggle" />{/if}<!--
+-->{/snippet}
+
+<!-- prettier-ignore -->
+{#snippet calloutOwn({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
+--><RichTextControl {block} control="calloutIcon" /><!--
+--><div data-edytor-callout-title>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<RichTextControl {block} control="callout" />{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
@@ -705,25 +762,8 @@
 -->{/snippet}
 
 <style>
-	/* A callout's title reads as its heading (Notion); its content below it. */
-	:global([data-edytor-callout-title]) {
-		font-weight: 600;
-	}
-	/* An empty body's hint: chrome, not text (`body.hint`). */
+	/* An empty body's hint: chrome, not text (`body.hint`); its look is a theme's. */
 	:global([data-edytor-empty-body]) {
-		padding: 3px 2px;
-		color: #73726e;
-		cursor: pointer;
 		user-select: none;
-	}
-	/* The icon button reads as the icon. */
-	:global(button[data-edytor-callout-icon]) {
-		padding: 0;
-		border: 0;
-		border-radius: 4px;
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		cursor: pointer;
 	}
 </style>

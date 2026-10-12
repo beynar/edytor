@@ -19,6 +19,8 @@
 		expressionOf,
 		parseEquation,
 		type EquationData,
+		type EquationErrorPayload,
+		type EquationPlaceholderPayload,
 		type EquationPluginOptions,
 		type EquationTarget,
 		type KatexLike,
@@ -30,6 +32,8 @@
 	export type {
 		EquationData,
 		EquationEditor,
+		EquationErrorPayload,
+		EquationPlaceholderPayload,
 		EquationPluginOptions,
 		EquationTarget,
 		KatexLike,
@@ -142,7 +146,9 @@
 			if (edytor && !equationViews.has(edytor))
 				equationViews.set(edytor, {
 					renderer,
-					editor: new EquationEditor(edytor, renderer)
+					editor: new EquationEditor(edytor, renderer),
+					placeholder: options.placeholder,
+					error: options.error
 				});
 			const owns = () => equationViews.get(edytor)?.renderer === renderer;
 			return withRulesAndTriggers(
@@ -269,58 +275,9 @@
 {/snippet}
 
 <style>
+	/* A wide equation scrolls in its block; its look is a theme's. */
 	[data-edytor-equation] {
-		padding: 4px 0;
-		border-radius: 4px;
 		overflow-x: auto;
 		overflow-y: hidden;
-		text-align: center;
-		cursor: pointer;
-	}
-
-	[data-edytor-equation]:hover,
-	[data-edytor-equation][data-editing='true'] {
-		background: rgba(55, 53, 47, 0.06);
-	}
-
-	[data-edytor-inline-equation] {
-		border-radius: 3px;
-		cursor: pointer;
-	}
-
-	[data-edytor-inline-equation][data-editing='true'],
-	[data-edytor-inline-equation][data-selected='true'] {
-		background: rgba(35, 131, 226, 0.14);
-	}
-
-	[data-edytor-equation] :global([data-edytor-equation-placeholder]),
-	[data-edytor-inline-equation] :global([data-edytor-equation-placeholder]) {
-		color: rgba(55, 53, 47, 0.5);
-	}
-
-	[data-edytor-equation] :global([data-edytor-equation-placeholder]) {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 12px;
-		border-radius: 4px;
-		background: rgba(242, 241, 238, 0.6);
-		text-align: left;
-	}
-
-	:global([data-edytor-equation-icon]) {
-		font-style: italic;
-		margin-right: 4px;
-	}
-
-	:global([data-edytor-equation-error]),
-	:global([data-edytor-equation-source]) {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		font-size: 0.9em;
-		white-space: pre-wrap;
-	}
-
-	:global([data-edytor-equation-error]) {
-		color: rgb(212, 76, 71);
 	}
 </style>

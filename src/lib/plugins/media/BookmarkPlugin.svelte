@@ -2,9 +2,22 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import EmptySlot from './EmptySlot.svelte';
+	import Control from '../Control.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
-	import { MEDIA_ICONS, escapeHtml, mediaPlugin, mediaView, safeWebUrl } from './media.js';
+	import {
+		MEDIA_ICONS,
+		escapeHtml,
+		mediaControl,
+		mediaLink,
+		mediaPlugin,
+		mediaView,
+		safeWebUrl,
+		type BookmarkCardPayload,
+		type MediaLinkAttributes
+	} from './media.js';
+
+	export type { BookmarkCardPayload, MediaLinkAttributes };
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -33,6 +46,12 @@
 		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[UrlPasteController]>;
+		/**
+		 * The card of a bookmark with a link (default: Notion's, the title,
+		 * description and URL beside the cover). Spread `card.link` on its
+		 * `a`. The first bookmark plugin listed in a view gives its card.
+		 */
+		card?: Snippet<[BookmarkCardPayload]>;
 	};
 
 	/** A preview's text field, trimmed and capped: it is stored in the document. */
@@ -57,6 +76,9 @@
 	 * undo step it would make Mod+Z drop the title before the typing.
 	 */
 	const UNFURL_ORIGIN = Symbol('edytor.bookmark.unfurl');
+
+	/** The view's card markup, if the app gave one. */
+	const cardOf = mediaControl('bookmark', 'card');
 
 	/**
 	 * Notion's web bookmark: a card linking to a page, with its title,
@@ -94,6 +116,7 @@
 				);
 			};
 			return {
+				card: options.card,
 				store: (block, value) => {
 					const url = safeWebUrl(value);
 					if (!url) return 'invalid';
@@ -137,23 +160,20 @@
 {#snippet bookmark({ block, content }: BlockSnippetPayload<Record<string, unknown>>)}
 	{@const url = safeWebUrl(block.data.url)}
 	{#if url}
-		{@const title = text(block.data.title, 300)}
-		{@const description = text(block.data.description, 1000)}
-		{@const image = safeWebUrl(block.data.image)}
-		{@const icon = safeWebUrl(block.data.icon)}
 		<div use:block.void data-edytor-bookmark>
-			<a href={url} target="_blank" rel="noopener noreferrer nofollow" draggable="false">
-				<span data-edytor-bookmark-text>
-					<span data-edytor-bookmark-title>{title ?? url}</span>
-					{#if description}<span data-edytor-bookmark-description>{description}</span>{/if}
-					<span data-edytor-bookmark-url>
-						{#if icon}<img src={icon} alt="" draggable="false" />{/if}<span>{url}</span>
-					</span>
-				</span>
-				{#if image}
-					<span data-edytor-bookmark-cover><img src={image} alt="" draggable="false" /></span>
-				{/if}
-			</a>
+			<Control
+				own={cardOf}
+				{initial}
+				payload={{
+					block: block.handle,
+					url,
+					title: text(block.data.title, 300),
+					description: text(block.data.description, 1000),
+					image: safeWebUrl(block.data.image) ?? undefined,
+					icon: safeWebUrl(block.data.icon) ?? undefined,
+					link: mediaLink(url, { draggable: 'false' })
+				}}
+			/>
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
@@ -167,4 +187,20 @@
 	<!-- The core renders the kind's <figure> around this markup. -->
 	<!-- svelte-ignore a11y_figcaption_parent -->
 	<figcaption>{@render content()}</figcaption>
+{/snippet}
+
+<!-- Notion's card: the page's title, description and URL (with its icon) beside its cover. -->
+{#snippet initial({ url, title, description, image, icon, link }: BookmarkCardPayload)}
+	<a {...link}>
+		<span data-edytor-bookmark-text>
+			<span data-edytor-bookmark-title>{title ?? url}</span>
+			{#if description}<span data-edytor-bookmark-description>{description}</span>{/if}
+			<span data-edytor-bookmark-url>
+				{#if icon}<img src={icon} alt="" draggable="false" />{/if}<span>{url}</span>
+			</span>
+		</span>
+		{#if image}
+			<span data-edytor-bookmark-cover><img src={image} alt="" draggable="false" /></span>
+		{/if}
+	</a>
 {/snippet}

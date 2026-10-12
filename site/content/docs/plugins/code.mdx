@@ -14,7 +14,7 @@ icon: code
 <Edytor plugins={[createCodePlugin()]} />
 ```
 
-`createCodePlugin()` without options makes code blocks with no header (the header and its language list are your `header` and `menu` snippets, see [Languages](#languages)). Importing it also imports its stylesheet, which gives code blocks Notion's look.
+`createCodePlugin()` without options makes code blocks with no header (the header and its language list are your `header` and `menu` snippets, see [Languages](#languages)). Importing it also imports its stylesheet, which keeps the code's spaces and lines and scrolls it sideways; the panel and the syntax colours are the [Notion theme](/docs/customization/styling#notion-theme)'s.
 
 <TypeTable
   type={{
@@ -141,19 +141,19 @@ Each `codeLine` declares a `transformText` that tokenizes its text with its code
 
 The tokens are decorations: they exist only in the rendered DOM, never in the document, so collaborators and the clipboard see plain text. Each line is tokenized on its own, so a construct spanning lines (a block comment) is highlighted line by line.
 
-The bundled stylesheet colors the `th-*` classes with Notion's light syntax theme:
+The [Notion theme](/docs/customization/styling#notion-theme) colors the `th-*` classes with Notion's light syntax theme (each color darkened to a 4.5:1 contrast on the panel):
 
 | Classes                                      | Color     |
 | -------------------------------------------- | --------- |
-| `th-comment`, `th-meta`                      | `#708090` |
+| `th-comment`, `th-meta`                      | `#63717f` |
 | `th-keyword`, `th-link`                      | `#0077aa` |
-| `th-string`, `th-attr`, `th-selector`, `th-inserted` | `#669900` |
-| `th-function`, `th-type`                     | `#dd4a68` |
+| `th-string`, `th-attr`, `th-selector`, `th-inserted` | `#527a00` |
+| `th-function`, `th-type`                     | `#c2415c` |
 | `th-number`, `th-literal`, `th-tag`, `th-property`, `th-deleted` | `#990055` |
-| `th-variable`                                | `#ee9900` |
-| `th-operator`                                | `#9a6e3a` |
+| `th-variable`                                | `#9b6300` |
+| `th-operator`                                | `#916737` |
 
-Override those classes to theme it.
+Without the theme the tokens are uncolored; style those classes to theme it.
 
 ## Editing
 
@@ -183,7 +183,7 @@ A code block is an island: merges never cross its edge, and a block selection wa
 
 ## Styling
 
-The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, with the language at the top left (a button with a chevron, shaded when hovered or open, ringed when focused from the keyboard) and the Copy button at the top right. The code is set in an `SFMono-Regular`, Menlo, Consolas stack at 85%, with a tab size of 2. No utility classes are involved; everything goes through attributes and classes you can override:
+The plugin's stylesheet keeps what makes the block work: the code keeps its spaces and lines (`white-space: pre`, a tab size of 2) and scrolls sideways, and the header is never selected; without a theme the header sits above the code. The [Notion theme](/docs/customization/styling#notion-theme) draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, the header placed over its top padding (the demo's: the language at the top left, a button with a chevron, shaded when hovered or open, ringed when focused from the keyboard, and the Copy button at the top right), the code in an `SFMono-Regular`, Menlo, Consolas stack at 85%. No utility classes are involved; everything goes through attributes and classes you can override:
 
 | Selector                        | Element                                        |
 | ------------------------------- | ---------------------------------------------- |
@@ -193,7 +193,7 @@ The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, pa
 | `[data-edytor-code-language-panel]` | Where your language list renders, in the overlay |
 | `pre.th-code`                   | The code area                                  |
 
-The panel's colors are custom properties a theme or an app sets on the editor or the block: `--edytor-code-background` and `--edytor-code-color` (the panel and its text).
+The Notion theme reads the panel's colors from custom properties an app sets on the editor or the block: `--edytor-code-background` and `--edytor-code-color` (the panel and its text).
 
 ```css
 [data-edytor-type='code'] {
@@ -205,4 +205,4 @@ The panel's colors are custom properties a theme or an app sets on the editor or
 }
 ```
 
-The [Notion theme](/docs/customization/styling#notion-theme) reads the panel color from `--notion-code-panel`.
+Without `--edytor-code-background`, the Notion theme's panel is `--notion-code-panel`.

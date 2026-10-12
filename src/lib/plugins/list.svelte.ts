@@ -13,7 +13,14 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import { attribute, inPage, keepFocus, namesRows } from './chrome.js';
+import {
+	attribute,
+	inPage,
+	keepFocus,
+	namesRows,
+	optionAttributes,
+	type OptionAttributes
+} from './chrome.js';
 
 /**
  * The keyboard's row after `key` among `count` rows from `at`, `undefined`
@@ -159,3 +166,64 @@ export const listHotkeys = (
 		}
 	};
 };
+
+/**
+ * A chrome list and its keyboard's row (the trigger and slash menus, the
+ * code language list, the callout icon picker, the URL paste menu, a table
+ * grip's menu): the list's element (`popup`, its id `listId`), a row's id
+ * and attributes (`rowId`, `option`: rows are named by position) and the
+ * step the keys take (`move`). Each controller extends it with its rows,
+ * its keys and its actions.
+ */
+export abstract class ChromeList {
+	/** The keyboard's row. */
+	index = $state(0);
+	/**
+	 * The list's element (`{@attach controller.popup}`, named by your
+	 * markup): its id and role unless it has its own, presses that keep the
+	 * focus, and its publication to the view's root (`edytor.popups`) while
+	 * it is open and in the page.
+	 */
+	readonly popup: Attachment<HTMLElement>;
+
+	constructor(
+		/** @internal */
+		readonly edytor: Edytor,
+		/** The list's name among the view's popups (`edytor.popups`). */
+		protected readonly owner: string,
+		/** Its role: a `listbox` the editor or a field keeps the keyboard for, or a `menu`. */
+		protected readonly role: 'listbox' | 'menu',
+		open?: (node: HTMLElement) => Omit<Popup, 'id'> | false | null
+	) {
+		this.popup = listPopup(edytor, owner, role, open);
+	}
+
+	/** How many rows the keyboard walks. */
+	protected abstract get count(): number;
+
+	/** The list's element id (page-unique), for `aria-controls`. */
+	get listId() {
+		return this.edytor.popups.idOf(this.owner);
+	}
+
+	/** Row `index`'s element id (page-unique), for `aria-activedescendant`. */
+	rowId = (index: number) => this.edytor.popups.idOf(`${this.owner}-${index}`);
+
+	/**
+	 * Row `index`'s attributes: spread them on its element
+	 * (`{...controller.option(index)}`): its id, its role, `aria-selected`
+	 * (a `listbox`'s) and `data-selected` for the keyboard's row, which
+	 * scrolls into view.
+	 */
+	option(index: number): OptionAttributes {
+		const role = this.role === 'menu' ? 'menuitem' : 'option';
+		return optionAttributes(this.rowId(index), role, index === this.index);
+	}
+
+	/** Move the keyboard's row by `step`, around the ends; `false` when there is no row. */
+	move = (step: number) => {
+		const count = this.count;
+		if (count) this.index = (this.index + step + count) % count;
+		return count > 0;
+	};
+}

@@ -1,17 +1,15 @@
 import type { Snippet } from 'svelte';
-import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
-import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
+import type { SerializableContent } from '$lib/utils/json.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { onPress } from '$lib/events/onFocus.js';
-import { holdsNothing, placing } from '$lib/kinds.js';
-import { id } from '$lib/utils.js';
+import { convertToKind, holdsNothing } from '$lib/kinds.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import { inPage, mountChrome, optionAttributes, type OptionAttributes } from '../chrome.js';
-import { listHotkeys, listPopup } from '../list.svelte.js';
+import { inPage, mountChrome } from '../chrome.js';
+import { ChromeList, listHotkeys } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {
@@ -39,20 +37,22 @@ export type UrlPasteOption = { id: string; icon: string; offer?: UrlPasteOffer }
  * One controller per view, shared by the plugins that make offers: the
  * first one listed carries its hooks (`urlPaste`).
  */
-export class UrlPasteController {
+export class UrlPasteController extends ChromeList {
 	readonly offers: UrlPasteOffer[] = [];
 	/** The open menu: the line, the URL, the rows. */
 	open = $state<{ block: string; url: string; options: UrlPasteOption[] } | null>(null);
-	/** The keyboard's row. */
-	index = $state(0);
 
-	constructor(readonly edytor: Edytor) {
-		this.popup = listPopup(
+	constructor(edytor: Edytor) {
+		super(
 			edytor,
 			'url-paste',
 			'listbox',
-			(node) => this.open && { active: inPage(node, this.optionId(this.index)) }
+			(node) => this.open && { active: inPage(node, this.rowId(this.index)) }
 		);
+	}
+
+	protected get count() {
+		return this.open?.options.length ?? 0;
 	}
 
 	get readonly() {
@@ -66,31 +66,6 @@ export class UrlPasteController {
 	claimMenu(menu: Snippet<[UrlPasteController]> | undefined) {
 		this.#menu ??= menu;
 	}
-
-	/** The listbox's element id (page-unique), for `aria-controls`. */
-	get listId() {
-		return this.edytor.popups.idOf('url-paste');
-	}
-
-	/** The element id of the row at `index` (page-unique), for `aria-activedescendant`. */
-	optionId = (index: number) => this.edytor.popups.idOf(`url-paste-option-${index}`);
-
-	/**
-	 * The attributes of the row at `index`: spread them on its element
-	 * (`{...controller.option(index)}`): its id, `role="option"`,
-	 * `aria-selected` and `data-selected` for the keyboard's row.
-	 */
-	option = (index: number): OptionAttributes =>
-		optionAttributes(this.optionId(index), 'option', index === this.index);
-
-	/**
-	 * The listbox (`{@attach controller.popup}`, named by your markup): it
-	 * takes the menu's id and its `listbox` role unless it has its own, keeps the editor's focus
-	 * on a press, and is published to the view's root (`edytor.popups`) with
-	 * its highlighted row while the menu is open: the editor keeps the
-	 * keyboard (its keys move and pick).
-	 */
-	popup: Attachment<HTMLElement>;
 
 	/** The rows for `url`: Link, then each offer that takes it. @internal */
 	optionsFor = (url: string): UrlPasteOption[] => [
@@ -138,14 +113,6 @@ export class UrlPasteController {
 		if (this.open) this.open = null;
 	};
 
-	/** Move the keyboard's row; answers whether the menu took the key. */
-	move = (step: number) => {
-		if (!this.open) return false;
-		const count = this.open.options.length;
-		this.index = (this.index + step + count) % count;
-		return true;
-	};
-
 	/** The caret still rests at the end of the pasted URL, in its line. @internal */
 	stays = () => {
 		const { open, edytor } = this;
@@ -169,17 +136,12 @@ export class UrlPasteController {
 		const block = edytor.idToBlock.get(open.block);
 		const data = offer.data(open.url);
 		if (!block?.isInTree || !block.convertible || !data) return;
+		// Turn into the offer's kind, the caret at its start (the URL is the block's whole text).
 		const value = { type: offer.type, data, content: [] };
 		const converted =
-			edytor.dispatcher.plan(
-				'setBlock',
-				[block.id, value] as const,
-				([, value]) => placing(block, value as Partial<JSONBlock>, false, id('b')),
-				block
-			).status === 'applied' && edytor.idToBlock.get(block.id);
-		if (!converted) return;
-		edytor.dispatcher.caret(converted.firstText, 0);
-		offer.created?.(converted, open.url);
+			convertToKind(edytor, block, { value, replaces: false }, true) &&
+			edytor.idToBlock.get(block.id);
+		if (converted) offer.created?.(converted, open.url);
 	};
 
 	/** The hooks of the plugin carrying the menu. @internal */

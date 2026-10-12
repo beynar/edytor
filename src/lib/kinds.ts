@@ -240,7 +240,7 @@ export const placing = (
 export const convertToKind = (
 	edytor: Edytor,
 	block: Block | null | undefined,
-	row: KindRow,
+	row: Pick<KindRow, 'value' | 'replaces'>,
 	caret = row.replaces
 ) => {
 	if (!block?.convertible) return false;

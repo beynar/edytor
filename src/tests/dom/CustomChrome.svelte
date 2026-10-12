@@ -230,7 +230,7 @@
 				<li
 					{...menu.option(index)}
 					data-testid="custom-slash-row"
-					onmousemove={() => (menu.selectedIndex = index)}
+					onmousemove={() => (menu.index = index)}
 					onclick={() => void menu.run(command)}
 				>
 					{command.label}
@@ -256,7 +256,7 @@
 					{...menu.option(index)}
 					data-testid="custom-block-menu-row"
 					onclick={() => {
-						menu.selectedIndex = index;
+						menu.index = index;
 						menu.run(row);
 					}}>{row.label}</button
 				>

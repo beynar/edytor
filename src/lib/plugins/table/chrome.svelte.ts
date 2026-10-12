@@ -17,7 +17,7 @@ import {
 	type MenuItemPayload,
 	type OptionAttributes
 } from '../chrome.js';
-import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
+import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
 import { BandDrag, bandKey, listen } from '../bands.svelte.js';
 import { dragPreview } from '../blockHandles/dragPreview.js';
 import {
@@ -195,7 +195,7 @@ export type TableAddPayload = {
  * the menu's element, `option(index)` spread on each row) and `close()`.
  * A grip's own attachment is its payload's `grip`.
  */
-export class TableChrome {
+export class TableChrome extends ChromeList {
 	/**
 	 * The table, row and column (their ids) under the pointer.
 	 * @internal
@@ -203,8 +203,6 @@ export class TableChrome {
 	hovered = $state<{ table: string; row: string | null; column: string | null } | null>(null);
 	/** What the open grip menu acts on (`null`: none is open). */
 	menu = $state<TableMenu | null>(null);
-	/** The keyboard's row of the open menu, in `items` (never a disabled one). */
-	index = $state(0);
 	/**
 	 * The measured table the chrome is for.
 	 * @internal
@@ -234,8 +232,7 @@ export class TableChrome {
 	cell: string | null = null;
 
 	constructor(
-		/** @internal */
-		readonly edytor: Edytor,
+		edytor: Edytor,
 		/**
 		 * A column's width when it sets none, and the narrowest a resize leaves.
 		 * @internal
@@ -244,13 +241,17 @@ export class TableChrome {
 		/** @internal */
 		readonly minColumnWidth: number
 	) {
-		this.band = new BandDrag(edytor);
-		this.popup = listPopup(edytor, 'table-menu', 'menu', (node) => {
+		super(edytor, 'table-menu', 'menu', (node) => {
 			const kind = this.menu?.kind;
 			if (!kind) return null;
 			node.setAttribute('data-edytor-table-menu', kind);
 			return {};
 		});
+		this.band = new BandDrag(edytor);
+	}
+
+	protected get count() {
+		return this.#rows.length;
 	}
 
 	/** The view is readonly (reactive): the chrome shows nothing. */
@@ -608,11 +609,6 @@ export class TableChrome {
 		takeKeys(this.edytor);
 	};
 
-	/** The menu element's id (page-unique), for `aria-controls`. */
-	get menuId() {
-		return this.edytor.popups.idOf('table-menu');
-	}
-
 	/**
 	 * The open menu's rows: insert before and after, move back and forth,
 	 * delete (whether each can run now; the last deletes).
@@ -652,7 +648,7 @@ export class TableChrome {
 	get items(): TableMenuItem[] {
 		return this.#rows.map(({ id, disabled, run }, index) => ({
 			item: { id },
-			id: this.#rowId(index),
+			id: this.rowId(index),
 			selected: index === this.index,
 			disabled,
 			danger: id.startsWith('delete'),
@@ -670,32 +666,17 @@ export class TableChrome {
 		}));
 	}
 
-	/** Row `index`'s element id (page-unique), for `aria-activedescendant`. */
-	#rowId = (index: number) =>
-		this.edytor.popups.idOf(`table-menu-${this.#rows[index]?.id ?? index}`);
-
 	/**
 	 * The attributes of the open menu's row at `index`: spread them on its
 	 * element (`{...chrome.option(index)}`). Its id, `menuitem` role,
 	 * `aria-disabled` when it cannot run now, `data-selected` for the
-	 * keyboard's row, which scrolls into view.
+	 * keyboard's row, which scrolls into view. The menu's element takes
+	 * `data-edytor-table-menu` (the kind it is open on) from `popup`.
 	 */
-	option = (index: number): OptionAttributes =>
-		optionAttributes(
-			this.#rowId(index),
-			'menuitem',
-			index === this.index,
-			this.#rows[index]?.disabled ? { 'aria-disabled': true } : {}
-		);
-
-	/**
-	 * The menu's element (`{@attach chrome.popup}`): its id, `menu` role and
-	 * name (Row options, Column options) unless it has its own, presses that
-	 * keep the focus, and its publication to the view's root
-	 * (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in
-	 * the page; `data-edytor-table-menu` names the kind it is open on.
-	 */
-	popup: Attachment<HTMLElement>;
+	option(index: number): OptionAttributes {
+		const extra = this.#rows[index]?.disabled ? { 'aria-disabled': true } : {};
+		return optionAttributes(this.rowId(index), 'menuitem', index === this.index, extra);
+	}
 
 	/**
 	 * The element that holds the menu's keyboard (`{@attach chrome.keys}`,
@@ -708,7 +689,7 @@ export class TableChrome {
 	keys: Attachment<HTMLElement> = (node) =>
 		untrack(() => {
 			if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
-			return holdKeys(node, this.#keydown, () => this.#rowId(this.index));
+			return holdKeys(node, this.#keydown, () => this.rowId(this.index));
 		});
 
 	/** The menu's keys (`keys`). */
@@ -746,7 +727,7 @@ export class TableChrome {
 		$effect(() => {
 			const open = this.menu?.kind === kind;
 			attribute(node, 'aria-expanded', String(open));
-			attribute(node, 'aria-controls', open ? this.menuId : undefined);
+			attribute(node, 'aria-controls', open ? this.listId : undefined);
 			attribute(node, 'data-dragging', this.moving?.kind === kind ? 'true' : undefined);
 		});
 		const offs = [

@@ -445,7 +445,7 @@ export declare class BlockMenuController {
     blocks: Block[];
     anchor: HTMLElement | null;
     query: string;
-    selectedIndex: number;
+    index: number;
     flyout: false | "color" | "turn";
     flyoutIndex: number;
     constructor(edytor: Edytor, options?: BlockMenuOptions);
@@ -646,18 +646,17 @@ declare const CODE_LANGUAGES: readonly CodeLanguage[];
 
 ```ts
 // plugins/richtext/calloutIcons.svelte.d.ts
-export declare class CalloutIconPicker {
+export declare class CalloutIconPicker extends ChromeList {
     #private;
     readonly icon: string;
     readonly icons: readonly string[];
     target: string | null;
-    index: number;
     readonly columns = 8;
     constructor(edytor: Edytor, icon?: string, icons?: readonly string[]);
     get isOpen(): boolean;
     get block(): Block | undefined;
     get current(): string | undefined;
-    get id(): string;
+    protected get count(): number;
     get readonly(): boolean;
     iconOf: (data: Record<string, unknown> | undefined) => string;
     toggle: (block: Block) => void;
@@ -665,11 +664,9 @@ export declare class CalloutIconPicker {
     close: (keys?: boolean) => void;
     set: (icon: string) => void;
     remove: () => void;
-    optionId: (index: number) => string;
     pick: (index: number) => void;
-    option: (index: number) => OptionAttributes;
+    option(index: number): OptionAttributes;
     keys: Attachment<HTMLElement>;
-    popup: Attachment<HTMLElement>;
 }
 ```
 
@@ -2542,29 +2539,24 @@ export type Labels = {
 
 ```ts
 // plugins/code/languageMenu.svelte.d.ts
-export declare class LanguageMenu {
+export declare class LanguageMenu extends ChromeList {
     #private;
     open: {
         block: string;
         keys: boolean;
     } | null;
     query: string;
-    index: number;
     get readonly(): boolean;
     get current(): string | null;
     get rows(): readonly LanguageRow[];
     get items(): LanguageMenuItem[];
+    protected get count(): number;
     isOpenFor: (block: string) => boolean;
-    get listId(): string;
-    rowId: (row: LanguageRow) => string;
     toggle: (block: string, keys: boolean) => void;
     search: (query: string) => void;
-    move: (step: number) => void;
     pick: (row?: LanguageRow | undefined) => void;
     close: (keys?: "button" | "editor" | null) => void;
-    option: (index: number) => OptionAttributes;
     keys: Attachment<HTMLElement>;
-    popup: Attachment<HTMLElement>;
 }
 ```
 
@@ -3605,8 +3597,6 @@ export declare class SlashMenuController extends TextTriggerController {
     addition: BlockAddition | null;
     private held;
     constructor(edytor: Edytor);
-    optionId: (command: EditorCommand) => string;
-    protected rowIdAt(index: number): string;
     protected popupOf(active: string | undefined): Popup;
     keys: Attachment<HTMLElement>;
     protected get count(): number;
@@ -3818,19 +3808,17 @@ export type TableBlockOptions = {
 
 ```ts
 // plugins/table/chrome.svelte.d.ts
-export declare class TableChrome {
+export declare class TableChrome extends ChromeList {
     #private;
     menu: TableMenu | null;
-    index: number;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
+    protected get count(): number;
     get readonly(): boolean;
     toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
-    get menuId(): string;
     get items(): TableMenuItem[];
-    option: (index: number) => OptionAttributes;
-    popup: Attachment<HTMLElement>;
+    option(index: number): OptionAttributes;
     keys: Attachment<HTMLElement>;
     gripOf: (kind: Kind) => Attachment<HTMLElement>;
 }
@@ -4143,10 +4131,8 @@ export declare class TriggerMenuController<T = unknown> extends TextTriggerContr
     constructor(edytor: Edytor, trigger: Trigger<T>, owner: string);
     protected get count(): number;
     protected admits(block: Block): boolean;
-    protected rowIdAt(index: number): string | undefined;
     labelOf: (item: T) => string;
     keyOf: (item: T) => string;
-    optionId: (index: number) => string;
     protected queried(query: string): void;
     private answered;
     close(): void;
@@ -4207,24 +4193,18 @@ export type Uploader = (file: File, report: UploadReport) => Promise<string>;
 
 ```ts
 // plugins/media/urlPaste.svelte.d.ts
-export declare class UrlPasteController {
+export declare class UrlPasteController extends ChromeList {
     #private;
-    readonly edytor: Edytor;
     readonly offers: UrlPasteOffer[];
     open: {
         block: string;
         url: string;
         options: UrlPasteOption[];
     } | null;
-    index: number;
     constructor(edytor: Edytor);
+    protected get count(): number;
     get readonly(): boolean;
-    get listId(): string;
-    optionId: (index: number) => string;
-    option: (index: number) => OptionAttributes;
-    popup: Attachment<HTMLElement>;
     close: () => void;
-    move: (step: number) => boolean;
     pick: (option?: UrlPasteOption | undefined) => void;
 }
 ```
@@ -4388,7 +4368,7 @@ declare const commentsController: (edytor: Edytor) => CommentsController | undef
 
 ```ts
 // kinds.d.ts
-declare const convertToKind: (edytor: Edytor, block: Block | null | undefined, row: KindRow, caret?: boolean) => boolean;
+declare const convertToKind: (edytor: Edytor, block: Block | null | undefined, row: Pick<KindRow, "value" | "replaces">, caret?: boolean) => boolean;
 ```
 
 ### createArrowMovePlugin
@@ -5324,6 +5304,23 @@ type Drag = {
 export type ImageAlign = 'left' | 'center' | 'right';
 ```
 
+#### plugins/list.svelte.d.ts#ChromeList
+
+```ts
+export declare abstract class ChromeList {
+    protected readonly owner: string;
+    protected readonly role: 'listbox' | 'menu';
+    index: number;
+    readonly popup: Attachment<HTMLElement>;
+    constructor(edytor: Edytor, owner: string, role: 'listbox' | 'menu', open?: (node: HTMLElement) => Omit<Popup, 'id'> | false | null);
+    protected abstract get count(): number;
+    get listId(): string;
+    rowId: (index: number) => string;
+    option(index: number): OptionAttributes;
+    move: (step: number) => boolean;
+}
+```
+
 #### plugins/media/empty.svelte.d.ts#EmptyView
 
 ```ts
@@ -5345,13 +5342,10 @@ type Kind = 'row' | 'column';
 #### plugins/triggers/TriggerController.svelte.d.ts#TextTriggerController
 
 ```ts
-export declare abstract class TextTriggerController {
-    protected edytor: Edytor;
+export declare abstract class TextTriggerController extends ChromeList {
     readonly char: string;
-    protected owner: string;
     isOpen: boolean;
     query: string;
-    selectedIndex: number;
     protected activeRange: {
         trigger: TextAnchor;
         end: TextAnchor;
@@ -5359,18 +5353,12 @@ export declare abstract class TextTriggerController {
     protected picking: boolean;
     constructor(edytor: Edytor, char: string, owner: string);
     get readonly(): boolean;
-    get listId(): string;
-    popup: Attachment<HTMLElement>;
-    option: (index: number) => OptionAttributes;
     protected popupOf(active: string | undefined): Popup;
-    protected abstract rowIdAt(index: number): string | undefined;
-    protected abstract get count(): number;
     protected abstract admits(block: Block): boolean;
     protected abstract queried(query: string): void;
     handleTextInsertion(text: Text, block: Block, start: number, value: string): void;
     private triggerAt;
     reconcileSelection(): void;
-    moveSelection(delta: number): boolean;
     close(): void;
     protected get range(): TriggerRange | null;
     protected replaceTrigger<R>(body: (ctx: TriggerContext) => R, owns?: (text: Text, held: SelectionValue) => boolean): Promise<Awaited<R> | undefined>;

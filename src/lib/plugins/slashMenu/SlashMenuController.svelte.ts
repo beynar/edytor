@@ -82,14 +82,6 @@ export class SlashMenuController extends TextTriggerController {
 		super(edytor, '/', 'slash-menu');
 	}
 
-	/** A row's element id (page-unique), for `aria-activedescendant` (`option(index)` sets it). */
-	optionId = (command: EditorCommand) => this.edytor.popups.idOf(`slash-menu-${command.id}`);
-
-	protected rowIdAt(index: number) {
-		const command = this.commands[index];
-		return command && this.optionId(command);
-	}
-
 	/** A `+`'s menu names its highlighted row from its own field, and tells the `+` it opened it. */
 	protected popupOf(active: string | undefined): Popup {
 		const { addition } = this;
@@ -126,7 +118,7 @@ export class SlashMenuController extends TextTriggerController {
 			const typed = !field && event.target === node;
 			if (typed && key === 'Backspace') this.search(this.query.slice(0, -1));
 			else if (typed && key.length === 1 && !ctrlKey && !metaKey) this.search(this.query + key);
-			else if (move) this.moveSelection(move);
+			else if (move) this.move(move);
 			else if (key === 'Enter') void this.runSelected();
 			else if (key === 'Escape') this.dismiss();
 			else return;
@@ -136,9 +128,9 @@ export class SlashMenuController extends TextTriggerController {
 			const target = event.target as HTMLElement;
 			if (!field || target === node) return;
 			const index = this.commands.findIndex(
-				(command) => target.closest?.(`[id="${this.optionId(command)}"]`) !== null
+				(_, index) => target.closest?.(`[id="${this.rowId(index)}"]`) !== null
 			);
-			if (index !== -1) this.selectedIndex = index;
+			if (index !== -1) this.index = index;
 			node.focus({ preventScroll: true });
 		};
 		const focusout = (event: FocusEvent) => {
@@ -153,7 +145,7 @@ export class SlashMenuController extends TextTriggerController {
 		const off = holdKeys(
 			node,
 			keydown,
-			() => (field ? this.rowIdAt(this.selectedIndex) : undefined),
+			() => (field && this.count ? this.rowId(this.index) : undefined),
 			field ? menu : node
 		);
 		return () => {
@@ -165,7 +157,7 @@ export class SlashMenuController extends TextTriggerController {
 	};
 
 	protected get count() {
-		return this.commands.length;
+		return this.isOpen ? this.commands.length : 0;
 	}
 
 	/** A `/` opens the menu in a block a kind can replace (`convertible`). */
@@ -181,7 +173,7 @@ export class SlashMenuController extends TextTriggerController {
 	protected queried(query: string) {
 		const commandCount = this.commands.length;
 		if (query && (commandCount === 0 || /^\s/.test(query) || !/[^-\s]/.test(query))) this.close();
-		else this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, commandCount - 1));
+		else this.index = Math.max(0, Math.min(this.index, commandCount - 1));
 	}
 
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
@@ -228,7 +220,7 @@ export class SlashMenuController extends TextTriggerController {
 
 	/** The `+`'s menu typed in its own field (a query that matches nothing shows "No results"). */
 	search(query: string) {
-		[this.query, this.selectedIndex] = [query, 0];
+		[this.query, this.index] = [query, 0];
 	}
 
 	/**
@@ -249,7 +241,7 @@ export class SlashMenuController extends TextTriggerController {
 	}
 
 	runSelected() {
-		return this.run(this.commands[this.selectedIndex]);
+		return this.run(this.commands[this.index]);
 	}
 
 	async run(command: EditorCommand | undefined) {

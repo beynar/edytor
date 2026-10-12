@@ -38,8 +38,7 @@
 	 * click runs it as Enter does.
 	 */
 	const attributes = (row: Row, index: number, flyout: boolean) => {
-		const select = () =>
-			flyout ? (controller.flyoutIndex = index) : (controller.selectedIndex = index);
+		const select = () => (flyout ? (controller.flyoutIndex = index) : (controller.index = index));
 		const own = {
 			...controller.option(index, flyout),
 			onclick: () => {

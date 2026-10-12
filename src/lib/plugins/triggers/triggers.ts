@@ -69,7 +69,7 @@ export const withRulesAndTriggers = (
 		extended,
 		controllers,
 		(controller) => ({
-			move: (step) => controller.moveSelection(step),
+			move: controller.move,
 			// A pending search's Enter waits for its rows: never an older query's row.
 			pick:
 				controller.items.length || controller.loading

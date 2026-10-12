@@ -76,7 +76,7 @@
 						data-hint={command.hint}
 						style:--slash-icon={iconOf(command.id)}
 						data-testid="slash-menu-item"
-						onmousemove={() => (controller.selectedIndex = index)}
+						onmousemove={() => (controller.index = index)}
 						onclick={() => {
 							void controller.run(command);
 						}}>{command.label}</button

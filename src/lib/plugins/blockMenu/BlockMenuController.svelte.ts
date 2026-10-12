@@ -133,7 +133,8 @@ export class BlockMenuController {
 	blocks = $state<Block[]>([]);
 	anchor: HTMLElement | null = null;
 	query = $state('');
-	selectedIndex = $state(0);
+	/** The keyboard's row. */
+	index = $state(0);
 	/** The open flyout: the kinds (`turn`), the colours (`color`), or none. */
 	flyout = $state<false | 'turn' | 'color'>(false);
 	/** The keyboard's row in the open flyout. */
@@ -213,7 +214,7 @@ export class BlockMenuController {
 		$effect(() => attribute(node, 'aria-controls', this.flyout ? this.flyoutId : this.menuId));
 		return holdKeys(node, this.#keydown, () => {
 			const flyout = Boolean(this.flyout);
-			const row = flyout ? this.flyoutRows[this.flyoutIndex] : this.rows[this.selectedIndex];
+			const row = flyout ? this.flyoutRows[this.flyoutIndex] : this.rows[this.index];
 			return row && this.rowId(row, flyout);
 		});
 	};
@@ -237,7 +238,7 @@ export class BlockMenuController {
 				? this.rowId(row, flyout)
 				: this.edytor.popups.idOf(`block-menu-${flyout ? 'flyout-' : ''}${index}`),
 			color ? 'menuitemradio' : on === undefined ? 'menuitem' : 'menuitemcheckbox',
-			(flyout ? this.flyoutIndex : this.selectedIndex) === index,
+			(flyout ? this.flyoutIndex : this.index) === index,
 			{
 				...(on === undefined ? {} : { 'aria-checked': on }),
 				...(submenu
@@ -250,7 +251,7 @@ export class BlockMenuController {
 	/** The search field typed in: the rows match `query`, the first one highlighted, no flyout open. */
 	search(query: string) {
 		this.query = query;
-		this.selectedIndex = 0;
+		this.index = 0;
 		this.flyout = false;
 	}
 
@@ -259,9 +260,9 @@ export class BlockMenuController {
 		if (event.defaultPrevented || event.isComposing) return;
 		const { key } = event;
 		const { flyout, rows } = this;
-		const row = rows[this.selectedIndex];
+		const row = rows[this.index];
 		const submenu = row && 'submenu' in row ? row.submenu : undefined;
-		const to = stepRow(key, this.selectedIndex, rows.length, { ends: true });
+		const to = stepRow(key, this.index, rows.length, { ends: true });
 		if (key === 'Escape') {
 			if (flyout) this.flyout = false;
 			else this.close();
@@ -271,7 +272,7 @@ export class BlockMenuController {
 		else if (flyout && key === 'Enter') this.run(this.flyoutRows[this.flyoutIndex]);
 		else if (key === 'Delete' && !this.query) this.remove();
 		else if (to !== undefined) {
-			this.selectedIndex = to;
+			this.index = to;
 			this.flyout = false;
 		} else if (key === 'ArrowRight' && submenu) this.openFlyout(submenu);
 		else if (key === 'ArrowLeft' && flyout) this.flyout = false;
@@ -422,7 +423,7 @@ export class BlockMenuController {
 		this.block = block;
 		this.anchor = anchor;
 		this.query = '';
-		this.selectedIndex = 0;
+		this.index = 0;
 		this.flyout = false;
 		this.flyoutIndex = 0;
 	}

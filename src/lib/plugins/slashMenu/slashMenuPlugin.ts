@@ -67,7 +67,7 @@ export const createSlashMenuPlugin =
 			plugin,
 			[controller],
 			() => ({
-				move: (step) => controller.moveSelection(step),
+				move: controller.move,
 				pick: controller.commands.length ? () => void controller.runSelected() : undefined,
 				close: () => controller.dismiss()
 			}),

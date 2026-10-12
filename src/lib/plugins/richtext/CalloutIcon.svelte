@@ -29,7 +29,7 @@
 		aria-label={icon ? labels.change : labels.add}
 		aria-haspopup="menu"
 		aria-expanded={open}
-		aria-controls={open ? picker.id : undefined}
+		aria-controls={open ? picker.listId : undefined}
 		onmousedown={(event) => event.preventDefault()}
 		onclick={() => block.handle && picker.toggle(block.handle)}>{icon}</button
 	>

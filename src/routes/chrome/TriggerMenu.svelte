@@ -50,7 +50,7 @@
 					class="edytor-trigger-item"
 					{...controller.option(index)}
 					data-testid="trigger-menu-item"
-					onmousemove={() => (controller.selectedIndex = index)}
+					onmousemove={() => (controller.index = index)}
 					onclick={() => void controller.pick(item)}
 				>
 					{controller.labelOf(item)}

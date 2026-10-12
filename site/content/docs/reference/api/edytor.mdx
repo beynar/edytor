@@ -581,7 +581,7 @@ export declare class BlockMenuController {
     blocks: Block[];
     anchor: HTMLElement | null;
     query: string;
-    selectedIndex: number;
+    index: number;
     flyout: false | "color" | "turn";
     flyoutIndex: number;
     constructor(edytor: Edytor, options?: BlockMenuOptions);
@@ -625,6 +625,7 @@ export declare class BlockMenuController {
 
 - `block`: The block whose grip opened the menu.
 - `blocks`: The blocks the actions apply to, in document order: the block selection when it holds `block` (Notion), else `block` alone — as clicked, so a grip-selected list is one block (Move, Duplicate, Copy link, the caret after).
+- `index`: The keyboard's row.
 - `flyout`: The open flyout: the kinds (`turn`), the colours (`color`), or none.
 - `flyoutIndex`: The keyboard's row in the open flyout.
 - `readonly`: The editor is readonly: the menu closes.
@@ -855,18 +856,17 @@ root), spread `picker.option(i)` on each row (`i` in `icons`,
 `icons.length` for Remove icon) and run `picker.pick(i)` on its click.
 
 ```ts
-export declare class CalloutIconPicker {
+export declare class CalloutIconPicker extends ChromeList {
     #private;
     readonly icon: string;
     readonly icons: readonly string[];
     target: string | null;
-    index: number;
     readonly columns = 8;
     constructor(edytor: Edytor, icon?: string, icons?: readonly string[]);
     get isOpen(): boolean;
     get block(): Block | undefined;
     get current(): string | undefined;
-    get id(): string;
+    protected get count(): number;
     get readonly(): boolean;
     iconOf: (data: Record<string, unknown> | undefined) => string;
     toggle: (block: Block) => void;
@@ -874,23 +874,20 @@ export declare class CalloutIconPicker {
     close: (keys?: boolean) => void;
     set: (icon: string) => void;
     remove: () => void;
-    optionId: (index: number) => string;
     pick: (index: number) => void;
-    option: (index: number) => OptionAttributes;
+    option(index: number): OptionAttributes;
     keys: Attachment<HTMLElement>;
-    popup: Attachment<HTMLElement>;
 }
 ```
 
 - `icon`: A new callout's icon, and the one a callout without `data.icon` shows.
 - `icons`: The picker's choices.
 - `target`: The callout the picker is open on (its id), `null` when closed.
-- `index`: The keyboard's row: an index in `icons`, `icons.length` for Remove icon.
 - `columns`: The choices on a row: ArrowUp and ArrowDown move by a row, so lay the icons out in as many columns.
 - `isOpen`: Whether the picker is open (reactive).
 - `block`: The callout it is open on (reactive).
 - `current`: The icon that callout shows (`''`: none; reactive).
-- `id`: The picker element's id (`edytor.popups`).
+- `count`: The keyboard's rows: the icons, then Remove icon.
 - `readonly`: The view is readonly (reactive): the picker closes.
 - `iconOf`: The icon a callout with `data` shows.
 - `toggle`: Open the picker on `block`, or close it when it is open there.
@@ -898,11 +895,9 @@ export declare class CalloutIconPicker {
 - `close`: Close the picker; with `keys` (by default), the editor takes the keys back, with its selection.
 - `set`: Write `icon` on the callout (one undo step), then close.
 - `remove`: Leave the callout without an icon (`data.icon` is `''`), then close.
-- `optionId`: Row `index`'s element id.
 - `pick`: Pick row `index`: its icon, or Remove icon (`icons.length`).
 - `option`: What row `index` spreads (`icons.length`: Remove icon), as every menu's rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for Remove icon), `data-selected` on the keyboard's row.
 - `keys`: The picker's element (`{@attach picker.keys}`): it takes the focus as it opens and names the keyboard's row (`aria-activedescendant`).
-- `popup`: The picker's element (`{@attach picker.popup}`): its id, `menu` role and name unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`) while it is in the page.
 
 ## Caret
 
@@ -1648,7 +1643,7 @@ data changes) never moves it. Each is one plan: one refusal or veto keeps
 everything, one undo step. Answers whether it applied.
 
 ```ts
-declare const convertToKind: (edytor: Edytor, block: Block | null | undefined, row: KindRow, caret?: boolean) => boolean;
+declare const convertToKind: (edytor: Edytor, block: Block | null | undefined, row: Pick<KindRow, "value" | "replaces">, caret?: boolean) => boolean;
 ```
 
 ## createArrowMovePlugin
@@ -3935,49 +3930,40 @@ the attachments that give it the keys and the ARIA: `keys` on the
 search field, `popup` on the list, `option(index)` spread on each row.
 
 ```ts
-export declare class LanguageMenu {
+export declare class LanguageMenu extends ChromeList {
     #private;
     open: {
         block: string;
         keys: boolean;
     } | null;
     query: string;
-    index: number;
     get readonly(): boolean;
     get current(): string | null;
     get rows(): readonly LanguageRow[];
     get items(): LanguageMenuItem[];
+    protected get count(): number;
     isOpenFor: (block: string) => boolean;
-    get listId(): string;
-    rowId: (row: LanguageRow) => string;
     toggle: (block: string, keys: boolean) => void;
     search: (query: string) => void;
-    move: (step: number) => void;
     pick: (row?: LanguageRow | undefined) => void;
     close: (keys?: "button" | "editor" | null) => void;
-    option: (index: number) => OptionAttributes;
     keys: Attachment<HTMLElement>;
-    popup: Attachment<HTMLElement>;
 }
 ```
 
 - `open`: The code block whose list is open, and whether the keys opened it (reactive).
 - `query`: The search field's text.
-- `index`: The highlighted row, in `rows`.
 - `readonly`: The view is readonly (reactive): the list closes.
 - `current`: The open block's language id.
 - `rows`: The rows the query keeps: a language the plugin does not list first (the block's own), then the list.
 - `items`: The rows for your `menu`: each the row shape every menu shares (`run` picks it, `select` highlights it, `option` its attributes), and whether it is the block's language (`current`).
+- `count`: How many rows the keyboard walks.
 - `isOpenFor`: Whether `block`'s list is open.
-- `listId`: The list's and its rows' element ids (page-unique).
 - `toggle`: Open `block`'s list (`keys`: the keyboard opened it), or close it when it is open.
 - `search`: A new query: the first row it keeps is highlighted.
-- `move`: Move the highlighted row by `step`, around the ends.
 - `pick`: Pick `row` (the highlighted one): the block's language, one undo step; the list closes.
 - `close`: Close the list; the keys go back to its button (`button`), to the editor (`editor`: its caret where it was), or stay where a press or a focus put them (`null`).
-- `option`: The attributes of the row at `index`: spread them on its element (`{...menu.option(index)}`).
 - `keys`: The search field (`{@attach menu.keys}`): it takes the focus as the list opens and is its `combobox` (unless it has a role), naming the list and the highlighted row (`aria-controls`, `aria-activedescendant`).
-- `popup`: The list (`{@attach menu.popup}`): its id, `listbox` role and name unless it has its own, presses that keep the field's focus, and its publication to the view's root (`edytor.popups`) while it is in the page.
 
 ## LanguageMenuItem
 
@@ -5418,8 +5404,6 @@ export declare class SlashMenuController extends TextTriggerController {
     addition: BlockAddition | null;
     private held;
     constructor(edytor: Edytor);
-    optionId: (command: EditorCommand) => string;
-    protected rowIdAt(index: number): string;
     protected popupOf(active: string | undefined): Popup;
     keys: Attachment<HTMLElement>;
     protected get count(): number;
@@ -5437,11 +5421,9 @@ export declare class SlashMenuController extends TextTriggerController {
 ```
 
 - `addition`: Opened by a handle's `+` (`BLOCK_ADD_EVENT`): no `/` in the text, the query is the menu's own field, and a picked row adds the block first.
-- `optionId`: A row's element id (page-unique), for `aria-activedescendant` (`option(index)` sets it).
-- `rowIdAt`: The element id of the row at `index`, if there is such a row.
 - `popupOf`: A `+`'s menu names its highlighted row from its own field, and tells the `+` it opened it.
 - `keys`: The element that holds a `+` menu's keyboard (`{@attach controller.keys}`: its field, or the menu element itself).
-- `count`: The rows the keyboard moves through.
+- `count`: How many rows the keyboard walks.
 - `admits`: A `/` opens the menu in a block a kind can replace (`convertible`).
 - `queried`: A query no command matches is prose (a URL, a path), and so is one that opens with whitespace (`yes / no`) or holds only hyphens (`/-`): the menu closes.
 - `commands`: Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order.
@@ -5745,34 +5727,30 @@ the menu's element, `option(index)` spread on each row) and `close()`.
 A grip's own attachment is its payload's `grip`.
 
 ```ts
-export declare class TableChrome {
+export declare class TableChrome extends ChromeList {
     #private;
     menu: TableMenu | null;
-    index: number;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
+    protected get count(): number;
     get readonly(): boolean;
     toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
-    get menuId(): string;
     get items(): TableMenuItem[];
-    option: (index: number) => OptionAttributes;
-    popup: Attachment<HTMLElement>;
+    option(index: number): OptionAttributes;
     keys: Attachment<HTMLElement>;
     gripOf: (kind: Kind) => Attachment<HTMLElement>;
 }
 ```
 
 - `menu`: What the open grip menu acts on (`null`: none is open).
-- `index`: The keyboard's row of the open menu, in `items` (never a disabled one).
+- `count`: How many rows the keyboard walks.
 - `readonly`: The view is readonly (reactive): the chrome shows nothing.
 - `toggle`: Open the `kind` grip's menu on the row or column it stands for, its first row that can run the keyboard's, or close it when it is open there (a grip's click).
 - `isOpen`: Whether a menu is open (reactive).
 - `close`: Close the menu; the editor takes the keys back.
-- `menuId`: The menu element's id (page-unique), for `aria-controls`.
 - `items`: The open menu's rows for your `menu`: each the row shape every menu shares (`run` runs it and closes the menu, `select` makes it the keyboard's, `option` its attributes), whether it can run now (`disabled`) and whether it deletes (`danger`).
 - `option`: The attributes of the open menu's row at `index`: spread them on its element (`{...chrome.option(index)}`).
-- `popup`: The menu's element (`{@attach chrome.popup}`): its id, `menu` role and name (Row options, Column options) unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in the page; `data-edytor-table-menu` names the kind it is open on.
 - `keys`: The element that holds the menu's keyboard (`{@attach chrome.keys}`, the menu's own): it takes the focus when it mounts and names the keyboard's row (`aria-activedescendant`); ArrowDown and ArrowUp walk the rows that can run (around the ends), Home and End reach the first and last, Enter or Space runs the row, Escape and Tab close the menu and give the keys back to the editor.
 - `gripOf`: The `kind` grip's attachment (`{@attach}` it on a grip's element; a `grip` snippet's payload carries it): in an editable view, dragging it moves its row or column within its table (`table.drag`); a click with no drag opens or closes its menu; ArrowDown opens the menu, Escape closes it and gives the keys back to the editor.
 
@@ -6214,10 +6192,8 @@ export declare class TriggerMenuController<T = unknown> extends TextTriggerContr
     constructor(edytor: Edytor, trigger: Trigger<T>, owner: string);
     protected get count(): number;
     protected admits(block: Block): boolean;
-    protected rowIdAt(index: number): string | undefined;
     labelOf: (item: T) => string;
     keyOf: (item: T) => string;
-    optionId: (index: number) => string;
     protected queried(query: string): void;
     private answered;
     close(): void;
@@ -6228,10 +6204,8 @@ export declare class TriggerMenuController<T = unknown> extends TextTriggerContr
 
 - `items`: The rows for the query (the newest answered; a pending search keeps the last).
 - `loading`: A search for the query is pending.
-- `count`: The rows the keyboard moves through.
+- `count`: How many rows the keyboard walks.
 - `admits`: Whether a trigger typed in `block` opens the menu.
-- `rowIdAt`: The element id of the row at `index`, if there is such a row.
-- `optionId`: The element id of the row at `index` (page-unique, whatever the rows' keys or labels), for `aria-activedescendant`.
 - `queried`: The query changed (or was set again): close the menu, or load its rows.
 - `pickSelected`: Pick the keyboard's row.
 - `pick`: Replace the trigger and its query with `item` (`onPick`).
@@ -6322,35 +6296,24 @@ One controller per view, shared by the plugins that make offers: the
 first one listed carries its hooks (`urlPaste`).
 
 ```ts
-export declare class UrlPasteController {
+export declare class UrlPasteController extends ChromeList {
     #private;
-    readonly edytor: Edytor;
     readonly offers: UrlPasteOffer[];
     open: {
         block: string;
         url: string;
         options: UrlPasteOption[];
     } | null;
-    index: number;
     constructor(edytor: Edytor);
+    protected get count(): number;
     get readonly(): boolean;
-    get listId(): string;
-    optionId: (index: number) => string;
-    option: (index: number) => OptionAttributes;
-    popup: Attachment<HTMLElement>;
     close: () => void;
-    move: (step: number) => boolean;
     pick: (option?: UrlPasteOption | undefined) => void;
 }
 ```
 
 - `open`: The open menu: the line, the URL, the rows.
-- `index`: The keyboard's row.
-- `listId`: The listbox's element id (page-unique), for `aria-controls`.
-- `optionId`: The element id of the row at `index` (page-unique), for `aria-activedescendant`.
-- `option`: The attributes of the row at `index`: spread them on its element (`{...controller.option(index)}`): its id, `role="option"`, `aria-selected` and `data-selected` for the keyboard's row.
-- `popup`: The listbox (`{@attach controller.popup}`, named by your markup): it takes the menu's id and its `listbox` role unless it has its own, keeps the editor's focus on a press, and is published to the view's root (`edytor.popups`) with its highlighted row while the menu is open: the editor keeps the keyboard (its keys move and pick).
-- `move`: Move the keyboard's row; answers whether the menu took the key.
+- `count`: How many rows the keyboard walks.
 - `pick`: Pick a row: keep the link, or turn the line into the offer's kind.
 
 ## UrlPasteOffer

@@ -8,7 +8,6 @@
  * first operation (one plan, one undo step). The slash menu is one
  * (`SlashMenuController`), a plugin's `triggers` are the others.
  */
-import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -17,8 +16,8 @@ import type { Trigger, TriggerContext } from '$lib/plugins.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
-import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
-import { listPopup } from '../list.svelte.js';
+import { inPage } from '../chrome.js';
+import { ChromeList } from '../list.svelte.js';
 
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };
@@ -46,27 +45,26 @@ const contextOf = (
 	};
 };
 
-export abstract class TextTriggerController {
+export abstract class TextTriggerController extends ChromeList {
 	isOpen = $state(false);
 	query = $state('');
-	selectedIndex = $state(0);
 	/** The trigger's start and the query's end, held as anchors so peers' edits move them. */
 	protected activeRange: { trigger: TextAnchor; end: TextAnchor } | null = null;
 	/** A pick is running: its own selection changes close nothing. */
 	protected picking = false;
 
 	constructor(
-		protected edytor: Edytor,
+		edytor: Edytor,
 		/** The text that opens the menu. */
 		readonly char: string,
 		/** The popup's owner name (`edytor.popups`), unique per view. */
-		protected owner: string
+		owner: string
 	) {
-		this.popup = listPopup(
+		super(
 			edytor,
 			owner,
 			'listbox',
-			(node) => this.isOpen && this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex)))
+			(node) => this.isOpen && this.popupOf(inPage(node, this.rowId(this.index)))
 		);
 	}
 
@@ -75,42 +73,11 @@ export abstract class TextTriggerController {
 		return this.edytor.readonly;
 	}
 
-	/** The listbox's element id (page-unique), for `aria-controls`. */
-	get listId() {
-		return this.edytor.popups.idOf(this.owner);
-	}
-
-	/**
-	 * The listbox (`{@attach controller.popup}`, named by your markup): it
-	 * takes the menu's id and its `listbox` role unless it has its own, keeps the focus where it
-	 * is on a press (the editor's caret, or the menu's field), and is
-	 * published to the view's root (`edytor.popups`) while the menu is open,
-	 * with its highlighted row (`option(index)`) once that row is in the page.
-	 */
-	popup: Attachment<HTMLElement>;
-
-	/**
-	 * The attributes of the row at `index`: spread them on its element
-	 * (`{...controller.option(index)}`): its id (the one the menu's keyboard
-	 * owner names), `role="option"`, `aria-selected` and `data-selected` for
-	 * the keyboard's row, which scrolls into view.
-	 */
-	option = (index: number): OptionAttributes =>
-		optionAttributes(
-			this.rowIdAt(index) ?? this.edytor.popups.idOf(`${this.owner}-option-${index}`),
-			'option',
-			index === this.selectedIndex
-		);
-
 	/** The record `popup` publishes, `active` the highlighted row's id when it is in the page. */
 	protected popupOf(active: string | undefined): Popup {
 		return { id: this.listId, haspopup: 'listbox', active };
 	}
 
-	/** The element id of the row at `index`, if there is such a row. */
-	protected abstract rowIdAt(index: number): string | undefined;
-	/** The rows the keyboard moves through. */
-	protected abstract get count(): number;
 	/** Whether a trigger typed in `block` opens the menu. */
 	protected abstract admits(block: Block): boolean;
 	/** The query changed (or was set again): close the menu, or load its rows. */
@@ -162,19 +129,10 @@ export abstract class TextTriggerController {
 		else this.close();
 	}
 
-	/** Move the keyboard's row (wrapping); `false` when there is nothing to move through. */
-	moveSelection(delta: number) {
-		// Nothing to move through: the arrows stay the caret's.
-		const count = this.isOpen ? this.count : 0;
-		if (!count) return false;
-		this.selectedIndex = (this.selectedIndex + delta + count) % count;
-		return true;
-	}
-
 	close() {
 		this.isOpen = false;
 		this.query = '';
-		this.selectedIndex = 0;
+		this.index = 0;
 		this.activeRange = null;
 	}
 
@@ -245,7 +203,7 @@ export abstract class TextTriggerController {
 		this.activeRange = { trigger, end };
 		this.isOpen = true;
 		this.query = '';
-		this.selectedIndex = 0;
+		this.index = 0;
 		this.syncQueryFromText(true);
 	}
 
@@ -255,11 +213,11 @@ export abstract class TextTriggerController {
 		const { text, triggerStart, queryEnd } = range;
 		const query = text.stringContent.slice(triggerStart + this.char.length, queryEnd);
 		// A new query highlights its first match again (Notion).
-		if (query !== this.query) this.selectedIndex = 0;
+		if (query !== this.query) this.index = 0;
 		const changed = opened || query !== this.query;
 		this.query = query;
 		if (changed) this.queried(query);
-		else this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.count - 1));
+		else this.index = Math.max(0, Math.min(this.index, this.count - 1));
 	}
 }
 
@@ -291,16 +249,12 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	}
 
 	protected get count() {
-		return this.items.length;
+		return this.isOpen ? this.items.length : 0;
 	}
 
 	protected admits(block: Block) {
 		if (this.trigger.enabled) return this.trigger.enabled(block);
 		return !inCodeLines(this.edytor, block);
-	}
-
-	protected rowIdAt(index: number) {
-		return this.items[index] === undefined ? undefined : this.optionId(index);
 	}
 
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));
@@ -310,12 +264,6 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		const id = (item as { id?: unknown } | null)?.id;
 		return typeof id === 'string' || typeof id === 'number' ? String(id) : this.labelOf(item);
 	};
-
-	/**
-	 * The element id of the row at `index` (page-unique, whatever the rows'
-	 * keys or labels), for `aria-activedescendant`.
-	 */
-	optionId = (index: number) => this.edytor.popups.idOf(`${this.owner}-option-${index}`);
 
 	protected queried(query: string) {
 		// A query that opens with whitespace is prose (`a @ b`): the menu closes.
@@ -353,7 +301,7 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		this.#pickOnAnswer = false;
 		this.items = Array.isArray(rows) ? rows : [];
 		if (!this.items.length && /\s$/.test(this.query)) return this.close();
-		this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.items.length - 1));
+		this.index = Math.max(0, Math.min(this.index, this.items.length - 1));
 		if (pick) void this.pickSelected();
 	}
 
@@ -375,7 +323,7 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 			this.#pickOnAnswer = true;
 			return Promise.resolve(undefined);
 		}
-		const item = this.items[this.selectedIndex];
+		const item = this.items[this.index];
 		return item === undefined ? Promise.resolve(undefined) : this.pick(item);
 	}
 

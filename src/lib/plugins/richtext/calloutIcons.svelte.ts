@@ -15,7 +15,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
+import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
 import { optionAttributes, type OptionAttributes } from '../chrome.js';
 import { Anchored } from '../anchored.svelte.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
@@ -85,11 +85,9 @@ export const calloutHtml = (icon: string, content: string, children: string) =>
  * root), spread `picker.option(i)` on each row (`i` in `icons`,
  * `icons.length` for Remove icon) and run `picker.pick(i)` on its click.
  */
-export class CalloutIconPicker {
+export class CalloutIconPicker extends ChromeList {
 	/** The callout the picker is open on (its id), `null` when closed. */
 	target = $state<string | null>(null);
-	/** The keyboard's row: an index in `icons`, `icons.length` for Remove icon. */
-	index = $state(0);
 	/** The choices on a row: ArrowUp and ArrowDown move by a row, so lay the icons out in as many columns. */
 	readonly columns = ICON_COLUMNS;
 	/**
@@ -103,14 +101,13 @@ export class CalloutIconPicker {
 	#before: SelectionValue | null = null;
 
 	constructor(
-		/** @internal */
-		readonly edytor: Edytor,
+		edytor: Edytor,
 		/** A new callout's icon, and the one a callout without `data.icon` shows. */
 		readonly icon: string = DEFAULT_CALLOUT_ICON,
 		/** The picker's choices. */
 		readonly icons: readonly string[] = CALLOUT_ICONS
 	) {
-		this.popup = listPopup(edytor, 'callout-icons', 'menu');
+		super(edytor, 'callout-icons', 'menu');
 		this.panel = new Anchored(
 			edytor,
 			'edytor-callout-icons-host',
@@ -143,9 +140,9 @@ export class CalloutIconPicker {
 		return block ? this.iconOf(block.data) : undefined;
 	}
 
-	/** The picker element's id (`edytor.popups`). */
-	get id() {
-		return this.edytor.popups.idOf('callout-icons');
+	/** The keyboard's rows: the icons, then Remove icon. */
+	protected get count() {
+		return this.icons.length + 1;
 	}
 
 	/** The view is readonly (reactive): the picker closes. */
@@ -193,9 +190,6 @@ export class CalloutIconPicker {
 	/** Leave the callout without an icon (`data.icon` is `''`), then close. */
 	remove = () => this.set('');
 
-	/** Row `index`'s element id. */
-	optionId = (index: number) => `${this.id}-${index}`;
-
 	/** Pick row `index`: its icon, or Remove icon (`icons.length`). */
 	pick = (index: number) => {
 		const icon = this.icons[index];
@@ -208,19 +202,16 @@ export class CalloutIconPicker {
 	 * rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for
 	 * Remove icon), `data-selected` on the keyboard's row.
 	 */
-	option = (index: number): OptionAttributes => {
+	option(index: number): OptionAttributes {
 		const icon = this.icons[index];
-		const selected = index === this.index;
-		return icon === undefined
-			? optionAttributes(this.optionId(index), 'menuitem', selected, {}, false)
-			: optionAttributes(
-					this.optionId(index),
-					'menuitemradio',
-					selected,
-					{ 'aria-checked': icon === this.current },
-					false
-				);
-	};
+		return optionAttributes(
+			this.rowId(index),
+			icon === undefined ? 'menuitem' : 'menuitemradio',
+			index === this.index,
+			icon === undefined ? {} : { 'aria-checked': icon === this.current },
+			false
+		);
+	}
 
 	/**
 	 * The picker's element (`{@attach picker.keys}`): it takes the focus as
@@ -239,7 +230,7 @@ export class CalloutIconPicker {
 				event,
 				{
 					at,
-					count: this.icons.length + 1,
+					count: this.count,
 					to: (index) => (this.index = index),
 					pick: () => this.pick(at),
 					close: this.close
@@ -254,17 +245,10 @@ export class CalloutIconPicker {
 		// It gives back the editor's selection as it is now: a block menu that
 		// opened it gave its caret back first.
 		this.#before ??= this.edytor.selection.value;
-		const off = holdKeys(node, keydown, () => this.optionId(this.index));
+		const off = holdKeys(node, keydown, () => this.rowId(this.index));
 		return () => {
 			off();
 			node.removeEventListener('focusout', this.panel.blurred);
 		};
 	};
-
-	/**
-	 * The picker's element (`{@attach picker.popup}`): its id, `menu` role and
-	 * name unless it has its own, presses that keep the focus, and its
-	 * publication to the view's root (`edytor.popups`) while it is in the page.
-	 */
-	popup: Attachment<HTMLElement>;
 }

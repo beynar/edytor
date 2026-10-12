@@ -91,7 +91,7 @@ A snippet declared at the top level of a component's markup can be used in its `
 			{#each slash.commands as command, index (command.id)}
 				<li
 					{...slash.option(index)}
-					onmousemove={() => (slash.selectedIndex = index)}
+					onmousemove={() => (slash.index = index)}
 					onclick={() => void slash.run(command)}
 				>
 					{command.label}
@@ -174,9 +174,9 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 				<button
 					type="button"
 					{...blockMenu.option(index)}
-					onmousemove={() => (blockMenu.selectedIndex = index)}
+					onmousemove={() => (blockMenu.index = index)}
 					onclick={() => {
-						blockMenu.selectedIndex = index;
+						blockMenu.index = index;
 						blockMenu.run(row);
 					}}>{row.label}</button
 				>

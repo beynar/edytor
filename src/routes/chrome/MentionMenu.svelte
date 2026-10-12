@@ -18,7 +18,7 @@
 			class="row"
 			{...controller.option(index)}
 			data-testid="trigger-menu-item"
-			onmousemove={() => (controller.selectedIndex = index)}
+			onmousemove={() => (controller.index = index)}
 			onclick={() => void controller.pick(item)}
 		>
 			<span class="avatar" aria-hidden="true">

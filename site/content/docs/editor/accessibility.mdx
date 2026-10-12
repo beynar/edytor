@@ -61,7 +61,7 @@ The package draws no menu: your snippets do ([Menus and handles](/docs/customiza
 - `{...controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a controller's row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
 - The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts.
 
-The controllers still expose the ids (`listId` and `optionId(command)` on the slash menu's, `menuId`, `flyoutId` and `rowId(row)` on the block menu's, `barId` and `linkFieldId` on the toolbar's) and `publish(popup)`, for markup that publishes itself: write `{ id, haspopup?, active?, keys?, opener? }` from an `$effect` once your markup is in the page, `publish(null)` to withdraw it.
+The controllers still expose the ids, for markup that names them itself: every list's `listId` and `rowId(index)` (rows are named by position: the slash and trigger menus, the code language list, the callout picker, the pasted-link menu, a table grip's menu), the block menu's `menuId`, `flyoutId` and `rowId(row)`, the toolbar's `barId` and `linkFieldId`. The `popup` attachment is the one way a surface reaches the root.
 
 ## Block handles
 

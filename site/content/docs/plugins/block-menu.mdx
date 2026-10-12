@@ -26,7 +26,7 @@ icon: menu
 				<button
 					{...controller.option(index)}
 					onclick={() => {
-						controller.selectedIndex = index;
+						controller.index = index;
 						controller.run(row);
 					}}>{row.label}</button
 				>
@@ -200,7 +200,7 @@ The snippet receives the `BlockMenuController`:
     "copyLink()": { type: "() => Promise<void>", description: "Write linkTo(block) to the clipboard." },
     "close()": { type: "(restoreCaret?: boolean) => void", description: "Close the menu; the caret returns to the block (several blocks stay selected) unless restoreCaret is false." },
     query: { type: "string", description: "The search text. Writable: actions filter by it." },
-    selectedIndex: { type: "number", description: "The keyboard's row. Writable." },
+    index: { type: "number", description: "The keyboard's row. Writable." },
     flyout: { type: "false | 'turn' | 'color'", description: "The open flyout: the Turn into kinds, the colours, or none. Writable (false closes it)." },
     flyoutRows: { type: "Array<KindRow | BlockMenuColor>", description: "The open flyout's rows: kinds, or colours." },
     flyoutIndex: { type: "number", description: "The keyboard's row in the open flyout. Writable." },

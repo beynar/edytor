@@ -2,13 +2,8 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import {
-	attribute,
-	optionAttributes,
-	type MenuItemPayload,
-	type OptionAttributes
-} from '../chrome.js';
-import { holdKeys, listPopup } from '../list.svelte.js';
+import { attribute, type MenuItemPayload } from '../chrome.js';
+import { ChromeList, holdKeys } from '../list.svelte.js';
 import { Anchored } from '../anchored.svelte.js';
 import { languageOf, type CodeSettings } from './languages.js';
 
@@ -41,13 +36,11 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
  * the attachments that give it the keys and the ARIA: `keys` on the
  * search field, `popup` on the list, `option(index)` spread on each row.
  */
-export class LanguageMenu {
+export class LanguageMenu extends ChromeList {
 	/** The code block whose list is open, and whether the keys opened it (reactive). */
 	open = $state.raw<{ block: string; keys: boolean } | null>(null);
 	/** The search field's text. */
 	query = $state('');
-	/** The highlighted row, in `rows`. */
-	index = $state(0);
 	/**
 	 * The list's panel under its button: its place, and what closes it.
 	 * @internal
@@ -56,12 +49,11 @@ export class LanguageMenu {
 
 	/** @internal */
 	constructor(
-		/** @internal */
-		readonly edytor: Edytor,
+		edytor: Edytor,
 		/** @internal */
 		readonly settings: CodeSettings
 	) {
-		this.popup = listPopup(edytor, 'code-languages', 'listbox');
+		super(edytor, 'code-languages', 'listbox');
 		this.panel = new Anchored(
 			edytor,
 			'edytor-code-language-host',
@@ -104,29 +96,23 @@ export class LanguageMenu {
 	 */
 	get items(): LanguageMenuItem[] {
 		const current = this.current;
-		return this.rows.map((row, index) => {
-			const id = this.rowId(row);
-			const selected = index === this.index;
-			return {
-				item: row,
-				id,
-				selected,
-				current: row.id === current,
-				run: () => this.pick(row),
-				select: () => (this.index = index),
-				option: optionAttributes(id, 'option', selected)
-			};
-		});
+		return this.rows.map((row, index) => ({
+			item: row,
+			id: this.rowId(index),
+			selected: index === this.index,
+			current: row.id === current,
+			run: () => this.pick(row),
+			select: () => (this.index = index),
+			option: this.option(index)
+		}));
+	}
+
+	protected get count() {
+		return this.rows.length;
 	}
 
 	/** Whether `block`'s list is open. */
 	isOpenFor = (block: string) => this.open?.block === block;
-
-	/** The list's and its rows' element ids (page-unique). */
-	get listId() {
-		return this.edytor.popups.idOf('code-languages');
-	}
-	rowId = (row: LanguageRow) => this.edytor.popups.idOf(`code-language-${row.id}`);
 
 	/** Open `block`'s list (`keys`: the keyboard opened it), or close it when it is open. */
 	toggle = (block: string, keys: boolean) => {
@@ -145,12 +131,6 @@ export class LanguageMenu {
 	search = (query: string) => {
 		this.query = query;
 		this.index = 0;
-	};
-
-	/** Move the highlighted row by `step`, around the ends. */
-	move = (step: number) => {
-		const count = this.rows.length;
-		if (count) this.index = (this.index + step + count) % count;
 	};
 
 	/** Pick `row` (the highlighted one): the block's language, one undo step; the list closes. */
@@ -183,17 +163,6 @@ export class LanguageMenu {
 	};
 
 	/**
-	 * The attributes of the row at `index`: spread them on its element
-	 * (`{...menu.option(index)}`). Its id, `option` role, `aria-selected` and
-	 * `data-selected` for the highlighted row, which scrolls into view.
-	 */
-	option = (index: number): OptionAttributes => {
-		const row = this.rows[index];
-		const id = row ? this.rowId(row) : this.edytor.popups.idOf(`code-language-${index}`);
-		return optionAttributes(id, 'option', index === this.index);
-	};
-
-	/**
 	 * The search field (`{@attach menu.keys}`): it takes the focus as the
 	 * list opens and is its `combobox` (unless it has a role), naming the
 	 * list and the highlighted row (`aria-controls`,
@@ -210,10 +179,9 @@ export class LanguageMenu {
 			node.setAttribute('aria-autocomplete', 'list');
 			attribute(node, 'aria-controls', this.listId);
 			node.addEventListener('focusout', this.panel.blurred);
-			const off = holdKeys(node, this.#keydown, () => {
-				const row = this.rows[this.index];
-				return row && this.rowId(row);
-			});
+			const off = holdKeys(node, this.#keydown, () =>
+				this.rows.length ? this.rowId(this.index) : undefined
+			);
 			return () => {
 				off();
 				node.removeEventListener('focusout', this.panel.blurred);
@@ -231,13 +199,6 @@ export class LanguageMenu {
 		event.preventDefault();
 		event.stopPropagation();
 	};
-
-	/**
-	 * The list (`{@attach menu.popup}`): its id, `listbox` role and name
-	 * unless it has its own, presses that keep the field's focus, and its
-	 * publication to the view's root (`edytor.popups`) while it is in the page.
-	 */
-	popup: Attachment<HTMLElement>;
 
 	/**
 	 * The keys back to the editor from a language button (its Escape): the

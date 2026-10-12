@@ -27,8 +27,8 @@ import { build, preview } from 'vite';
 
 const appDir = fileURLToPath(new URL('./svelte-app/', import.meta.url));
 
-// `svelte-app/vite.config.mjs` carries the plugin + dedupe + noExternal
-// config; inline options only select the entry/output per build.
+// `svelte-app/vite.config.mjs` is a default config (`svelte()` only);
+// inline options only select the entry/output per build.
 console.log('==> svelte consumer: vite build (client)');
 await build({
 	root: appDir,

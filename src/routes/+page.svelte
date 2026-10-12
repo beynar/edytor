@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -30,12 +29,10 @@
 	} from './chrome/plugins.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
-	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
 	import '$lib/themes/notion.css';
 	import './demo.css';
 
 	let edytor = $state<EdytorContext>();
-	let isMounted = $state(false);
 
 	/** `#block-<id>` anchors: a copied block link scrolls to its block. */
 	const demoPagePlugin: Plugin = () => ({
@@ -285,12 +282,6 @@
 		]
 	};
 
-	onMount(() => {
-		// The live editor creates per-view DOM state; mount it after the static
-		// workspace shell hydrates so server/client markup stays identical.
-		isMounted = true;
-	});
-
 	// `?blocks=5000`: the demo content repeated to that many top-level blocks.
 	// The copies drop every id (the editor mints fresh ones).
 	const bigValue = (doc: JSONDoc, count: number): JSONDoc =>
@@ -303,10 +294,11 @@
 				)
 			: doc;
 	const initialValue = bigValue(demoValue, Number(page.url.searchParams.get('blocks')));
-	// One local document per `?doc=` (or per `?blocks=` variant): its tabs sync
-	// (IndexedDB + BroadcastChannel) and it persists across reloads.
+	// One local document per `?doc=` (or per `?blocks=` variant): a room with no
+	// server is the browser's copy (IndexedDB + BroadcastChannel), opened by the
+	// editor on the client; it persists across reloads.
 	const docName = page.url.searchParams.get('doc') ?? page.url.searchParams.get('blocks') ?? 'page';
-	const sync = createIndexeddbSync(`edytor-demo-${docName}`);
+	const room = `edytor-demo-${docName}`;
 </script>
 
 <svelte:head>
@@ -361,16 +353,14 @@
 			<div class="document-page">
 				<div class="page-icon" aria-hidden="true">🌱</div>
 				<div class="page-editor">
-					{#if isMounted}
-						<Edytor
-							{plugins}
-							value={initialValue}
-							{sync}
-							class="demo-edytor"
-							aria-label="A calmer place to think"
-							bind:edytor
-						/>
-					{/if}
+					<Edytor
+						{plugins}
+						value={initialValue}
+						{room}
+						class="demo-edytor"
+						aria-label="A calmer place to think"
+						bind:edytor
+					/>
 				</div>
 			</div>
 		</main>

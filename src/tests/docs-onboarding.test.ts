@@ -202,29 +202,36 @@ describe('onboarding truth (WU-18)', () => {
 		expect(read('site/content/docs/getting-started/index.mdx')).toContain(`Safari ${safari}`);
 	});
 
-	it('an editable editor server-renders, and only a room waits for the browser (DOC-03)', () => {
-		// The getting-started pages mount `<Edytor>` in any route without a guard:
-		// `ssr-editable.test.ts` renders it on the server. A route that renders an
-		// editor connected to a room mounts it after hydration or turns SSR off.
+	it('an editor server-renders in any route, with no mounted flag (DOC-03)', () => {
+		// `ssr-editable.test.ts` renders `<Edytor>` on the server: with a `value`,
+		// and with a room (its snapshot, its provider left to the browser). So no
+		// getting-started page guards it with `onMount` or turns SSR off.
 		expect(existsSync(join(root, 'src/tests/ssr-editable.test.ts'))).toBe(true);
-		for (const path of pages(join(root, 'site/content/docs/getting-started'))) {
-			const blocks = fences(readFileSync(path, 'utf8'));
-			const ssrOff = blocks.some(
-				(block) => /\+page\.ts/.test(block.meta) && /export const ssr = false/.test(block.code)
-			);
-			for (const block of blocks) {
-				if (block.lang !== 'svelte' || !/src\/routes\//.test(block.meta)) continue;
-				const connected = [...block.code.matchAll(/<Edytor\b[^>]*>/g)].some(
-					([tag]) => /\b(?:room|sync)\b/.test(tag) && !/\bsnapshot\b/.test(tag)
+		for (const path of pages(join(root, 'site/content/docs/getting-started')))
+			for (const block of fences(readFileSync(path, 'utf8')))
+				expect(block.code, `${relative(root, path)}: ${block.meta}`).not.toMatch(
+					/onMount|isMounted|ssr = false/
 				);
-				if (!connected) continue;
-				const mounted = /onMount/.test(block.code) && /\{#if \w+\}/.test(block.code);
-				expect(mounted || ssrOff, `${relative(root, path)}: ${block.meta}`).toBe(true);
-			}
-		}
-		const quickStart = read('site/content/docs/getting-started/quick-start.mdx');
-		expect(quickStart).toContain('renders on the server and hydrates');
-		expect(quickStart).not.toMatch(/onMount|ssr = false/);
+		expect(read('site/content/docs/getting-started/quick-start.mdx')).toContain(
+			'renders on the server and hydrates'
+		);
+		expect(read('site/content/docs/getting-started/sveltekit.mdx')).toContain(
+			'**`<Edytor>` renders on the server in every case, with no guard in your page.**'
+		);
+	});
+
+	it('no page asks for a Vite setting, and the packed consumer builds with none', () => {
+		// `tests/packed-consumer` builds, server-renders and mounts the tarball with
+		// `svelte()` alone; a SvelteKit app's default config needs nothing either.
+		const settings = /optimizeDeps|noExternal|dedupe/;
+		for (const path of [
+			...docs.filter((doc) => !doc.includes('/reference/')),
+			join(root, 'README.md')
+		])
+			expect(readFileSync(path, 'utf8'), relative(root, path)).not.toMatch(settings);
+		expect(
+			read('tests/packed-consumer/svelte-app/vite.config.mjs').replace(/\/\*[\s\S]*?\*\//g, '')
+		).not.toMatch(settings);
 	});
 
 	it('the quick start adds one plugin from the package, and the ready-made menus have their own page', () => {

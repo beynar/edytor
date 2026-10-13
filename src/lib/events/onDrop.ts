@@ -7,7 +7,7 @@ import {
 } from '$lib/clipboard/clipboard.js';
 import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
 import { caretAtPoint, getDomSelection } from '$lib/selection/domSelection.js';
-import { fileDragEnd, fileDragOver, fileDropAt } from '$lib/dnd/fileDrop.js';
+import { viewUploads } from '$lib/session/uploads.js';
 import type { DropAt } from '$lib/session/attempt.js';
 
 /**
@@ -16,10 +16,12 @@ import type { DropAt } from '$lib/session/attempt.js';
  * unsupported drags keep the browser's not-allowed affordance and can never
  * produce a native DOM mutation.
  *
- * `Files` is intentionally accepted: file drops route through the plugin
- * `onPaste` hook with the drop indicator's placement (`fileDrop.ts`: the
- * view's uploads place a block per file the kinds take there; unclaimed
- * files insert nothing).
+ * `Files` is intentionally accepted (so the browser never opens a dropped
+ * file in place of the page): with the view's uploads (a media plugin given
+ * an `upload`), file drops route through the plugin `onPaste` hook with the
+ * drop indicator's placement (`ViewUploads.drop`: a block per file the kinds
+ * take there; unclaimed files insert nothing); without them a drop carrying
+ * files is ignored, its effect `none`.
  */
 const ACCEPTED_FOREIGN_DROP_TYPES = ['Files', 'text/html', 'text/plain', 'text/uri-list'];
 
@@ -211,29 +213,32 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
 	}
 
 	const files = typesOf(event.dataTransfer).includes('Files');
+	// The view's uploads take dropped files (a media plugin given an `upload`); none: ignored.
+	const drop = files ? viewUploads(edytor)?.drop : undefined;
 	if (event.type === 'dragover') {
 		if (isAcceptedForeignDrop(root, event.dataTransfer)) {
 			event.preventDefault();
 			event.stopPropagation();
 			// Files show where they land (the block drag's indicator); none in a
-			// read-only view, which takes no drop (the browser must not open the file).
-			const shown = files && !ownsEvent(root, event) && fileDragOver(edytor, event);
+			// read-only view or one without uploads, which takes no file drop (the
+			// browser must not open the file).
+			const shown = drop && !ownsEvent(root, event) && drop.over(event);
 			if (event.dataTransfer)
-				event.dataTransfer.dropEffect = files && edytor.readonly ? 'none' : 'copy';
-			if (files && !shown) fileDragEnd(edytor);
+				event.dataTransfer.dropEffect = files && (edytor.readonly || !drop) ? 'none' : 'copy';
+			if (drop && !shown) drop.end();
 		}
 		return;
 	}
 
 	const accepted = isAcceptedForeignDrop(root, event.dataTransfer);
 	// Where the files land: the indicator's placement, re-resolved at the drop point.
-	const at = files && accepted && !ownsEvent(root, event) ? fileDropAt(edytor, event) : null;
-	if (files) fileDragEnd(edytor);
+	const at = drop && accepted && !ownsEvent(root, event) ? drop.at(event) : null;
+	drop?.end();
 	if (accepted && isControlDrop(root, event)) return;
 	event.preventDefault();
 	event.stopPropagation();
 
-	if (!accepted || (files && edytor.readonly)) {
+	if (!accepted || (files && (edytor.readonly || !drop))) {
 		return;
 	}
 	if (ownsEvent(root, event) || isNativeInteractiveControl(event.target)) {
@@ -254,5 +259,5 @@ export const onDragLeave = (edytor: Edytor, event: DragEvent) => {
 	const root = event.currentTarget as Element;
 	const to = event.relatedTarget;
 	if (to instanceof Node && root.contains(to)) return;
-	fileDragEnd(edytor);
+	viewUploads(edytor)?.drop.end();
 };

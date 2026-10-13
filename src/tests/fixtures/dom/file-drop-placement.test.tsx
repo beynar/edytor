@@ -6,6 +6,8 @@
  * is after it); dropped, they become one block per file, each of the kind
  * that takes it, there, as one command (one undo step). A read-only view
  * shows no indicator and takes no drop. Without the block handles plugin.
+ * Without a media plugin given an `upload` the view takes no file drop
+ * (the media plugins install it): the drop is swallowed, nothing shows.
  *
  * jsdom has no layout: the rows' boxes and the hit test are stubbed.
  */
@@ -26,7 +28,7 @@ afterEach(() => {
 
 const file = (name: string, type: string) => new File([new Uint8Array(4)], name, { type });
 
-const mount = (readonly = false) =>
+const mount = (readonly = false, media = true) =>
 	renderDomEdytor(
 		<root>
 			<paragraph>one</paragraph>
@@ -35,9 +37,13 @@ const mount = (readonly = false) =>
 		{
 			plugins: [
 				richTextPlugin,
-				mediaEmptyPlugin,
-				createImagePlugin({ upload: () => new Promise<string>(() => {}) }),
-				createFilePlugin({ upload: () => new Promise<string>(() => {}) })
+				...(media
+					? [
+							mediaEmptyPlugin,
+							createImagePlugin({ upload: () => new Promise<string>(() => {}) }),
+							createFilePlugin({ upload: () => new Promise<string>(() => {}) })
+						]
+					: [])
 			],
 			readonly
 		}
@@ -148,6 +154,23 @@ describe('drop.files.place', () => {
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
 		editor.dispatchEvent(dragEvent('dragover', data, 30));
+		expect(indicator()).toBeNull();
+		const drop = dragEvent('drop', data, 30);
+		editor.dispatchEvent(drop);
+		await flushDomUpdates();
+		// Swallowed: the browser must not open the file in place of the page.
+		expect(drop.defaultPrevented).toBe(true);
+		expect(types(edytor)).toEqual(['paragraph', 'paragraph']);
+	});
+
+	it('without a media plugin given an upload, a file drop is ignored: no indicator, no block, no navigation', async () => {
+		const { edytor, editor } = await mount(false, false);
+		layOut(edytor);
+		const data = transfer([file('photo.png', 'image/png')]);
+		const over = dragEvent('dragover', data, 30);
+		editor.dispatchEvent(over);
+		expect(over.defaultPrevented).toBe(true);
+		expect(data.dropEffect).toBe('none');
 		expect(indicator()).toBeNull();
 		const drop = dragEvent('drop', data, 30);
 		editor.dispatchEvent(drop);

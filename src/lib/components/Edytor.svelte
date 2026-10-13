@@ -90,6 +90,13 @@
 		 * the connection.
 		 */
 		readonly?: boolean;
+		/**
+		 * Let users nest blocks (default `false`): Tab and Shift+Tab nest and
+		 * unnest, drops and handle keys may place a block inside another. Off,
+		 * Tab is left to the browser and no gesture nests; containers keep their
+		 * bodies. Read once.
+		 */
+		allowNesting?: boolean;
 		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. Read once. */
 		hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 		/** After every commit that changed the visible document: a `JSONDoc`, the type `value` takes. */
@@ -182,6 +189,7 @@
 		document: edytorDocument,
 		doc,
 		readonly = false,
+		allowNesting = false,
 		value = defaultValue,
 		hotkeys,
 		sync,
@@ -210,6 +218,7 @@
 
 	const initialEdytorOptions = untrack(() => ({
 		readonly,
+		allowNesting,
 		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
 		doc,

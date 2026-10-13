@@ -97,10 +97,10 @@
 	class:edytor-long-page={cv}
 	style="max-width: 720px; margin: 0 auto; padding: 48px 96px;"
 >
-	<Edytor bind:edytor document={main} {plugins} />
+	<Edytor bind:edytor document={main} {plugins} allowNesting />
 	{#if peer}
 		<div data-large-peer style="display: none">
-			<Edytor bind:edytor={peerView} document={peer} {plugins} />
+			<Edytor bind:edytor={peerView} document={peer} {plugins} allowNesting />
 		</div>
 	{/if}
 </main>

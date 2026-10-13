@@ -38,7 +38,11 @@ export const contractDoc = (): JSONBlock[] => [
 	p('Z', 'z')
 ];
 
-export const renderColumns = (children: JSONBlock[], plugins: Plugin[] = []) =>
+export const renderColumns = (
+	children: JSONBlock[],
+	plugins: Plugin[] = [],
+	{ allowNesting = false }: { allowNesting?: boolean } = {}
+) =>
 	renderDomEdytor(
 		<root>
 			<paragraph>|</paragraph>
@@ -46,7 +50,8 @@ export const renderColumns = (children: JSONBlock[], plugins: Plugin[] = []) =>
 		{
 			plugins: [...plugins, createColumnsPlugin(), richTextPlugin],
 			value: { children },
-			autoSelectFixture: false
+			autoSelectFixture: false,
+			allowNesting
 		}
 	);
 

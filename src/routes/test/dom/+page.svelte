@@ -604,10 +604,10 @@
 				]
 			: []),
 		createArrowMovePlugin(),
-		data.scenario === 'image' ? image({ upload: scenarioUpload }) : imagePlugin,
+		data.scenario === 'image' || data.uploads ? image({ upload: scenarioUpload }) : imagePlugin,
 		mediaEmptyPlugin,
 		imageToolbarPlugin,
-		...(data.scenario === 'image' ? [file({ upload: scenarioUpload })] : []),
+		...(data.scenario === 'image' || data.uploads ? [file({ upload: scenarioUpload })] : []),
 		codePlugin,
 		createMarkdownShortcutsPlugin(),
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of
@@ -1345,6 +1345,7 @@
 			document={injectedDocument}
 			{value}
 			{readonly}
+			allowNesting={data.nesting}
 			{translate}
 			{spellcheck}
 			{autocorrect}
@@ -1362,6 +1363,7 @@
 				plugins={[() => ({ placeholder: 'Second editor' }), ...plugins]}
 				defaultPlugins={false}
 				value={secondaryValue}
+				allowNesting={data.nesting}
 				{translate}
 				{spellcheck}
 				{autocorrect}

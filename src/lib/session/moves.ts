@@ -54,6 +54,24 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 const POSITIONS: readonly BlockMovePosition[] = ['before', 'after', 'inside', ...BESIDE];
 
 /**
+ * The view's nesting rule (`allowNesting`, off by default): whether a user
+ * gesture may place `blocks` under `parent`. With nesting off, blocks land
+ * only at the root or in a block made to hold children — a container (a
+ * list, a column, a toggle's or a callout's body: `isContainer`, the kind's
+ * `container`), an island (a code block's lines) — or stay under the parent
+ * they already have (a document holding nested blocks still edits them).
+ * Every move (`destination`: keys, drops, menus, `edytor.move`) and every
+ * new block a drop places (`canPlaceNew`) reads it.
+ */
+export const nestsInto = (edytor: Edytor, parent: Block, blocks: readonly Block[] = []) =>
+	edytor.allowNesting ||
+	parent.isRoot ||
+	parent.isContainer ||
+	!!parent.definition.container ||
+	edytor.facade.isIsland(parent.id) ||
+	(blocks.length > 0 && blocks.every((block) => block.parent === parent));
+
+/**
  * The document write a move request is, or `null` when refused: a
  * well-formed request, then the document's one structural answer
  * (`canPlace` — the predicate the move applies at execution; an `out` step
@@ -89,7 +107,8 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 			? { blocks, write: () => edytor.unNestBlocks(ids) }
 			: null;
 	const to = parent?.isRoot ? null : parent?.id;
-	if (!parent || !edytor.facade.canPlace(ids, to)) return null;
+	if (!parent || !nestsInto(edytor, parent, blocks) || !edytor.facade.canPlace(ids, to))
+		return null;
 	const at =
 		position === 'inside' ? parent.children.length : target.index + (position === 'after' ? 1 : 0);
 	// The document counts the destination's children without the moved blocks.
@@ -181,7 +200,7 @@ export const canPlaceNew = (
 			!facade.isIsland(target.id)
 		);
 	const parent = position === 'inside' ? target : target.parent;
-	if (!parent) return false;
+	if (!parent || !nestsInto(edytor, parent)) return false;
 	const to = parent.isRoot ? null : parent.id;
 	if (to !== null && (facade.isVoid(to) || facade.isIsland(to))) return false;
 	return kinds.every((kind) => facade.fits(to, kind));

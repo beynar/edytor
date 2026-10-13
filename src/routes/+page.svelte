@@ -355,6 +355,7 @@
 				<div class="page-editor">
 					<Edytor
 						{plugins}
+						allowNesting
 						value={initialValue}
 						{room}
 						class="demo-edytor"

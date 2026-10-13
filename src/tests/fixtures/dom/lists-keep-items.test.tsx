@@ -29,7 +29,11 @@ const empty = (
 );
 
 const render = (children: JSONBlock[]) =>
-	renderDomEdytor(empty, { plugins: [richTextPlugin, mentionPlugin], value: { children } });
+	renderDomEdytor(empty, {
+		allowNesting: true,
+		plugins: [richTextPlugin, mentionPlugin],
+		value: { children }
+	});
 type Mounted = Awaited<ReturnType<typeof render>>;
 
 const text = (value: string) => [{ text: value }];

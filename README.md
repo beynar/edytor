@@ -63,7 +63,7 @@ pnpm add edytor
 <p>{value.children?.length ?? 0} blocks</p>
 ```
 
-`<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text; each other block kind, and block moves from the keyboard (`createArrowMovePlugin()`), is a plugin you add, here code blocks. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
+`<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text; each other block kind, block moves from the keyboard (`createArrowMovePlugin()`), and file drops (a media plugin given an `upload`) is a plugin you add, here code blocks; nesting blocks (<kbd>Tab</kbd>, drops inside a block) is the `allowNesting` option, off by default. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
 
 The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin ([menus and handles](https://edytor.dev/docs/customization/menus)). The demo's Notion-style ones are in [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome), ready to copy into your app ([ready-made menus](https://edytor.dev/docs/customization/ready-made-menus)).
 

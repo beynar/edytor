@@ -82,6 +82,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineDomFixture({
 		description: 'moves a block inside its previous sibling with the keyboard fallback',
+		allowNesting: true,
 		plugins: blockHandlePlugins,
 		input: (
 			<root>
@@ -157,6 +158,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineDomFixture({
 		description: 'drags a selected group inside a target block',
+		allowNesting: true,
 		plugins: blockHandlePlugins,
 		input: (
 			<root>

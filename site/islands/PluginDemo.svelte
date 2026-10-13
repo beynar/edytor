@@ -26,7 +26,7 @@
 		{#if variant === 'custom' && demo.custom}
 			<demo.custom {value} plugins={(demo.customPlugins ?? basePlugins)()} />
 		{:else}
-			<Edytor {value} plugins={demo.plugins()} aria-label="{plugin} demo" />
+			<Edytor {value} plugins={demo.plugins()} allowNesting aria-label="{plugin} demo" />
 		{/if}
 	{:catch error}
 		<p class="plugin-demo-error">{error.message}</p>

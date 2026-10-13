@@ -144,6 +144,7 @@
 	<div class="live-editor">
 		<Edytor
 			bind:edytor
+			allowNesting
 			value={demoDocument}
 			snapshot={demoDocument}
 			{actor}

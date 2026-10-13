@@ -27,6 +27,8 @@ export type RenderDomEdytorOptions = {
 	/** The view's block handles (on by default, as `<Edytor>`'s). */
 	blockHandles?: boolean;
 	readonly?: boolean;
+	/** The view's `allowNesting` (`<Edytor allowNesting>`). */
+	allowNesting?: boolean;
 	placeholder?: string;
 	translate?: 'yes' | 'no';
 	spellcheck?: boolean;
@@ -363,6 +365,7 @@ export const renderDomEdytor = async (
 			plugins: options.plugins ?? defaultPlugins,
 			blockHandles: options.blockHandles,
 			readonly: options.readonly,
+			allowNesting: options.allowNesting,
 			placeholder: options.placeholder,
 			translate: options.translate,
 			spellcheck: options.spellcheck,

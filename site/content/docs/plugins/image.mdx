@@ -25,7 +25,7 @@ icon: image
 <Edytor plugins={[image]} />
 ```
 
-The image plugin takes links; given an `upload` (`createImagePlugin({ upload })`), files too ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). Without one, the view takes no image files: a dropped image goes to the file block when the file plugin uploads, else nowhere.
+The image plugin takes links; given an `upload` (`createImagePlugin({ upload })`), files too ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). Without one, the view takes no image files: a dropped image goes to the file block when the file plugin uploads, else nowhere. Dropping files on the editor, and the drop line that shows where they land, come with the first media plugin given an `upload`: with none, a file drop is ignored.
 
 ## Try it
 

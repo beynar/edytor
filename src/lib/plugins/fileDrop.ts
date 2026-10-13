@@ -1,20 +1,22 @@
 /**
  * Files dragged from outside over a view (Notion): the drop indicator a
  * block drag shows, where the files land, and that placement for the drop
- * (`onDrop.ts` passes it to the occurrence; the view's uploads place one
+ * (the core's `onDrop.ts` asks the view's uploads, `ViewUploads.drop`, and passes it to the occurrence; the view's uploads place one
  * block per file there, one command). The placement is the block drag's
  * own resolution (`DropResolver`) for a drag that moves no block, whose
  * places are the ones the document takes new blocks of the files' kinds
  * at (`canPlaceNew`). Shown only in an editable view whose uploads take
  * one of the files (`viewUploads`); with or without the block handles.
+ * Plugin-owned: the view's `FileUploads` (the first media plugin listed with
+ * an `upload`) installs it, so a view without one ships none of it.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DropAt } from '$lib/session/attempt.js';
 import { canPlaceNew } from '$lib/session/moves.js';
 import { viewUploads } from '$lib/session/uploads.js';
-import { DropIndicator } from './dropIndicator.js';
-import type { DropPlacement } from './geometry.js';
-import { DropResolver, isDropTarget, type Drag, type Input } from './placement.js';
+import { DropIndicator } from '$lib/dnd/dropIndicator.js';
+import type { DropPlacement } from '$lib/dnd/geometry.js';
+import { DropResolver, isDropTarget, type Drag, type Input } from '$lib/dnd/placement.js';
 
 /** The kinds the files of a drag would be, by their types (a `dragover` sees no file, only its type). */
 const kindsOf = (edytor: Edytor, dataTransfer: DataTransfer | null) => {

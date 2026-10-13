@@ -34,12 +34,16 @@ const p = (id: string, children?: JSONBlock[]): JSONBlock => ({
 	...(children && { children })
 });
 
-const render = (children: JSONBlock[]) =>
+const render = (children: JSONBlock[], allowNesting = true) =>
 	renderDomEdytor(
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, mentionPlugin, blockHandlesPlugin], value: { children } }
+		{
+			allowNesting,
+			plugins: [richTextPlugin, mentionPlugin, blockHandlesPlugin],
+			value: { children }
+		}
 	);
 
 /** Shown blocks as 24px rows; a block's box runs to the end of its shown descendants, 24px in per level. */
@@ -148,6 +152,43 @@ const tree = (edytor: Edytor) => {
 		children.map((block) => (block.children?.length ? [block.id, walk(block.children)] : block.id));
 	return walk(edytor.value.children);
 };
+
+describe('without allowNesting (the default)', () => {
+	it('a handle drag offers no inside: over a block it is before or after, and no backdrop shows', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('c'), p('x')], false);
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('b', 0.5);
+		expect(position()).not.toBe('inside');
+		expect(['before', 'after']).toContain(position());
+		expect(backdrop()).toBeNull();
+		await drag.drop('b', 0.5);
+		expect(tree(edytor)).not.toContainEqual(['b', ['x']]);
+		expect(tree(edytor).every((id) => typeof id === 'string')).toBe(true);
+	});
+
+	it('a handle’s Alt+→ nests nothing', async () => {
+		const { edytor } = await render([p('a'), p('b')], false);
+		expect(edytor.canMove({ blocks: [edytor.idToBlock.get('b')!], direction: 'in' })).toBe(false);
+		expect(edytor.move({ blocks: [edytor.idToBlock.get('b')!], direction: 'in' })).toEqual([]);
+		expect(tree(edytor)).toEqual(['a', 'b']);
+	});
+	it('containers keep their bodies: a block moves into a toggle, and a nested block reorders among its siblings', async () => {
+		const toggle: JSONBlock = { id: 't', type: 'toggle', content: [{ text: 't' }] };
+		const { edytor } = await render([toggle, p('a', [p('k'), p('l')]), p('x')], false);
+		const x = edytor.idToBlock.get('x')!;
+		expect(
+			edytor.move({ blocks: [x], target: edytor.idToBlock.get('t')!, position: 'inside' })
+		).toEqual([x]);
+		const l = edytor.idToBlock.get('l')!;
+		expect(
+			edytor.move({ blocks: [l], target: edytor.idToBlock.get('k')!, position: 'before' })
+		).toEqual([l]);
+		expect(tree(edytor)).toEqual([
+			['t', ['x']],
+			['a', ['l', 'k']]
+		]);
+	});
+});
 
 describe('the nest backdrop', () => {
 	it("tints the future parent's row for an inside drop, from the overlay layer", async () => {

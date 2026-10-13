@@ -97,6 +97,15 @@ const isListener = <F>(listener: F | undefined): listener is F => listener !== u
 
 export type EdytorOptions = {
 	readonly?: boolean;
+	/**
+	 * Let users nest blocks under other blocks (default `false`): Tab and
+	 * Shift+Tab nest and unnest, a drop or a handle's Alt+→ may place a block
+	 * inside another. Off, those gestures nest nothing and Tab is left to the
+	 * browser (the focus moves on); containers (lists, toggles, callouts,
+	 * columns) keep their bodies, and nested blocks already in the document
+	 * still render and edit.
+	 */
+	allowNesting?: boolean;
 	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
@@ -271,6 +280,8 @@ export class Edytor {
 	readonly announcer: AnnouncerState = new AnnouncerState(this);
 	/** The words the view was given (`<Edytor labels>`); its plugins read their section through `labelsOf`. */
 	readonly labels: PartialLabels = {};
+	/** Whether users may nest blocks (`allowNesting`, read once; the rule is `session/moves.ts` `nestsInto`). */
+	readonly allowNesting: boolean = false;
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	private onDocChange?: (change: DocChange) => void;
@@ -437,13 +448,15 @@ export class Edytor {
 			onSelectionChange,
 			labels,
 			onChange,
-			onDocChange
+			onDocChange,
+			allowNesting
 		} = options;
 		for (const name of DOCUMENT_WRITES)
 			Object.defineProperty(this, name, {
 				value: (...args: never) => this.dispatcher.operate(name, args)
 			});
 		if (labels) this.labels = labels;
+		this.allowNesting = allowNesting === true;
 		if (document !== undefined) {
 			if (
 				DEV &&

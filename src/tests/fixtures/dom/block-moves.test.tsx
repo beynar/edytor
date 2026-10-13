@@ -50,6 +50,7 @@ const vetoMoves: Plugin = () => ({
 
 const render = (jsx: RenderedNode, extra: Plugin[] = []) =>
 	renderDomEdytor(jsx, {
+		allowNesting: true,
 		plugins: [richTextPlugin, mentionPlugin, createArrowMovePlugin(), blockHandlesPlugin, ...extra]
 	});
 

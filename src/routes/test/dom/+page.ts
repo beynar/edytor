@@ -30,6 +30,10 @@ export const load: PageLoad = ({ url }) => {
 		equation: url.searchParams.get('equation') === '1',
 		// `triggers=1` lists the mention and page-link plugins and an emoji input rule.
 		triggers: url.searchParams.get('triggers') === '1',
+		// `uploads=1` gives the image and file plugins an `upload` (pasted and dropped files), as `scenario=image` does.
+		uploads: url.searchParams.get('uploads') === '1',
+		// `nesting=0` leaves `allowNesting` off (the default of `<Edytor>`); the route nests otherwise.
+		nesting: url.searchParams.get('nesting') !== '0',
 		// `polish=1` lists the block menu, the page and the table of contents plugins.
 		polish: url.searchParams.get('polish') === '1',
 		// `columns=0` leaves the columns plugin out: a document with no layout kind (no beside bands).

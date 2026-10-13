@@ -153,7 +153,7 @@ export type Occurrence = {
 	dataTransfer?: DataTransfer | null;
 	/** The range the browser declared (`getTargetRanges()`, a drop point). */
 	declared?: StaticRange | null;
-	/** Where a file drop lands, the indicator's placement (`dnd/fileDrop.ts`). */
+	/** Where a file drop lands, the indicator's placement (`plugins/fileDrop.ts`). */
 	placement?: DropAt | null;
 	cancelable: boolean;
 	event?: InputEvent;

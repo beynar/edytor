@@ -2758,6 +2758,7 @@ export declare class Edytor {
     readonly popups: Popups;
     readonly announcer: AnnouncerState;
     readonly labels: PartialLabels;
+    readonly allowNesting: boolean;
     private off;
     private onChange?;
     private onDocChange?;
@@ -2799,6 +2800,7 @@ export declare class Edytor {
 - `popups`: The chrome popups open on this view (`surface/popups`): what the root's ARIA names.
 - `announcer`: What this view announces to assistive technology (`session/announcer`): its block moves and deletes.
 - `labels`: The words the view was given (`<Edytor labels>`); its plugins read their section through `labelsOf`.
+- `allowNesting`: Whether users may nest blocks (`allowNesting`, read once; the rule is `session/moves.ts` `nestsInto`).
 - `isComposing`: A composition session is live.
 - `suggestions`: The view's suggestions (`session/suggestions`): proposed content, shown here until accepted.
 - `dispatcher`: The view's command dispatcher: every mutation this view makes goes through it.
@@ -2819,6 +2821,7 @@ export declare class Edytor {
 ```ts
 export type EdytorOptions = {
     readonly?: boolean;
+    allowNesting?: boolean;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     plugins?: Plugin[];
     document?: EdytorDocument;
@@ -2836,6 +2839,7 @@ export type EdytorOptions = {
 };
 ```
 
+- `allowNesting`: Let users nest blocks under other blocks (default `false`): Tab and Shift+Tab nest and unnest, a drop or a handle's Alt+→ may place a block inside another.
 - `hotkeys`: Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins.
 - `document`: The assembled document this view renders — shared facade, history, awareness and semantics live on it (see `crdt/document.ts`).
 - `actor`: The local author of a view-owned document (with `document`, set it there).
@@ -2863,6 +2867,7 @@ export type EdytorProps = {
     actor?: DocumentActor;
     presence?: PresenceOptions;
     readonly?: boolean;
+    allowNesting?: boolean;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     onChange?: (value: JSONDoc) => void;
     onDocChange?: (change: DocChange) => void;
@@ -2896,6 +2901,7 @@ export type EdytorProps = {
 - `actor`: The local author (id, name, color) of the document this view owns: attribution and presence.
 - `presence`: What this view shares of its selection with peers (`share`: `'caret'`, `'block'` or `'none'`) and how often (`throttle`, ms).
 - `readonly`: Refuse this view's edits.
+- `allowNesting`: Let users nest blocks (default `false`): Tab and Shift+Tab nest and unnest, drops and handle keys may place a block inside another.
 - `hotkeys`: Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins.
 - `onChange`: After every commit that changed the visible document: a `JSONDoc`, the type `value` takes.
 - `onDocChange`: After every commit that changed the visible document: the change report (`DocChange`), with no whole-document export.

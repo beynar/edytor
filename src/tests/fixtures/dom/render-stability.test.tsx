@@ -72,7 +72,8 @@ describe('F-P9 — one Tab re-parents one subtree, nothing else remounts', () =>
 				<paragraph>A</paragraph>
 				<paragraph>B|b</paragraph>
 				<paragraph>C</paragraph>
-			</root>
+			</root>,
+			{ allowNesting: true }
 		);
 		const a = blockElement(edytor, 0);
 		const b = blockElement(edytor, 1);

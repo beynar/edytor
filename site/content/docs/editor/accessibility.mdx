@@ -135,5 +135,5 @@ A pass covers: the editor's name on focus; typing, then reading back by line and
 ## Known gaps
 
 - **Target size.** The grip, and a column block's `+`, are Notion's 18px wide, under WCAG 2.2's 24px minimum for a pointer target (2.5.8, AA); the keyboard paths above reach the same actions.
-- **Leaving the editor with the keyboard.** <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd> nest and unnest blocks inside the editor, as in Notion, so they do not move the focus out of it. Give keyboard users a way out next to the editor (a skip link, or a landmark the page's other controls follow).
+- **Leaving the editor with the keyboard.** By default the editor does not take <kbd>Tab</kbd>: <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd> move the focus out of it, as in any text field (a code line, a table cell or a suggestion still takes the key). With [`allowNesting`](/docs/editor/edytor-component) set they nest and unnest blocks, as in Notion, and no longer leave the editor: then give keyboard users a way out next to it (a skip link, or a landmark the page's other controls follow).
 - **List semantics.** A bulleted, numbered or to-do list is read as its lines, not as a list with a count (see [Colors](#colors) above for why).

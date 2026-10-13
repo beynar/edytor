@@ -22,7 +22,7 @@ const render = (children: JSONBlock[], plugins: Plugin[] = [richTextPlugin]) =>
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins, value: { children } }
+		{ allowNesting: true, plugins, value: { children } }
 	);
 type View = Awaited<ReturnType<typeof render>>;
 

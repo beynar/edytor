@@ -6,7 +6,13 @@ import { jsonBlockToSpec } from '$lib/utils/json.js';
 import { id as mint } from '$lib/utils.js';
 import { placeNew } from '$lib/session/moves.js';
 import type { DropAt } from '$lib/session/attempt.js';
-import { claimUploads, viewUploads, type ViewUploads } from '$lib/session/uploads.js';
+import {
+	claimUploads,
+	viewUploads,
+	type FileDropPort,
+	type ViewUploads
+} from '$lib/session/uploads.js';
+import { fileDragEnd, fileDragOver, fileDropAt } from './fileDrop.js';
 
 /** What an `upload` may report while it runs. */
 export type UploadReport = {
@@ -101,6 +107,13 @@ export class FileUploads implements ViewUploads {
 
 	/** The kind that takes `file`, if any. */
 	kindOf = (file: File) => this.#kindOf(file)?.type;
+
+	/** Files dragged from outside: the drop indicator and the placement (`fileDrop.ts`). */
+	readonly drop: FileDropPort = {
+		over: (event) => fileDragOver(this.edytor, event) !== null,
+		at: (event) => fileDropAt(this.edytor, event),
+		end: () => fileDragEnd(this.edytor)
+	};
 
 	/** The upload of block `id` in this view (reactive), if any. */
 	of = (id: string): FileUpload | undefined => this.#uploads.get(id);

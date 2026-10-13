@@ -281,7 +281,8 @@ describe('operations never read the mirror mid-transaction', () => {
 				<paragraph>alpha</paragraph>
 				<paragraph>be|ta</paragraph>
 				<paragraph>gamma</paragraph>
-			</root>
+			</root>,
+			{ allowNesting: true }
 		);
 
 	row('typing: one report, no whole-tree projection', async () => {

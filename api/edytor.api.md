@@ -1708,6 +1708,7 @@ export declare class Edytor {
     readonly popups: Popups;
     readonly announcer: AnnouncerState;
     readonly labels: PartialLabels;
+    readonly allowNesting: boolean;
     private off;
     private onChange?;
     private onDocChange?;
@@ -1746,6 +1747,7 @@ export declare class Edytor {
 // edytor.svelte.d.ts
 export type EdytorOptions = {
     readonly?: boolean;
+    allowNesting?: boolean;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     plugins?: Plugin[];
     document?: EdytorDocument;
@@ -1782,6 +1784,7 @@ export type EdytorProps = {
     actor?: DocumentActor;
     presence?: PresenceOptions;
     readonly?: boolean;
+    allowNesting?: boolean;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     onChange?: (value: JSONDoc) => void;
     onDocChange?: (change: DocChange) => void;

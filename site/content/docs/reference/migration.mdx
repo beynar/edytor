@@ -21,6 +21,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 #### Fixed
 
+- **A scrolled table's row grip stays beside its row.** In a table wider than its place (in a narrow column, say) and scrolled sideways, the row grip and its menu stood at the table's hidden left edge, sometimes over the column beside it. They now stand at the left edge of the part that shows and follow the scroll.
 - **Image alignment works in a built app.** Left, center and right moved nothing: an app's bundler dropped the image plugin's own CSS (and the equation, mention, page link and rich text plugins' few rules) because those plugins are used without rendering their component. Their CSS now ships with the plugin.
 - **ArrowDown from the title of an open toggle, or of a callout, goes into its empty body** (a first block inside, the caret in it, one undo step), as clicking the "Empty toggle" hint does. It used to skip the body and go to the block after it.
 - **With two code plugins listed, the first one draws the whole code block**, its header included, as with every kind (the first plugin listed wins). The header used to come from the last one while the language list came from the first.

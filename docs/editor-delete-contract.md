@@ -1918,6 +1918,10 @@ reaches past the place (Notion's simple table). Its chrome shows over the
 visible part only: a column's grip or resize band whose edge is scrolled
 out of the box is not shown, and the `+` beside the table shows only while
 the last column's edge is in view.
+The row grip and its menu stand at the left edge of the part that shows
+(the box's edge once the grid is scrolled), beside their row, and every
+piece of the chrome follows the box's scroll (the overlay measures on any
+scroll).
 
 ### `table.drag` — a row or a column drags by its grip (view)
 

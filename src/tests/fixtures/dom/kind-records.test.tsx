@@ -46,7 +46,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 /** Red on the reference; green since S6. */
 const row = it;

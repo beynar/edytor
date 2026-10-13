@@ -20,7 +20,7 @@ import {
 } from '../../dom/test.utils.js';
 import { expectNoHiddenContent } from './invariants.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

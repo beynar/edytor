@@ -227,7 +227,7 @@ The block handle's `+` opens the menu too, without typing anything ([Block handl
 
 ## Placement
 
-Your menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-slash-menu-host` and `z-index: 50`. The plugin opens it below the caret (below the `+` it was opened from), or above when there is no room, and keeps it inside the viewport while you scroll. Its look is yours: the demo's Notion-style menu (sections with a heading, 28px rows with a line icon, the `hint` on the right, a "Close menu · esc" footer) is `SlashMenu.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome).
+Your menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-slash-menu-host` and `z-index: 50`. The plugin opens it below the caret (below the `+` it was opened from), or above when there is no room, and keeps it inside the viewport while you scroll. Its look is yours: the demo's Notion-style menu (sections with a heading, 28px rows with a line icon, the `hint` on the right, a "Close menu · esc" footer) is `SlashMenu.svelte` in the repository's [`src/lib/starter/chrome`](https://github.com/beynar/edytor/tree/master/src/lib/starter/chrome).
 
 The rows are a `listbox` of `option`s (`popup` and `option(index)`; a section may be a `group` named by its heading). While the menu is open the element holding the keyboard names the list (`aria-controls`) and the highlighted row (`aria-activedescendant`): the editor's root for a typed `/`, your search field (a `combobox`) for a `+`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
 

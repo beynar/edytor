@@ -1,0 +1,96 @@
+---
+title: Properties
+description: Notion-style page properties under the title, typed by a schema, stored in the document's data, which users may add or hide.
+icon: table-properties
+---
+
+`properties` is the page's schema: one row per property under the title, each with its name and a cell of its type. The values live in the document's data (`data.properties`, by id), so they sync and undo like the rest of the page.
+
+```svelte title="src/lib/TaskPage.svelte" check
+<script lang="ts">
+	import { StarterEditor, type StarterProperty } from 'edytor/starter';
+
+	const people = [
+		{ id: 'ada', label: 'Ada Lovelace' },
+		{ id: 'alan', label: 'Alan Turing' }
+	];
+	const properties: StarterProperty[] = [
+		{
+			id: 'status',
+			name: 'Status',
+			type: 'select',
+			options: [
+				{ value: 'todo', label: 'To do', color: 'gray' },
+				{ value: 'doing', label: 'Doing', color: 'blue' },
+				{ value: 'done', label: 'Done', color: 'green' }
+			]
+		},
+		{ id: 'owner', name: 'Owner', type: 'person' },
+		{ id: 'due', name: 'Due', type: 'date' },
+		{ id: 'estimate', name: 'Estimate', type: 'number', hidden: true }
+	];
+</script>
+
+<StarterEditor {properties} {people} />
+```
+
+## Types
+
+| `type` | Stored as | The cell |
+| --- | --- | --- |
+| `text` | a string | a text field |
+| `number` | a number | a number field |
+| `select` | one option's `value` | a list of the options, the chosen one in its colour |
+| `multi-select` | a list of option values | a pill per value, each with its remove button, and a list to add one |
+| `date` | `YYYY-MM-DD` | a date field |
+| `checkbox` | `true` (unchecked: absent) | a checkbox |
+| `url` | a string | a URL field, and a link to open it |
+| `person` | a list of person ids | a pill per person from `people`, and a list to add one |
+
+An empty value (`''`, an empty list, an unchecked box) removes the property's key, so `data.properties` holds only what is set.
+
+## A property
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `id` | | Its key in `data.properties`. |
+| `type` | | One of the types above. |
+| `name` | `id` | What the page shows; each cell is labelled by it. |
+| `icon` | none | A short icon before the name. |
+| `options` | `[]` | A `select` or `multi-select` property's options: `{ value, label?, color? }`, `color` a block colour name (`gray`, `brown`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `red`). |
+| `hidden` | `false` | Shown only once a user adds it. |
+| `removable` | `true` | Users may hide it. |
+| `placeholder` | `Empty` | The empty cell's text. |
+
+## Add and hide
+
+With `editableProperties` (the default), **Add a property** lists the schema's hidden properties, and each shown property has a hide button. A user's choice is the document's (`data.shownProperties`, `true` for an added one, `false` for a hidden one) and hiding a property removes its value. `editableProperties={false}` shows the schema as it is, with neither control. A readonly view shows the values only.
+
+## Replace a cell
+
+`propertyCells` replaces the cell of every property of a type; the snippet gets the property, its value, a `set` (one undo step), `readonly`, `people` and the `labelId` its field is labelled by:
+
+```svelte title="src/lib/Stars.svelte" check
+<script lang="ts">
+	import { StarterEditor, type StarterPropertyCellPayload } from 'edytor/starter';
+</script>
+
+{#snippet stars({ value, set, readonly, labelId }: StarterPropertyCellPayload)}
+	<input
+		type="range"
+		min="0"
+		max="5"
+		value={Number(value ?? 0)}
+		disabled={readonly}
+		aria-labelledby={labelId}
+		oninput={(event) => set(Number(event.currentTarget.value))}
+	/>
+{/snippet}
+
+<StarterEditor
+	properties={[{ id: 'rating', name: 'Rating', type: 'number' }]}
+	propertyCells={{ number: stars }}
+/>
+```
+
+`propertyList` replaces the whole block: it gets the shown properties, the ones a user may add, the values, `set`, `show`, `hide`, `readonly`, `editable`, `labelId` and `cell`, the snippet of a property's cell (yours where `propertyCells` has one).

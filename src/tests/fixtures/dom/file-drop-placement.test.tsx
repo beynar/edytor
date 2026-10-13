@@ -19,7 +19,7 @@ import {
 	image as createImagePlugin,
 	richTextPlugin,
 	mediaEmptyPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

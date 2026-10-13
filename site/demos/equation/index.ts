@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { equation } from '../../chrome/plugins';
+import { equation } from 'edytor/starter';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import EquationEditor from './EquationEditor.svelte';

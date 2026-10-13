@@ -7,7 +7,7 @@ import { expectOperationResult, removeIds } from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { selectionState } from '../../../selection.js';
-import { codePlugin, imagePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
 

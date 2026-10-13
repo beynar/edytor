@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { convertToKind } from '$lib/kinds.js';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

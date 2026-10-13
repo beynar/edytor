@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const empty = (
 	<root>

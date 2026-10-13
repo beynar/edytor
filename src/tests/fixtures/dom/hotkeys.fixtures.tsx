@@ -7,7 +7,7 @@ import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import { dispatchDomKeyDown } from '../../dom/test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
 	Object.defineProperty(edytor.keymap, 'isMac', {

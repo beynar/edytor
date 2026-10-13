@@ -17,7 +17,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { richTextPlugin, tablePlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin, tablePlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

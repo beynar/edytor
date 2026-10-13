@@ -14,7 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### New
+
+- **`edytor/starter`: a full editor in one component.** `<StarterEditor />` is `<Edytor>` with every useful bundled plugin, the Notion-style menus, handles, toolbars and panels, and the page around the blocks: a cover, an icon, a title and typed page properties (text, number, select, multi-select, date, checkbox, URL, person), all stored in the document's data so they sync in a room and undo like the blocks. Each part is a prop (`false` leaves it out, a snippet replaces it), each plugin is on, off or configured through `plugins`, and the look is a `theme` object or CSS variables. `<Edytor />` from `edytor` is unchanged: only an app that imports `edytor/starter` ships it. See [Starter editor](/docs/starter).
+- **The ready-made menus are in the package.** `edytor/starter` also exports each bundled plugin drawn with them (`slashMenuPlugin`, `toolbarPlugin`, `blockHandlesPlugin`, `codePlugin`…), their snippets (`chrome`), their words (`setWords`) and the version history panel (`HistoryPanel`): there is no folder to copy any more. See [Ready-made menus](/docs/customization/ready-made-menus).
 
 ### From 1.0.0
 
@@ -1346,6 +1349,8 @@ Every public change since 0.0.11, by area.
 - **`data-edytor-keep-selection`.** A press outside the editor and its overlay ends a block selection unless Shift or Mod is held or the press is inside an element carrying this attribute.
 
 ### Rendering, placeholder and chrome
+
+- `edytor/starter`: `StarterEditor` (every bundled plugin, the ready-made chrome, the page's cover, icon, title and properties in the document's data, a `theme`), `starterPlugins`, `themeVariables`/`themeStyle`, and the ready-made chrome's plugins, snippets, words and `HistoryPanel`.
 
 - **Baseline 2024 browsers.** Chrome and Edge 120, Firefox 125, Safari 17.4 and Chrome on Android 120 are the oldest supported (they were 111, 119 and 16.4 as floors the code happened to need); code kept only for older engines is gone.
 - A placeholder is a plugin's `placeholder` (the `<Edytor placeholder>` prop and option are removed): a string or `(view: { type, data, focused, empty }, edytor) => string | null`; the snippet form is gone. It renders as `data-placeholder` on the empty text element with a shipped `::before` rule (style `[data-placeholder]::before`); `[data-edytor-text-placeholder]` and its click handlers are gone. `edytor.placeholderRepair` is removed.

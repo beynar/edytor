@@ -339,7 +339,7 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 
 ## Placement
 
-The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`, placed beside the grip by the element marked `data-edytor-block-menu` (else your snippet's first element); a flyout marked `data-edytor-block-menu-flyout` is placed beside it. Its look is yours: the demo's Notion-style panel (265px, line icons, a 140ms fade and scale-in) is `BlockMenu.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome); its rows' action ids are `turn`, `color`, `link`, `duplicate`, `up`, `down` and `delete`, a colour row's `<field>.<name>` (`color.red`, `background.default`).
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`, placed beside the grip by the element marked `data-edytor-block-menu` (else your snippet's first element); a flyout marked `data-edytor-block-menu-flyout` is placed beside it. Its look is yours: the demo's Notion-style panel (265px, line icons, a 140ms fade and scale-in) is `BlockMenu.svelte` in the repository's [`src/lib/starter/chrome`](https://github.com/beynar/edytor/tree/master/src/lib/starter/chrome); its rows' action ids are `turn`, `color`, `link`, `duplicate`, `up`, `down` and `delete`, a colour row's `<field>.<name>` (`color.red`, `background.default`).
 
 ## Markup
 

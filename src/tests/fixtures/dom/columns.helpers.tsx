@@ -11,7 +11,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 export const p = (id: string, text = id, children?: JSONBlock[]): JSONBlock => ({
 	id,

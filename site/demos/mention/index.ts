@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { mention } from '../../chrome/plugins';
+import { mention } from 'edytor/starter';
 import { basePlugins, searchBy } from '../base';
 import type { PluginDemo } from '../types';
 import MentionEditor from './MentionEditor.svelte';

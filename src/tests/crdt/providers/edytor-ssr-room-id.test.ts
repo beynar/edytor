@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
 import Edytor from '$lib/components/Edytor.svelte';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const value = { children: [{ type: 'paragraph', content: [{ text: 'seed value' }] }] };
 const snapshot = { children: [{ type: 'paragraph', content: [{ text: 'room snapshot' }] }] };

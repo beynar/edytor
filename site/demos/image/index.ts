@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { image, imageToolbarPlugin, mediaEmptyPlugin } from '../../chrome/plugins';
+import { image, imageToolbarPlugin, mediaEmptyPlugin } from 'edytor/starter';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import ImageEditor from './ImageEditor.svelte';

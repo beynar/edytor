@@ -36,7 +36,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 /** Red on the reference; green since S3. */
 const row = it;

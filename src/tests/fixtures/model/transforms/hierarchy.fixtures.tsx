@@ -6,7 +6,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { findBlockAndTextAtPath } from '../../../test.utils.js';
 import { selectionState } from '../../../selection.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
 

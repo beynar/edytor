@@ -10,7 +10,7 @@
 		blockHandlesPlugin,
 		codePlugin,
 		richTextPlugin
-	} from '../../chrome/plugins.js';
+	} from '$lib/starter/chrome/plugins.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createDocument, type EdytorDocument } from '$lib/crdt/index.js';
 	import { applyAwarenessUpdate, encodeAwarenessUpdate } from '$lib/crdt/protocol.js';

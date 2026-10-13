@@ -5,7 +5,7 @@
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 	import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
-	import { blockHandlesPlugin, handlePlugins } from '../../routes/chrome/plugins.js';
+	import { blockHandlesPlugin, handlePlugins } from '../../lib/starter/chrome/plugins.js';
 
 	type Props = {
 		value: JSONDoc;

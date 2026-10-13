@@ -29,7 +29,7 @@ import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import {
 	equation as createEquationPlugin,
 	richTextPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

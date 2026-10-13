@@ -20,8 +20,11 @@ import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import type { MarqueeBoxPayload } from '$lib/plugins/marquee/MarqueeController.svelte.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
-import { marquee as createMarqueePlugin, marqueePlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import {
+	marquee as createMarqueePlugin,
+	marqueePlugin
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

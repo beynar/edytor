@@ -34,7 +34,11 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
+import {
+	codePlugin,
+	richTextPlugin,
+	slashMenuPlugin
+} from '../../../lib/starter/chrome/plugins.js';
 
 /** Red on the reference; green since S2. */
 const row = it;

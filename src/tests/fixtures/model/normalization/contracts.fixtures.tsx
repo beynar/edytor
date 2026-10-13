@@ -16,7 +16,7 @@ import {
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { selectionState } from '../../../selection.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const serializeChildren = (children: JSONBlock[]) =>
 	removeIds(JSON.parse(JSON.stringify(children)) as JSONBlock[]);

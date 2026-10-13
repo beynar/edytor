@@ -1,9 +1,10 @@
 // The JavaScript an app ships with edytor, measured as a consumer builds it:
-// two probe apps (`<Edytor />` with its default plugins, and every plugin)
+// three probe apps (`<Edytor />` with its default plugins, every plugin, and
+// `<StarterEditor />` from `edytor/starter`)
 // compiled by Vite + vite-plugin-svelte against the packaged `dist/`, each
 // byte of the output attributed to its source file through the source map.
 //
-//   node scripts/bundle-size.mjs              # both apps, top 25 sources
+//   node scripts/bundle-size.mjs              # the three apps, top 25 sources
 //   node scripts/bundle-size.mjs --top 60     # more rows
 //   node scripts/bundle-size.mjs --by dir     # grouped by directory
 //   node scripts/bundle-size.mjs --json out.json
@@ -38,7 +39,10 @@ const option = (name, fallback) => {
 const TOP = Number(option('--top', 25));
 const BY = option('--by', 'file');
 
-/** The probe apps: what a minimal app and a full app import. */
+/**
+ * The probe apps: what a minimal app and a full app import, and the starter
+ * editor (`edytor/starter`: every plugin, the chrome and the page).
+ */
 const APPS = {
 	minimal: `<script>
 	import { Edytor } from 'edytor';
@@ -67,7 +71,11 @@ const APPS = {
 	];
 </script>
 {#snippet empty()}{/snippet}
-<Edytor {plugins} />`
+<Edytor {plugins} />`,
+	starter: `<script>
+	import { StarterEditor } from 'edytor/starter';
+</script>
+<StarterEditor />`
 };
 
 if (!flag('--no-package')) execSync('pnpm package', { cwd: root, stdio: 'ignore' });
@@ -122,7 +130,13 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 		logLevel: 'error',
 		configFile: false,
 		plugins: [svelte()],
-		resolve: { dedupe: ['svelte'], alias: { edytor: join(root, 'dist/index.js') } },
+		resolve: {
+			dedupe: ['svelte'],
+			alias: [
+				{ find: /^edytor\/starter$/, replacement: join(root, 'dist/starter/index.js') },
+				{ find: /^edytor$/, replacement: join(root, 'dist/index.js') }
+			]
+		},
 		build: {
 			outDir: join(dir, 'out'),
 			emptyOutDir: true,

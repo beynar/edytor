@@ -44,7 +44,7 @@ import {
 	richTextPlugin,
 	mediaEmptyPlugin,
 	imageToolbarPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

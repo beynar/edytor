@@ -42,7 +42,7 @@ import {
 	authoredDocument
 } from './helpers.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const E = bindEdytorDoc(Y);
 

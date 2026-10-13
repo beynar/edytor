@@ -21,7 +21,7 @@
 		suggestionsPlugin,
 		tablePlugin,
 		toolbarPlugin
-	} from '../chrome/plugins';
+	} from 'edytor/starter';
 	import 'edytor/themes/notion.css';
 	import './live-editor.css';
 	import { aiDemoPlugin, askAI } from './ai-demo';

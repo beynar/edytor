@@ -22,7 +22,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { englishWords } from '../../../routes/chrome/words.svelte.js';
+import { englishWords } from '../../../lib/starter/chrome/words.svelte.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -36,7 +36,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -16,7 +16,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 /** richText whose list normalizer throws on its first call only. */
 const throwingOnce = (): Plugin & { calls: () => number } => {

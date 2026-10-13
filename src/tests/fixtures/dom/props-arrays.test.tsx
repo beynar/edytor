@@ -18,7 +18,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { propsPlugin } from '../../dom/PropsKind.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const tasks = [
 	{ title: 'a', done: false },

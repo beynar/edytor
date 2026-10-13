@@ -38,7 +38,7 @@ import {
 	comments as createCommentsPlugin,
 	richTextPlugin,
 	toolbarPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

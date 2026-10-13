@@ -15,7 +15,7 @@ import { createDocument } from '$lib/crdt/index.js';
 import { Y } from '$lib/crdt/engine.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
 import type { Edytor as EdytorClass } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const dials: string[] = [];
 const closed: string[] = [];

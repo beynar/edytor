@@ -23,6 +23,8 @@ export const LIB = path.join(ROOT, 'src/lib');
  *   adopter (`EdytorSelection`) and the remote carets.
  * - plugins: kind, mark and atom records and the chrome built on them.
  * - root: the composition root (`Edytor`), the mount and the public entry.
+ * - starter: `edytor/starter`, the full editor and the ready-made chrome: it
+ *   reads the public entry only, and nothing of the package imports it.
  */
 export const CONTEXTS = [
 	['sync', /^crdt\/(providers|protocols)\//],
@@ -38,18 +40,27 @@ export const CONTEXTS = [
 	['session', /^(kinds|edytor\.utils)\.ts$/],
 	['root', /^(edytor\.svelte\.ts|index\.ts|components\/Edytor\.svelte)$/],
 	['surface', /^(surface|events|components|selection|dnd)\//],
-	['plugins', /^plugins(\/|\.ts$)/]
+	['plugins', /^plugins(\/|\.ts$)/],
+	['starter', /^starter\//]
 ];
 
 /**
  * The value imports a context must not make (`edytor/context-imports`): the
  * session never reaches the surface, the chrome or the root (it declares a
  * port the root implements, `session/ports.ts`), and the surface never
- * reaches the chrome or the root.
+ * reaches the chrome or the root. Nothing reaches the starter, and the
+ * starter reaches the package through its public entry only.
  */
 export const FORBIDDEN = {
-	session: ['surface', 'plugins', 'root'],
-	surface: ['plugins', 'root']
+	doc: ['starter'],
+	sync: ['starter'],
+	shared: ['starter'],
+	session: ['surface', 'plugins', 'root', 'starter'],
+	surface: ['plugins', 'root', 'starter'],
+	plugins: ['starter'],
+	root: ['starter'],
+	// The public entry (`index.ts`, root) is the starter's one way in.
+	starter: ['doc', 'sync', 'shared', 'session', 'surface', 'plugins']
 };
 
 /** The context of a module path relative to src/lib, or `null`. */

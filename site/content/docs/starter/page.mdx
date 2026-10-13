@@ -1,0 +1,70 @@
+---
+title: Page parts
+description: The cover, the icon and the title of a starter page, where they are stored, their keys, and how to replace or remove each one.
+icon: panel-top
+---
+
+Above the blocks, a starter page has a cover, an icon and a title, and under the title its [properties](/docs/starter/properties). Each is stored in the document's data ([`edytor.data`](/docs/concepts/properties#document-properties)), so it is saved with `value`, syncs in a room and undoes like a block edit: each change is one undo step.
+
+| Part | Stored as | A user |
+| --- | --- | --- |
+| Cover | `data.cover`: `{ url, position }`, `position` from `0` (top) to `100` (bottom) | adds one (**Add cover**), changes it by a link or an upload, repositions it, removes it |
+| Icon | `data.icon`: `{ emoji }` or `{ url }` | picks an emoji, links or uploads an image, removes it |
+| Title | `data.title`: a string | types it; <kbd>Enter</kbd> moves into the first block |
+
+```ts title="src/lib/page.ts" check
+import type { JSONDoc } from 'edytor';
+import type { StarterPageData } from 'edytor/starter';
+
+const data: StarterPageData = {
+	title: 'Launch plan',
+	icon: { emoji: '🚀' },
+	cover: { url: 'https://images.example.com/sky.jpg', position: 40 }
+};
+export const value: JSONDoc = { data, children: [] };
+```
+
+**Add icon** and **Add cover** show when the page header is hovered or holds the focus (always on a touch screen), only where there is no icon or cover yet. A readonly view shows the parts and none of their controls.
+
+## Keys
+
+| Where | Key | Does |
+| --- | --- | --- |
+| Title | <kbd>Enter</kbd>, or <kbd>↓</kbd> at its end | puts the caret at the start of the first block |
+| Title | <kbd>Mod</kbd>+<kbd>Z</kbd>, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | the view's undo and redo (the title's edits are history steps) |
+| Icon picker | arrow keys, <kbd>Enter</kbd> | move through the emoji, pick one |
+| Any popover | <kbd>Esc</kbd> | closes it, the focus back on its button |
+| Reposition | <kbd>↑</kbd>/<kbd>↓</kbd> (<kbd>Shift</kbd>: by 10), <kbd>Enter</kbd>, <kbd>Esc</kbd> | moves the image, saves, cancels |
+
+The popovers are dialogs named by their purpose (`Icon options`, `Cover options`), the reposition control is a `slider` with its value, and the title is a textbox named `Page title`.
+
+## Replace a part
+
+`cover`, `icon` and `title` take `false` to leave a part out, or a snippet to draw it yourself. The snippet gets the part's value, a `set` that writes it (one undo step), `readonly` and, for the cover and the icon, `upload`:
+
+```svelte title="src/lib/PlainPage.svelte" check
+<script lang="ts">
+	import { StarterEditor, type StarterTitlePayload } from 'edytor/starter';
+</script>
+
+{#snippet title({ title, set, enter, readonly }: StarterTitlePayload)}
+	<input
+		class="my-title"
+		value={title}
+		disabled={readonly}
+		aria-label="Title"
+		oninput={(event) => set(event.currentTarget.value)}
+		onkeydown={(event) => event.key === 'Enter' && enter()}
+	/>
+{/snippet}
+
+<StarterEditor {title} cover={false} icon={false} />
+```
+
+A cover or icon snippet renders even when there is none yet (`cover` is `undefined`): draw your own add button there. **Add cover** and **Add icon** are the default parts' own.
+
+## Edge cases
+
+- **Add cover** adds a soft gradient at once; **Change cover** then takes a link or an upload. A link must be `https:`, `http:` or a `data:image/` URL.
+- A failed upload logs its error and leaves the part as it was.
+- Two people repositioning the same cover: the last **Save** wins, as for any one property.

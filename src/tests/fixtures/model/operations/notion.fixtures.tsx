@@ -4,7 +4,7 @@ import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { runBeforeInput } from '../../../test.utils.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
-import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const notionPlugins = [richTextPlugin, mentionPlugin, createMarkdownShortcutsPlugin()];
 const noopSnippet = (() => null) as never;

@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { pageLink } from '../../chrome/plugins';
+import { pageLink } from 'edytor/starter';
 import { basePlugins, searchBy } from '../base';
 import type { PluginDemo } from '../types';
 import PageLinkEditor from './PageLinkEditor.svelte';

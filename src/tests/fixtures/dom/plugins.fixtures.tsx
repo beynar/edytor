@@ -11,7 +11,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const emptyFixture = <root></root>;
 

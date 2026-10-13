@@ -28,7 +28,7 @@ import {
 import { expectNoHiddenContent } from './invariants.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

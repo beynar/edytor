@@ -15,7 +15,7 @@ import { tick } from 'svelte';
 
 import Edytor from '$lib/components/Edytor.svelte';
 import { SyncRefusedError } from '$lib/crdt/index.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const dials: string[] = [];
 class StubSocket {

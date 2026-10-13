@@ -27,7 +27,7 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 
 import * as selection from '$lib/session/selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const S = () => selection;
 

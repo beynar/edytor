@@ -19,7 +19,7 @@ import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4a. */
 const row = it;

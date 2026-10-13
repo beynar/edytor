@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { toolbarPlugin } from '../../chrome/plugins';
+import { toolbarPlugin } from 'edytor/starter';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import ToolbarEditor from './ToolbarEditor.svelte';

@@ -14,7 +14,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { flushDomUpdates } from '../../dom/test.utils.js';
 import { block, click, column, columns, p, renderColumns, selected } from './columns.helpers.js';
 import { selectBlocks } from '../../selection.js';
-import { blockHandlesPlugin, blockMenuPlugin } from '../../../routes/chrome/plugins.js';
+import { blockHandlesPlugin, blockMenuPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -30,7 +30,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { block, column, columns, contractDoc, p } from './columns.helpers.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

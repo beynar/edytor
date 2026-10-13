@@ -13,7 +13,7 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { attachDocument, createDocument, type EdytorDocument } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const docValue = (text = 'remote'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]

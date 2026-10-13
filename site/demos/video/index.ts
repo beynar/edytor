@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { mediaEmptyPlugin, video } from '../../chrome/plugins';
+import { mediaEmptyPlugin, video } from 'edytor/starter';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import VideoEditor from './VideoEditor.svelte';

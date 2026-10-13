@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { blockHandlesPlugin } from '../../chrome/plugins';
+import { blockHandlesPlugin } from 'edytor/starter';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import HandlesEditor from './HandlesEditor.svelte';

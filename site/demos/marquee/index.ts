@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { marqueePlugin } from '../../chrome/plugins';
+import { marqueePlugin } from 'edytor/starter';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import MarqueeEditor from './MarqueeEditor.svelte';

@@ -26,7 +26,7 @@
 		suggestionBarPlugin,
 		tablePlugin,
 		toolbarPlugin
-	} from './chrome/plugins.js';
+	} from '$lib/starter/chrome/plugins.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import '$lib/themes/notion.css';

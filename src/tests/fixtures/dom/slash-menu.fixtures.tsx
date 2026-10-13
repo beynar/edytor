@@ -8,7 +8,7 @@ import {
 	dispatchDomKeyDown,
 	flushDomUpdates
 } from '../../dom/test.utils.js';
-import { richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin, slashMenuPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const slashMenuPlugins = [richTextPlugin, mentionPlugin, slashMenuPlugin];
 

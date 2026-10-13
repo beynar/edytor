@@ -13,7 +13,7 @@ import {
 	blockMenuPlugin,
 	richTextPlugin,
 	slashMenuPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 

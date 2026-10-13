@@ -74,6 +74,11 @@
 			"types": "./dist/cloudflare/index.d.ts",
 			"default": "./dist/cloudflare/index.js"
 		},
+		"./starter": {
+			"types": "./dist/starter/index.d.ts",
+			"svelte": "./dist/starter/index.js",
+			"default": "./dist/starter/index.js"
+		},
 		"./themes/notion.css": "./dist/themes/notion.css"
 	},
 	"engines": {

@@ -12,7 +12,7 @@ import {
 	type SelectionExpectation
 } from '../../test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
-import { richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin, toolbarPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 const toolbarPlugins = [richTextPlugin, mentionPlugin, toolbarPlugin];
 const emptyFixture = <root></root>;

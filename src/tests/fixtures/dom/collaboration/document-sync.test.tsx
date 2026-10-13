@@ -24,7 +24,7 @@ import { Y } from '$lib/crdt/engine.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { createIndexeddbSync, type EdytorSync } from '$lib/collaboration/index.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
 
 const input = (
 	<root>

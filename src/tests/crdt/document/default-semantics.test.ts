@@ -41,7 +41,7 @@ import {
 	richTextPlugin,
 	tablePlugin,
 	videoPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [

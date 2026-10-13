@@ -41,7 +41,7 @@ import {
 	selected
 } from './columns.helpers.js';
 import { selectBlocks } from '../../selection.js';
-import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { blockHandlesPlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	// A drag a failed test left open would swallow the next test's.

@@ -40,7 +40,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
 
 /**
  * Rows still red (expected-fail). Red on the reference (arch-v2/ref-s7): F-U1

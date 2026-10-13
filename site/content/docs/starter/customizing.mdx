@@ -1,0 +1,88 @@
+---
+title: Customizing
+description: Change the starter editor's look with a theme object or CSS variables, replace any part or chrome surface with a snippet, and change its words.
+icon: palette
+---
+
+Three levels, from the lightest:
+
+1. **A theme**: colours, fonts and sizes, as the `theme` prop or as CSS variables.
+2. **A snippet per part**: the [cover, icon and title](/docs/starter/page#replace-a-part), a [property cell or the whole properties block](/docs/starter/properties#replace-a-cell), and each chrome surface through its plugin's options ([Props](/docs/starter/props#plugins)).
+3. **Your own editor**: `<Edytor>` with the [ready-made menus](/docs/customization/ready-made-menus) and your own page around it.
+
+## Theme
+
+```svelte title="src/lib/ThemedPage.svelte" check
+<script lang="ts">
+	import { StarterEditor, type StarterTheme } from 'edytor/starter';
+
+	const theme: StarterTheme = {
+		colorScheme: 'auto',
+		colors: {
+			light: { accent: '#7c3aed', background: '#fffdf8' },
+			dark: { background: '#16141f', text: '#e7e5ee' }
+		},
+		fonts: { body: 'Inter, sans-serif', title: 'Georgia, serif' },
+		radius: 8,
+		maxWidth: 820,
+		spacing: 64
+	};
+</script>
+
+<StarterEditor {theme} />
+```
+
+The default look is the [Notion theme](/docs/customization/styling#notion-theme), light. `colorScheme` is `light`, `dark` (the starter's dark colours, or yours) or `auto` (the system's). A number is a length in pixels.
+
+| `theme` | Sets | Default |
+| --- | --- | --- |
+| `colors.light.background` / `colors.dark.background` | `--edytor-starter-background` | `#fff` / `#191919` |
+| `colors.*.text` | `--notion-text` | `#2c2c2b` / `#d4d4d4` |
+| `colors.*.textSecondary` | `--notion-text-secondary` | `#73726e` / `#9b9b9b` |
+| `colors.*.placeholder` | `--notion-placeholder` | Notion's |
+| `colors.*.border` | `--notion-border` | Notion's |
+| `colors.*.hover` | `--notion-hover` | Notion's |
+| `colors.*.panel` | `--notion-panel` | `#f9f8f7` / `#252525` |
+| `colors.*.accent` | `--notion-blue` (links, focus rings) | `#2783de` / `#529cca` |
+| `colors.*.selection`, `colors.*.blockSelection` | `--notion-text-selection`, `--notion-block-selection` | Notion's |
+| `fonts.body`, `fonts.mono` | `--notion-font`, `--notion-mono` | Notion's |
+| `fonts.title` | `--edytor-starter-title-font` | the body font |
+| `radius` | `--edytor-starter-radius` | `6px` |
+| `spacing` | `--edytor-starter-gutter`, the page's side padding | `96px` (`16px` under 720px wide) |
+| `maxWidth` | `--edytor-starter-max-width`, the column of text | `708px` |
+| `coverHeight` | `--edytor-starter-cover-height` | `30vh` (120 to 280px) |
+| `variables` | any CSS variable, by its full name | |
+
+Each colour of `theme.colors` is set as `--edytor-starter-light-<name>` or `--edytor-starter-dark-<name>` on the root (`--edytor-starter-light-accent`…), which the stylesheet reads for the scheme in use: set those in your CSS instead of the prop if you prefer.
+
+## CSS variables
+
+The starter's root is `[data-edytor-starter]` (with the class `edytor-notion`, so every [Notion theme variable](/docs/customization/styling#notion-theme) applies). Besides the theme's, these change one part:
+
+| Variable | What it sets | Default |
+| --- | --- | --- |
+| `--edytor-starter-title-size` | the title's font size | `40px` (`32px` under 720px) |
+| `--edytor-starter-icon-size` | the page icon's box | `78px` (`64px` under 720px) |
+| `--edytor-starter-gutter-narrow` | the side padding under 720px | `16px` |
+| `--edytor-starter-popover-background` | the page's popovers | the page's background |
+| `--edytor-starter-popover-radius` | their corners | `10px` |
+| `--edytor-color-<name>`, `--edytor-background-<name>` | a select option's colours, as the blocks' | the Notion palette |
+
+```css title="src/app.css"
+[data-edytor-starter] {
+	--edytor-starter-title-size: 48px;
+	--edytor-starter-max-width: 900px;
+}
+```
+
+The page parts carry attributes to style them by: `data-edytor-starter-cover`, `data-edytor-starter-icon`, `data-edytor-starter-title`, `data-edytor-starter-properties`, `data-edytor-starter-property="<id>"` and `data-edytor-starter-cell="<type>"`. The menus and panels in the overlay keep the light Notion look in either scheme.
+
+## Words
+
+The page's words (**Add icon**, **Untitled**, **Add a property**…) and the menus' are the chrome's: change any of them with `setWords` from `edytor/starter`, a section at a time. The words of the editor itself (kind names, the document's) are `labels`, as on `<Edytor>`. See [Localization](/docs/customization/localization).
+
+```ts title="src/lib/words.ts" check
+import { setWords } from 'edytor/starter';
+
+setWords({ starter: { untitled: 'Sans titre', addIcon: 'Ajouter une icône' } });
+```

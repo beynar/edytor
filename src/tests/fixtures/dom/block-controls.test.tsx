@@ -27,7 +27,7 @@ import {
 	equation as createEquationPlugin,
 	file as createFilePlugin,
 	richText as createRichTextPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '../../../lib/starter/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

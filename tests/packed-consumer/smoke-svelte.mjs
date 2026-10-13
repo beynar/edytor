@@ -64,6 +64,31 @@ await build({
 });
 assert.ok(shipped('dist-code').includes('th-code'), 'an app importing createCodePlugin ships it');
 
+console.log('==> svelte consumer: vite build --ssr (edytor/starter render)');
+await build({
+	root: appDir,
+	logLevel: 'warn',
+	build: { ssr: 'starter-ssr-entry.js', outDir: 'dist-starter-ssr', emptyOutDir: true }
+});
+{
+	const files = readdirSync(new URL('./svelte-app/dist-starter-ssr/', import.meta.url));
+	const bundle = files.find((file) => file.endsWith('.js') || file.endsWith('.mjs'));
+	assert.ok(bundle, 'the starter SSR build must emit a node bundle');
+	const { html } = await import(
+		new URL(`./svelte-app/dist-starter-ssr/${bundle}`, import.meta.url)
+	);
+	assert.ok(html.includes('data-edytor-starter'), 'the starter must render its root');
+	assert.ok(html.includes('Starter on the server'), 'the starter must render its title');
+	assert.ok(html.includes('Status'), 'the starter must render its properties');
+	assert.ok(html.includes('starter body'), 'the starter must render its blocks');
+	console.log('    starter SSR render OK —', html.length, 'bytes of markup');
+}
+// An app that imports `edytor` alone ships none of the starter.
+assert.ok(
+	!shipped('dist').includes('data-edytor-starter'),
+	'an app without edytor/starter must not ship it'
+);
+
 console.log('==> svelte consumer: vite build --ssr (readonly editor render)');
 await build({
 	root: appDir,

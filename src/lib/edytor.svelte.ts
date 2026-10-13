@@ -6,7 +6,12 @@ import { onCut } from './events/onCut.js';
 import { isControlEvent, isKindControl } from './events/nativeInteractiveControl.js';
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
-import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
+import {
+	onDragLeave,
+	onTextDragEnd,
+	onTextDragStart,
+	preventUnsupportedDrop
+} from './events/onDrop.js';
 import { attachFocus, selectionIsInside, takeKeys } from './events/onFocus.js';
 import { insertLineBreak, runIntent } from './events/beforeInputCommands.js';
 import { textPointAt } from './selection/selection.utils.js';
@@ -984,6 +989,7 @@ export class Edytor {
 			on(node, 'dragstart', (event: DragEvent) => onTextDragStart(this, event)),
 			on(node, 'dragend', () => onTextDragEnd(this)),
 			on(node, 'dragover', (event: DragEvent) => preventUnsupportedDrop(event, this)),
+			on(node, 'dragleave', (event: DragEvent) => onDragLeave(this, event)),
 			on(
 				node,
 				'drop',

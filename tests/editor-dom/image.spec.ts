@@ -144,10 +144,11 @@ test.describe('image file paste and drop (WU-21)', () => {
 		issues.assertClean();
 	});
 
-	test('a dropped image file lands at the drop point, uploads, one step', async ({ page }) => {
+	test('a dropped image file lands where the indicator shows, uploads, one step', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page);
-		// The drop point: the end of `after image` (the text element spans its line).
+		// The drop point: the lower half of `after image`'s row, in its text column
+		// (`drop.files.place`: after it).
 		const box = (await page.locator('[data-edytor-text="true"]').last().boundingBox())!;
 		await page.evaluate(
 			({ x, y }) => {
@@ -173,7 +174,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 					editor.dispatchEvent(event);
 				}
 			},
-			{ x: box.x + box.width - 4, y: box.y + box.height / 2 }
+			{ x: box.x + 2, y: box.y + box.height * 0.75 }
 		);
 		await expect
 			.poll(async () => {
@@ -186,8 +187,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 			.toEqual([
 				{ type: 'image', src: 'data:image/svg+' },
 				{ type: 'paragraph', src: undefined },
-				{ type: 'image', src: 'data:image/png;' },
-				{ type: 'paragraph', src: undefined }
+				{ type: 'image', src: 'data:image/png;' }
 			]);
 		await expect(page.locator('[data-edytor-image-uploading]')).toHaveCount(0);
 		await page.keyboard.press(`${modKey}+z`);
@@ -228,7 +228,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 					editor.dispatchEvent(event);
 				}
 			},
-			{ x: box.x + box.width - 4, y: box.y + box.height / 2 }
+			{ x: box.x + 2, y: box.y + box.height * 0.75 }
 		);
 		await expect(page.locator('[data-edytor-media-uploading] progress')).toHaveCount(1);
 		await expect
@@ -244,8 +244,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 				{ type: 'image', src: 'data:', name: undefined },
 				{ type: 'paragraph', src: undefined, name: undefined },
 				{ type: 'image', src: 'data:', name: undefined },
-				{ type: 'file', src: 'blob:', name: 'notes.pdf' },
-				{ type: 'paragraph', src: undefined, name: undefined }
+				{ type: 'file', src: 'blob:', name: 'notes.pdf' }
 			]);
 		await expect(page.locator('[data-edytor-file-name]')).toHaveText('notes.pdf');
 		await page.keyboard.press(`${modKey}+z`);

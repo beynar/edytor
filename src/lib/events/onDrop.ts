@@ -7,6 +7,8 @@ import {
 } from '$lib/clipboard/clipboard.js';
 import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
 import { caretAtPoint, getDomSelection } from '$lib/selection/domSelection.js';
+import { fileDragEnd, fileDragOver, fileDropAt } from '$lib/dnd/fileDrop.js';
+import type { DropAt } from '$lib/session/attempt.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -15,8 +17,9 @@ import { caretAtPoint, getDomSelection } from '$lib/selection/domSelection.js';
  * produce a native DOM mutation.
  *
  * `Files` is intentionally accepted: file drops route through the plugin
- * `onPaste` hook (the Files → image seam: the image plugin with `upload`
- * claims image files; unclaimed files insert nothing).
+ * `onPaste` hook with the drop indicator's placement (`fileDrop.ts`: the
+ * view's uploads place a block per file the kinds take there; unclaimed
+ * files insert nothing).
  */
 const ACCEPTED_FOREIGN_DROP_TYPES = ['Files', 'text/html', 'text/plain', 'text/uri-list'];
 
@@ -145,8 +148,13 @@ const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null)
 // Preventing the drop suppresses the browser's own `insertFromDrop`
 // beforeinput, so the accepted payload is the occurrence itself — the same
 // routing as `insertFromPaste`, with the drop point as its declared target
-// range (`caretAtPoint`).
-const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
+// range (`caretAtPoint`); files carry the indicator's placement (`at`).
+const insertFromDrop = (
+	edytor: Edytor,
+	root: Element,
+	event: DragEvent,
+	placement: DropAt | null = null
+) => {
 	const at = caretAtPoint(root.ownerDocument, event.clientX, event.clientY);
 	const point =
 		at &&
@@ -160,6 +168,7 @@ const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
 		inputType: 'insertFromDrop',
 		dataTransfer: event.dataTransfer,
 		declared: point && root.contains(point.startContainer) ? point : null,
+		placement,
 		cancelable: true
 	});
 };
@@ -201,23 +210,30 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
 		return insertFromDrop(edytor, root, event);
 	}
 
+	const files = typesOf(event.dataTransfer).includes('Files');
 	if (event.type === 'dragover') {
 		if (isAcceptedForeignDrop(root, event.dataTransfer)) {
 			event.preventDefault();
 			event.stopPropagation();
-			if (event.dataTransfer) {
-				event.dataTransfer.dropEffect = 'copy';
-			}
+			// Files show where they land (the block drag's indicator); none in a
+			// read-only view, which takes no drop (the browser must not open the file).
+			const shown = files && !ownsEvent(root, event) && fileDragOver(edytor, event);
+			if (event.dataTransfer)
+				event.dataTransfer.dropEffect = files && edytor.readonly ? 'none' : 'copy';
+			if (files && !shown) fileDragEnd(edytor);
 		}
 		return;
 	}
 
 	const accepted = isAcceptedForeignDrop(root, event.dataTransfer);
+	// Where the files land: the indicator's placement, re-resolved at the drop point.
+	const at = files && accepted && !ownsEvent(root, event) ? fileDropAt(edytor, event) : null;
+	if (files) fileDragEnd(edytor);
 	if (accepted && isControlDrop(root, event)) return;
 	event.preventDefault();
 	event.stopPropagation();
 
-	if (!accepted) {
+	if (!accepted || (files && edytor.readonly)) {
 		return;
 	}
 	if (ownsEvent(root, event) || isNativeInteractiveControl(event.target)) {
@@ -226,5 +242,17 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
 		return;
 	}
 	// Mid-composition drops are swallowed: the preview owns the write path.
-	if (!edytor.isComposing) return insertFromDrop(edytor, root, event);
+	if (!edytor.isComposing) return insertFromDrop(edytor, root, event, at);
+};
+
+/**
+ * A drag leaving the host (to the page around it, or out of the window):
+ * a file drag's indicator goes. Moving between the host's own elements is
+ * no leave.
+ */
+export const onDragLeave = (edytor: Edytor, event: DragEvent) => {
+	const root = event.currentTarget as Element;
+	const to = event.relatedTarget;
+	if (to instanceof Node && root.contains(to)) return;
+	fileDragEnd(edytor);
 };

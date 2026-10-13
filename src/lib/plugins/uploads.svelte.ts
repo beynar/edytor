@@ -4,6 +4,9 @@ import type { Plugin, PluginOperations } from '$lib/plugins.js';
 import { pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { jsonBlockToSpec } from '$lib/utils/json.js';
 import { id as mint } from '$lib/utils.js';
+import { placeNew } from '$lib/session/moves.js';
+import type { DropAt } from '$lib/session/attempt.js';
+import { claimUploads, viewUploads, type ViewUploads } from '$lib/session/uploads.js';
 
 /** What an `upload` may report while it runs. */
 export type UploadReport = {
@@ -72,7 +75,7 @@ type UploadKind = KindUpload & { type: string };
  * (`fill`, asked by the empty block's render), so a redo brings it back
  * whole.
  */
-export class FileUploads {
+export class FileUploads implements ViewUploads {
 	#uploads = new SvelteMap<string, FileUpload>();
 
 	constructor(
@@ -93,6 +96,9 @@ export class FileUploads {
 		this.#kinds.find((kind) => !kind.fallback && kind.accepts(file)) ??
 		this.#kinds.find((kind) => kind.fallback && kind.accepts(file));
 
+	/** The kind that takes `file`, if any. */
+	kindOf = (file: File) => this.#kindOf(file)?.type;
+
 	/** The upload of block `id` in this view (reactive), if any. */
 	of = (id: string): FileUpload | undefined => this.#uploads.get(id);
 
@@ -101,15 +107,19 @@ export class FileUploads {
 	 * shows text (an office app puts a picture of copied text on the
 	 * clipboard).
 	 */
-	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent }) => {
+	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent, at }) => {
 		if (this.edytor.readonly) return;
 		const files = Array.from(e.clipboardData?.files ?? []).filter((file) => this.#kindOf(file));
 		if (files.length && !showsText(e.clipboardData?.getData('text/html')))
-			prevent(() => this.insert(files));
+			prevent(() => this.insert(files, at));
 	};
 
-	/** Place a block per file at the selection (one paste), then upload each. */
-	insert = (files: readonly File[]) => {
+	/**
+	 * Place a block per file at the selection (one paste), or at a drop's
+	 * placement (`at`: beside, before, after or inside a block, one command),
+	 * then upload each.
+	 */
+	insert = (files: readonly File[], at?: DropAt) => {
 		const { edytor } = this;
 		const placed = files.flatMap((file) => {
 			const kind = this.#kindOf(file);
@@ -119,7 +129,17 @@ export class FileUploads {
 		const lines = placed.map(({ kind, id }) =>
 			jsonBlockToSpec({ id, type: kind.type, data: {}, content: [] })
 		);
-		edytor.dispatcher.run('insertFromPaste', () => pasteFlow(edytor, { lines }));
+		const target = at && edytor.idToBlock.get(at.block);
+		if (at && target)
+			edytor.dispatcher.run('insertFromDrop', () =>
+				placeNew(
+					edytor,
+					placed.map(({ kind, id }) => ({ id, type: kind.type })),
+					target,
+					at.position
+				)
+			);
+		else edytor.dispatcher.run('insertFromPaste', () => pasteFlow(edytor, { lines }));
 		for (const { file, kind, id } of placed) {
 			// Refused, or placed as no such block (a code line takes plain lines, `flow.lines`).
 			if (!edytor.facade.isVisibleBlock(id) || edytor.facade.blockTypeOf(id) !== kind.type)
@@ -208,11 +228,11 @@ const showsText = (html: string | undefined) =>
 	typeof DOMParser !== 'undefined' &&
 	!!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 
-const views = new WeakMap<Edytor, FileUploads>();
-
 /** The view's uploads, when it lists the uploads plugin. */
-export const fileUploads = (edytor: Edytor | undefined): FileUploads | undefined =>
-	edytor && views.get(edytor);
+export const fileUploads = (edytor: Edytor | undefined): FileUploads | undefined => {
+	const uploads = viewUploads(edytor);
+	return uploads instanceof FileUploads ? uploads : undefined;
+};
 
 export type UploadsOptions = {
 	/**
@@ -232,8 +252,8 @@ export type UploadsOptions = {
 export const createUploadsPlugin =
 	({ upload }: UploadsOptions): Plugin =>
 	(edytor) => {
-		if (!edytor || views.has(edytor)) return {};
+		if (!edytor || viewUploads(edytor)) return {};
 		const uploads = new FileUploads(edytor, upload);
-		views.set(edytor, uploads);
+		claimUploads(edytor, uploads);
 		return { onPaste: uploads.paste, onEdytorAttached: () => uploads.destroy };
 	};

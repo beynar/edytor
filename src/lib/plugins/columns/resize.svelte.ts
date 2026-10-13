@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { pin } from '$lib/surface/overlay.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { bandOf, gapBefore } from './gaps.js';
-import { stacks } from './stacking.js';
+import { stacks } from '$lib/dnd/stacking.js';
 import { columnsEnglish, labelsOf } from '$lib/labels.js';
 
 /** The guide line's width (the hover guide's and the drag's). */

@@ -408,6 +408,29 @@
 {/if}
 
 <style>
+	/* Where a drag lands, a block handle's or files' from outside (`DropIndicator`):
+	 * the bar (4px) and the nest backdrop, placed in the overlay and shown
+	 * (`data-shown`) by the drag; their look is a theme's (`edytor/themes/notion.css`). */
+	:global([data-edytor-drop-indicator]),
+	:global([data-edytor-drop-backdrop]) {
+		position: absolute;
+		pointer-events: none;
+	}
+
+	:global([data-edytor-drop-indicator]) {
+		z-index: 100;
+		box-sizing: border-box;
+		height: 4px;
+	}
+
+	:global([data-edytor-drop-backdrop]) {
+		z-index: 99;
+	}
+
+	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
+		visibility: hidden;
+	}
+
 	/*
 	 * Room below the last block, where a press puts the caret in a trailing
 	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. No

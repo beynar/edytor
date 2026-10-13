@@ -10,7 +10,7 @@
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 	import { gapBefore, handleSpan } from '../columns/gaps.js';
 	import { renderSkipped, rendered } from '$lib/surface/overlay.js';
-	import { getOwnRowBottom } from './geometry.js';
+	import { getOwnRowBottom } from '$lib/dnd/geometry.js';
 
 	/**
 	 * The handles, in the overlay: one per registered movable block that
@@ -237,28 +237,5 @@
 			opacity: 1;
 			padding-inline-end: 0;
 		}
-	}
-
-	/* Where a handle's drag lands (`DropIndicator`): the bar (4px) and the nest
-	 * backdrop, placed in the overlay and shown (`data-shown`) by the plugin;
-	 * their look is a theme's (`edytor/themes/notion.css`). */
-	:global([data-edytor-drop-indicator]),
-	:global([data-edytor-drop-backdrop]) {
-		position: absolute;
-		pointer-events: none;
-	}
-
-	:global([data-edytor-drop-indicator]) {
-		z-index: 100;
-		box-sizing: border-box;
-		height: 4px;
-	}
-
-	:global([data-edytor-drop-backdrop]) {
-		z-index: 99;
-	}
-
-	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
-		visibility: hidden;
 	}
 </style>

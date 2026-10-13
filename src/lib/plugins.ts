@@ -1,6 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
+import type { BlockMovePosition } from './session/moves.js';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { TextTransform } from './surface/cells.js';
@@ -352,8 +353,16 @@ export type PluginOperations = {
 	onCopy?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
 	/** Called when a cut event is detected */
 	onCut?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
-	/** Called when a paste event is detected */
-	onPaste?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
+	/**
+	 * Called when a paste event is detected, and for a drop (its data as the
+	 * clipboard's). `at`: where files dropped from outside land, the drop
+	 * indicator's placement (beside, before, after or inside `block`).
+	 */
+	onPaste?: (payload: {
+		prevent: Prevent;
+		e: ClipboardEvent;
+		at?: { block: string; position: BlockMovePosition };
+	}) => void;
 };
 
 /**

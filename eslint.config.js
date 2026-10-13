@@ -190,6 +190,8 @@ const HOST_WRITERS = [
 	'src/lib/surface/observer.svelte.ts',
 	'src/lib/surface/attributes.ts',
 	'src/lib/surface/overlay.ts',
+	// The drop indicator draws in the overlay's layer, as chrome does.
+	'src/lib/dnd/dropIndicator.ts',
 	'src/lib/plugins/**',
 	'src/lib/collaboration/**'
 ];

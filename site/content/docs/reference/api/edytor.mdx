@@ -1943,6 +1943,7 @@ declare const createMemoryCommentsClient: (options: MemoryCommentsClientOptions)
 People mentions, as in Notion: `@` opens a menu of the people your app's
 `items(query)` answers; picking one replaces `@query` with a `mention`
 atom (`{ id, label }`) and puts the caret after it, in one undo step.
+`char` and `kind` make another one (`$` tickers as `ticker` atoms).
 
 ```ts
 declare const createMentionPlugin: (options: MentionPluginOptions) => Plugin;
@@ -4456,7 +4457,7 @@ export type MemoryCommentsClientOptions = {
 
 ## MentionData
 
-What a `mention` atom stores.
+What a mention atom stores (whatever its kind).
 
 ```ts
 export type MentionData = {
@@ -4489,6 +4490,7 @@ export type MentionItem = {
 export type MentionPluginOptions = {
     items: (query: string, ctx: TriggerContext) => readonly MentionItem[] | Promise<readonly MentionItem[]>;
     char?: string;
+    kind?: string;
     menu?: Snippet<[
         TriggerMenuController<MentionItem>
     ]>;
@@ -4496,7 +4498,8 @@ export type MentionPluginOptions = {
 ```
 
 - `items`: The people matching `query` (the text typed after `@`), at once or as a promise.
-- `char`: The character that opens the menu (default `@`).
+- `char`: The character that opens the menu, and that the atom shows before its label (default `@`).
+- `kind`: The inline kind the atoms are (default `mention`), and the name of the trigger menu (`controller.trigger.name`).
 - `menu`: The menu's markup and its words; it renders while `controller.isOpen`, at the caret (without it, nothing shows).
 
 ## MenuItemPayload
@@ -6454,6 +6457,7 @@ move, &lt;kbd>Enter&lt;/kbd> picks, &lt;kbd>Escape&lt;/kbd> closes it and keeps 
 ```ts
 export type Trigger<T = any> = {
     char: string;
+    name?: string;
     items: (query: string, ctx: TriggerContext) => readonly T[] | Promise<readonly T[]>;
     onPick: (item: T, ctx: TriggerContext) => unknown;
     label?: (item: T) => string;
@@ -6466,6 +6470,7 @@ export type Trigger<T = any> = {
 ```
 
 - `char`: The text that opens the menu (one or two characters: `@`, `[[`).
+- `name`: The menu's name, read by its markup as `controller.trigger.name` (the mention plugin's `kind`: one menu snippet can serve several triggers).
 - `items`: The rows for `query`, at once or as a promise (a search); the newest query wins.
 - `onPick`: Write the picked row: the trigger and its query (`from` to `to`) are removed in the same plan as the first operation it runs (one undo step; a refusal keeps them).
 - `label`: A row's label: default the item itself when it is a string, else its `label`, `title` or `name`.

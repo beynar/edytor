@@ -17,7 +17,7 @@
 
 Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable editor with an API to build any kind of collaborative rich text editor.
 
-> **1.0.** Edytor `1.0.0` is on npm as `edytor`: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet: read the [limitations](https://edytor.dev/docs/reference/limitations) before you build on it. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
+> **2.0.** Edytor `2.0.0` is on npm as `edytor`: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet: read the [limitations](https://edytor.dev/docs/reference/limitations) before you build on it. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
 
 ## Features
 

@@ -223,12 +223,18 @@ describe('onboarding truth (WU-18)', () => {
 	it('no page asks for a Vite setting, and the packed consumer builds with none', () => {
 		// `tests/packed-consumer` builds, server-renders and mounts the tarball with
 		// `svelte()` alone; a SvelteKit app's default config needs nothing either.
+		// One exception, Astro's: it bundles a package for the server only when told
+		// (`noExternal` in `astro.config`), a line naming `astro.config` itself.
 		const settings = /optimizeDeps|noExternal|dedupe/;
 		for (const path of [
 			...docs.filter((doc) => !doc.includes('/reference/')),
 			join(root, 'README.md')
-		])
-			expect(readFileSync(path, 'utf8'), relative(root, path)).not.toMatch(settings);
+		]) {
+			const lines = readFileSync(path, 'utf8')
+				.split('\n')
+				.filter((line) => !line.includes('astro.config'));
+			expect(lines.join('\n'), relative(root, path)).not.toMatch(settings);
+		}
 		expect(
 			read('tests/packed-consumer/svelte-app/vite.config.mjs').replace(/\/\*[\s\S]*?\*\//g, '')
 		).not.toMatch(settings);

@@ -1,83 +1,14 @@
 ---
 title: Quick start
-description: Render an Edytor editor, add a plugin, give it a document and read the document as it changes.
+description: Render an editor, add a plugin, and use the document in your page.
 icon: zap
 ---
 
-This page renders an editor, adds one plugin to it and reads the document as it changes. It assumes you have [installed](/docs/getting-started) `edytor`.
+Three steps, assuming you have [installed](/docs/getting-started) `edytor`.
 
-## Render an editor
+## 1. Render an editor
 
 ```svelte title="src/routes/+page.svelte" check
-<script lang="ts">
-	import { Edytor } from 'edytor';
-</script>
-
-<Edytor />
-```
-
-You see one empty paragraph: an empty document always starts with one block of the default type. `<Edytor>` includes the rich text and suggestions plugins, so this is already a rich text editor with its keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …).
-
-`<Edytor>` renders on the server and hydrates in the browser, so it works in any route. An editor connected to a room renders its content once the room answers; see [SvelteKit](/docs/getting-started/sveltekit).
-
-## Add a plugin
-
-Every other block kind comes from a plugin. Import its factory from `edytor` and pass it in `plugins`. Here, code blocks, with a first document passed as `value`:
-
-```svelte title="src/lib/Editor.svelte" check
-<script lang="ts">
-	import { Edytor, createCodePlugin, type JSONDoc } from 'edytor';
-
-	const value: JSONDoc = {
-		children: [
-			{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Notes' }] },
-			{
-				type: 'code',
-				data: { language: 'javascript' },
-				children: [{ type: 'codeLine', content: [{ text: 'console.log("hello");' }] }]
-			}
-		]
-	};
-</script>
-
-<Edytor {value} plugins={[createCodePlugin()]} />
-```
-
-The code block highlights its lines, and typing ```` ``` ```` on an empty line, or <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>8</kbd>, makes a new one. `value` is a `JSONDoc`, a tree of blocks ([Document model](/docs/concepts/document-model)). The editor reads it once, when it mounts.
-
-[Plugins](/docs/plugins) lists the others: tables, columns, images and media, mentions, comments, markdown shortcuts…
-
-## Read the document
-
-`onChange` receives the whole document after every change: a local edit, a remote edit or an undo. Keep it in a `$state` and use it in your markup:
-
-```svelte title="src/lib/EditorWithPreview.svelte" check
-<script lang="ts">
-	import { Edytor, createCodePlugin, type JSONDoc } from 'edytor';
-
-	let value = $state<JSONDoc>({
-		children: [{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Notes' }] }]
-	});
-	// The first heading's text: its content is text runs (and inline blocks, which have none).
-	const heading = $derived(value.children?.find((block) => block.type === 'heading'));
-	const title = $derived(
-		heading?.content?.map((run) => ('text' in run ? run.text : '')).join('') || 'Untitled'
-	);
-</script>
-
-<Edytor {value} plugins={[createCodePlugin()]} onChange={(next) => (value = next)} />
-
-<p>{title}: {value.children?.length ?? 0} blocks</p>
-<pre>{JSON.stringify(value, null, 2)}</pre>
-```
-
-The document you receive is the same shape `value` takes, so you can store it and open it again as `value`. The editor reads `value` only when it mounts: assigning it afterwards does not replace the content, and `value` is not bindable (write `onChange`, not `bind:value`). To change the content from code, use [commands](/docs/editor/commands).
-
-## Style it
-
-Import the Notion theme and put the editor in an element with its class:
-
-```svelte title="src/lib/StyledEditor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 	import 'edytor/themes/notion.css';
@@ -88,11 +19,47 @@ Import the Notion theme and put the editor in an element with its class:
 </div>
 ```
 
-Or style it yourself: every block carries `data-edytor-*` attributes. See [Styling](/docs/customization/styling).
+That is a rich text editor: headings, lists, to-dos, quotes, callouts, toggles, marks and links, with their shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>…). It renders on the server and hydrates in the browser. The theme is optional: without it the blocks work, unstyled.
 
-## Menus and handles
+The bare editor stays small on purpose. It has **no** menus, block handles, images or code blocks, and <kbd>Tab</kbd> does not nest blocks: each is one line away, below.
 
-The editor shows no slash menu, toolbar or block handle until you give their plugins a snippet that draws them: see [Menus and handles](/docs/customization/menus). To start from the demo's Notion-style ones, copy them from the repository: see [Ready-made menus](/docs/customization/ready-made-menus).
+## 2. Add what you need
+
+Every block kind beyond rich text is a plugin, imported from `edytor` and passed in `plugins`. Nesting is one prop:
+
+```svelte title="src/lib/Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createCodePlugin, createTablePlugin } from 'edytor';
+	import 'edytor/themes/notion.css';
+</script>
+
+<div class="edytor-notion">
+	<Edytor allowNesting plugins={[createCodePlugin(), createTablePlugin()]} />
+</div>
+```
+
+[Plugins](/docs/plugins) lists them all: images and media, columns, mentions, comments, equations… Menus, toolbars and handles draw your own markup ([Menus and handles](/docs/customization/menus)); to start from Notion-style ones, copy the [ready-made menus](/docs/customization/ready-made-menus).
+
+## 3. Use the document
+
+Give the editor a first document as `value`, and keep each new one from `onChange` in a `$state`:
+
+```svelte title="src/lib/EditorWithPreview.svelte" check
+<script lang="ts">
+	import { Edytor, type JSONDoc } from 'edytor';
+
+	let value = $state<JSONDoc>({
+		children: [{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Notes' }] }]
+	});
+</script>
+
+<Edytor {value} onChange={(next) => (value = next)} />
+
+<p>{value.children?.length ?? 0} blocks</p>
+<pre>{JSON.stringify(value, null, 2)}</pre>
+```
+
+`onChange` fires after every change, local, remote or undo, with the whole document as a `JSONDoc` ([Document model](/docs/concepts/document-model)): store it, and open it again as `value`. The editor reads `value` once, when it mounts. To change the content from code, use [commands](/docs/editor/commands).
 
 ## Next steps
 
@@ -100,13 +67,13 @@ The editor shows no slash menu, toolbar or block handle until you give their plu
   <Card title="The Edytor component" href="/docs/editor/edytor-component" icon="square-pen">
     Every prop, with types and defaults.
   </Card>
-  <Card title="Editing programmatically" href="/docs/editor/commands" icon="terminal">
-    Insert text, change blocks and move them from code.
-  </Card>
   <Card title="Collaboration" href="/docs/collaboration" icon="users">
     Share one document between tabs, devices and people.
   </Card>
   <Card title="Plugins" href="/docs/plugins" icon="plug">
     What each bundled plugin does and how to write one.
+  </Card>
+  <Card title="Styling" href="/docs/customization/styling" icon="palette">
+    The theme's variables, or your own CSS over `data-edytor-*` attributes.
   </Card>
 </CardGroup>

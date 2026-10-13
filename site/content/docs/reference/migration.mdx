@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 1.0.0
+
 #### Breaking changes
 
 - **`<Edytor>`'s defaults are rich text and the suggestion keys only.** Images and block moves from the keyboard are no longer added for you. An app with images lists `createImagePlugin({ upload })` (or `createImagePlugin()` for links only); without it, the slash menu has no Image, image files are not claimed, and a pasted `<img>` is dropped with its alt text (the text around it is kept). An app that moves blocks with <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> lists `createArrowMovePlugin()`; without it, those keys keep their text meaning (the caret, or the selection, to the start or end of the document). The block handles, the block menu and the slash menu were never defaults.

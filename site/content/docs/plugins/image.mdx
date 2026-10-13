@@ -1,10 +1,10 @@
 ---
 title: Image
-description: The image plugin adds Notion's image block, a void figure with an editable caption, alt text, width and alignment, embedded from a link, an upload you provide, or a pasted or dropped file. It is on by default.
+description: The image plugin adds Notion's image block, a void figure with an editable caption, alt text, width and alignment, embedded from a link, an upload you provide, or a pasted or dropped file. List it to have images.
 icon: image
 ---
 
-`createImagePlugin()` adds Notion's image block: an "Add an image" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. Give it an `upload`, `createImagePlugin({ upload })`, and the empty block gets an Upload and pasted or dropped image files become image blocks too.
+`createImagePlugin()` adds Notion's image block: an "Add an image" panel (your `empty` snippet, `createMediaEmptyPlugin({ empty })`) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. It is not a default plugin: list `createImagePlugin()` (or `createImagePlugin({ upload })`) and the slash menu lists "Image" under `Media`. Give it an `upload`, `createImagePlugin({ upload })`, and the empty block gets an Upload and pasted or dropped image files become image blocks too.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -25,7 +25,7 @@ icon: image
 <Edytor plugins={[image]} />
 ```
 
-An image plugin you list (any `createImagePlugin(...)`) replaces the default one. It takes links; given an `upload` (`createImagePlugin({ upload })`), files too ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). Without one, the view takes no image files: a dropped image goes to the file block when the file plugin uploads, else nowhere.
+The image plugin takes links; given an `upload` (`createImagePlugin({ upload })`), files too ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). Without one, the view takes no image files: a dropped image goes to the file block when the file plugin uploads, else nowhere.
 
 ## Try it
 
@@ -326,4 +326,4 @@ The [Notion theme](/docs/customization/styling#notion-theme) styles the block. W
 
 The plugin places the resize handles and their pills; the [Notion theme](/docs/customization/styling#notion-theme) paints the pills (a dark pill with a light ring, `--edytor-image-handle-color`), and without it they are unpainted. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.
 
-To change the markup, list a plugin that names the `image` kind's `snippet` (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)): the default image plugin comes after yours, and its other fields stay. To replace the kind itself, define every field you need in your own plugin: definitions are first-wins, field by field.
+To change the markup, list a plugin that names the `image` kind's `snippet` (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) before `createImagePlugin(...)`: the image plugin's other fields stay. To replace the kind itself, define every field you need in your own plugin: definitions are first-wins, field by field.

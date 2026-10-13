@@ -77,8 +77,8 @@
 		return () => awareness.off('change', read);
 	});
 
-	// Rich text, images, block moves and the suggestion keys are defaults (listed here with
-	// the demo's chrome); columns, tables and the marquee are opt-in. A drag from the
+	// Rich text, block moves and the suggestion keys are defaults (listed here with
+	// the demo's chrome); images, columns, tables and the marquee are opt-in. A drag from the
 	// frame's margin selects blocks.
 	/**
 	 * A dropped or pasted image goes into the shared page itself, as a `data:` URL

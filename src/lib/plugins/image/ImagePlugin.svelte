@@ -2,7 +2,6 @@
 	import './image.css';
 	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import EmptySlot from '../media/EmptySlot.svelte';
 	import ImageChrome from './ImageChrome.svelte';
@@ -165,7 +164,7 @@
 			};
 		};
 
-		return branded('image', plugin);
+		return plugin;
 	};
 </script>
 

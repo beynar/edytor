@@ -34,7 +34,7 @@ export default {
 } satisfies PluginDemo;
 ```
 
-- `basePlugins()` is the editor around every demo: Notion's placeholders, the block handles, the block menu, the slash menu, the toolbar and rich text. List the page's plugins before it. `<Edytor>` adds its defaults (arrow move, image, suggestions) itself.
+- `basePlugins()` is the editor around every demo: Notion's placeholders, the block handles, the block menu, the slash menu, the toolbar and rich text. List the page's plugins before it. `<Edytor>` adds its defaults (arrow move, suggestions) itself.
 - The page's plugin comes from `../../chrome/plugins` when the demo chrome has it (`codePlugin`, `tablePlugin`, `equation()`, `mention({ items })`, `comments({ client, user, users })`, …), else from `edytor`.
 - `customPlugins` never holds a second instance of the plugin the Customize component configures: the first plugin listed wins a kind, so a second instance's options would do nothing and only confuse a reader. When that plugin is one of `basePlugins()`, pass it to leave the demo's out: `customPlugins: () => basePlugins(toolbarPlugin)`. Add what else the page needs (a media plugin with its `upload`, the columns plugin) there.
 - Keep ids unique in the seed and the document short: a heading or a sentence of context, the plugin's blocks, maybe one empty paragraph to type in.

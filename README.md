@@ -21,7 +21,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 
 ## Features
 
-- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images and block handles: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme, a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`createMarkdownShortcutsPlugin()`) and code blocks.
+- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with block handles: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme, a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`createMarkdownShortcutsPlugin()`) code blocks and images (`createImagePlugin({ upload })`).
 - **Pages and a table of contents, opt-in.** `createPagePlugin` links a block to another document (a page per room, opened and named by your app), and `createTocPlugin()` lists the headings live ([Page](https://edytor.dev/docs/plugins/page), [Table of contents](https://edytor.dev/docs/plugins/table-of-contents)).
 - **Columns, opt-in.** List `createColumnsPlugin()` for Notion's multi-column layouts: drag a block to the edge of another to put them side by side, or pick "2 columns" to "5 columns"; drag the gap to resize. Layouts converge across collaborators and the room ([Columns](https://edytor.dev/docs/plugins/columns)).
 - **Tables, opt-in.** List `createTablePlugin()` for Notion's simple table: cells of text, <kbd>Tab</kbd> between them, rows and columns added, moved and deleted from the table's edges and grips, resizable columns, header row and column, HTML tables pasted and copied. Concurrent row and column edits converge on every replica ([Table](https://edytor.dev/docs/plugins/table)).
@@ -63,7 +63,7 @@ pnpm add edytor
 <p>{value.children?.length ?? 0} blocks</p>
 ```
 
-`<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text, images and keyboard block moves; each other block kind is a plugin you add, here code blocks. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
+`<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text and keyboard block moves; each other block kind is a plugin you add, here code blocks. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
 
 The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin ([menus and handles](https://edytor.dev/docs/customization/menus)). The demo's Notion-style ones are in [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome), ready to copy into your app ([ready-made menus](https://edytor.dev/docs/customization/ready-made-menus)).
 

@@ -21,13 +21,38 @@ icon: link
 <Edytor plugins={[pageLinks]} />
 ```
 
+### Pasted references
+
+`fromPaste` turns a pasted text your app recognizes into a page link: your own URL for a page, or any text you can read as one. It answers the page, or `null` to leave the paste alone.
+
+```svelte title="PastedLinks.svelte" check
+<script lang="ts">
+	import { Edytor, createPageLinkPlugin, type PageLinkItem } from 'edytor';
+
+	const pages: PageLinkItem[] = [{ id: '123', title: 'Roadmap', icon: '🗺️' }];
+	const search = (query: string) => pages.filter((page) => page.title.includes(query));
+
+	// https://app.example.com/p/123 is page 123.
+	const fromPaste = (text: string) => {
+		const id = /^https:\/\/app\.example\.com\/p\/(\w+)$/.exec(text)?.[1];
+		return pages.find((page) => page.id === id) ?? null;
+	};
+
+	const pageLinks = createPageLinkPlugin({ search, fromPaste });
+</script>
+
+<Edytor plugins={[pageLinks]} />
+```
+
+It is asked for a paste at a caret whose plain text is one item: trimmed, on one line. A paste of several lines, or over a selection, is left alone. A page answered at once replaces the pasted text with the page link, an undo step of its own after the paste, so one undo gives the plain text back. The answer wins over the rich text link and the URL menu of an empty line, whatever the order you list the plugins in: a URL `fromPaste` recognizes becomes the page link, any other is linked (or offered as an embed) as before. A promise lets the paste land as it would without the option, linked or not, and swaps it for the page link when it answers, if the text is still there; undo gives back what the paste wrote. A readonly view pastes nothing.
+
 It is not a default plugin: list it in `plugins`, in every view of a document that holds page links.
 
 ## Try it
 
 <PluginDemo plugin="page-link" />
 
-Type `[[` at the end of the last line, then a few letters, and pick a page with <kbd>Enter</kbd> or a click. The editor is local to this page: a reload resets it.
+Type `[[` at the end of the last line, then a few letters, and pick a page with <kbd>Enter</kbd> or a click. Or copy `page:design-system` or `https://app.example.com/p/p4` and paste it there: the demo's `fromPaste` reads either as a page, and the paste becomes its link. The editor is local to this page: a reload resets it.
 
 ## Customize
 
@@ -155,6 +180,7 @@ This one draws the menu as a grid of tiles, each with the page's icon large abov
       description: "The pages matching the text typed after [[. A promise is a search: the newest query's answer wins, and the menu reads Searching… meanwhile.",
     },
     href: { type: "(page) => string | undefined", description: "A page's URL when search answers none, such as /pages/<id>." },
+    fromPaste: { type: "(text) => PageLinkItem | null | Promise<PageLinkItem | null>", description: "The page a pasted text names (your app's URL for it, page:roadmap…), or null. Asked for a one-line paste at a caret; a page turns the pasted text into its link, one undo step that gives the text back. See Pasted references." },
     char: { type: "string", description: "The text that opens the menu. Default [[." },
     menu: { type: "Snippet<[TriggerMenuController<PageLinkItem>]>", description: "The menu, at the caret while it is open (without it, nothing shows). Keep its ARIA with {@attach controller.popup} on the list and {@attach controller.option(index)} on each row. See Menus and handles." },
   }}

@@ -3047,6 +3047,7 @@ export type PageLinkLabels = {
 export type PageLinkPluginOptions = {
     search: (query: string, ctx: TriggerContext) => readonly PageLinkItem[] | Promise<readonly PageLinkItem[]>;
     href?: (page: PageLinkItem) => string | undefined;
+    fromPaste?: (text: string) => PageLinkItem | null | undefined | Promise<PageLinkItem | null | undefined>;
     char?: string;
     menu?: Snippet<[
         TriggerMenuController<PageLinkItem>

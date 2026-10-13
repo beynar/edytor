@@ -12,6 +12,14 @@ const PAGES = [
 	{ id: 'p5', title: 'Onboarding guide', icon: '👋' }
 ];
 
+/** `page:roadmap` (a title's slug) or this app's URL for a page, `https://app.example.com/p/p3`. */
+const fromPaste = (text: string) => {
+	const slug = /^page:([\w-]+)$/.exec(text)?.[1];
+	const id = /^https:\/\/app\.example\.com\/p\/(\w+)$/.exec(text)?.[1];
+	const slugOf = (title: string) => title.toLowerCase().replace(/\s+/g, '-');
+	return PAGES.find((page) => page.id === id || slugOf(page.title) === slug) ?? null;
+};
+
 const value: JSONDoc = {
 	children: [
 		{
@@ -31,6 +39,6 @@ const value: JSONDoc = {
 
 export default {
 	value,
-	plugins: () => [pageLink({ search: searchBy(PAGES, (page) => page.title) }), ...basePlugins()],
+	plugins: () => [pageLink({ search: searchBy(PAGES, (page) => page.title), fromPaste }), ...basePlugins()],
 	custom: PageLinkEditor
 } satisfies PluginDemo;

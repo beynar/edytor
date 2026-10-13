@@ -368,6 +368,12 @@ export type PluginOperations = {
 		e: ClipboardEvent;
 		at?: { block: string; position: BlockMovePosition };
 	}) => void;
+	/**
+	 * Its `onPaste` runs before the other plugins' (page link's `fromPaste`:
+	 * a pasted reference wins over the link and URL menu hooks).
+	 * @internal
+	 */
+	pasteFirst?: boolean;
 };
 
 /**

@@ -1953,7 +1953,8 @@ declare const createMentionPlugin: (options: MentionPluginOptions) => Plugin;
 Links to your app's pages, as Notion's `[[`: it opens a menu of the pages
 your app's `search(query)` answers; picking one replaces `[[query` with
 a `pageLink` atom (`{ id, title, href, icon }`), an `<a>` to the page,
-and puts the caret after it, in one undo step.
+and puts the caret after it, in one undo step. With `fromPaste`, a
+pasted text your app recognizes becomes a page link too.
 
 ```ts
 declare const createPageLinkPlugin: (options: PageLinkPluginOptions) => Plugin;
@@ -4741,6 +4742,7 @@ export type PageLinkLabels = {
 export type PageLinkPluginOptions = {
     search: (query: string, ctx: TriggerContext) => readonly PageLinkItem[] | Promise<readonly PageLinkItem[]>;
     href?: (page: PageLinkItem) => string | undefined;
+    fromPaste?: (text: string) => PageLinkItem | null | undefined | Promise<PageLinkItem | null | undefined>;
     char?: string;
     menu?: Snippet<[
         TriggerMenuController<PageLinkItem>
@@ -4750,6 +4752,7 @@ export type PageLinkPluginOptions = {
 
 - `search`: The pages matching `query` (the text typed after `[[`), at once or as a promise.
 - `href`: A page's URL when the search answers none (`/pages/<id>`, say).
+- `fromPaste`: The page a pasted text names (your app's URL for it, `page:roadmap`…), at once or as a promise; `null` when it names none.
 - `char`: The text that opens the menu (default `[[`).
 - `menu`: The menu's markup and its words; it renders while `controller.isOpen`, at the caret (without it, nothing shows).
 

@@ -58,7 +58,8 @@ const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
  * the document AND cancel its paste) or under a live composition (its
  * preview owns the write path: the browser pastes, the observer reconciles
  * it after the end, as PM input.ts:656-660). Else, unless Shift asks for
- * plain text: an Edytor fragment; what an extension's `onPaste` claims; a
+ * plain text: an Edytor fragment; what an extension's `onPaste` claims (the
+ * `pasteFirst` ones first, then list order); a
  * file nothing claimed inserts nothing (the Files → image seam), never its
  * name; external HTML (HTML that carries nothing falls through); markdown
  * text as its blocks (`paste.markdown`), except in a code block's lines.
@@ -74,9 +75,16 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 	if (!(shiftPasteModifierHeld && plain)) {
 		const fragment = readEdytorClipboardFragment(data);
 		if (!fragment) {
-			const claimed = (plugin: (typeof this.plugins)[number]) =>
-				vetoable((prevent) => plugin.onPaste?.({ prevent, e }));
-			if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
+			// The `pasteFirst` hooks (a pasted reference: page link's `fromPaste`), then the
+			// others in list order; the first that prevents claims the paste.
+			const claimed = (first: boolean) => (plugin: (typeof this.plugins)[number]) =>
+				!!plugin.pasteFirst === first && vetoable((prevent) => plugin.onPaste?.({ prevent, e }));
+			const stop = () => e.preventDefault();
+			if (
+				this.dispatcher.intercept(claimed(true), stop) ||
+				this.dispatcher.intercept(claimed(false), stop)
+			)
+				return;
 			if (data?.files?.length) return e.preventDefault();
 		}
 		const start = this.idToBlock.get(this.selection.projection.start?.block ?? '');

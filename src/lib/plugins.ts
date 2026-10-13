@@ -216,7 +216,10 @@ export type TextRuleContext = {
 
 /** What an input rule's `replace` receives besides the match. */
 export type InputRuleContext = TextRuleContext & {
-	/** The typed text that completed the match: part of the match, not in the document. */
+	/**
+	 * The typed text that completed the match: the end of the match, already
+	 * in the document as its own undo step (`to` is after it).
+	 */
 	typed: string;
 	/**
 	 * Remove the matched text (`from` to `to`) in the same plan as the first
@@ -243,13 +246,14 @@ export type InputRule = {
 	 */
 	find: RegExp;
 	/**
-	 * The replacement. Return a string to replace the whole match with it
-	 * (one command and one undo step with the matched text's removal; the
-	 * caret after it), or write it yourself and return `true`, usually
-	 * through `ctx.remove(() => …)`. Return `false` or `null`, writing
-	 * nothing, to decline: the next rule is asked, then the typed text is
-	 * inserted as usual, as it is when the replacement is refused (by the
-	 * document, readonly or a plugin's veto).
+	 * The replacement, run once the typed text is in the document (its own
+	 * undo step, so the first undo gives the typed text back). Return a
+	 * string to replace the whole match with it (one command and one undo
+	 * step with the matched text's removal; the caret after it), or write it
+	 * yourself and return `true`, usually through `ctx.remove(() => …)`.
+	 * Return `false` or `null`, writing nothing, to decline: the next rule is
+	 * asked, and the typed text stays as typed, as it does when the
+	 * replacement is refused (by the document, readonly or a plugin's veto).
 	 */
 	replace: (match: RegExpExecArray, ctx: InputRuleContext) => string | boolean | null | void;
 };

@@ -570,7 +570,17 @@
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
 	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
 	const emojiRules: Plugin = (edytor) =>
-		withRulesAndTriggers(edytor, {}, { inputRules: [{ find: /:smile:$/, replace: () => '😄' }] });
+		withRulesAndTriggers(
+			edytor,
+			{},
+			{
+				inputRules: [
+					{ find: /:smile:$/, replace: () => '😄' },
+					{ find: /->$/, replace: () => '→' },
+					{ find: /\(c\)$/, replace: () => '©' }
+				]
+			}
+		);
 
 	const plugins = $derived([
 		...(data.handles ? [blockHandlesPlugin] : []),

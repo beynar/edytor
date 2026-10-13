@@ -317,7 +317,7 @@ describe('creating inline equations', () => {
 		expect(edytor.selection.caret).toMatchObject({ offset: 4 });
 		edytor.historyUndo();
 		await flushDomUpdates();
-		expect(contentOf(edytor, 'a')).toEqual([{ text: 'so $$x^2$' }]);
+		expect(contentOf(edytor, 'a')).toEqual([{ text: 'so $$x^2$$' }]);
 	});
 
 	it('Mod+Shift+E turns the selected text into an inline equation, one step', async () => {

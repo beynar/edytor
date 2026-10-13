@@ -27,8 +27,8 @@
  *   leaves `helloa world` as it was typed. NW-06: `+` on an empty paragraph
  *   (it only types `/` there, opening the slash menu) is its own step too.
  * - H-G6 (UW-16) — a markdown or slash conversion inside the capture window
- *   is its own step: `say **b**` then undo gives the typed `say **b*` back as
- *   text, `## ` then undo a paragraph `##`, `hi /h2` + Enter then undo a
+ *   is its own step: `say **b**` then undo gives the typed `say **b**` back as
+ *   text, `## ` then undo a paragraph `## `, `hi /h2` + Enter then undo a
  *   paragraph `hi /h2`.
  * - H-G7 (UW-16) — block commands called directly (no user command around
  *   them) cut by the table, one step each; one `edytor.transact` around two
@@ -327,18 +327,18 @@ describe('a conversion inside the capture window is its own step (UW-16)', () =>
 		expect(edytor.undoManager.undoStack.length).toBe(2);
 		edytor.historyUndo();
 		await flushDomUpdates();
-		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: 'say **b*' }]);
+		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: 'say **b**' }]);
 		expect(edytor.undoManager.undoStack.length).toBe(1);
 	});
 
-	it('H-G6: `## ` then undo gives a paragraph `##`', async () => {
+	it('H-G6: `## ` then undo gives a paragraph `## `', async () => {
 		const { edytor, editor } = await mountEmpty();
 		await typeAll(editor, '## ');
 		expect(blocks(edytor)).toEqual([{ type: 'heading', data: { level: 'h2' }, text: '' }]);
 		expect(edytor.undoManager.undoStack.length).toBe(2);
 		edytor.historyUndo();
 		await flushDomUpdates();
-		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: '##' }]);
+		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: '## ' }]);
 		expect(edytor.undoManager.undoStack.length).toBe(1);
 	});
 

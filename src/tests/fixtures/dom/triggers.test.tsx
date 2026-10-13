@@ -5,9 +5,10 @@
  * `plugins/mention`, `plugins/page-link`) and Notion:
  *
  * - a caret is `{ block, offset }` in block offsets, an inline atom counting 1;
- * - an input rule replaces the matched text and the typed text as one
- *   command and one undo step (undo gives back the text before the typed
- *   character); a refused or declined replacement types the text as typed;
+ * - the typed text that completes an input rule goes in as typed, its own
+ *   step; the replacement of the match is a second command and undo step
+ *   (the first undo gives back the typed text, the second removes it as
+ *   typing); a refused or declined replacement leaves the text as typed;
  * - `@` at a text's start or after whitespace opens the people menu; the
  *   text after it filters it; Enter picks the highlighted person: `@query`
  *   becomes a `mention` atom, the caret after it, one undo step; Escape
@@ -147,18 +148,46 @@ describe('the caret in block offsets', () => {
 });
 
 describe('input rules', () => {
-	it('a string replaces the match: one step, the caret after it, undo gives the text typed before', async () => {
+	it('a string replaces the match: a step after the typed one, the caret after it; undo gives the typed text back', async () => {
 		const { edytor, editor } = await render([p('a', 'hi :smile')], [emojiPlugin]);
 		await caretAt(edytor, 'a', 9);
+		edytor.undoManager.stopCapturing();
 		const steps = edytor.undoManager.undoStack.length;
 		await type(editor, ':');
 		expect(contentOf(edytor, 'a')).toBe('hi 😄');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 5 });
-		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('hi :smile:');
+		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 10 });
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(contentOf(edytor, 'a')).toBe('hi :smile');
 	});
+
+	for (const [typed, before, after] of [
+		['(c)', '', '\u00a9'],
+		['->', 'a ', 'a \u2192'],
+		[':smile:', '', '😄']
+	] as const)
+		it(`typing ${typed}: the replacement is undone first, giving ${typed} back`, async () => {
+			const symbols: Plugin = ruled(() => ({
+				inputRules: [
+					{ find: /\(c\)$/, replace: () => '\u00a9' },
+					{ find: /->$/, replace: () => '\u2192' },
+					emoji
+				]
+			}));
+			const { edytor, editor } = await render([p('a', before)], [symbols]);
+			await caretAt(edytor, 'a', before.length);
+			await type(editor, typed);
+			expect(contentOf(edytor, 'a')).toBe(after);
+			edytor.historyUndo();
+			await flushDomUpdates();
+			expect(contentOf(edytor, 'a')).toBe(before + typed);
+			expect(caretOf(edytor)).toEqual({ block: 'a', offset: before.length + typed.length });
+		});
 
 	it('typing goes on after the replacement', async () => {
 		const { edytor, editor } = await render([p('a', '')], [emojiPlugin]);
@@ -213,8 +242,8 @@ describe('input rules', () => {
 		);
 		await caretAt(edytor, 'a', 5);
 		await type(editor, '>');
-		// "ab" (2) + the atom (1) + "c" (1): the match starts at 4, the caret is at 5.
-		expect(seen).toEqual([[4, 5]]);
+		// "ab" (2) + the atom (1) + "c" (1): the match starts at 4, ends after the typed ">" at 6.
+		expect(seen).toEqual([[4, 6]]);
 		expect(edytor.idToBlock.get('a')!.lastText?.stringContent).toBe('c→');
 	});
 
@@ -255,7 +284,7 @@ describe('input rules', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(edytor.idToBlock.get('a')!.type).toBe('paragraph');
-		expect(contentOf(edytor, 'a')).toBe('->');
+		expect(contentOf(edytor, 'a')).toBe('-> ');
 		expect(edytor.undoManager.undoStack.length).toBeGreaterThanOrEqual(steps);
 
 		const veto: Plugin = () => ({
@@ -596,7 +625,7 @@ describe('review fixes', () => {
 		expect(contentOf(edytor, 'a')).toBe('a\u201c');
 		edytor.historyUndo();
 		await flushDomUpdates();
-		expect(contentOf(edytor, 'a')).toBe('a');
+		expect(contentOf(edytor, 'a')).toBe('a"');
 	});
 
 	it('rows sharing a key or a label render, each with its own element id', async () => {

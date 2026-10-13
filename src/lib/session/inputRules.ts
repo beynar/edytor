@@ -3,9 +3,12 @@
  * (`## ` → a heading, `:smile:` → 😄). The one engine behind every
  * plugin's `inputRules`: it reads the typed text and the caret, finds the
  * first rule whose `find` ends at the typed text, and replaces the typed
- * `insertText` with the rule's replacement — a command of its own, the
- * matched text's removal leading its first operation (`dispatcher.lead`), so
- * a refusal of either writes neither and the typed text lands as typed.
+ * `insertText` with two steps: the typed text as typed (an insertion, which
+ * may continue the typing before it), then the rule's replacement, a command
+ * of its own whose first operation the matched text's removal leads
+ * (`dispatcher.lead`), so a refusal of either writes neither and the typed
+ * text stays as typed. The first undo gives the typed text back, the
+ * caret after it (as the autolink does).
  */
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -72,7 +75,8 @@ export const inputRulesHook = (
 			/** The match's start in the segment; the match in the block, `from` to the caret. */
 			const start = match.index;
 			const from = text.segStart + start;
-			const to = text.segStart + yStart;
+			// The typed text is in the document: the match ends after it.
+			const to = text.segStart + yStart + value.length;
 			let removed: boolean | null = null;
 			/** Remove the match in the same plan as `then`'s first operation: `ctx.remove`. */
 			const remove = (then?: () => unknown) => {
@@ -116,11 +120,13 @@ export const inputRulesHook = (
 		prevent(() => {
 			running = true;
 			try {
-				for (const { rule, match } of matches) {
-					const written = apply(rule, match);
-					if (written !== null) return written || typeAsIs();
-				}
+				// The typed text first, a step the replacement does not join.
+				const last = dispatcher.last;
 				typeAsIs();
+				if (dispatcher.last === last || dispatcher.last?.status !== 'applied') return;
+				for (const { rule, match } of matches) {
+					if (apply(rule, match) !== null) return;
+				}
 			} finally {
 				running = false;
 			}

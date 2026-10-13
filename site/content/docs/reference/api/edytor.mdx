@@ -3863,7 +3863,7 @@ export type InputRule = {
 ```
 
 - `find`: Tested on the caret's text segment up to the caret, followed by the typed text; a match must end at the typed text's end (end it with `$`).
-- `replace`: The replacement.
+- `replace`: The replacement, run once the typed text is in the document (its own undo step, so the first undo gives the typed text back).
 
 ## InputRuleContext
 

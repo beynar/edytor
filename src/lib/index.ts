@@ -372,7 +372,12 @@ export type { Key, Modifier, Modifiers } from './session/keymap.js';
 export type { TriggerRange } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
 export type { KindUpload, UploadReport, Uploader } from './plugins/uploads.svelte.js';
-export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
+export type {
+	AwarenessLike,
+	PresencePeer,
+	PresenceSource,
+	PresenceWriter
+} from './collaboration/awarenessSelection.js';
 export type { DataPatch } from './crdt/data.js';
 export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';
 export type { Flow, FlowLine, FlowTarget } from './crdt/flow.js';

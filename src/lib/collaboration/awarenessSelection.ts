@@ -3,6 +3,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { PresenceSelection } from '$lib/session/selection.js';
 import { isRecord, jsonEquals } from '$lib/utils/json.js';
+import { createSubscriber } from 'svelte/reactivity';
 
 /**
  * Presence: one entry per view key, `selections[viewKey] =
@@ -60,6 +61,34 @@ export type AwarenessLike = {
 	getLocalState: () => Record<string, unknown> | null;
 	setLocalState: (state: Record<string, unknown> | null) => void;
 };
+
+/**
+ * The awareness a view's presence writer reads and writes: its own state,
+ * every client's state, and the `change` event (the real `Awareness`).
+ */
+export type PresenceSource = AwarenessLike & {
+	clientID: number;
+	getStates: () => Map<number, Record<string, unknown>>;
+	on: (name: 'change', listener: () => void) => void;
+	off: (name: 'change', listener: () => void) => void;
+};
+
+/** Another person online: their client id and the fields of their `user` state (`name`, `color`, …), the document's actor name and colour when `user` has none. */
+export type PresencePeer = EdytorAwarenessUser & Record<string, unknown> & { clientId: number };
+
+/** Every client but this one, by client id. */
+const readPeers = (awareness: PresenceSource): PresencePeer[] =>
+	[...awareness.getStates()]
+		.filter(([clientId]) => clientId !== awareness.clientID)
+		.sort(([a], [b]) => a - b)
+		.map(([clientId, state]) => {
+			const actor = isRecord(state.actor) ? state.actor : {};
+			const user = isRecord(state.user) ? state.user : {};
+			const peer: PresencePeer = { ...user, clientId };
+			if (peer.name === undefined && typeof actor.name === 'string') peer.name = actor.name;
+			if (peer.color === undefined && typeof actor.color === 'string') peer.color = actor.color;
+			return peer;
+		});
 
 let presenceKeys = 0;
 /** A client-local presence key, minted once by the view that owns the entry. */
@@ -130,8 +159,24 @@ export class PresenceWriter {
 	/** The last payload and focused block handed in, kept so a share change republishes at once. */
 	#latest: [PresenceSelection | null, string | null] = [null, null];
 
+	/** The peers while someone reads them reactively (`undefined`: recompute). */
+	#peers: PresencePeer[] | undefined;
+	#watched = false;
+	readonly #subscribe = createSubscriber((update) => {
+		const changed = () => {
+			this.#peers = undefined;
+			update();
+		};
+		this.#watched = true;
+		this.awareness.on('change', changed);
+		return () => {
+			this.awareness.off('change', changed);
+			[this.#watched, this.#peers] = [false, undefined];
+		};
+	});
+
 	constructor(
-		private readonly awareness: AwarenessLike,
+		private readonly awareness: PresenceSource,
 		private readonly key: string,
 		{ share = 'caret', throttle = DEFAULT_PRESENCE_THROTTLE }: PresenceOptions = {}
 	) {
@@ -146,6 +191,18 @@ export class PresenceWriter {
 		if (share === this.#share) return;
 		this.#share = share;
 		this.write(...this.#latest);
+	}
+
+	/**
+	 * The other people online: every client but this one, by client id,
+	 * each `{ clientId, name?, color?, …user }`. Reactive: read in markup or
+	 * an effect, it updates when someone joins, leaves or changes their
+	 * state; the awareness listener exists only while something reads it.
+	 */
+	get peers(): PresencePeer[] {
+		this.#subscribe();
+		if (!this.#watched) return readPeers(this.awareness);
+		return (this.#peers ??= readPeers(this.awareness));
 	}
 
 	/** Publish `payload` (the full selection; `focus`: the block holding its focus) as this view shares it, within the throttle. */

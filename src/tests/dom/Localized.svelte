@@ -22,8 +22,8 @@
 		suggestionBarPlugin,
 		toolbar as createToolbarPlugin,
 		video as createVideoPlugin
-	} from '../../lib/starter/chrome/plugins.js';
-	import { setWords } from '../../lib/starter/chrome/words.svelte.js';
+	} from '$registry/edytor/chrome/plugins.js';
+	import { setWords } from '$registry/edytor/chrome/words.svelte.js';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';

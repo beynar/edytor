@@ -1,5 +1,5 @@
 import { createMemoryCommentsClient, type JSONDoc } from 'edytor';
-import { comments } from 'edytor/starter';
+import { comments } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import CommentsEditor from './CommentsEditor.svelte';

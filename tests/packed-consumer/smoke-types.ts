@@ -2,7 +2,7 @@
  * Type-level smoke for the FULL package surface — the real Svelte-consumer
  * posture (`moduleResolution: bundler`, `strict`, `skipLibCheck: false`).
  * Covers `import 'edytor'` (component + plugins + bound sync factories),
- * `edytor/crdt`, `edytor/crdt/edytor`, `edytor/protocol` and `edytor/starter`. The node-only posture lives in
+ * `edytor/crdt`, `edytor/crdt/edytor` and `edytor/protocol`. The node-only posture lives in
  * smoke-types.node.ts.
  */
 import * as Y from 'edytor/crdt';
@@ -168,26 +168,3 @@ const rangeView: bindings.RangeView = { hidden: (id) => id === 'body' };
 const flowView: bindings.FlowView = { ...rangeView, itemKind: () => 'list-item' };
 rootDoc.prepare.deleteRange({ block: 'a', offset: 0 }, { block: 'a', offset: 1 }, rangeView);
 rootDoc.prepare.insertFlow({ block: 'a', offset: 0 }, { lines: [] }, flowView);
-
-// `edytor/starter`: the full editor and the ready-made chrome.
-import {
-	StarterEditor,
-	starterPlugins,
-	themeVariables,
-	slashMenuPlugin,
-	setWords,
-	type StarterEditorProps,
-	type StarterProperty
-} from 'edytor/starter';
-const starterProperties: StarterProperty[] = [
-	{ id: 'status', type: 'select', options: [{ value: 'done', color: 'green' }] },
-	{ id: 'due', type: 'date' }
-];
-const starterProps: StarterEditorProps = {
-	properties: starterProperties,
-	plugins: { table: false, code: {} },
-	theme: { colors: { light: { accent: 'tomato' } }, maxWidth: 800 }
-};
-const starterVariables: Record<string, string> = themeVariables(starterProps.theme);
-setWords({ starter: { untitled: 'Sans titre' } });
-void [StarterEditor, starterPlugins({}), slashMenuPlugin, starterVariables];

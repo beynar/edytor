@@ -1,19 +1,23 @@
 /**
- * `edytor/starter`: the starter editor mounts with every part, each toggle
- * removes its part, the page parts write the document's data (one undo step
- * each), every property type, readonly, the theme's CSS variables and the
- * snippet overrides.
+ * The starter registry item (`registry/edytor/starter`): the starter editor
+ * mounts with every part, each toggle removes its part, the page parts
+ * write the document's data (one undo step each), every property type on
+ * its shadcn control (Select, the list Combobox, the Date Picker, Checkbox,
+ * Input), hidden properties keep their values, dates are shown in the
+ * editor's locale, comments, readonly, shadcn's tokens (`.dark` flips them
+ * in the menus too) and the snippet overrides.
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, test } from 'vitest';
 import type { EdytorInstance, JSONDoc } from '$lib/index.js';
+import { commentsController, createMemoryCommentsClient } from '$lib/index.js';
 import {
 	starterPlugins,
-	themeVariables,
 	type StarterEditorProps,
 	type StarterProperty
-} from '$lib/starter/index.js';
+} from '$registry/edytor/starter/index.js';
+import { formatDate } from '$registry/edytor/starter/page/dates.js';
 import StarterHarness from '../../dom/StarterHarness.svelte';
 
 const value = (): JSONDoc => ({
@@ -66,6 +70,33 @@ const undoOnce = async (edytor: EdytorInstance) => {
 	await settle();
 	edytor.historyUndo();
 	await settle();
+};
+
+/** Pick `value` in a shadcn Select (bits-ui: a press opens it, a press picks an option). */
+const pick = async (trigger: Element, value: string) => {
+	await fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0, pointerId: 1 });
+	await fireEvent.click(trigger);
+	const option = await waitFor(() => {
+		const found = trigger.ownerDocument.querySelector<HTMLElement>(
+			`[data-slot="select-item"][data-value="${value}"]`
+		);
+		expect(found).toBeTruthy();
+		return found!;
+	});
+	await fireEvent.pointerUp(option, { pointerType: 'mouse', button: 0, pointerId: 1 });
+	await fireEvent.click(option);
+};
+/** Toggle `label` in a list property's Combobox. */
+const choose = async (root: Element, cell: Element, label: string) => {
+	await fireEvent.click(cell.querySelector('[data-edytor-starter-pick]')!);
+	const item = await waitFor(() => {
+		const found = [...root.querySelectorAll<HTMLElement>('[data-slot="command-item"]')].find(
+			(element) => element.textContent?.trim() === label
+		);
+		expect(found).toBeTruthy();
+		return found!;
+	});
+	await fireEvent.click(item);
 };
 
 describe('starter editor', () => {
@@ -216,17 +247,31 @@ describe('starter editor', () => {
 		const cell = (id: string) => $(root, `[data-edytor-starter-property="${id}"]`)!;
 		const values = () => (data(edytor).properties ?? {}) as Record<string, unknown>;
 
-		await fireEvent.change(cell('status').querySelector('select')!, { target: { value: 'done' } });
+		// A select: shadcn's Select (its trigger, then an option).
+		await pick(cell('status').querySelector('[data-slot="select-trigger"]')!, 'done');
 		expect(values().status).toBe('done');
-		await fireEvent.change(cell('tags').querySelector('select')!, { target: { value: 'b' } });
+		// A list and a person: the Combobox (a Popover over a Command), each pick toggles.
+		await choose(root, cell('tags'), 'b');
 		expect(values().tags).toEqual(['b']);
-		await fireEvent.change(cell('owner').querySelector('select')!, { target: { value: 'ada' } });
+		await choose(root, cell('owner'), 'Ada');
 		expect(values().owner).toEqual(['ada']);
-		await fireEvent.input(cell('due').querySelector('input')!, { target: { value: '2026-10-20' } });
-		expect(values().due).toBe('2026-10-20');
+		// A date: the Date Picker writes ISO `YYYY-MM-DD`, shown in the locale.
+		await fireEvent.click(cell('due').querySelector('[data-edytor-starter-date]')!);
+		const calendar = await waitFor(() => $(root, '[data-edytor-starter-calendar="due"]')!);
+		const day = [...calendar.querySelectorAll<HTMLElement>('[data-bits-day]')].find(
+			(element) =>
+				element.textContent?.trim() === '20' && !element.hasAttribute('data-outside-month')
+		)!;
+		await fireEvent.click(day);
+		expect(values().due).toMatch(/^\d{4}-\d{2}-20$/);
+		await waitFor(() =>
+			expect(cell('due').querySelector('time')?.textContent).toBe(
+				formatDate(values().due as string, 'en-US')
+			)
+		);
 		await fireEvent.input(cell('size').querySelector('input')!, { target: { value: '3' } });
 		expect(values().size).toBe(3);
-		await fireEvent.click(cell('shipped').querySelector('input')!);
+		await fireEvent.click(cell('shipped').querySelector('[role="checkbox"]')!);
 		expect(values().shipped).toBe(true);
 		await fireEvent.input(cell('link').querySelector('input')!, {
 			target: { value: 'https://edytor.dev' }
@@ -239,29 +284,70 @@ describe('starter editor', () => {
 		const labelled = cell('notes').querySelector('input')!.getAttribute('aria-labelledby')!;
 		expect(root.ownerDocument.getElementById(labelled)?.textContent?.trim()).toBe('Notes');
 
-		// A pill's remove button removes the value; an empty list removes the property.
-		await fireEvent.click(cell('tags').querySelector('button')!);
+		// A badge's remove button removes the value; an empty list removes the property.
+		await fireEvent.click(cell('tags').querySelector('[role="listitem"] button')!);
 		expect('tags' in values()).toBe(false);
 		await undoOnce(edytor);
 		expect(values().tags).toEqual(['b']);
 	});
 
-	test('properties: a hidden one is added, a shown one hidden', async () => {
-		const { root, edytor } = await mount({ properties: SCHEMA });
-		expect($(root, '[data-edytor-starter-property="later"]')).toBeNull();
+	test("a date is ISO in the data, the locale's on the page, the same text on the server", async () => {
+		expect(formatDate('2026-10-13', 'en-US')).toBe('Oct 13, 2026');
+		expect(formatDate('2026-10-13', 'fr-FR')).toBe('13 oct. 2026');
+		// Not an ISO date: shown as written.
+		expect(formatDate('next week', 'en-US')).toBe('next week');
+		expect(formatDate('2026-02-30', 'en-US')).toBe('2026-02-30');
+		const { root } = await mount({
+			locale: 'de-DE',
+			properties: [{ id: 'due', name: 'Due', type: 'date' }],
+			value: {
+				data: { title: 'Plan', properties: { due: '2026-10-13' } },
+				children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'Body' }] }]
+			}
+		});
+		const time = $(root, '[data-edytor-starter-property="due"] time')!;
+		expect(time.getAttribute('datetime')).toBe('2026-10-13');
+		expect(time.textContent).toBe('13.10.2026');
+	});
+
+	test('properties: hiding keeps the value, under the hidden properties, and Show brings it back', async () => {
+		const { root, edytor } = await mount({
+			properties: SCHEMA,
+			value: {
+				data: { title: 'Plan', properties: { notes: 'keep me' } },
+				children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'Body' }] }]
+			}
+		});
+		const hidden = () => $(root, '[data-edytor-starter-hidden-properties]');
+		const toggle = () => $(root, '[data-edytor-starter-hidden-toggle]')!;
+		expect(toggle().textContent?.trim()).toBe('1 hidden property');
+		// The schema's hidden one is added from Add a property.
 		await fireEvent.click($(root, '[data-edytor-starter-add-property]')!);
-		const choice = [...root.querySelectorAll('.starter-popover button')].find(
-			(button) => button.textContent?.trim() === 'Later'
-		)!;
-		await fireEvent.click(choice);
-		expect($(root, '[data-edytor-starter-property="later"]')).toBeTruthy();
+		const menu = await waitFor(() => $(root, '[data-edytor-starter-add-menu]')!);
+		await fireEvent.click(menu.querySelector('[data-property-id="later"]')!);
+		expect($(root, '[data-edytor-starter-property="later"]:not([data-hidden])')).toBeTruthy();
 		expect((data(edytor).shownProperties as Record<string, boolean>).later).toBe(true);
+		expect(hidden()).toBeNull();
+
+		// Hide: the value stays in the data, the row moves under the collapsible.
 		await fireEvent.click(
 			$(root, '[data-edytor-starter-property="notes"] [data-edytor-starter-hide-property]')!
 		);
-		expect($(root, '[data-edytor-starter-property="notes"]')).toBeNull();
+		expect((data(edytor).properties as Record<string, unknown>).notes).toBe('keep me');
+		expect((data(edytor).shownProperties as Record<string, boolean>).notes).toBe(false);
+		expect(toggle().textContent?.trim()).toBe('1 hidden property');
+		await fireEvent.click(toggle());
+		const row = await waitFor(
+			() =>
+				$(root, '[data-edytor-starter-hidden-properties] [data-edytor-starter-property="notes"]')!
+		);
+		expect((row.querySelector('input') as HTMLInputElement).value).toBe('keep me');
+		await fireEvent.click(row.querySelector('[data-edytor-starter-show-property]')!);
+		expect($(root, '[data-edytor-starter-property="notes"]:not([data-hidden])')).toBeTruthy();
+		expect((data(edytor).properties as Record<string, unknown>).notes).toBe('keep me');
 		await undoOnce(edytor);
-		expect($(root, '[data-edytor-starter-property="notes"]')).toBeTruthy();
+		expect((data(edytor).shownProperties as Record<string, boolean>).notes).toBe(false);
+		expect((data(edytor).properties as Record<string, unknown>).notes).toBe('keep me');
 	});
 
 	test('editableProperties false: no add, no hide', async () => {
@@ -301,33 +387,43 @@ describe('starter editor', () => {
 		expect($(root, '[data-edytor-starter-add-icon]')).toBeNull();
 	});
 
-	test('the theme object is CSS variables on the root', async () => {
-		const theme = {
-			colors: { light: { text: '#111', accent: 'tomato' }, dark: { background: '#000' } },
-			fonts: { body: 'Inter', title: 'Georgia' },
-			radius: 4,
-			spacing: '2rem',
-			maxWidth: 900,
-			colorScheme: 'auto' as const,
-			variables: { '--edytor-color-red': 'crimson' } as Record<`--${string}`, string>
-		};
-		expect(themeVariables(theme)).toEqual({
-			'--edytor-starter-light-text': '#111',
-			'--edytor-starter-light-accent': 'tomato',
-			'--edytor-starter-dark-background': '#000',
-			'--notion-font': 'Inter',
-			'--edytor-starter-title-font': 'Georgia',
-			'--edytor-starter-radius': '4px',
-			'--edytor-starter-gutter': '2rem',
-			'--edytor-starter-max-width': '900px',
-			'--edytor-color-red': 'crimson'
-		});
-		const { root } = await mount({ theme });
+	test("the editor and its chrome read shadcn's tokens, no colour of their own", async () => {
+		const { root } = await mount();
 		const starter = $(root, '[data-edytor-starter]')!;
-		expect(starter.dataset.scheme).toBe('auto');
-		expect(starter.style.getPropertyValue('--edytor-starter-light-accent')).toBe('tomato');
-		expect(starter.style.getPropertyValue('--edytor-starter-max-width')).toBe('900px');
 		expect(starter.classList.contains('edytor-notion')).toBe(true);
+		// The theme's variables are the tokens (`chrome/tokens.css`): `.dark` flips them all.
+		const style = getComputedStyle(starter);
+		expect(style.getPropertyValue('--notion-text').trim()).toBe('var(--foreground)');
+		expect(style.getPropertyValue('--notion-hover').trim()).toBe('var(--accent)');
+		expect(style.getPropertyValue('--edytor-menu-background').trim()).toBe('var(--popover)');
+		// Every menu, panel and card paints with the tokens: no literal colour in their styles
+		// (shadows aside, and the cover's default gradient).
+		const files = import.meta.glob('/registry/edytor/**/*.svelte', {
+			query: '?raw',
+			import: 'default',
+			eager: true
+		}) as Record<string, string>;
+		expect(Object.keys(files).length).toBeGreaterThan(20);
+		for (const [file, source] of Object.entries(files)) {
+			const css = source.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+			const literal = css
+				.replace(/rgba\(0, 0, 0, 0\.\d+\)/g, '')
+				.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi);
+			expect(literal, file).toBeNull();
+		}
+	});
+
+	test('comments: the plugin is listed with a client, its user from `people`', async () => {
+		const without = starterPlugins({}).length;
+		const client = createMemoryCommentsClient({ user: 'ada' });
+		expect(starterPlugins({ comments: client, people: PEOPLE }).length).toBe(without + 1);
+		expect(starterPlugins({ comments: false }).length).toBe(without);
+		expect(starterPlugins({ comments: client, plugins: { comments: false } }).length).toBe(without);
+		const { edytor } = await mount({ comments: client, people: PEOPLE, user: 'ada' });
+		const controller = commentsController(edytor as never)!;
+		expect(controller).toBeTruthy();
+		expect(controller.user.id).toBe('ada');
+		expect(controller.user.name).toBe('Ada');
 	});
 
 	test('a snippet override replaces its part', async () => {

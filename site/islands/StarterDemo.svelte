@@ -8,8 +8,8 @@
 	 * The starter editor's live demo, fully local: no room, no socket,
 	 * nothing saved (a reload resets it). Uploads are the file's object URL.
 	 */
-	import { StarterEditor, type StarterProperty } from 'edytor/starter';
-	import type { JSONDoc, Uploader } from 'edytor';
+	import { StarterEditor, type StarterProperty } from '$registry/edytor/starter/index.js';
+	import { createMemoryCommentsClient, type JSONDoc, type Uploader } from 'edytor';
 
 	const people = [
 		{ id: 'ada', label: 'Ada Lovelace' },
@@ -77,6 +77,8 @@
 			{ id: 'empty', type: 'paragraph' }
 		]
 	};
+	// Comments in memory, as Ada (a reload loses them).
+	const comments = createMemoryCommentsClient({ user: 'ada' });
 	const upload: Uploader = async (file, report) => {
 		report.progress(1);
 		return URL.createObjectURL(file);
@@ -84,14 +86,22 @@
 </script>
 
 <div class="starter-demo not-prose">
-	<StarterEditor {value} {people} {properties} {upload} aria-label="Starter editor demo" />
+	<StarterEditor
+		{value}
+		{people}
+		{properties}
+		{upload}
+		{comments}
+		user="ada"
+		aria-label="Starter editor demo"
+	/>
 </div>
 
 <style>
 	.starter-demo {
 		overflow: hidden;
 		margin: 1rem 0 1.5rem;
-		border: 1px solid rgb(0 0 0 / 0.08);
+		border: 1px solid var(--border);
 		border-radius: 12px;
 		text-align: left;
 		--edytor-starter-gutter: 56px;

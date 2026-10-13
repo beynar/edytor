@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { arrowMovePlugin } from 'edytor/starter';
+import { arrowMovePlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 

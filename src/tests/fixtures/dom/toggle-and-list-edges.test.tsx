@@ -21,11 +21,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import {
-	blockMenuPlugin,
-	richTextPlugin,
-	toolbarPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+import { blockMenuPlugin, richTextPlugin, toolbarPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

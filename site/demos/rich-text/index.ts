@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { calloutIconsPlugin, richTextPlugin } from 'edytor/starter';
+import { calloutIconsPlugin, richTextPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import RichTextEditor from './RichTextEditor.svelte';

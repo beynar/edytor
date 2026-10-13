@@ -63,7 +63,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -331,10 +331,7 @@ export default [
 	),
 	{
 		files: ['src/lib/**/*.{ts,js,svelte}'],
-		// The starter (`edytor/starter`) draws the page around the host and the
-		// chrome in the overlay: it holds no host node (its calls named like a
-		// DOM write are controllers', `comments.remove`).
-		ignores: [...HOST_WRITERS, 'src/lib/crdt/**', 'src/lib/cloudflare/**', 'src/lib/starter/**'],
+		ignores: [...HOST_WRITERS, 'src/lib/crdt/**', 'src/lib/cloudflare/**'],
 		rules: hostWriterRules
 	},
 	{

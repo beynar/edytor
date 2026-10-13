@@ -33,7 +33,7 @@ import { indexChecks } from '../../../lib/crdt/text/runs.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { prepareApply, rng } from './prepared-oracle.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference (no `prepare.deleteRange`); green since D6. */
 const row = test;

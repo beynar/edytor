@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * `edytor/starter` in real browsers (`/test/starter`): the server render
- * hydrates without a warning, and the main flows (title into the first
- * block, icon, cover, a property, readonly) write the document's data.
+ * The starter registry item in real browsers (`/test/starter`): the server
+ * render hydrates without a warning, and the main flows (title into the
+ * first block, icon, cover, the shadcn property controls, the date picker,
+ * hidden properties, comments, readonly) write the document's data; under
+ * shadcn's `.dark` the page and the menus turn dark together.
  */
 const open = async (page: Page, query = '') => {
 	const warnings: string[] = [];
@@ -70,11 +72,14 @@ test('the icon and the cover, with the keyboard', async ({ page }) => {
 
 test('a property: a select and an added one', async ({ page }) => {
 	await open(page);
-	await page.locator('[data-edytor-starter-property="status"] select').selectOption('done');
+	await page
+		.locator('[data-edytor-starter-property="status"] [data-slot="select-trigger"]')
+		.click();
+	await page.getByRole('option', { name: 'Done' }).click();
 	await page.locator('[data-edytor-starter-add-property]').click();
 	await page
-		.getByRole('dialog', { name: 'Add a property' })
-		.getByRole('button', { name: 'Notes' })
+		.locator('[data-edytor-starter-add-menu]')
+		.getByRole('option', { name: 'Notes' })
 		.click();
 	const notes = page.locator('[data-edytor-starter-property="notes"] input');
 	await notes.fill('hello');
@@ -86,6 +91,85 @@ test('a property: a select and an added one', async ({ page }) => {
 		(window as unknown as { __edytor: { historyUndo(): void } }).__edytor.historyUndo()
 	);
 	await expect.poll(async () => (await data(page)).properties.notes).toBeUndefined();
+});
+
+test('a date: shown in the locale, picked from the calendar, stored as ISO', async ({ page }) => {
+	const warnings = await open(page);
+	const due = page.locator('[data-edytor-starter-property="due"]');
+	await expect(due.locator('time')).toHaveText('Oct 13, 2026');
+	await expect(due.locator('time')).toHaveAttribute('datetime', '2026-10-13');
+	await due.locator('[data-edytor-starter-date]').click();
+	const calendar = page.locator('[data-edytor-starter-calendar="due"]');
+	await expect(calendar).toBeVisible();
+	await calendar.locator('[data-bits-day]:not([data-outside-month])', { hasText: /^20$/ }).click();
+	await expect(calendar).toBeHidden();
+	expect((await data(page)).properties.due).toBe('2026-10-20');
+	await expect(due.locator('time')).toHaveText('Oct 20, 2026');
+	expect(warnings).toEqual([]);
+});
+
+test('hiding a property keeps its value, under the hidden properties', async ({ page }) => {
+	await open(page);
+	const status = page.locator('[data-edytor-starter-property="status"]');
+	await status.hover();
+	await status.locator('[data-edytor-starter-hide-property]').click();
+	const page_ = await data(page);
+	expect(page_.shownProperties.status).toBe(false);
+	expect(page_.properties.status).toBe('doing');
+	await page.locator('[data-edytor-starter-hidden-toggle]').click();
+	const hidden = page.locator(
+		'[data-edytor-starter-hidden-properties] [data-edytor-starter-property="status"]'
+	);
+	await expect(hidden).toContainText('Doing');
+	await hidden.locator('[data-edytor-starter-show-property]').click();
+	await expect(
+		page.locator('[data-edytor-starter-property="status"]:not([data-hidden])')
+	).toContainText('Doing');
+});
+
+test('dark: `.dark` flips the page and the menus to the dark tokens', async ({ page }) => {
+	await open(page, '?theme=dark');
+	const background = (selector: string) =>
+		page
+			.locator(selector)
+			.first()
+			.evaluate((node) => getComputedStyle(node).backgroundColor);
+	// A colour's lightness, 0 to 255: the average of sRGB channels, or an OK space's L.
+	const lightness = (color: string) => {
+		const [first, ...rest] = color.match(/[\d.]+/g)!.map(Number);
+		if (/^ok(lch|lab)/.test(color)) return first! * 255;
+		return (first! + rest[0]! + rest[1]!) / 3;
+	};
+	expect(lightness(await background('[data-edytor-starter]'))).toBeLessThan(60);
+	await page.locator('[data-edytor] [data-edytor-block]').last().click();
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('/');
+	await expect(page.getByTestId('slash-menu')).toBeVisible();
+	expect(lightness(await background('[data-testid="slash-menu"]'))).toBeLessThan(80);
+	const text = await page
+		.getByTestId('slash-menu-item')
+		.first()
+		.evaluate((node) => getComputedStyle(node).color);
+	expect(lightness(text)).toBeGreaterThan(180);
+	await page.keyboard.press('Escape');
+	// The select's popup too.
+	await page
+		.locator('[data-edytor-starter-property="status"] [data-slot="select-trigger"]')
+		.click();
+	expect(lightness(await background('[data-slot="select-content"]'))).toBeLessThan(80);
+});
+
+test('comments: a thread on selected text, its card beside the page', async ({ page }) => {
+	await open(page, '?comments=1');
+	await page.locator('[data-edytor]').getByText('First block').dblclick();
+	await page.getByTestId('toolbar-comment').click();
+	const field = page.locator('[data-edytor-comment-new] textarea');
+	await expect(field).toBeFocused();
+	await page.keyboard.type('Looks good');
+	await page.keyboard.press('Enter');
+	await expect(page.locator('[data-edytor-comment-card]').first()).toContainText('Looks good');
+	await expect(page.locator('[data-edytor-comment-card]').first()).toContainText('Ada Lovelace');
 });
 
 test('readonly shows the values only', async ({ page }) => {

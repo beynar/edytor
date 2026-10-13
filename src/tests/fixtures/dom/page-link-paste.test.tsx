@@ -24,7 +24,7 @@ import {
 	embedPlugin,
 	pageLink as createPageLinkPlugin,
 	richTextPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

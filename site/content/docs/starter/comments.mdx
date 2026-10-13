@@ -1,0 +1,59 @@
+---
+title: Comments
+description: Comment threads on the starter editor's text, in shadcn-styled cards beside the page, kept in memory or by your room.
+icon: message-square
+---
+
+Give `comments` a comments client and the starter lists the [comments plugin](/docs/plugins/comments): a comment button in the selection toolbar, the commented text highlighted, and a card per thread beside the page (its comments, a reply field, Resolve, Delete), with **Show resolved** above them.
+
+```svelte title="src/lib/ReviewPage.svelte" check
+<script lang="ts">
+	import { createMemoryCommentsClient } from 'edytor';
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
+
+	const people = [
+		{ id: 'ada', label: 'Ada Lovelace' },
+		{ id: 'alan', label: 'Alan Turing' }
+	];
+	const comments = createMemoryCommentsClient({ user: 'ada' });
+</script>
+
+<StarterEditor {comments} {people} user="ada" />
+```
+
+| Prop | Default | What it does |
+| --- | --- | --- |
+| `comments` | none | Where the threads live: `createMemoryCommentsClient({ user })` in memory (one page, a reload loses them), `createCommentsClient({ server, room })` for your room's. `false` or none: no comments. |
+| `user` | the first of `people` | The current user's id: the author of what they write. Their name and avatar come from `people`. |
+| `people` | `[]` | Every author's name and avatar, by id (the same list `@` mentions and `person` properties read). |
+| `plugins.comments` | | The plugin's other options (`onComment` for notifications); `false` turns it off even with a client. |
+
+## With a room
+
+The room keeps the threads and decides who may delete what ([Comments on the server](/docs/server/comments)). Its client is `createCommentsClient` with the room's comments route:
+
+```svelte title="src/routes/doc/[id]/+page.svelte" check
+<script lang="ts">
+	import { page } from '$app/state';
+	import { createCommentsClient } from 'edytor';
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
+
+	let { data }: { data: { user: { id: string; name: string } } } = $props();
+	const comments = createCommentsClient({
+		server: 'https://rooms.example.com/comments',
+		room: page.params.id!
+	});
+</script>
+
+<StarterEditor
+	server="wss://rooms.example.com/rooms"
+	room={page.params.id}
+	{comments}
+	people={[{ id: data.user.id, label: data.user.name }]}
+	user={data.user.id}
+/>
+```
+
+## The cards
+
+The cards are `$lib/components/edytor/chrome/CommentCard.svelte` and `CommentsHeader.svelte`: shadcn `Button` and `Textarea` on your tokens, so they follow `.dark` with the page. Edit them as you like; keep the calls to the payload's controller (`comments.submit`, `comments.reply`, `comments.cancel`…) as they are wired. The sidebar shows beside the page on a wide screen, and under the selection on a narrow one.

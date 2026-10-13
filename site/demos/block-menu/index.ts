@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { blockMenu, blockMenuPlugin } from 'edytor/starter';
+import { blockMenu, blockMenuPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import MenuEditor from './MenuEditor.svelte';

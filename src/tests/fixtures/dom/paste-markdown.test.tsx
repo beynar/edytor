@@ -20,7 +20,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
-import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

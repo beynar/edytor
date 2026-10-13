@@ -23,7 +23,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, richTextPlugin, tablePlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin, tablePlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

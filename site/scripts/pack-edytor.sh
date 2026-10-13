@@ -1,7 +1,8 @@
 #!/bin/sh
 # Pack the editor from the repository root into vendor/edytor.tgz, the way a
 # consumer installs it (one Svelte instance, the published file set). The
-# live editor and the demos draw the ready-made chrome from `edytor/starter`.
+# live editor and the demos draw the ready-made chrome and the starter from
+# the repository's shadcn-svelte registry (`../registry`, `$registry`).
 #
 # stage-tarballs.sh then stages it in public/ as edytor-<version>.tgz, which
 # the deployed docs host at the root, beside every earlier version; with

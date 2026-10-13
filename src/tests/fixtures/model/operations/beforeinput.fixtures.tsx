@@ -5,7 +5,7 @@ import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runBeforeInput } from '../../../test.utils.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import { selectionState } from '../../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 export const fixtures = defineFixtures([
 	defineModelOperationFixture({

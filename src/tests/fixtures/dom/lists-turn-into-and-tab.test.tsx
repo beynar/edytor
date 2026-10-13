@@ -29,11 +29,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks as selectBlockSet } from '../../selection.js';
-import {
-	codePlugin,
-	richTextPlugin,
-	slashMenuPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

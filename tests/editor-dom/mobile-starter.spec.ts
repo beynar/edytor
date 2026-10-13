@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-/** `edytor/starter` at phone width: no horizontal scroll, the title and a property edit. */
+/** The starter registry item at phone width: no horizontal scroll, the title and a property edit. */
 test('the starter page fits a phone and edits there', async ({ page }) => {
 	await page.goto('/test/starter');
 	await page.waitForFunction(
@@ -23,7 +23,8 @@ test('the starter page fits a phone and edits there', async ({ page }) => {
 	await page.keyboard.press('End');
 	await page.keyboard.type('!');
 	await expect(page.getByRole('textbox', { name: 'Page title' })).toHaveValue('Starter page!');
-	await page.locator('[data-edytor-starter-property="status"] select').selectOption('done');
+	await page.locator('[data-edytor-starter-property="status"] [data-slot="select-trigger"]').tap();
+	await page.getByRole('option', { name: 'Done' }).tap();
 	const status = await page.evaluate(
 		() =>
 			(window as unknown as { __edytor: { data: { properties: { status: string } } } }).__edytor

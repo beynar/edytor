@@ -65,13 +65,17 @@ pnpm add edytor
 
 `<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text; each other block kind, block moves from the keyboard (`createArrowMovePlugin()`), and file drops (a media plugin given an `upload`) is a plugin you add, here code blocks; nesting blocks (<kbd>Tab</kbd>, drops inside a block) is the `allowNesting` option, off by default. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
 
-The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin ([menus and handles](https://edytor.dev/docs/customization/menus)). Notion-style ones ship in `edytor/starter`, as plugins for your `<Edytor>` ([ready-made menus](https://edytor.dev/docs/customization/ready-made-menus)).
+The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin ([menus and handles](https://edytor.dev/docs/customization/menus)). Notion-style ones, in shadcn-svelte, are a registry item you add to your app (`npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json`), as plugins for your `<Edytor>` ([ready-made menus](https://edytor.dev/docs/customization/ready-made-menus)).
 
-The fastest way to a full editor is `edytor/starter`: every plugin, the ready-made menus and handles, and a page with a cover, an icon, a title and typed properties, in one component that only the apps importing it ship ([starter editor](https://edytor.dev/docs/starter)):
+The fastest way to a full editor is the starter, a [shadcn-svelte](https://www.shadcn-svelte.com) registry item: every plugin, the ready-made menus and handles, comments, and a page with a cover, an icon, a title and typed properties, in one component copied into your app (Tailwind v4 and `shadcn-svelte init` first; [starter editor](https://edytor.dev/docs/starter)):
+
+```sh
+npx shadcn-svelte@latest add https://edytor.dev/r/starter.json
+```
 
 ```svelte
 <script>
-	import { StarterEditor } from 'edytor/starter';
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
 </script>
 
 <StarterEditor />

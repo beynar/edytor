@@ -32,7 +32,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { blockHandlesPlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { blockHandlesPlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since S5. */
 const row = it;

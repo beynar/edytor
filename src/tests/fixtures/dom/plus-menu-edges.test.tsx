@@ -18,7 +18,7 @@ import {
 	blockMenuPlugin,
 	richTextPlugin,
 	slashMenuPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

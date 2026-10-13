@@ -24,7 +24,7 @@ import {
 	blockHandles as createBlockHandlesPlugin,
 	blockHandlesPlugin,
 	richTextPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 describe('component defaults and overrides', () => {
 	test('mounts with no value and no optional plugins — the facade seeds the bootstrap block (D1)', async () => {

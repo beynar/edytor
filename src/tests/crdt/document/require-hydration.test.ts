@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { createDocument, SyncRefusedError, type EdytorSync } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [{ id: 'local', type: 'paragraph', content: [{ text: 'seed' }] }]

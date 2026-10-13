@@ -28,7 +28,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference (flipped to `it` by I2). */
 const row = it;

@@ -240,27 +240,33 @@ describe('onboarding truth (WU-18)', () => {
 		).not.toMatch(settings);
 	});
 
-	it('the quick start adds one plugin from the package, and the ready-made menus come from edytor/starter', () => {
+	it('the quick start adds one plugin from the package, and the ready-made menus come from the shadcn-svelte registry', () => {
 		const quickStart = read('site/content/docs/getting-started/quick-start.mdx');
-		// No copied chrome, no recipe: the quick start imports from `edytor` only.
+		// No copied folder, no recipe: the quick start imports from `edytor` only.
 		expect(quickStart).not.toMatch(/degit|\$lib\/chrome|sed -i/);
 		expect(quickStart).toContain('](/docs/customization/ready-made-menus)');
 		const readme = read('README.md');
-		expect(readme).not.toMatch(/degit|\$lib\/chrome/);
+		expect(readme).not.toMatch(/degit|\$lib\/chrome|edytor\/starter'/);
 		expect(readme).toContain('/docs/customization/ready-made-menus');
-		// The ready-made chrome is the package's (`edytor/starter`): no copy step.
+		// The ready-made chrome and the starter are registry items, one command each.
 		const page = read('site/content/docs/customization/ready-made-menus.mdx');
-		expect(page).not.toMatch(/degit|\$lib\/chrome|sed -i/);
+		expect(page).not.toMatch(/degit|sed -i|from 'edytor\/starter'/);
+		expect(page).toContain('npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json');
+		expect(read('site/content/docs/starter/index.mdx')).toContain(
+			'npx shadcn-svelte@latest add https://edytor.dev/r/starter.json'
+		);
+		expect(readme).toContain('npx shadcn-svelte@latest add https://edytor.dev/r/starter.json');
 		expect(read('scripts/check-docs.mjs')).not.toContain('src/routes/chrome');
 		expect(read('site/scripts/pack-edytor.sh')).not.toMatch(/cp -R/);
 		// The quick start points at the starter editor first.
 		expect(quickStart).toContain('](/docs/starter)');
-		expect(readme).toContain("import { StarterEditor } from 'edytor/starter';");
+		// No `edytor/starter` entry any more: one way to get the starter.
+		expect(Object.keys(JSON.parse(read('package.json')).exports)).not.toContain('./starter');
 		const checkedFence = fences(page).find((block) => checked(block.meta));
-		expect(checkedFence?.code).toMatch(/from 'edytor\/starter'/);
-		const entry = read('src/lib/starter/index.ts');
+		expect(checkedFence?.code).toMatch(/from '\$lib\/components\/edytor\/chrome\/index\.js'/);
+		const entry = read('registry/edytor/chrome/index.ts');
 		for (const name of checkedFence!.code.match(/\b\w+Plugin\b/g) ?? []) {
-			expect(read('src/lib/starter/chrome/plugins.ts'), name).toMatch(
+			expect(read('registry/edytor/chrome/plugins.ts'), name).toMatch(
 				new RegExp(`export const ${name}\\b`)
 			);
 			expect(entry, name).toMatch(new RegExp(`\\b${name},`));

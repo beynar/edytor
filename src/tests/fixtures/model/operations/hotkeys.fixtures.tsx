@@ -8,7 +8,7 @@ import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runHotkey } from '../../../test.utils.js';
 import { selectionState, selectBlocks } from '../../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
 	Object.defineProperty(edytor.keymap, 'isMac', {

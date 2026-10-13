@@ -34,7 +34,7 @@
 		suggestionBarPlugin,
 		tablePlugin,
 		toolbarPlugin
-	} from '$lib/starter/chrome/plugins.js';
+	} from '$registry/edytor/chrome/plugins.js';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
 		IndexeddbPersistence,

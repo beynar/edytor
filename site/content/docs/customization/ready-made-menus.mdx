@@ -1,10 +1,16 @@
 ---
 title: Ready-made menus
-description: The Notion-style menus, toolbar, handles and panels of edytor/starter, as plugins you list in your own editor.
+description: The Notion-style menus, toolbar, handles and panels, in shadcn-svelte, added to your app with one command, as plugins you list in your own editor.
 icon: layout-panel-top
 ---
 
-The package draws no menu, toolbar, handle or panel: each is a snippet you pass its plugin ([Menus and handles](/docs/customization/menus)). `edytor/starter` draws all of them the Notion way, and exports each bundled plugin given that markup, so your own `<Edytor>` lists them as they are. The [starter editor](/docs/starter) is the same chrome with the page around the blocks, in one component.
+The package draws no menu, toolbar, handle or panel: each is a snippet you pass its plugin ([Menus and handles](/docs/customization/menus)). The `edytor-chrome` registry item draws all of them the Notion way, in [shadcn-svelte](https://www.shadcn-svelte.com) components on your theme's tokens, and exports each bundled plugin given that markup, so your own `<Edytor>` lists them as they are. The [starter editor](/docs/starter) is the same chrome with the page around the blocks, in one component.
+
+```sh
+npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json
+```
+
+It needs Tailwind v4 and `npx shadcn-svelte@latest init` first (as the [starter's install](/docs/starter#install)), and writes `$lib/components/edytor/chrome/` (the chrome, its words and `tokens.css`, the Notion theme on your tokens) and the shadcn components it uses (button, input, kbd, separator, avatar, textarea) into `$lib/components/ui/`, and adds `edytor`.
 
 <PluginDemo plugin="ready-made-menus" />
 
@@ -15,7 +21,7 @@ The package draws no menu, toolbar, handle or panel: each is a snippet you pass 
 - `HistoryPanel`: the [version history panel](/docs/server/history-panel).
 - `words` and `setWords`: the chrome's words ([Localization](/docs/customization/localization)).
 
-Only an app that imports `edytor/starter` ships it: `<Edytor />` from `edytor` does not grow.
+The files are yours: an app that never adds the item ships none of it, and `<Edytor />` from `edytor` does not grow.
 
 ## Pass its plugins
 
@@ -23,6 +29,8 @@ Only an app that imports `edytor/starter` ships it: `<Edytor />` from `edytor` d
 <script lang="ts">
 	import { Edytor } from 'edytor';
 	import 'edytor/themes/notion.css';
+	// The blocks on your shadcn tokens, so they follow `.dark` with the menus.
+	import '$lib/components/edytor/chrome/tokens.css';
 	import {
 		blockHandlesPlugin,
 		blockMenuPlugin,
@@ -32,7 +40,7 @@ Only an app that imports `edytor/starter` ships it: `<Edytor />` from `edytor` d
 		mediaEmptyPlugin,
 		slashMenuPlugin,
 		toolbarPlugin
-	} from 'edytor/starter';
+	} from '$lib/components/edytor/chrome/index.js';
 
 	const plugins = [
 		slashMenuPlugin,
@@ -51,6 +59,6 @@ Only an app that imports `edytor/starter` ships it: `<Edytor />` from `edytor` d
 </div>
 ```
 
-That is the editor above: a `/` menu, a toolbar over a selection, a `+` and a grip beside each block with its block menu, a code block with its language list, the image toolbar and the empty image's panel, and the callout's icon picker. The `edytor-notion` class applies the imported [Notion theme](/docs/customization/styling#notion-theme). Take only the plugins you need: a plugin left out takes its chrome with it, and the editor still edits.
+That is the editor above: a `/` menu, a toolbar over a selection, a `+` and a grip beside each block with its block menu, a code block with its language list, the image toolbar and the empty image's panel, and the callout's icon picker. The `edytor-notion` class applies the imported [Notion theme](/docs/customization/styling#notion-theme), and `tokens.css` sets its variables on your shadcn tokens: the menus read the tokens already, so with it `.dark` turns the blocks and the menus dark together ([Customizing](/docs/starter/customizing#theme-the-shadcn-tokens)). Take only the plugins you need: a plugin left out takes its chrome with it, and the editor still edits.
 
-To change the words, call `setWords` ([Localization](/docs/customization/localization)). To draw one surface your own way instead, give its factory your snippet (`slashMenu({ menu })`): see [Menus and handles](/docs/customization/menus). To own all of the markup, start from the starter's source in the repository, [`src/lib/starter/chrome`](https://github.com/beynar/edytor/tree/master/src/lib/starter/chrome), and pass your copy's snippets to the package's factories.
+To change the words, call `setWords` ([Localization](/docs/customization/localization)). To draw one surface your own way, edit its file (`SlashMenu.svelte`, `Toolbar.svelte`…: keep the controller's attachments, change the markup), or give its factory your own snippet (`slashMenu({ menu })`): see [Menus and handles](/docs/customization/menus).

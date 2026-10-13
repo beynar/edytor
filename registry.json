@@ -1,0 +1,263 @@
+{
+	"$schema": "https://shadcn-svelte.com/schema/registry.json",
+	"name": "edytor",
+	"homepage": "https://edytor.dev",
+	"aliases": {
+		"components": "$registry/components",
+		"ui": "$registry/ui",
+		"utils": "$registry/utils",
+		"hooks": "$registry/hooks",
+		"lib": "$registry/lib"
+	},
+	"items": [
+		{
+			"name": "edytor-chrome",
+			"type": "registry:block",
+			"title": "Edytor chrome",
+			"description": "The ready-made menus, toolbar, handles, panels and cards of every bundled edytor plugin, in shadcn-svelte components and tokens.",
+			"dependencies": ["edytor@^2.0.0"],
+			"registryDependencies": ["button", "input", "kbd", "separator", "avatar", "textarea"],
+			"files": [
+				{
+					"path": "./registry/edytor/chrome/BlockHandle.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/BlockHandle.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/BlockMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/BlockMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/CalloutIcons.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/CalloutIcons.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/CodeHeader.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/CodeHeader.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/CommentCard.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/CommentCard.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/CommentsHeader.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/CommentsHeader.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/EquationPanel.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/EquationPanel.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/FindBar.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/FindBar.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/HistoryPanel.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/HistoryPanel.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/ImageToolbar.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/ImageToolbar.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/LanguageMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/LanguageMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/LinkCard.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/LinkCard.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/MarqueeBox.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/MarqueeBox.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/MediaEmpty.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/MediaEmpty.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/MentionMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/MentionMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/PageLinkMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/PageLinkMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/SlashMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/SlashMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/SuggestionBar.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/SuggestionBar.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/TableChrome.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/TableChrome.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/Toolbar.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/Toolbar.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/TriggerMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/TriggerMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/UrlPasteMenu.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/UrlPasteMenu.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/chrome.svelte",
+					"type": "registry:component",
+					"target": "edytor/chrome/chrome.svelte"
+				},
+				{
+					"path": "./registry/edytor/chrome/icons.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/icons.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/index.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/index.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/keepFocus.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/keepFocus.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/palette.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/palette.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/plugins.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/plugins.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/tokens.css",
+					"type": "registry:component",
+					"target": "edytor/chrome/tokens.css"
+				},
+				{
+					"path": "./registry/edytor/chrome/ui.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/ui.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/words.svelte.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/words.svelte.ts"
+				}
+			],
+			"docs": "Import the plugins from $lib/components/edytor/chrome (slashMenuPlugin, toolbarPlugin, \u2026) and put class=\"edytor-notion\" around <Edytor> with edytor/themes/notion.css imported. Docs: https://edytor.dev/docs/customization/ready-made-menus"
+		},
+		{
+			"name": "starter",
+			"type": "registry:block",
+			"title": "Edytor starter",
+			"description": "StarterEditor: a Notion-like page (cover, icon, title, typed properties, comments) with every edytor plugin and its chrome, in shadcn-svelte.",
+			"dependencies": ["edytor@^2.0.0", "@internationalized/date"],
+			"registryDependencies": [
+				"local:edytor-chrome",
+				"button",
+				"input",
+				"badge",
+				"calendar",
+				"checkbox",
+				"command",
+				"popover",
+				"select",
+				"collapsible"
+			],
+			"files": [
+				{
+					"path": "./registry/edytor/starter/StarterEditor.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/StarterEditor.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/index.ts",
+					"type": "registry:component",
+					"target": "edytor/starter/index.ts"
+				},
+				{
+					"path": "./registry/edytor/starter/page/Cover.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/Cover.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/IconPicker.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/IconPicker.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/PageIcon.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/PageIcon.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/Properties.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/Properties.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/PropertyCell.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/PropertyCell.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/Title.svelte",
+					"type": "registry:component",
+					"target": "edytor/starter/page/Title.svelte"
+				},
+				{
+					"path": "./registry/edytor/starter/page/dates.ts",
+					"type": "registry:component",
+					"target": "edytor/starter/page/dates.ts"
+				},
+				{
+					"path": "./registry/edytor/starter/page/popover.ts",
+					"type": "registry:component",
+					"target": "edytor/starter/page/popover.ts"
+				},
+				{
+					"path": "./registry/edytor/starter/starterPlugins.ts",
+					"type": "registry:component",
+					"target": "edytor/starter/starterPlugins.ts"
+				},
+				{
+					"path": "./registry/edytor/starter/types.ts",
+					"type": "registry:component",
+					"target": "edytor/starter/types.ts"
+				}
+			],
+			"docs": "Import StarterEditor from $lib/components/edytor/starter. Docs: https://edytor.dev/docs/starter",
+			"devDependencies": ["@lucide/svelte"]
+		}
+	]
+}

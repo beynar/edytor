@@ -61,7 +61,7 @@ import { fold, foldPlugin } from '../../dom/R6FoldKind.svelte';
 import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;

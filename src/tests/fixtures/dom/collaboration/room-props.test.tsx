@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 
 import Edytor from '$lib/components/Edytor.svelte';
-import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const dials: string[] = [];
 class StubSocket {

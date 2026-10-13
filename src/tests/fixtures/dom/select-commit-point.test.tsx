@@ -39,7 +39,7 @@ import {
 } from '../../dom/test.utils.js';
 import { endSuggestion, suggestEnd } from '../../test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since V2. */
 const row = it;

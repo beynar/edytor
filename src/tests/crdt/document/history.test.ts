@@ -33,7 +33,7 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import { selectionState } from '../../selection.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const syncProtocol = bindSync(Y);
 

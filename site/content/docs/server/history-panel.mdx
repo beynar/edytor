@@ -4,7 +4,7 @@ description: The version history of a room for your app, as in Notion. VersionHi
 icon: history
 ---
 
-`VersionHistory` is the page history of Notion for a document kept by the room's [version history](/docs/server/history): the versions, newest first, the selected one previewed read-only, and **Restore version**. The preview highlights what changed since that version: the blocks added since in green, the blocks removed since in red, the blocks changed since in yellow. The package ships the controller; the panel's markup is yours (the demo's `HistoryPanel.svelte`, in the repository's [`src/lib/starter/chrome`](https://github.com/beynar/edytor/tree/master/src/lib/starter/chrome), is a complete one: the list on the right, the preview on the left).
+`VersionHistory` is the page history of Notion for a document kept by the room's [version history](/docs/server/history): the versions, newest first, the selected one previewed read-only, and **Restore version**. The preview highlights what changed since that version: the blocks added since in green, the blocks removed since in red, the blocks changed since in yellow. The package ships the controller; the panel's markup is yours (the demo's `HistoryPanel.svelte`, in the repository's [`registry/edytor/chrome`](https://github.com/beynar/edytor/tree/master/registry/edytor/chrome) (the `edytor-chrome` registry item, in your app after `shadcn-svelte add`), is a complete one: the list on the right, the preview on the left).
 
 ```svelte title="Versions.svelte" check
 <script lang="ts">
@@ -181,7 +181,7 @@ A `401` or `403` (a reader's restore, an expired session) sets `status` to `deni
 
 ### Words
 
-The controller writes no word: your panel writes them, and formats a version's day and time with `dateOf(version)` and `timeOf(version)`, in the controller's `locale` (`version.slot` is its half of the day, `am` or `pm`). The demo's panel keeps its words with the rest of its chrome's (`src/lib/starter/chrome/words.svelte.ts` in the repository).
+The controller writes no word: your panel writes them, and formats a version's day and time with `dateOf(version)` and `timeOf(version)`, in the controller's `locale` (`version.slot` is its half of the day, `am` or `pm`). The demo's panel keeps its words with the rest of its chrome's (`registry/edytor/chrome/words.svelte.ts` in the repository).
 
 ## Styling
 

@@ -20,7 +20,7 @@ import {
 } from '../test.utils.js';
 import EdytorHarness from './EdytorHarness.svelte';
 import { compareAllCells } from './cellsShadow.js';
-import { richTextPlugin } from '../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 export type RenderDomEdytorOptions = {
 	plugins?: Plugin[];

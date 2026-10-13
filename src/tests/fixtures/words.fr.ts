@@ -3,7 +3,7 @@
  * fails the type check here until it is translated): what its menus, bars,
  * panels and cards show and say in a French view (`setWords(frWords)`).
  */
-import type { ChromeWords } from '../../lib/starter/chrome/words.svelte.js';
+import type { ChromeWords } from '$registry/edytor/chrome/words.svelte.js';
 
 /** The demo chrome's words in French. */
 export const frWords: ChromeWords = {
@@ -272,6 +272,13 @@ export const frWords: ChromeWords = {
 		properties: 'Propriétés de la page',
 		addProperty: 'Ajouter une propriété',
 		hideProperty: (name: string) => `Masquer ${name}`,
+		showProperty: (name: string) => `Afficher ${name}`,
+		hiddenProperties: (count: number) =>
+			count === 1 ? '1 propriété masquée' : `${count} propriétés masquées`,
+		search: 'Rechercher…',
+		noOptions: 'Aucune option',
+		pickDate: 'Choisir une date',
+		clear: 'Effacer',
 		empty: 'Vide',
 		pick: 'Choisir une option',
 		yes: 'Oui',

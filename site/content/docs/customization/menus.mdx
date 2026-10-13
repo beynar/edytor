@@ -8,7 +8,7 @@ Edytor's chrome is headless: the slash menu, the mention and page link menus, th
 
 **Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours. The controls inside a block (a to-do's checkbox, a callout's icon, a bookmark's card…) are drawn by the package and take your snippet in their place: see [Controls inside blocks](#controls-inside-blocks).
 
-The examples below are the short version of each surface. The complete Notion-style markup of every surface ships in `edytor/starter`, as plugins you list: see [Ready-made menus](/docs/customization/ready-made-menus). Its source, to start your own from, is [`src/lib/starter/chrome`](https://github.com/beynar/edytor/tree/master/src/lib/starter/chrome) in the repository (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory).
+The examples below are the short version of each surface. The complete Notion-style markup of every surface, in shadcn-svelte, is the `edytor-chrome` registry item, copied into your app with `npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json`, as plugins you list: see [Ready-made menus](/docs/customization/ready-made-menus). Its files are then yours to start from (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory).
 
 ## The pattern
 

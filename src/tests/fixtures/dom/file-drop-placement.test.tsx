@@ -19,7 +19,7 @@ import {
 	image as createImagePlugin,
 	richTextPlugin,
 	mediaEmptyPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -19,7 +19,7 @@ import { findController } from '$lib/plugins/find/findPlugin.js';
 import { findMatches } from '$lib/plugins/find/search.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { findPlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { findPlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

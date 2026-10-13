@@ -13,7 +13,7 @@ import {
 	blockMenuPlugin,
 	richTextPlugin,
 	slashMenuPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 

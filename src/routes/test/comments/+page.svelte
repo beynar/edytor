@@ -11,7 +11,7 @@
 	import { page } from '$app/state';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createDocument } from '$lib/crdt/index.js';
-	import { comments as commentsPlugin, toolbarPlugin } from '$lib/starter/chrome/plugins.js';
+	import { comments as commentsPlugin, toolbarPlugin } from '$registry/edytor/chrome/plugins.js';
 	import {
 		createCommentsClient,
 		createMemoryCommentsClient

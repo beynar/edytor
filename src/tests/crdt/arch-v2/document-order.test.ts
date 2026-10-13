@@ -24,7 +24,7 @@ import { attachDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { blocksBetween } from '../../order.helpers.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };

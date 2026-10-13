@@ -14,7 +14,7 @@ Above the blocks, a starter page has a cover, an icon and a title, and under the
 
 ```ts title="src/lib/page.ts" check
 import type { JSONDoc } from 'edytor';
-import type { StarterPageData } from 'edytor/starter';
+import type { StarterPageData } from '$lib/components/edytor/starter/index.js';
 
 const data: StarterPageData = {
 	title: 'Launch plan',
@@ -33,10 +33,10 @@ export const value: JSONDoc = { data, children: [] };
 | Title | <kbd>Enter</kbd>, or <kbd>↓</kbd> at its end | puts the caret at the start of the first block |
 | Title | <kbd>Mod</kbd>+<kbd>Z</kbd>, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | the view's undo and redo (the title's edits are history steps) |
 | Icon picker | arrow keys, <kbd>Enter</kbd> | move through the emoji, pick one |
-| Any popover | <kbd>Esc</kbd> | closes it, the focus back on its button |
+| Any popover | <kbd>Esc</kbd>, a press outside | closes it, the focus back on its button |
 | Reposition | <kbd>↑</kbd>/<kbd>↓</kbd> (<kbd>Shift</kbd>: by 10), <kbd>Enter</kbd>, <kbd>Esc</kbd> | moves the image, saves, cancels |
 
-The popovers are dialogs named by their purpose (`Icon options`, `Cover options`), the reposition control is a `slider` with its value, and the title is a textbox named `Page title`.
+The popovers are shadcn `Popover`s: dialogs named by their purpose (`Icon options`, `Cover options`), the focus inside while open. The reposition control is a `slider` with its value, and the title is a textbox named `Page title`.
 
 ## Replace a part
 
@@ -44,7 +44,10 @@ The popovers are dialogs named by their purpose (`Icon options`, `Cover options`
 
 ```svelte title="src/lib/PlainPage.svelte" check
 <script lang="ts">
-	import { StarterEditor, type StarterTitlePayload } from 'edytor/starter';
+	import {
+		StarterEditor,
+		type StarterTitlePayload
+	} from '$lib/components/edytor/starter/index.js';
 </script>
 
 {#snippet title({ title, set, enter, readonly }: StarterTitlePayload)}

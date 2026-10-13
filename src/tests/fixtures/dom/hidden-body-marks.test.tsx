@@ -17,7 +17,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const empty = (
 	<root>

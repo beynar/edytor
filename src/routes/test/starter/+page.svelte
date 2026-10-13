@@ -1,13 +1,22 @@
 <script lang="ts">
 	// The starter editor's browser rows (tests/starter.spec.ts): every part on,
 	// a schema of each property type, local uploads. `?readonly=1` mounts it
-	// readonly, `?theme=dark` with the dark scheme.
+	// readonly, `?theme=dark` under shadcn's `.dark` class, `?comments=1` with
+	// threads in memory.
 	import { page } from '$app/state';
-	import { StarterEditor, type StarterProperty } from '$lib/starter/index.js';
-	import type { EdytorInstance, JSONDoc, Uploader } from '$lib/index.js';
+	import { StarterEditor, type StarterProperty } from '$registry/edytor/starter/index.js';
+	import {
+		createMemoryCommentsClient,
+		type EdytorInstance,
+		type JSONDoc,
+		type Uploader
+	} from '$lib/index.js';
 
 	const params = page.url.searchParams;
 	const readonly = params.get('readonly') === '1';
+	const dark = params.get('theme') === 'dark';
+	const comments =
+		params.get('comments') === '1' ? createMemoryCommentsClient({ user: 'ada' }) : undefined;
 	const people = [
 		{ id: 'ada', label: 'Ada Lovelace' },
 		{ id: 'alan', label: 'Alan Turing' }
@@ -38,7 +47,7 @@
 	];
 	const upload: Uploader = async (file) => URL.createObjectURL(file);
 	const value: JSONDoc = {
-		data: { title: 'Starter page', properties: { status: 'doing' } },
+		data: { title: 'Starter page', properties: { status: 'doing', due: '2026-10-13' } },
 		children: [
 			{ id: 'p1', type: 'paragraph', content: [{ text: 'First block' }] },
 			{ id: 'p2', type: 'paragraph', content: [{ text: 'Second block' }] }
@@ -51,12 +60,15 @@
 	});
 </script>
 
-<StarterEditor
-	{value}
-	{readonly}
-	{people}
-	{properties}
-	{upload}
-	theme={{ colorScheme: params.get('theme') === 'dark' ? 'dark' : 'light' }}
-	bind:edytor
-/>
+<div class={dark ? 'dark' : undefined} data-test-scheme={dark ? 'dark' : 'light'}>
+	<StarterEditor
+		{value}
+		{readonly}
+		{people}
+		{properties}
+		{upload}
+		{comments}
+		user="ada"
+		bind:edytor
+	/>
+</div>

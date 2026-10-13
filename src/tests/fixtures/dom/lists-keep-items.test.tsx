@@ -20,7 +20,7 @@ import {
 import type { EngineDoc, EngineNode } from '$lib/crdt/engine-api.js';
 import { selectionState } from '../../selection.js';
 import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
-import { imagePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { imagePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const empty = (
 	<root>

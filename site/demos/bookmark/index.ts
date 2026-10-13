@@ -1,5 +1,5 @@
 import type { BookmarkPreview, JSONDoc } from 'edytor';
-import { bookmark } from 'edytor/starter';
+import { bookmark } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import BookmarkEditor from './BookmarkEditor.svelte';

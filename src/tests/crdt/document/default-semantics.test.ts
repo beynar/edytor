@@ -41,7 +41,7 @@ import {
 	richTextPlugin,
 	tablePlugin,
 	videoPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [

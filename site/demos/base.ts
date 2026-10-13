@@ -11,7 +11,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from 'edytor/starter';
+} from '$registry/edytor/chrome/index.js';
 
 /**
  * The editor around a demo: Notion's hints in empty blocks, the block

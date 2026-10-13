@@ -1,0 +1,108 @@
+/*
+ * The editor on shadcn's tokens: `edytor/themes/notion.css`'s variables
+ * (`--notion-*`, `--edytor-*`) read your app's shadcn-svelte theme
+ * (`--background`, `--foreground`, `--popover`, `--muted`, `--accent`,
+ * `--border`, `--ring`, `--primary`, `--destructive`, `--radius`), so one
+ * token set, in `:root` and `.dark`, paints the page, the blocks and every
+ * menu, panel and card. Edit the tokens in your app's CSS, not here.
+ *
+ * `:root .edytor-notion` outranks the theme's own `.edytor-notion`, whatever
+ * order the two files load in.
+ */
+:root .edytor-notion {
+	--notion-text: var(--foreground);
+	--notion-text-secondary: var(--muted-foreground);
+	--notion-placeholder: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+	--notion-border: var(--border);
+	--notion-hover: var(--accent);
+	--notion-panel: var(--muted);
+	--notion-code-panel: var(--muted);
+	--notion-page: var(--background);
+	--notion-inline-code: var(--destructive);
+	--notion-blue: var(--primary);
+	--notion-text-selection: color-mix(in oklab, var(--ring) 35%, transparent);
+	--notion-block-selection: color-mix(in oklab, var(--ring) 18%, transparent);
+	--edytor-drop-indicator-color: color-mix(in oklab, var(--ring) 60%, transparent);
+	--edytor-drop-backdrop-color: color-mix(in oklab, var(--ring) 18%, transparent);
+	--edytor-table-drop-color: color-mix(in oklab, var(--ring) 60%, transparent);
+	--edytor-table-resize-color: color-mix(in oklab, var(--ring) 60%, transparent);
+	--edytor-column-resize-color: color-mix(in oklab, var(--ring) 60%, transparent);
+	--edytor-columns-resize-color: var(--border);
+	--edytor-marquee-background: color-mix(in oklab, var(--ring) 18%, transparent);
+	--edytor-marquee-border: 1px solid color-mix(in oklab, var(--ring) 50%, transparent);
+	--edytor-suggestion-accent: var(--primary);
+	--edytor-suggestion-background: color-mix(in oklab, var(--ring) 10%, transparent);
+	--edytor-menu-background: var(--popover);
+	--edytor-image-toolbar-background: var(--popover);
+	--edytor-suggestion-bar-background: var(--popover);
+	--edytor-table-grip-background: var(--popover);
+	background: var(--background);
+	color: var(--foreground);
+}
+
+/* The block colours a dark page reads: Notion's dark palette. */
+:is(.dark, :root .dark) .edytor-notion,
+:root .dark.edytor-notion {
+	--edytor-color-gray: #9b9b9b;
+	--edytor-color-brown: #ba856f;
+	--edytor-color-orange: #c77d48;
+	--edytor-color-yellow: #ca9849;
+	--edytor-color-green: #529e72;
+	--edytor-color-blue: #5e87c9;
+	--edytor-color-purple: #9d68d3;
+	--edytor-color-pink: #d15796;
+	--edytor-color-red: #df5452;
+	--edytor-background-gray: #2f2f2f;
+	--edytor-background-brown: #4a3229;
+	--edytor-background-orange: #5c3b23;
+	--edytor-background-yellow: #564328;
+	--edytor-background-green: #243d30;
+	--edytor-background-blue: #143a4e;
+	--edytor-background-purple: #3c2d49;
+	--edytor-background-pink: #4e2c3c;
+	--edytor-background-red: #522e2a;
+	color-scheme: dark;
+}
+
+/* The theme's few literal colours, on the tokens. */
+:root .edytor-notion :is([data-edytor-embed], [data-edytor-equation]:hover) {
+	background: var(--accent);
+}
+:root .edytor-notion [data-edytor-bookmark] a:hover,
+:root .edytor-notion :is([data-edytor-embed-unsupported], [data-edytor-file]) a:hover {
+	background: var(--accent);
+}
+:root .edytor-notion [data-edytor-bookmark] a {
+	box-shadow: inset 0 0 0 1px var(--border);
+}
+:root .edytor-notion [data-edytor-equation-placeholder] {
+	color: var(--muted-foreground);
+}
+:root .edytor-notion [data-edytor-equation-error] {
+	color: var(--destructive);
+}
+:root .edytor-notion .edytor-page-link .title {
+	border-bottom-color: var(--border);
+}
+
+/* The code blocks' syntax colours on a dark page (light on the dark panel). */
+:is(.dark, :root .dark) .edytor-notion :is(.th-comment, .th-meta) {
+	color: #8b949e;
+}
+:is(.dark, :root .dark) .edytor-notion :is(.th-keyword, .th-link) {
+	color: #79c0ff;
+}
+:is(.dark, :root .dark) .edytor-notion :is(.th-string, .th-attr, .th-selector, .th-inserted) {
+	color: #a5d6a7;
+}
+:is(.dark, :root .dark) .edytor-notion :is(.th-function, .th-type) {
+	color: #f497b0;
+}
+:is(.dark, :root .dark)
+	.edytor-notion
+	:is(.th-number, .th-literal, .th-tag, .th-property, .th-deleted) {
+	color: #e3a6d8;
+}
+:is(.dark, :root .dark) .edytor-notion :is(.th-variable, .th-operator) {
+	color: #e0b97a;
+}

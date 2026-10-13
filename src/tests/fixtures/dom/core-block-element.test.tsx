@@ -25,7 +25,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
-import { codePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r5`); green since R5. */
 const row = it;

@@ -8,7 +8,10 @@ icon: table-properties
 
 ```svelte title="src/lib/TaskPage.svelte" check
 <script lang="ts">
-	import { StarterEditor, type StarterProperty } from 'edytor/starter';
+	import {
+		StarterEditor,
+		type StarterProperty
+	} from '$lib/components/edytor/starter/index.js';
 
 	const people = [
 		{ id: 'ada', label: 'Ada Lovelace' },
@@ -38,16 +41,20 @@ icon: table-properties
 
 | `type` | Stored as | The cell |
 | --- | --- | --- |
-| `text` | a string | a text field |
-| `number` | a number | a number field |
-| `select` | one option's `value` | a list of the options, the chosen one in its colour |
-| `multi-select` | a list of option values | a pill per value, each with its remove button, and a list to add one |
-| `date` | `YYYY-MM-DD` | a date field |
-| `checkbox` | `true` (unchecked: absent) | a checkbox |
-| `url` | a string | a URL field, and a link to open it |
-| `person` | a list of person ids | a pill per person from `people`, and a list to add one |
+| `text` | a string | an `Input` |
+| `number` | a number | a number `Input` |
+| `select` | one option's `value` | a `Select` of the options, the chosen one a badge in its colour |
+| `multi-select` | a list of option values | a badge per value with its remove button, and a Combobox (a `Popover` over a searchable `Command`) whose rows toggle a value |
+| `date` | ISO `YYYY-MM-DD` | the Date Picker (a `Popover` over a `Calendar`), the date shown in `locale` (`Oct 13, 2026`) |
+| `checkbox` | `true` (unchecked: absent) | a `Checkbox` |
+| `url` | a string | a URL `Input`, and a button to open it |
+| `person` | a list of person ids | a badge per person from `people`, and the same Combobox over them |
 
 An empty value (`''`, an empty list, an unchecked box) removes the property's key, so `data.properties` holds only what is set.
+
+## Dates
+
+A `date` is stored as an ISO date, `2026-10-13`, whatever the user's language, so it sorts, compares and syncs the same everywhere. The page shows it in the `locale` prop (default `en-US`), medium style, through `Intl.DateTimeFormat` in UTC: `Oct 13, 2026`, `13 oct. 2026` in `fr-FR`. The locale and the time zone are given, never the runtime's, so the server's text and the browser's are the same and the page hydrates without a mismatch; pass your user's locale from the server (`locale={data.locale}`) to show their format. The Date Picker's calendar uses the same locale; **Clear** removes the date.
 
 ## A property
 
@@ -64,15 +71,18 @@ An empty value (`''`, an empty list, an unchecked box) removes the property's ke
 
 ## Add and hide
 
-With `editableProperties` (the default), **Add a property** lists the schema's hidden properties, and each shown property has a hide button. A user's choice is the document's (`data.shownProperties`, `true` for an added one, `false` for a hidden one) and hiding a property removes its value. `editableProperties={false}` shows the schema as it is, with neither control. A readonly view shows the values only.
+With `editableProperties` (the default), each shown property has a hide button, and **Add a property** is a searchable list of the hidden ones. Hiding a property keeps its value: the hidden properties sit under a collapsible below the shown ones (**2 hidden properties**), each with its value and a show button, so nothing is lost and a user can bring one back. A user's choice is the document's (`data.shownProperties`, `true` for a shown one, `false` for a hidden one), the values stay in `data.properties`. `editableProperties={false}` shows the schema as it is, without the hide, show and add controls. A readonly view shows the values only, the hidden ones under the same collapsible.
 
 ## Replace a cell
 
-`propertyCells` replaces the cell of every property of a type; the snippet gets the property, its value, a `set` (one undo step), `readonly`, `people` and the `labelId` its field is labelled by:
+`propertyCells` replaces the cell of every property of a type; the snippet gets the property, its value, a `set` (one undo step), `readonly`, `people`, the `locale` and the `labelId` its field is labelled by:
 
 ```svelte title="src/lib/Stars.svelte" check
 <script lang="ts">
-	import { StarterEditor, type StarterPropertyCellPayload } from 'edytor/starter';
+	import {
+		StarterEditor,
+		type StarterPropertyCellPayload
+	} from '$lib/components/edytor/starter/index.js';
 </script>
 
 {#snippet stars({ value, set, readonly, labelId }: StarterPropertyCellPayload)}
@@ -93,4 +103,4 @@ With `editableProperties` (the default), **Add a property** lists the schema's h
 />
 ```
 
-`propertyList` replaces the whole block: it gets the shown properties, the ones a user may add, the values, `set`, `show`, `hide`, `readonly`, `editable`, `labelId` and `cell`, the snippet of a property's cell (yours where `propertyCells` has one).
+`propertyList` replaces the whole block: it gets the shown properties, the hidden ones, the ones a user may add, the values, `set`, `show`, `hide`, `readonly`, `editable`, `labelId` and `cell`, the snippet of a property's cell (yours where `propertyCells` has one).

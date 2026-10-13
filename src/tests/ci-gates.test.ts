@@ -11,7 +11,8 @@
  *   gate job needs every other job, and only the pull request run's is
  *   named `CI passed`, the one check branch protection requires (a push run
  *   on the same commit skips Chromium, so it must never report that name).
- * - `nightly.yml` runs Firefox, WebKit, the two mobile projects, CDP and DST.
+ * - `nightly.yml` runs Firefox, WebKit, the two mobile projects, CDP, DST and
+ *   the registry install into a fresh app.
  * - `publish.yml` publishes only after `ci.yml` passed on the tagged commit,
  *   and only its publish job may mint an OIDC token.
  * - No Playwright project retries; no gate test asserts a time it measured.
@@ -58,6 +59,7 @@ const EVERY_PUSH = [
 	'pnpm lint',
 	'pnpm check:worker',
 	'pnpm check:docs',
+	'pnpm check:registry',
 	'pnpm test:typecheck',
 	'pnpm test:dom:typecheck',
 	'pnpm test:do:typecheck',

@@ -44,11 +44,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import {
-	richTextPlugin,
-	slashMenuPlugin,
-	toolbarPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since V4. */
 const row = it;

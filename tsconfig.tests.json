@@ -13,7 +13,9 @@
 		"strict": true,
 		"paths": {
 			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
+			"$lib/*": ["./src/lib/*"],
+			"$registry": ["./registry"],
+			"$registry/*": ["./registry/*"]
 		},
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
@@ -21,6 +23,7 @@
 		"types": ["vite/client"]
 	},
 	"include": [
+		"registry/edytor.d.ts",
 		"src/app.d.ts",
 		"src/tests/test.utils.ts",
 		// The API rows that run without node types (public-surface.test.ts runs node tooling).

@@ -1,0 +1,46 @@
+[
+	{
+		"name": "edytor-chrome",
+		"title": "Edytor chrome",
+		"type": "registry:block",
+		"description": "The ready-made menus, toolbar, handles, panels and cards of every bundled edytor plugin, in shadcn-svelte components and tokens.",
+		"dependencies": [
+			"edytor@^2.0.0"
+		],
+		"registryDependencies": [
+			"button",
+			"input",
+			"kbd",
+			"separator",
+			"avatar",
+			"textarea"
+		],
+		"relativeUrl": "edytor-chrome.json"
+	},
+	{
+		"name": "starter",
+		"title": "Edytor starter",
+		"type": "registry:block",
+		"description": "StarterEditor: a Notion-like page (cover, icon, title, typed properties, comments) with every edytor plugin and its chrome, in shadcn-svelte.",
+		"dependencies": [
+			"edytor@^2.0.0",
+			"@internationalized/date"
+		],
+		"devDependencies": [
+			"@lucide/svelte"
+		],
+		"registryDependencies": [
+			"local:edytor-chrome",
+			"button",
+			"input",
+			"badge",
+			"calendar",
+			"checkbox",
+			"command",
+			"popover",
+			"select",
+			"collapsible"
+		],
+		"relativeUrl": "starter.json"
+	}
+]

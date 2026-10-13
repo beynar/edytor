@@ -27,7 +27,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../../lib/starter/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 /** The text a block's content opens with (it may open with an atom: undefined). */
 const firstTextOf = (block: { content?: unknown[] }) =>

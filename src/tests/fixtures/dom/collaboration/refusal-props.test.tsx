@@ -23,7 +23,7 @@ import { createDocument, SyncRefusedError } from '$lib/crdt/index.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import { Y } from '$lib/crdt/engine.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
-import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const dials: string[] = [];
 let refuse: (url: string) => [number, string] | undefined = () => undefined;

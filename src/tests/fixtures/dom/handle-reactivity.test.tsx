@@ -21,7 +21,7 @@ import { Text } from '$lib/text/text.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { watch } from '../../dom/watch.svelte.js';
-import { richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const stops: (() => void)[] = [];
 afterEach(() => {

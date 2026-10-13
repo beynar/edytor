@@ -12,6 +12,7 @@
 	 */
 	import { Edytor } from 'edytor';
 	import 'edytor/themes/notion.css';
+	import '$registry/edytor/chrome/tokens.css';
 	import { basePlugins } from '../demos/base';
 	import { loadDemo } from '../demos/registry';
 

@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { findPlugin } from 'edytor/starter';
+import { findPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import FindEditor from './FindEditor.svelte';

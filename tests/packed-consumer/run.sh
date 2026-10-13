@@ -13,9 +13,6 @@
 #      with its saved acknowledgement over WebSocket upgrades, a forged
 #      client id and a v13 frame refused. Needs the repo's
 #      `@cloudflare/vitest-plugin` devDependency (esbuild + Miniflare).
-#      node smoke-svelte.mjs also server-renders `edytor/starter`'s
-#      StarterEditor from the packed tarball, and checks that an app
-#      importing `edytor` alone ships none of it.
 #   4. tsc -p tsconfig.json         — node-safe surface under `nodenext`.
 #      tsc -p tsconfig.bundler.json — full surface under `bundler` (the real
 #      Svelte-consumer posture). Both strict, skipLibCheck OFF on purpose.

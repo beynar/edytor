@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { richTextPlugin } from '../../../../lib/starter/chrome/plugins.js';
+	import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 	// The documented refresh: `onSyncExpired` fetches a token, `params` carries it to the redial.
 	import Edytor from '$lib/components/Edytor.svelte';
 

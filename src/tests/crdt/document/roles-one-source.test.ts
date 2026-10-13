@@ -30,7 +30,7 @@ import {
 	type JSONDoc
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { codePlugin, imagePlugin, richTextPlugin } from '../../../lib/starter/chrome/plugins.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [

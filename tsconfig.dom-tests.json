@@ -13,7 +13,9 @@
 		"strict": true,
 		"paths": {
 			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
+			"$lib/*": ["./src/lib/*"],
+			"$registry": ["./registry"],
+			"$registry/*": ["./registry/*"]
 		},
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
@@ -21,6 +23,7 @@
 		"types": ["vite/client"]
 	},
 	"include": [
+		"registry/edytor.d.ts",
 		"src/app.d.ts",
 		"src/jsx/**/*.ts",
 		"src/tests/dom/**/*.ts",

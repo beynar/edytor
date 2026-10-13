@@ -729,6 +729,15 @@
 }
 
 /* ── Columns ────────────────────────────────────────────────────────── */
+/* A layout and its columns reserve no inline space: a column's blocks start
+   at the column's edge (Notion's), its handles stand in the gap before it. */
+.edytor-notion
+	:is(
+		[data-edytor-block][data-edytor-columns],
+		[data-edytor-block][data-edytor-column]:not([data-edytor-table-cell])
+	) {
+	padding-inline: 0;
+}
 /* A column's first and last blocks sit flush with the layout's edges. */
 .edytor-notion [data-edytor-column] > [data-edytor-children] > [data-edytor-block]:first-child {
 	margin-top: 0;

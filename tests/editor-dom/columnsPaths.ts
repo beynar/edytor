@@ -139,11 +139,11 @@ export const widths = async (page: Page) => [
 	Math.round((await box(page, 'K2')).width)
 ];
 
-/** The gap between K1 and K2: its edges, its middle, the resize band's middle (its left 10px, round 5). */
+/** The gap between K1 and K2: its edges, its middle, the resize band's middle (centered in the gap). */
 export const gapOf = async (page: Page) => {
 	const [k1, k2, c] = [await box(page, 'K1'), await box(page, 'K2'), await box(page, 'C')];
 	const left = k1.x + k1.width;
-	return { left, right: k2.x, mid: (left + k2.x) / 2, band: left + 5, c };
+	return { left, right: k2.x, mid: (left + k2.x) / 2, band: (left + k2.x) / 2, c };
 };
 
 export const overlap = (a: { x: number; width: number }, b: { x: number; width: number }) =>
@@ -202,6 +202,9 @@ export const resize = async (page: Page, dx: number) => {
 	await frames(page);
 };
 
+/** The x of a column-2 block's `+` left of the band (its part the band, centered in the gap, leaves it). */
+export const plusX = (add: { x: number }) => add.x + 4;
+
 /** From `id`'s text left to its `+`, and a click: the insert menu opens. */
 export const clickPlus = async (page: Page, id: string) => {
 	const t = await textBox(page, id);
@@ -212,7 +215,7 @@ export const clickPlus = async (page: Page, id: string) => {
 	const at = await walk(
 		page,
 		{ x: t.x + 10, y: row },
-		{ x: add.x + add.width / 2, y: add.y + add.height / 2 },
+		{ x: plusX(add), y: add.y + add.height / 2 },
 		3
 	);
 	await page.mouse.down();

@@ -3,7 +3,9 @@
 	Edytor,
 	createColumnsPlugin,
 	createMarkdownShortcutsPlugin,
+	createUploadsPlugin,
 	richTextPlaceholder,
+	type Uploader,
 	type EdytorInstance
 } from 'edytor';
 	import { demoDocument } from './demo-document';
@@ -79,7 +81,27 @@
 	// Rich text, images, block moves and the suggestion keys are defaults (listed here with
 	// the demo's chrome); columns, tables and the marquee are opt-in. A drag from the
 	// frame's margin selects blocks.
+	/**
+	 * A dropped or pasted image goes into the shared page itself, as a `data:` URL
+	 * every visitor of the room sees (the demo has no file storage); a larger file,
+	 * or one that is not an image, is refused.
+	 */
+	const MAX_IMAGE = 200 * 1024;
+	const inlineImage: Uploader = (file, report) =>
+		new Promise((resolve, reject) => {
+			if (!file.type.startsWith('image/') || file.size > MAX_IMAGE)
+				return reject(new Error('The demo takes images up to 200 KB.'));
+			const reader = new FileReader();
+			reader.onload = () => {
+				report.progress(1);
+				resolve(String(reader.result));
+			};
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(file);
+		});
+
 	const plugins = [
+		createUploadsPlugin({ upload: inlineImage }),
 		aiDemoPlugin,
 		blockHandlesPlugin,
 		blockMenuPlugin,

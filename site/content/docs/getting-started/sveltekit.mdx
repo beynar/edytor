@@ -98,9 +98,3 @@ export const GET: RequestHandler = async ({ params }) => {
 ```
 
 `document.encode()` gives the bytes to store; `loadDocument(bytes)` restores them. The document API is described in [the document reference](/docs/reference/document-api).
-
-## Other Vite setups
-
-A plain Vite app with `@sveltejs/vite-plugin-svelte` needs no setting either: the plugin compiles the package's `.svelte` files for the browser and for an SSR build.
-
-Plain Node cannot import `edytor` at all (the root entry contains `.svelte` files). Use `edytor/crdt/edytor` there.

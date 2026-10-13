@@ -143,6 +143,7 @@ export class History {
 
 	#run(command: 'undo' | 'redo'): boolean {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;
+		this.edytor.dataWrites.flush(); // this task's property writes are a step first
 		this.#open = null;
 		// Other writers (remote-apply and repair restores) stand aside while the
 		// replay commits: this view's recorded value decides.

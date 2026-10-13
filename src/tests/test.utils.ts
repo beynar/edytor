@@ -84,7 +84,7 @@ export type MarkStateExpectation = {
 	};
 };
 
-const defaultPlugins = [richTextPlugin, mentionPlugin];
+export const defaultPlugins = [richTextPlugin, mentionPlugin];
 
 const getAncestorBlockByDefinition = (
 	block: Block | null,

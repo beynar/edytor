@@ -168,7 +168,7 @@ export declare class Block {
     get children(): Block[];
     get content(): (Text | InlineBlock)[];
     get type(): string;
-    get data(): Readonly<Record<string, any>>;
+    get data(): Record<string, any>;
     get definition(): BlockDefinition;
     get selected(): boolean;
     get focused(): boolean;
@@ -564,7 +564,7 @@ export type BlockSpec = {
 export type BlockView<D = Record<string, any>> = {
     readonly id: string;
     readonly type: string;
-    readonly data: Readonly<D>;
+    readonly data: D;
     readonly selected: boolean;
     readonly focused: boolean;
     readonly handle: Block | undefined;
@@ -1644,6 +1644,7 @@ export declare class EdytorDocument {
     readonly transaction: TRANSACTION;
     private _destroyed;
     readonly requireHydration: boolean;
+    get data(): Record<string, any>;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -1702,7 +1703,7 @@ export declare class Edytor {
     get synced(): boolean;
     selection: EdytorSelection;
     cells: Cells | undefined;
-    get data(): Readonly<EdytorDocData>;
+    get data(): EdytorDocData;
     readonly overlay: Overlay;
     readonly popups: Popups;
     readonly announcer: AnnouncerState;
@@ -2375,7 +2376,7 @@ export declare class InlineBlock {
     get parent(): Block;
     get selected(): boolean;
     get type(): string;
-    get data(): Readonly<Record<string, any>>;
+    get data(): Record<string, any>;
     get definition(): InlineBlockDefinition;
     get index(): number;
     get isInDocument(): boolean;
@@ -2413,7 +2414,7 @@ export type InlineBlockSnippetPayload<D = Record<string, any>> = {
 export type InlineBlockView<D = Record<string, any>> = {
     readonly id: string;
     readonly type: string;
-    readonly data: Readonly<D>;
+    readonly data: D;
     readonly selected: boolean;
     readonly handle: InlineBlock | undefined;
 };

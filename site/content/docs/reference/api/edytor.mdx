@@ -184,7 +184,7 @@ export declare class Block {
     get children(): Block[];
     get content(): (Text | InlineBlock)[];
     get type(): string;
-    get data(): Readonly<Record<string, any>>;
+    get data(): Record<string, any>;
     get definition(): BlockDefinition;
     get selected(): boolean;
     get focused(): boolean;
@@ -220,7 +220,7 @@ export declare class Block {
 
 - `parent`: The display parent (the root for a top-level block); none for the root or a dead block.
 - `content`: Text segments and inline atoms, alternating, starting and ending with a text.
-- `data`: The block's `data`, read-your-writes; a reactive reader depends on the block's cell.
+- `data`: The block's `data` as plain state: reactive at any depth (through the block's cell), and writable (`block.data.color = 'red'`, `block.data.tags.push('x')`, `delete block.data.color`).
 - `movable`: May this block move at all: `canPlace` without a destination (drag handles).
 - `convertible`: May text-level structural commands (convert, markdown shortcut, slash menu) apply: the block is movable — or the virtual paragraph of an emptied document, which a conversion creates with its kind — has no role of its own and renders its own content — a container (a list) is never converted, its items are.
 - `isInTree`: The block is visible in the document (a dead handle answers false).
@@ -760,7 +760,7 @@ block's handle itself — plus the handle for document reads and commands.
 export type BlockView<D = Record<string, any>> = {
     readonly id: string;
     readonly type: string;
-    readonly data: Readonly<D>;
+    readonly data: D;
     readonly selected: boolean;
     readonly focused: boolean;
     readonly handle: Block | undefined;
@@ -768,6 +768,7 @@ export type BlockView<D = Record<string, any>> = {
 };
 ```
 
+- `data`: The block's data as plain state (`block.data`): reactive at any depth, and writable, each write a dispatched `patchData`.
 - `handle`: The block's id-only, read-only handle (its getters, reactive in a template); `undefined` in a suggestion's preview, which is no block of the document.
 - `void`: Marks inner chrome (a header, a toolbar) non-editable; the block element is the core's.
 
@@ -2652,6 +2653,7 @@ export declare class EdytorDocument {
     readonly transaction: TRANSACTION;
     private _destroyed;
     readonly requireHydration: boolean;
+    get data(): Record<string, any>;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -2695,6 +2697,7 @@ export declare class EdytorDocument {
 - `attribution`: The attribution surface — compact per-block records and the replicated actor dictionary (`u/` profiles, `c/` replica bindings).
 - `transaction`: The document's own local-edit transaction origin — headless edits via `transact` carry it so history capture attributes them.
 - `requireHydration`: `DocumentOptions.requireHydration`: an empty document waits for a provider's `synced`.
+- `data`: The document's properties as a live object (`crdt/props`): a read follows the document, and a write at any depth (`document.data.title = 'Notes'`, `document.data.tags.push('x')`, `delete …`) is the raw `patchData` operation at once, as `document.patchData(null, …)`.
 - `clientID`: The replica id (`doc.clientID`) — identifies the replica, not the actor.
 - `ready`: `true` once the document's content state is decided — seeded locally or hydrated then synced.
 - `readiness`: `pending` | `local` | `hydrated` — distinguishes a locally-seeded ready from a provider-hydrated/restored ready (the contract consumers need to tell "I decided this content" from "sync brought it").
@@ -2748,7 +2751,7 @@ export declare class Edytor {
     get synced(): boolean;
     selection: EdytorSelection;
     cells: Cells | undefined;
-    get data(): Readonly<EdytorDocData>;
+    get data(): EdytorDocData;
     readonly overlay: Overlay;
     readonly popups: Popups;
     readonly announcer: AnnouncerState;
@@ -2789,7 +2792,7 @@ export declare class Edytor {
 - `idToBlock`: The view's handles: one id-only `Block` per live id, texts and atoms by position and id.
 - `synced`: The view is bound to its decided document (its root is built).
 - `cells`: What the components render: one cell per visible block, patched from change reports.
-- `data`: The document's properties, read-your-writes and reactive.
+- `data`: The document's properties, as plain state: reactive at any depth, and writable (`edytor.data.title = 'Notes'`, `edytor.data.tags.push('x')`, `delete edytor.data.draft`).
 - `overlay`: The chrome layer outside the host: handles, menus, remote carets.
 - `popups`: The chrome popups open on this view (`surface/popups`): what the root's ARIA names.
 - `announcer`: What this view announces to assistive technology (`session/announcer`): its block moves and deletes.
@@ -3778,7 +3781,7 @@ export declare class InlineBlock {
     get parent(): Block;
     get selected(): boolean;
     get type(): string;
-    get data(): Readonly<Record<string, any>>;
+    get data(): Record<string, any>;
     get definition(): InlineBlockDefinition;
     get index(): number;
     get isInDocument(): boolean;
@@ -3787,7 +3790,7 @@ export declare class InlineBlock {
 ```
 
 - `blockId`: The block that shows the atom (the view updates it when the atom moves).
-- `data`: The atom's `data`; a reactive reader depends on its block's cell.
+- `data`: The atom's `data` as plain state: reactive at any depth (through its block's cell), and writable; each write is its `patchData` operation (`session/props`).
 - `index`: Position among the block's content parts.
 - `isInDocument`: The atom is shown by a live block.
 
@@ -3824,12 +3827,13 @@ What an inline-atom snippet receives: declared values; a suggestion's atom is ne
 export type InlineBlockView<D = Record<string, any>> = {
     readonly id: string;
     readonly type: string;
-    readonly data: Readonly<D>;
+    readonly data: D;
     readonly selected: boolean;
     readonly handle: InlineBlock | undefined;
 };
 ```
 
+- `data`: The atom's data as plain state (`atom.data`), writable; a suggested atom's is a copy.
 - `handle`: The atom's id-only handle; a suggested atom has none.
 
 ## InlineSpec

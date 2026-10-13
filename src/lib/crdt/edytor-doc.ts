@@ -243,6 +243,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			blockDataOf,
 			docData,
 			dataItemIds,
+			dataPreview,
 			childrenIds,
 			positionOf,
 			pathOf,
@@ -417,6 +418,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			blockDataOf: byRef(blockDataOf),
 			docData,
 			dataItemIds,
+			dataPreview,
 			/**
 			 * Compact per-block attribution (`{createdBy, contributors,
 			 * lastChangedBy}`), or `undefined` for unauthored/system blocks.

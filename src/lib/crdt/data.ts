@@ -386,14 +386,36 @@ export const readData = (node: EngineNode): JsonObj | undefined =>
  * The ids of the items of the array at `path` (keys, item indexes or ids)
  * in `node`'s data, in order; `[]` where no array is.
  */
-export const itemIds = (node: EngineNode, path: readonly string[]): string[] => {
-	let t: Tree | undefined = treeOf(leavesOf(node));
+export const itemIds = (node: EngineNode, path: readonly string[]): string[] =>
+	idsAt(treeOf(leavesOf(node)), path);
+const idsAt = (root: Tree, path: readonly string[]): string[] => {
+	let t: Tree | undefined = root;
 	for (const k of path)
 		if (t && isArr(open(t))) {
 			const item: Item | undefined = itemAt(itemsOf(t), k);
 			t = item && t.k.get(item.id);
 		} else t = itemish(k) ? undefined : t?.k.get(enc(segmentKey(k)));
 	return t ? itemsOf(open(t)).map(({ id }) => id) : [];
+};
+
+/**
+ * `node`'s data as it reads once `patches` are applied (nothing written),
+ * with the ids of the array items at a path (`itemIds`): an item a patch
+ * makes has no id yet (`''`), so a later patch names it by index.
+ * `null` when a patch fits no value.
+ */
+export const previewData = (
+	node: EngineNode | undefined,
+	patches: readonly DataPatch[]
+): { data: JsonObj; ids: (path: readonly string[]) => string[] } | null => {
+	const base = node ? leavesOf(node) : new Map<string, unknown>();
+	const root = treeOf(base);
+	if (!patches.every((p) => edits().apply(root, p))) return null;
+	const known = new Set([...base.keys()].flatMap((key) => key.split('/')));
+	return {
+		data: (valueOf(root) as JsonObj | undefined) ?? {},
+		ids: (path) => idsAt(root, path).map((id) => (known.has(`${id}#`) ? id : ''))
+	};
 };
 
 /** `data` with `patches` applied in order, as a fresh value (a root patch replaces it); `null` when one fits no value. */

@@ -26,8 +26,7 @@ It uses the snippet types from [Typing snippets](/docs/plugins/writing-plugins#t
 
 	/** Switch a note between info and warning. */
 	const cycleTone = (note: Block) => {
-		const tone = toneOf(note.data) === 'info' ? 'warning' : 'info';
-		note.edytor.patchData(note.id, [{ path: ['tone'], value: tone }]);
+		note.data.tone = toneOf(note.data) === 'info' ? 'warning' : 'info';
 	};
 
 	/** Toggle the keyboard mark over the selection, or stage it for the next character typed. */
@@ -96,8 +95,8 @@ A few things to note:
 
 - The snippet renders only the inside of the block. The core renders the `<aside>` from `element`, with the editor's data attributes on it.
 - `use:block.void` marks the icon button as non-editable chrome, so the caret never lands in it. The button is a native control, so its click is its own.
-- `block.data` in the snippet is reactive: switching the tone re-renders the icon and, through `element`, the `data-tone` attribute. Writes go through the view, with the block's id: `block.handle` is the block's read-only handle, and `handle.edytor` its view.
-- `patchData` writes the one property, so a collaborator's concurrent edit of another property is kept (`setBlock` with `data` replaces it as a whole).
+- `block.data` in the snippet is reactive: switching the tone re-renders the icon and, through `element`, the `data-tone` attribute. It is writable too: `note.data.tone = …` is a `patchData` dispatched through the view (hooks, undo, readonly).
+- The assignment writes the one property, so a collaborator's concurrent edit of another property is kept.
 - The note has two presets, so its commands are `block.note1` and `block.note2`. Typing `!! ` at the start of an empty block converts it, with the markdown shortcuts plugin.
 - The hook refuses `insertBlocks` only while the caret is in an empty note (the hook's `block` is where the blocks go: their parent). Other edits pass through.
 - The paragraph conversion assumes the rich text plugin defines `paragraph`.

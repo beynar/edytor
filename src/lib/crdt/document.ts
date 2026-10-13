@@ -146,6 +146,7 @@ import { Y } from './engine.js';
 import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
 import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
+import { propsProxy } from './props.js';
 import {
 	bindAttribution,
 	type AttributionBinding,
@@ -574,6 +575,22 @@ export class EdytorDocument {
 		if (init.semantics) {
 			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
 		} else if (DEV) advertise(this.awareness, this.#capability.config, this.#defaultType);
+	}
+
+	#data?: Record<string, any>;
+	/**
+	 * The document's properties as a live object (`crdt/props`): a read
+	 * follows the document, and a write at any depth (`document.data.title
+	 * = 'Notes'`, `document.data.tags.push('x')`, `delete …`) is the raw
+	 * `patchData` operation at once, as `document.patchData(null, …)`. Not
+	 * reactive by itself: a view's `edytor.data` is, and dispatches.
+	 */
+	get data(): Record<string, any> {
+		return (this.#data ??= propsProxy(
+			() => this.facade.docData(),
+			(patches) => void this.facade.apply(this.facade.prepare.patchData(null, patches)),
+			(path) => this.facade.dataItemIds(null, path)
+		));
 	}
 
 	/** The replica id (`doc.clientID`) — identifies the replica, not the actor. */

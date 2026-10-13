@@ -241,6 +241,7 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "toJSON",
     "docData",
     "dataItemIds",
+    "dataPreview",
     "project",
     "blockJSON",
     "childrenIds",
@@ -644,6 +645,7 @@ export declare class EdytorDocument {
     readonly transaction: TRANSACTION;
     private _destroyed;
     readonly requireHydration: boolean;
+    get data(): Record<string, any>;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -1387,6 +1389,12 @@ declare const bindCrdt: (Y: EngineApi) => {
             blockDataOf: (id: string) => Record<string, unknown> | undefined;
             docData: () => import("./doc/types.js").JsonObj;
             dataItemIds: (target: import("./edytor-doc.js").DataTarget, path: readonly string[]) => string[];
+            dataPreview: (target: import("./edytor-doc.js").DataTarget, pending: readonly import("./data.js").DataPatch[]) => {
+                data: {
+                    [x: string]: unknown;
+                };
+                ids: (path: readonly string[]) => string[];
+            } | null;
             blockAttribution: (id: string) => import("./index.js").BlockAttribution | undefined;
             crdtId: (id: string) => string | null;
             resolveBlock: (id: string) => import("./engine-api.js").EngineNode | null;
@@ -2469,6 +2477,12 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         blockDataOf: (id: string) => Record<string, unknown> | undefined;
         docData: () => JsonObj;
         dataItemIds: (target: DataTarget, path: readonly string[]) => string[];
+        dataPreview: (target: DataTarget, pending: readonly DataPatch[]) => {
+            data: {
+                [x: string]: unknown;
+            };
+            ids: (path: readonly string[]) => string[];
+        } | null;
         blockAttribution: (id: string) => BlockAttribution | undefined;
         crdtId: (id: string) => string | null;
         resolveBlock: (id: string) => EngineNode | null;

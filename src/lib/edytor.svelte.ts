@@ -83,6 +83,7 @@ import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
+import { DataWrites } from './session/props.js';
 import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
 import {
 	clearDomSelection,
@@ -247,13 +248,18 @@ export class Edytor {
 		void this.#dataRevision;
 		return this.facade.docData();
 	};
+	/** @internal The view's property writes (`session/props`): the data proxies' one queue. */
+	readonly dataWrites: DataWrites = new DataWrites(this);
+	#dataProxy?: EdytorDocData;
 	/**
-	 * The document's properties, read-your-writes and reactive. Write them
-	 * with `edytor.patchData(null, patches)`. Type them by augmenting
-	 * {@link EdytorDocData}.
+	 * The document's properties, as plain state: reactive at any depth, and
+	 * writable (`edytor.data.title = 'Notes'`, `edytor.data.tags.push('x')`,
+	 * `delete edytor.data.draft`). Each write is the `patchData` operation,
+	 * dispatched; the writes of one task are one undo step. Type them by
+	 * augmenting {@link EdytorDocData}.
 	 */
-	get data(): Readonly<EdytorDocData> {
-		return this.docData() as EdytorDocData;
+	get data(): EdytorDocData {
+		return (this.#dataProxy ??= this.dataWrites.proxy<EdytorDocData>(null, this.docData));
 	}
 	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();

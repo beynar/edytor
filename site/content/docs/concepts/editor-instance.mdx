@@ -38,7 +38,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | Member | Type | What it is |
 | --- | --- | --- |
 | `value` | `JSONDoc` | The whole document as JSON, `{ data?, children }` (`data`: the document's properties, when it has some; the object also carries `type: 'root'`), the type the `value` prop takes. Reactive. |
-| `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties), read-only and reactive; write them with `edytor.patchData(null, patches)`. `edytor.root.data` is the same value. |
+| `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties) as plain state: reactive at any depth and writable (`edytor.data.title = 'Notes'`, each write a dispatched `patchData`). `edytor.root.data` is the same object. |
 | `root` | `Block \| undefined` | The handle of the root block. `root.children` are the top-level blocks. |
 | `synced` | `boolean` | The view is bound to a ready document. |
 | `document` | `EdytorDocument` | The document this view renders: shared by every view of it, and usable without a view. Its own operations and reads are the raw document API (see below). |
@@ -84,7 +84,7 @@ if (block) {
 }
 ```
 
-Handle getters are reactive. Read in a template, a `$derived` or an `$effect`, a getter depends on the [cells](#reading-state-reactively) its answer comes from, so `{block.type}` updates when the block is retyped, here or by a peer, and `block.children`, `block.content`, `text.stringContent` or `block.isInTree` follow their commits too. Read anywhere else (an event handler, a command), a getter is a plain read of the document. `block.data`, `atom.data` and `edytor.data` read reactively too; write them with `patchData` (see [Properties](/docs/concepts/properties)).
+Handle getters are reactive. Read in a template, a `$derived` or an `$effect`, a getter depends on the [cells](#reading-state-reactively) its answer comes from, so `{block.type}` updates when the block is retyped, here or by a peer, and `block.children`, `block.content`, `text.stringContent` or `block.isInTree` follow their commits too. Read anywhere else (an event handler, a command), a getter is a plain read of the document. `block.data`, `atom.data` and `edytor.data` are reactive at any depth too, and writable like state: `block.data.title = 'Plan'` is a dispatched `patchData` (see [Properties](/docs/concepts/properties)).
 
 ```svelte title="src/lib/BlockBadge.svelte" check
 <script lang="ts">
@@ -104,7 +104,7 @@ What a getter depends on: `type`, `children`, `content` and `isInTree` the block
 | --- | --- | --- |
 | `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `isEmpty` (no content and no children; an inline atom is content, so a block holding only a mention is not empty), `hasContent`, `movable`, `convertible` (false for a void block, an island and a list container; true for an emptied document's [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph), which a Turn into creates with its kind; a divider, from Turn into or `insertDividerAtSelection`, is created with a paragraph after it), `isContainer` (it renders only its children, like a list), `isListItem`, `list` (the list an item shows in, also after it was outdented out of a nested list into the item holding it), `node`, `textAtOffset(offset)` (the text segment that shows a block offset). It only reads: write with the view's operations and its `id` (`edytor.splitBlock(block.id, …)`). |
 | `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `segStart` (its first block offset: its offset `o` is the block's `segStart + o`), `stringContent`, `length`, `value` (runs), `getMarksAtRange(start, end)`, `isInDocument`, `node`. |
-| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`. Write its data with `edytor.patchData({ block, atom }, patches)`. |
+| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`. Its `data` is writable like state (`atom.data.name = 'Ada'`). |
 
 Because a `Text` is a position, don't keep one across edits to find "the same text" later. Keep the block id and an offset, or a selection anchor.
 

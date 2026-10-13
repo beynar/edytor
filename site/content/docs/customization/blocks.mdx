@@ -199,7 +199,7 @@ A block snippet receives `{ block, content, children }`:
   type={{
     "block.id": { type: "string", description: "The block's id." },
     "block.type": { type: "string", description: "The kind name." },
-    "block.data": { type: "object", description: "The block's data, read-only and reactive; write it with patchData. See Properties." },
+    "block.data": { type: "object", description: "The block's data as plain state: reactive at any depth, and writable (block.data.done = true). See Properties." },
     "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
     "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
     "block.handle": { type: "Block | undefined", description: "The block's read-only handle, for its reads and its edytor (handle.edytor). Not reactive. undefined in a suggestion's preview, which is no block of the document." },
@@ -351,8 +351,7 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 	import type { BlockSnippetPayload } from 'edytor';
 
 	// One property written: a collaborator's concurrent edit of another is kept.
-	const toggle = (task: Block) =>
-		task.edytor.patchData(task.id, [{ path: ['done'], value: !task.data.done }]);
+	const toggle = (task: Block) => (task.data.done = !task.data.done);
 
 	export const taskPlugin: Plugin = () => ({
 		blocks: {

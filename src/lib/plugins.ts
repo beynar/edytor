@@ -48,7 +48,12 @@ export type { Prevent };
 export type BlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: Readonly<D>;
+	/**
+	 * The block's data as plain state (`block.data`): reactive at any depth,
+	 * and writable, each write a dispatched `patchData`. In a suggestion's
+	 * preview it is a copy: a write there changes nothing.
+	 */
+	readonly data: D;
 	readonly selected: boolean;
 	readonly focused: boolean;
 	/**
@@ -562,7 +567,8 @@ export type BlockDefinition = {
 export type InlineBlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: Readonly<D>;
+	/** The atom's data as plain state (`atom.data`), writable; a suggested atom's is a copy. */
+	readonly data: D;
 	readonly selected: boolean;
 	/** The atom's id-only handle; a suggested atom has none. */
 	readonly handle: InlineBlock | undefined;

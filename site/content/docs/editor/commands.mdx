@@ -35,7 +35,7 @@ const next = edytor.idToBlock.get(inserted.ids[0]!); // the new block's handle
 // Change its kind, data, content or children in one step.
 edytor.setBlock(id, { type: 'quote' }); // in place: a list's item set to a paragraph still shows as an item
 // (`convertToKind` takes it out of the list, as Turn into does)
-edytor.patchData(id, [{ path: ['icon'], value: '✦' }]); // one property (see concepts/properties)
+edytor.patchData(id, [{ path: ['icon'], value: '✦' }]); // one property; `block.data.icon = '✦'` is the same (see concepts/properties)
 edytor.patchData(id, [{ path: [], value: { icon: '✦' } }]); // replace the whole `data`
 
 // Structure.

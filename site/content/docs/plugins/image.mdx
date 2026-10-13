@@ -297,15 +297,13 @@ With a source, the block renders the image (its `alt`, its `width`, not draggabl
 To set the source from code:
 
 ```ts title="src/lib/set-image.ts" check
-edytor.patchData(block.id, [
-	{ path: ['src'], value: 'https://example.com/photo.jpg' },
-	{ path: ['alt'], value: 'A red barn' },
-	{ path: ['width'], value: 320 },
-	{ path: ['align'], value: 'left' }
-]);
+block.data.src = 'https://example.com/photo.jpg';
+block.data.alt = 'A red barn';
+block.data.width = 320;
+block.data.align = 'left';
 ```
 
-One `patchData` is one command and one undo step, however many properties it writes.
+The writes of one task are one `patchData`: one command and one undo step, however many properties they write.
 
 ## Clipboard
 

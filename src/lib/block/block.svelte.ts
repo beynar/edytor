@@ -87,13 +87,19 @@ export class Block {
 	}
 
 	#data?: { version: number; value: Record<string, any> };
+	#props?: Record<string, any>;
 	/**
-	 * The block's `data`, read-your-writes; a reactive reader depends on the
-	 * block's cell. The root's is the document's data (`edytor.data`). Write
-	 * it with `edytor.patchData(block.id, patches)`.
+	 * The block's `data` as plain state: reactive at any depth (through the
+	 * block's cell), and writable (`block.data.color = 'red'`,
+	 * `block.data.tags.push('x')`, `delete block.data.color`). Each write is
+	 * the `patchData` operation, dispatched (`session/props`). The root's is
+	 * the document's data (`edytor.data`).
 	 */
-	get data(): Readonly<Record<string, any>> {
-		if (this.isRoot) return this.edytor.docData();
+	get data(): Record<string, any> {
+		if (this.isRoot) return this.edytor.data;
+		return (this.#props ??= this.edytor.dataWrites.proxy(this.id, () => this.#current()));
+	}
+	#current() {
 		const { facade, cells } = this.edytor;
 		cells?.get(this.id);
 		const version = facade.version;

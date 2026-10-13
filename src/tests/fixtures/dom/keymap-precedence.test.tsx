@@ -35,7 +35,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
-import { richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S4. */
 const row = it;
@@ -372,4 +372,79 @@ describe('O36 — one precedence rule for bindings', () => {
 		).toBe(true);
 		expect(calls).toEqual(['x']);
 	});
+});
+
+describe('Tab nests only with allowNesting: without it the editor does not take the key', () => {
+	const doc = () => (
+		<root>
+			<paragraph>A</paragraph>
+			<paragraph>
+				B|b
+				<paragraph>C</paragraph>
+			</paragraph>
+		</root>
+	);
+	const shape = (edytor: Edytor) =>
+		edytor.root!.children.map((block) => [
+			block.firstText?.stringContent,
+			block.children.map((child) => child.firstText?.stringContent)
+		]);
+
+	pin(
+		'without it, Tab and Shift+Tab nest nothing and are not prevented (the focus moves on)',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(doc(), { plugins: plugins() });
+			const before = shape(edytor);
+			const tab = keydown(editor, { key: 'Tab' });
+			await flushDomUpdates();
+			expect(tab.defaultPrevented).toBe(false);
+			expect(shape(edytor)).toEqual(before);
+			const back = keydown(editor, { key: 'Tab', shiftKey: true });
+			await flushDomUpdates();
+			expect(back.defaultPrevented).toBe(false);
+			expect(shape(edytor)).toEqual(before);
+		}
+	);
+
+	pin('with allowNesting, Tab nests the caret’s block into the one before it', async () => {
+		const { edytor, editor } = await renderDomEdytor(doc(), {
+			plugins: plugins(),
+			allowNesting: true
+		});
+		const tab = keydown(editor, { key: 'Tab' });
+		await flushDomUpdates();
+		expect(tab.defaultPrevented).toBe(true);
+		expect(shape(edytor)).toEqual([['A', ['Bb']]]);
+	});
+
+	pin(
+		'without allowNesting, Tab in a code line still indents it (the kind’s binding)',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>A</paragraph>
+				</root>,
+				{
+					plugins: plugins(codePlugin),
+					value: {
+						children: [
+							{ id: 'p', type: 'paragraph', content: [{ text: 'A' }] },
+							{
+								id: 'c',
+								type: 'code',
+								children: [{ id: 'l', type: 'code-line', content: [{ text: 'x' }] }]
+							}
+						]
+					}
+				}
+			);
+			const line = edytor.idToBlock.get('l')!;
+			edytor.selection.selectText(line.firstText!, 0);
+			await flushDomUpdates();
+			keydown(editor, { key: 'Tab' });
+			await flushDomUpdates();
+			expect(edytor.idToBlock.get('l')!.firstText!.stringContent).toBe('\tx');
+			expect(edytor.root!.children.map((block) => block.id)).toEqual(['p', 'c']);
+		}
+	);
 });

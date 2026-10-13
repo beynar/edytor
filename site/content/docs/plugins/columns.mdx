@@ -23,6 +23,89 @@ The plugin is not a default plugin: list it in `plugins`.
 
 List it in every view that may open a document holding layouts. A view without it does not know the kinds: it shows a layout's blocks one under the other, as unknown kinds, with no column rules (see [Collaboration](#collaboration)). Its stylesheet is imported with it.
 
+## Try it
+
+<PluginDemo plugin="columns" />
+
+Drag the gap between the columns to resize them, or drag a block by its grip to the edge of another to make a new column. The editor is local to this page: a reload resets it.
+
+## Customize
+
+The plugin has no snippet options, so this restyles the two kinds with a kind override listed first: the layout's row and each column as a numbered card with an accent bar. Roles, weights and the resize bands are the plugin's own.
+
+<PluginDemo plugin="columns" variant="custom" />
+
+```svelte title="ColumnsEditor.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createColumnsPlugin,
+		type BlockSnippetPayload,
+		type JSONDoc,
+		type Plugin
+	} from 'edytor';
+
+	// The page's document and the rest of your editor's plugins.
+	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
+
+	// Listed first, naming only the snippets: the kinds keep their roles,
+	// elements and the column weights. The plugin itself follows.
+	const look: Plugin = () => ({
+		blocks: { columns: { snippet: layout }, column: { snippet: card } }
+	});
+	const columns = createColumnsPlugin({ minWidth: 0.2 });
+</script>
+
+<!-- The row of columns, numbering its cards. -->
+{#snippet layout({ children }: BlockSnippetPayload)}
+	{#if children}
+		<div data-edytor-children class="row">
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}
+
+<!-- A column as a card with an accent bar and a number. -->
+{#snippet card({ children }: BlockSnippetPayload)}
+	{#if children}
+		<div data-edytor-children class="card">
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}
+
+<Edytor {value} plugins={[look, columns, ...plugins]} aria-label="Columns demo" />
+
+<style>
+	.row {
+		counter-reset: card;
+		margin-block: 8px;
+	}
+	.card {
+		counter-increment: card;
+		position: relative;
+		padding: 18px 14px 8px;
+		border: 1px solid #e3e0d8;
+		border-top: 3px solid #d9822b;
+		border-radius: 10px;
+		background: #fffaf2;
+	}
+	.card::before {
+		content: counter(card, decimal-leading-zero);
+		position: absolute;
+		top: -11px;
+		left: 12px;
+		padding: 0 8px;
+		border-radius: 999px;
+		background: #d9822b;
+		color: #fff;
+		font: 600 11px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+		letter-spacing: 0.06em;
+		pointer-events: none;
+	}
+</style>
+```
+
 ## Options
 
 `createColumnsPlugin(options)` takes a `ColumnsPluginOptions`; `createColumnsPlugin()` is the plugin with the defaults.
@@ -112,11 +195,11 @@ The blocks stay selected, one undo step. Both run `edytor.wrapInLayout`, the ope
 
 ### A column from the `+`
 
-A block directly in a column has the `+` and the grip, in the gap, as in Notion. <kbd>Alt</kbd>+click on its `+` adds a column right of the block's column, holding the block picked from the menu (a move with `position: 'right'`, one undo step). A plain click adds the block below, in the same column.
+A block directly in a column has the `+` and the grip in the gap before its column, flush with the column, as in Notion; the column's blocks (text, tables, code, images) start at the column's own edge, and column 1's handles stay in the page margin. <kbd>Alt</kbd>+click on its `+` adds a column right of the block's column, holding the block picked from the menu (a move with `position: 'right'`, one undo step). A plain click adds the block below, in the same column.
 
 ## Resizing
 
-Hover a layout: in each gap between two columns, a 10px band at the gap's left edge, the layout's height, shows a gray guide under the pointer. Press it and drag: both columns follow the pointer live, a blue line marks the gap, and nothing is written yet (the preview is this view's only; collaborators see the result at the release). The release writes the two columns' weights, keeping their sum, in one undo step; <kbd>Escape</kbd> puts them back. A column never gets narrower than `minWidth`. A drag ends at once if the view turns readonly, with nothing written. After the release the editor holds the keys, so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the resize straight away.
+Hover a layout: in each 46px gap between two columns (`--edytor-columns-gap`), a 10px band in the gap's middle, the layout's height, shows a gray guide under the pointer, on the gap's middle line. The band is above the handles: where its guide shows, a press resizes. Press it and drag: both columns follow the pointer live, a blue line marks the gap, and nothing is written yet (the preview is this view's only; collaborators see the result at the release). The release writes the two columns' weights, keeping their sum, in one undo step; <kbd>Escape</kbd> puts them back. A column never gets narrower than `minWidth`. A drag ends at once if the view turns readonly, with nothing written. After the release the editor holds the keys, so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the resize straight away.
 
 Each band is also a focusable `separator` named "Resize columns", valued by the left column's share of the pair in percent (`aria-valuenow`). Focused, <kbd>→</kbd> and <kbd>←</kbd> move the gap by 1% of the layout's width, with <kbd>Shift</kbd> by 10%, and <kbd>Home</kbd> and <kbd>End</kbd> take the left or the right column to `minWidth`; each press is one write of both weights, one undo step. The bands of the layout holding the caret are in the page even when the pointer is elsewhere, and a focused band stays. See [Accessibility](/docs/editor/accessibility#column-widths-from-the-keyboard).
 

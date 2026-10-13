@@ -50,9 +50,17 @@ export class InlineBlock {
 		return this.#item?.type ?? '';
 	}
 
-	/** The atom's `data`; a reactive reader depends on its block's cell. */
-	get data(): Readonly<Record<string, any>> {
-		return this.#item?.data ?? {};
+	#props?: Record<string, any>;
+	/**
+	 * The atom's `data` as plain state: reactive at any depth (through its
+	 * block's cell), and writable; each write is its `patchData` operation
+	 * (`session/props`).
+	 */
+	get data(): Record<string, any> {
+		return (this.#props ??= this.edytor.dataWrites.proxy(
+			{ block: this.blockId, atom: this.id },
+			() => this.#item?.data ?? {}
+		));
 	}
 
 	get definition(): InlineBlockDefinition {

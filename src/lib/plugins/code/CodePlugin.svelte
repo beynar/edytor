@@ -13,7 +13,6 @@
 	import { codeEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
-		codeSettings,
 		languageOf,
 		tokenizeCode,
 		type CodePluginOptions,
@@ -47,8 +46,9 @@
 				header: options.header,
 				menu: options.menu
 			};
-			codeSettings.set(edytor, own);
-			// The view's language list: the first code plugin listed owns it.
+			// The view's code options and language list: the first code plugin
+			// listed owns them, as it draws the kind (first listed wins); the
+			// header reads them from it.
 			if (edytor && !languageMenus.has(edytor))
 				languageMenus.set(edytor, new LanguageMenu(edytor, own));
 			const ownMenu = () => {

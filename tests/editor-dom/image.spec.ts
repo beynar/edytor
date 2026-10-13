@@ -144,10 +144,13 @@ test.describe('image file paste and drop (WU-21)', () => {
 		issues.assertClean();
 	});
 
-	test('a dropped image file lands at the drop point, uploads, one step', async ({ page }) => {
+	test('a dropped image file lands where the indicator shows, uploads, one step', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 		await open(page);
-		// The drop point: the end of `after image` (the text element spans its line).
+		// The drop point: the lower half of `after image`'s row, in its text column
+		// (`drop.files.place`: after it).
 		const box = (await page.locator('[data-edytor-text="true"]').last().boundingBox())!;
 		await page.evaluate(
 			({ x, y }) => {
@@ -173,7 +176,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 					editor.dispatchEvent(event);
 				}
 			},
-			{ x: box.x + box.width - 4, y: box.y + box.height / 2 }
+			{ x: box.x + 2, y: box.y + box.height * 0.75 }
 		);
 		await expect
 			.poll(async () => {
@@ -186,14 +189,69 @@ test.describe('image file paste and drop (WU-21)', () => {
 			.toEqual([
 				{ type: 'image', src: 'data:image/svg+' },
 				{ type: 'paragraph', src: undefined },
-				{ type: 'image', src: 'data:image/png;' },
-				{ type: 'paragraph', src: undefined }
+				{ type: 'image', src: 'data:image/png;' }
 			]);
 		await expect(page.locator('[data-edytor-image-uploading]')).toHaveCount(0);
 		await page.keyboard.press(`${modKey}+z`);
 		await expect
 			.poll(async () => (await readJsonByTestId<Value>(page, 'value')).children.length)
 			.toBe(2);
+		issues.assertClean();
+	});
+
+	test('a dropped image shows at once from the file while a slow upload runs, then the uploaded URL', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await page.evaluate(() => Object.assign(window, { __EDYTOR_UPLOAD_HOLD__: true }));
+		const box = (await page.locator('[data-edytor-text="true"]').last().boundingBox())!;
+		await page.evaluate(
+			({ x, y }) => {
+				const bytes = Uint8Array.from(
+					atob(
+						'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+					),
+					(c) => c.charCodeAt(0)
+				);
+				const transfer = new DataTransfer();
+				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
+				const editor = document.querySelector('[data-edytor]')!;
+				for (const type of ['dragover', 'drop'] as const) {
+					const event = new DragEvent(type, {
+						bubbles: true,
+						cancelable: true,
+						dataTransfer: transfer,
+						clientX: x,
+						clientY: y
+					});
+					if (event.dataTransfer !== transfer)
+						Object.defineProperty(event, 'dataTransfer', { value: transfer });
+					editor.dispatchEvent(event);
+				}
+			},
+			{ x: box.x + 2, y: box.y + box.height * 0.75 }
+		);
+		// Before the upload answers: the file itself, from its object URL, never stored.
+		const preview = page.locator('[data-edytor-image-uploading] img');
+		await expect(preview).toHaveAttribute('src', /^blob:/);
+		await expect
+			.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+			.toBe(true);
+		const pending = await readJsonByTestId<Value>(page, 'value');
+		expect(pending.children.map((block) => block.data?.src?.toString().slice(0, 5))).toEqual([
+			'data:',
+			undefined,
+			undefined
+		]);
+		await page.evaluate(() =>
+			(window as { __EDYTOR_RELEASE_UPLOADS__?: () => void }).__EDYTOR_RELEASE_UPLOADS__?.()
+		);
+		await expect(page.locator('[data-edytor-image-uploading]')).toHaveCount(0);
+		await expect(page.locator('[data-edytor-image] img').last()).toHaveAttribute(
+			'src',
+			/^data:image\/png;/
+		);
 		issues.assertClean();
 	});
 
@@ -228,7 +286,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 					editor.dispatchEvent(event);
 				}
 			},
-			{ x: box.x + box.width - 4, y: box.y + box.height / 2 }
+			{ x: box.x + 2, y: box.y + box.height * 0.75 }
 		);
 		await expect(page.locator('[data-edytor-media-uploading] progress')).toHaveCount(1);
 		await expect
@@ -244,8 +302,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 				{ type: 'image', src: 'data:', name: undefined },
 				{ type: 'paragraph', src: undefined, name: undefined },
 				{ type: 'image', src: 'data:', name: undefined },
-				{ type: 'file', src: 'blob:', name: 'notes.pdf' },
-				{ type: 'paragraph', src: undefined, name: undefined }
+				{ type: 'file', src: 'blob:', name: 'notes.pdf' }
 			]);
 		await expect(page.locator('[data-edytor-file-name]')).toHaveText('notes.pdf');
 		await page.keyboard.press(`${modKey}+z`);

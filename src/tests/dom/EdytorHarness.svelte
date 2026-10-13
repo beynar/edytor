@@ -11,6 +11,7 @@
 		value: JSONDoc;
 		plugins?: Plugin[];
 		readonly?: boolean;
+		allowNesting?: boolean;
 		placeholder?: string;
 		translate?: 'yes' | 'no';
 		spellcheck?: boolean;
@@ -46,6 +47,7 @@
 		value,
 		plugins,
 		readonly = false,
+		allowNesting,
 		placeholder,
 		translate = 'no',
 		spellcheck,
@@ -90,6 +92,7 @@
 	]}
 	defaultPlugins={false}
 	{readonly}
+	{allowNesting}
 	{translate}
 	{spellcheck}
 	{autocorrect}

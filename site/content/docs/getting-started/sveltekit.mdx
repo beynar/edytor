@@ -1,10 +1,38 @@
 ---
 title: SvelteKit
-description: Use Edytor in SvelteKit, with readonly server rendering, client-only editable editors and headless document work on the server.
+description: Use Edytor in SvelteKit, with server rendering, readonly pages, editors connected to a room and headless document work on the server.
 icon: server
 ---
 
-Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin compiles the `.svelte` files the package ships. This page covers what the component renders during server-side rendering (SSR) and how to mount an editable editor in the browser only.
+Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin compiles the `.svelte` files the package ships. This page covers what the component renders during server-side rendering (SSR).
+
+**`<Edytor>` renders on the server in every case, with no guard in your page.** An editor with a `value` server-renders it. An editor connected to a room (`room`, with or without `server`) server-renders the `snapshot` you pass it, or nothing; it opens IndexedDB and its socket only in the browser, then shows the room's live content in place of the snapshot. To have the document in the first HTML, load its snapshot in your server `load`:
+
+```ts title="src/routes/rooms/[id]/+page.server.ts" check
+import { documentSnapshot } from 'edytor';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ params, fetch }) => {
+	const snapshot = await documentSnapshot({
+		server: 'wss://rooms.example.com/rooms',
+		room: params.id,
+		fetch
+	});
+	return { room: params.id, snapshot: snapshot ?? undefined };
+};
+```
+
+```svelte title="src/routes/rooms/[id]/+page.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+
+	let { data } = $props();
+</script>
+
+<Edytor server="wss://rooms.example.com/rooms" room={data.room} snapshot={data.snapshot} />
+```
+
+The snapshot is read-only until the room answers, then the live editor replaces it. Without a snapshot the server HTML holds the editor's place and the content appears once the browser has it (from IndexedDB on a return visit). See [first paint from a snapshot](/docs/collaboration/persistence#first-paint-from-a-snapshot).
 
 ## What renders on the server
 
@@ -13,9 +41,9 @@ Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin c
 | Props | Server output |
 | --- | --- |
 | `readonly` with a `value` | The full document: every block element, its text and marks, with `contenteditable="false"` and `aria-readonly="true"`. |
-| `sync` (editable) | Nothing. The provider attaches only in the browser, and the document stays pending until it answers. |
+| `room` or `sync` | Its `snapshot`, read-only, or nothing. The provider attaches only in the browser, and the document stays pending until it answers. |
 | `document` that is not ready yet | Nothing, for the same reason. |
-| `value` only (editable) | The block tree, with `contenteditable="true"`. This path is not tested; mount editable editors in the browser (below). |
+| `value` only (editable), or no props | The block tree, with `contenteditable="true"`. It hydrates in the browser and edits from there. |
 
 A view releases the document it created when the server render ends, so a server-rendered editor keeps no document or presence timer alive after the request.
 
@@ -23,7 +51,7 @@ Some things never run on the server: event listeners, the selection, block handl
 
 ## Readonly pages
 
-A readonly editor is the supported way to server-render a document. Load the JSON on the server and pass it as `value`:
+To show a document nobody edits on the page, render a readonly editor. Load the JSON on the server and pass it as `value`:
 
 ```ts title="src/routes/notes/[id]/+page.server.ts" check
 import type { JSONDoc } from 'edytor';
@@ -51,37 +79,6 @@ A readonly view given `room` and `server` (or `sync`) is a live viewer instead: 
 
 See [Readonly mode](/docs/editor/readonly) for what still works in the browser.
 
-## Editable editors: mount after hydration
-
-The demo app renders its editable editor only after the page has mounted:
-
-```svelte title="src/routes/+page.svelte" check
-<script lang="ts">
-	import { onMount } from 'svelte';
-	import { Edytor } from 'edytor';
-
-	let isMounted = $state(false);
-
-	onMount(() => {
-		isMounted = true;
-	});
-</script>
-
-<div class="page">
-	{#if isMounted}
-		<Edytor room="my-note" />
-	{/if}
-</div>
-```
-
-Why:
-
-- An editable editor's content is decided in the browser. With `sync`, IndexedDB or the server has the latest state, not your server render.
-- The live editor creates state that belongs to one browser view: its presence entry, its overlay layer after the root, its provider connection. Rendering it after hydration keeps the server HTML and the first client render identical, so Svelte hydrates the rest of the page without mismatches.
-- The page shell around the editor still server-renders, so layout and headings show immediately.
-
-You can also turn SSR off for an editor route with `export const ssr = false;` in its `+page.ts`. The `onMount` pattern keeps SSR for the rest of the page.
-
 ## Working with documents on the server
 
 Load and change documents on the server without the component through [`edytor/crdt/edytor`](/docs/getting-started/entry-points). It has no Svelte in its import graph, so it runs in `+page.server.ts`, `+server.ts` and hooks:
@@ -101,20 +98,3 @@ export const GET: RequestHandler = async ({ params }) => {
 ```
 
 `document.encode()` gives the bytes to store; `loadDocument(bytes)` restores them. The document API is described in [the document reference](/docs/reference/document-api).
-
-## Other Vite setups
-
-In a plain Vite app with its own SSR build, tell Vite to compile the package instead of importing it at runtime, as SvelteKit does for you:
-
-```ts title="vite.config.ts" check
-import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-	plugins: [svelte()],
-	resolve: { dedupe: ['svelte'] },
-	ssr: { noExternal: ['edytor'] }
-});
-```
-
-Plain Node cannot import `edytor` at all (the root entry contains `.svelte` files). Use `edytor/crdt/edytor` there.

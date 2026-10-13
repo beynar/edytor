@@ -22,7 +22,13 @@ import { offsetIn } from '$lib/selection/selection.utils.js';
 import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
+import {
+	caretAt,
+	intentSnapshot,
+	kindOf,
+	type Attempt,
+	type DropAt
+} from '$lib/session/attempt.js';
 
 /** A kind's fresh data: its first preset's (a new to-do is unchecked). */
 const freshData = (block: Block): NonNullable<JSONBlock['data']> => ({
@@ -111,10 +117,10 @@ export const insertLineBreak = (
 	caretAt(edytor, line, before ? (line?.length ?? 0) : 0);
 };
 
-const runPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
+const runPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer, at?: DropAt) => {
 	const event = { clipboardData: dataTransfer } as unknown as ClipboardEvent;
 	for (const plugin of edytor.plugins)
-		vetoable((prevent) => plugin.onPaste?.({ prevent, e: event }));
+		vetoable((prevent) => plugin.onPaste?.({ prevent, e: event, ...(at && { at }) }));
 };
 
 /** The drop point the browser reported: its text and offset (`null`: not in a text). */
@@ -165,9 +171,12 @@ const insertPayload = async (edytor: Edytor, snapshot: Attempt) => {
 	// A paste occurrence is the plain text its handler left to it (Shift-paste too).
 	const fragment = !paste && readEdytorClipboardFragment(dataTransfer);
 	if (!paste && !fragment && dataTransfer) {
-		// A plugin places the files at the selection: the drop point, never over selected blocks.
-		if (dataTransfer.files?.length)
+		// A plugin places the files at the drop indicator's placement, else at the
+		// selection: the drop point, never over selected blocks.
+		if (dataTransfer.files?.length) {
+			if (snapshot.placement) return void runPastePlugins(edytor, dataTransfer, snapshot.placement);
 			return void (land() !== null && runPastePlugins(edytor, dataTransfer));
+		}
 		if (dataTransfer.getData('text/html')) runPastePlugins(edytor, dataTransfer);
 	}
 	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));

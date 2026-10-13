@@ -41,6 +41,7 @@ const empty = (
 
 const render = (plugins: Plugin[], value?: { children: JSONBlock[] }) =>
 	renderDomEdytor(empty, {
+		allowNesting: true,
 		plugins: [richTextPlugin, mentionPlugin, ...plugins],
 		...(value && { value })
 	});

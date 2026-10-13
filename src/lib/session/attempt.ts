@@ -18,6 +18,7 @@
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { BlockMovePosition } from './moves.js';
 
 type Kind = 'text' | 'composition' | 'payload' | 'break' | 'delete' | 'history';
 export type IntentRow = {
@@ -152,9 +153,14 @@ export type Occurrence = {
 	dataTransfer?: DataTransfer | null;
 	/** The range the browser declared (`getTargetRanges()`, a drop point). */
 	declared?: StaticRange | null;
+	/** Where a file drop lands, the indicator's placement (`plugins/fileDrop.ts`). */
+	placement?: DropAt | null;
 	cancelable: boolean;
 	event?: InputEvent;
 };
+
+/** A drop's placement in block terms: beside, before, after or inside `block`. */
+export type DropAt = { block: string; position: BlockMovePosition };
 
 export type Attempt = ReturnType<typeof facts> & {
 	id: number;
@@ -167,6 +173,7 @@ export type Attempt = ReturnType<typeof facts> & {
 	dataTransfer: DataTransfer | null;
 	hasDataTransferTextPayload: boolean;
 	declared: StaticRange | null;
+	placement: DropAt | null;
 	/** Admitted from a keydown (the key's intent wins; the browser may never announce it). */
 	isStructuralKeyFallback: boolean;
 	owner: 'model' | 'browser';
@@ -196,6 +203,7 @@ export const attemptOf = (edytor: Edytor, occurrence: Occurrence, keyIntent?: st
 		dataTransfer: occurrence.dataTransfer ?? null,
 		hasDataTransferTextPayload: payload !== null,
 		declared: occurrence.declared ?? null,
+		placement: occurrence.placement ?? null,
 		isStructuralKeyFallback: Boolean(keyIntent),
 		owner: 'model',
 		expect: null,

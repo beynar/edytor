@@ -15,6 +15,8 @@ type FixtureBase = {
 	description: string;
 	plugins?: Plugin[];
 	readonly?: boolean;
+	/** The view's `allowNesting` (rows that nest blocks set it). */
+	allowNesting?: boolean;
 	value?: JSONDoc;
 	only?: boolean;
 	skip?: boolean;

@@ -120,8 +120,8 @@ const widths = async (page: Page) => [
 
 const gapOf = async (page: Page) => {
 	const [k1, k2, c] = [await box(page, 'K1'), await box(page, 'K2'), await box(page, 'C')];
-	// The resize band is the gap's left 10px (round 5): `band` is its middle.
-	return { left: k1.x + k1.width, right: k2.x, band: k1.x + k1.width + 5, c };
+	// The resize band is centered in the gap: `band` is its middle.
+	return { left: k1.x + k1.width, right: k2.x, band: (k1.x + k1.width + k2.x) / 2, c };
 };
 
 const overlap = (a: { x: number; width: number }, b: { x: number; width: number }) =>
@@ -189,7 +189,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 			issues.assertClean();
 		});
 
-	test('the band sits at the gap’s left part, above the handles; the + and the grip right of it, never under it', async ({
+	test('the band sits in the gap’s middle, above the handles; the grip right of it, the + reaching under it', async ({
 		page
 	}) => {
 		await openDoc(page, FULL);
@@ -210,13 +210,14 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 				(await grip(page, id).boundingBox())!
 			];
 			for (const button of [add, move]) {
-				expect(overlap(button, band)).toBe(false);
 				expect(button.x).toBeGreaterThanOrEqual(g.left - 0.5);
 				expect(button.x + button.width).toBeLessThanOrEqual(g.right + 0.5);
-				expect(await hitAt(page, button.x + button.width / 2, row)).toBe(`handle:${id}`);
 			}
-			// The + and the grip right of the guide, together, flush with the block (round 5, Notion).
-			expect(add.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
+			expect(overlap(move, band)).toBe(false);
+			expect(await hitAt(page, move.x + move.width / 2, row)).toBe(`handle:${id}`);
+			expect(await hitAt(page, add.x + 4, row)).toBe(`handle:${id}`);
+			// Together, flush with the block (Notion's "+ ⋮⋮"); the guide between the + and the grip's left edge.
+			expect(move.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
 			expect(move.x).toBeGreaterThanOrEqual(add.x + add.width - 0.5);
 			expect(Math.abs(move.x + move.width - g.right)).toBeLessThanOrEqual(1);
 			expect(await hitAt(page, g.band, row)).toBe('resize');
@@ -233,7 +234,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 		await page.mouse.move(t.x + 30, row);
 		await frames(page);
 		const add = (await plus(page, 'B2').boundingBox())!;
-		const at = await walk(page, { x: t.x + 30, y: row }, { x: add.x + add.width / 2, y: row }, 3);
+		const at = await walk(page, { x: t.x + 30, y: row }, { x: add.x + 4, y: row }, 3);
 		expect(await hitAt(page, at.x, at.y)).toBe('handle:B2');
 		await expect(host(page, 'B2')).toHaveAttribute('data-visible', 'true');
 		await page.mouse.down();

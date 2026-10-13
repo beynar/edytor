@@ -6,7 +6,7 @@
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
 	import type { Plugin } from '$lib/plugins.js';
 	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
-	import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
+	import type { Uploader } from '$lib/plugins/uploads.svelte.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -516,22 +516,29 @@
 	 * The `image` scenario's uploader (WU-21, `media.files`): an image back as
 	 * an inline image after a short wait, so a spec sees the placeholder, then
 	 * the image; any other file a local `blob:` URL after a short wait, its
-	 * progress reported half way.
+	 * progress reported half way. A spec that sets `__EDYTOR_UPLOAD_HOLD__`
+	 * holds every answer until it calls `__EDYTOR_RELEASE_UPLOADS__()`.
 	 */
-	const uploadsPlugin = createUploadsPlugin({
-		upload: (file, report) =>
-			new Promise((resolve, reject) => {
-				if (!file.type.startsWith('image/')) {
-					report.progress(0.5);
-					setTimeout(() => resolve(URL.createObjectURL(file)), 150);
-					return;
-				}
-				const reader = new FileReader();
-				reader.onload = () => setTimeout(() => resolve(String(reader.result)), 150);
-				reader.onerror = () => reject(reader.error);
-				reader.readAsDataURL(file);
-			})
-	});
+	type Hold = { __EDYTOR_UPLOAD_HOLD__?: boolean; __EDYTOR_RELEASE_UPLOADS__?: () => void };
+	const held: (() => void)[] = [];
+	const answer = (resolve: () => void) => {
+		const page = window as Hold;
+		if (!page.__EDYTOR_UPLOAD_HOLD__) return void setTimeout(resolve, 150);
+		held.push(resolve);
+		page.__EDYTOR_RELEASE_UPLOADS__ = () => held.splice(0).forEach((release) => release());
+	};
+	const scenarioUpload: Uploader = (file, report) =>
+		new Promise((resolve, reject) => {
+			if (!file.type.startsWith('image/')) {
+				report.progress(0.5);
+				answer(() => resolve(URL.createObjectURL(file)));
+				return;
+			}
+			const reader = new FileReader();
+			reader.onload = () => answer(() => resolve(String(reader.result)));
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(file);
+		});
 
 	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
 	const triggerMentions = mention({
@@ -563,7 +570,17 @@
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
 	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
 	const emojiRules: Plugin = (edytor) =>
-		withRulesAndTriggers(edytor, {}, { inputRules: [{ find: /:smile:$/, replace: () => '😄' }] });
+		withRulesAndTriggers(
+			edytor,
+			{},
+			{
+				inputRules: [
+					{ find: /:smile:$/, replace: () => '😄' },
+					{ find: /->$/, replace: () => '→' },
+					{ find: /\(c\)$/, replace: () => '©' }
+				]
+			}
+		);
 
 	const plugins = $derived([
 		...(data.handles ? [blockHandlesPlugin] : []),
@@ -587,11 +604,10 @@
 				]
 			: []),
 		createArrowMovePlugin(),
-		...(data.scenario === 'image' ? [uploadsPlugin] : []),
-		imagePlugin,
+		data.scenario === 'image' || data.uploads ? image({ upload: scenarioUpload }) : imagePlugin,
 		mediaEmptyPlugin,
 		imageToolbarPlugin,
-		...(data.scenario === 'image' ? [file()] : []),
+		...(data.scenario === 'image' || data.uploads ? [file({ upload: scenarioUpload })] : []),
 		codePlugin,
 		createMarkdownShortcutsPlugin(),
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of
@@ -1329,6 +1345,7 @@
 			document={injectedDocument}
 			{value}
 			{readonly}
+			allowNesting={data.nesting}
 			{translate}
 			{spellcheck}
 			{autocorrect}
@@ -1346,6 +1363,7 @@
 				plugins={[() => ({ placeholder: 'Second editor' }), ...plugins]}
 				defaultPlugins={false}
 				value={secondaryValue}
+				allowNesting={data.nesting}
 				{translate}
 				{spellcheck}
 				{autocorrect}

@@ -63,6 +63,8 @@ export type OperationResultExpectation =
 export type TestEdytorOptions = {
 	plugins?: Plugin[];
 	readonly?: boolean;
+	/** The view's `allowNesting`. */
+	allowNesting?: boolean;
 	value?: JSONDoc;
 	doc?: YDoc;
 	awareness?: Awareness;
@@ -84,7 +86,7 @@ export type MarkStateExpectation = {
 	};
 };
 
-const defaultPlugins = [richTextPlugin, mentionPlugin];
+export const defaultPlugins = [richTextPlugin, mentionPlugin];
 
 const getAncestorBlockByDefinition = (
 	block: Block | null,
@@ -395,6 +397,7 @@ export const createTestEdytor = (
 		value,
 		plugins: options.plugins ?? defaultPlugins,
 		readonly: options.readonly,
+		allowNesting: options.allowNesting,
 		doc: options.doc,
 		awareness: options.awareness,
 		sync: options.sync

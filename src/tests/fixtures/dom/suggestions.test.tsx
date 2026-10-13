@@ -56,7 +56,7 @@ const mount = (options: { plugins?: Plugin[]; readonly?: boolean; document?: nev
 		<root>
 			<paragraph>x</paragraph>
 		</root>,
-		{ plugins: PLUGINS, value: VALUE(), autoSelectFixture: false, ...options }
+		{ allowNesting: true, plugins: PLUGINS, value: VALUE(), autoSelectFixture: false, ...options }
 	);
 
 /** Root blocks as `type:text`, nested children in braces. */

@@ -8,7 +8,7 @@ Edytor's chrome is headless: the slash menu, the mention and page link menus, th
 
 **Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours. The controls inside a block (a to-do's checkbox, a callout's icon, a bookmark's card…) are drawn by the package and take your snippet in their place: see [Controls inside blocks](#controls-inside-blocks).
 
-The examples below are the short version of each surface. The complete Notion-style markup of every surface, with its styles, is the demo's: [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) in the repository (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory). Copy what you need.
+The examples below are the short version of each surface. The complete Notion-style markup of every surface, with its styles, is the demo's: [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) in the repository (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory). Copy what you need: see [Ready-made menus](/docs/customization/ready-made-menus).
 
 ## The pattern
 
@@ -321,7 +321,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Empty image and media blocks
 
-`createMediaEmptyPlugin({ empty })`: one `empty` snippet draws every empty block of the view: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included: one snippet shape, one controller (`MediaEmptyController`) per empty block of any of these kinds: `kind` (`image`, `embed`, `bookmark`, `file`, `video`, `audio`: your words for it), `icon`, `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded: `invalid`, `inline` for an inline image over `MAX_INLINE_IMAGE_BYTES`, `upload`), `embed(value?)`, `upload(file)` (with the uploads plugin listed, `canUpload`; the picker's `accept`), `pending`, the upload of a pasted or dropped file (`status`, `progress`, an image's `preview`), and `readonly` (no control may write: show a placeholder).
+`createMediaEmptyPlugin({ empty })`: one `empty` snippet draws every empty block of the view: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included: one snippet shape, one controller (`MediaEmptyController`) per empty block of any of these kinds: `kind` (`image`, `embed`, `bookmark`, `file`, `video`, `audio`: your words for it), `icon`, `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded: `invalid`, `inline` for an inline image over `MAX_INLINE_IMAGE_BYTES`, `upload`), `embed(value?)`, `upload(file)` (when the kind's plugin has an `upload`, `canUpload`; the picker's `accept`), `pending`, the upload of a pasted, dropped or picked file (`status`; while uploading, its `name`, `size`, `progress` and `preview`), `preview` (an uploading image's local object URL, else `null`) and `progress` (`0` to `1`, `null` until reported), and `readonly` (no control may write: show a placeholder).
 
 ```svelte title="EmptyBlocks.svelte" check
 <script lang="ts">
@@ -329,16 +329,14 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 		Edytor,
 		createImagePlugin,
 		createMediaEmptyPlugin,
-		createUploadsPlugin,
 		createVideoPlugin,
 		MAX_INLINE_IMAGE_BYTES,
 		type MediaEmptyController
 	} from 'edytor';
 
 	const plugins = [
-		createUploadsPlugin({ upload: (file) => upload(file) }),
-		createImagePlugin(),
-		createVideoPlugin(),
+		createImagePlugin({ upload: (file) => upload(file) }),
+		createVideoPlugin({ upload: (file) => upload(file) }),
 		// One snippet for every empty block: by its kind.
 		createMediaEmptyPlugin({ empty })
 	];

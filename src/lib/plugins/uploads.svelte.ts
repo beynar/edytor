@@ -1,9 +1,18 @@
 import { SvelteMap } from 'svelte/reactivity';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { Plugin, PluginOperations } from '$lib/plugins.js';
+import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { jsonBlockToSpec } from '$lib/utils/json.js';
 import { id as mint } from '$lib/utils.js';
+import { placeNew } from '$lib/session/moves.js';
+import type { DropAt } from '$lib/session/attempt.js';
+import {
+	claimUploads,
+	viewUploads,
+	type FileDropPort,
+	type ViewUploads
+} from '$lib/session/uploads.js';
+import { fileDragEnd, fileDragOver, fileDropAt } from './fileDrop.js';
 
 /** What an `upload` may report while it runs. */
 export type UploadReport = {
@@ -25,8 +34,14 @@ export type Uploader = (file: File, report: UploadReport) => Promise<string>;
 export type FileUpload =
 	| {
 			readonly status: 'uploading';
-			/** The file, shown while it uploads (a `blob:` URL; `null` where there is none). */
+			/**
+			 * The file, shown while it uploads: its object URL (`blob:`), this
+			 * view's only, never stored; `null` where there is none.
+			 */
 			readonly preview: string | null;
+			/** The file's name and size in bytes, shown at once. */
+			readonly name: string;
+			readonly size: number;
 			/** The share sent, `0` to `1`; `null` until `upload` reports one. */
 			readonly progress: number | null;
 	  }
@@ -35,10 +50,12 @@ export type FileUpload =
 
 /**
  * What files a kind takes (its record's `upload`, `BlockDefinition`): which,
- * and the data an upload's answer writes. The view's uploader, if the
- * uploads plugin is listed, sends them.
+ * who sends them (`send`, its plugin's `upload` option) and the data an
+ * upload's answer writes. A kind without it takes no files.
  */
 export type KindUpload = {
+	/** Upload a file of this kind and answer its URL (its plugin's `upload`). */
+	send: Uploader;
 	/** Whether it takes `file`. */
 	accepts: (file: File) => boolean;
 	/** It takes any file no other kind takes (the file block): asked last. */
@@ -47,18 +64,17 @@ export type KindUpload = {
 	data: (file: File, answer: string) => Record<string, unknown> | null;
 	/** Whether the block has a source already (a peer's, a link's): its upload then writes nothing. */
 	filled: (data: Record<string, unknown>) => boolean;
-	/** Show the file while it uploads (an image's `blob:` preview). */
-	preview?: boolean;
 };
 
 /** A kind that takes files, and its type. */
 type UploadKind = KindUpload & { type: string };
 
 /**
- * The view's uploads (`media.files`), one per view, the uploads plugin's:
- * its uploader (`upload`, an empty block's Upload too) and the uploads of
- * pasted and dropped files, session state, never in the document. A kind
- * takes files by its record's `upload`; a paste or a drop (a drop replays
+ * The view's uploads (`media.files`), one per view, claimed by the first
+ * media plugin listed with an `upload`: the uploads of pasted, dropped and
+ * picked files (an empty block's Upload), session state, never in the
+ * document. A kind takes files by its record's `upload`, and sends them
+ * with its `send` (its plugin's uploader); a paste or a drop (a drop replays
  * the paste hooks) of files the kinds take places one empty block per
  * file, each of the kind that takes it (`fallback` last), in the
  * clipboard's order, as one paste (one command, one undo step), and each
@@ -72,14 +88,10 @@ type UploadKind = KindUpload & { type: string };
  * (`fill`, asked by the empty block's render), so a redo brings it back
  * whole.
  */
-export class FileUploads {
+export class FileUploads implements ViewUploads {
 	#uploads = new SvelteMap<string, FileUpload>();
 
-	constructor(
-		private edytor: Edytor,
-		/** The view's uploader. */
-		readonly upload: Uploader
-	) {}
+	constructor(private edytor: Edytor) {}
 
 	/** The kinds that take files (their records' `upload`), in registration order. */
 	get #kinds(): UploadKind[] {
@@ -93,6 +105,16 @@ export class FileUploads {
 		this.#kinds.find((kind) => !kind.fallback && kind.accepts(file)) ??
 		this.#kinds.find((kind) => kind.fallback && kind.accepts(file));
 
+	/** The kind that takes `file`, if any. */
+	kindOf = (file: File) => this.#kindOf(file)?.type;
+
+	/** Files dragged from outside: the drop indicator and the placement (`fileDrop.ts`). */
+	readonly drop: FileDropPort = {
+		over: (event) => fileDragOver(this.edytor, event) !== null,
+		at: (event) => fileDropAt(this.edytor, event),
+		end: () => fileDragEnd(this.edytor)
+	};
+
 	/** The upload of block `id` in this view (reactive), if any. */
 	of = (id: string): FileUpload | undefined => this.#uploads.get(id);
 
@@ -101,15 +123,19 @@ export class FileUploads {
 	 * shows text (an office app puts a picture of copied text on the
 	 * clipboard).
 	 */
-	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent }) => {
+	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent, at }) => {
 		if (this.edytor.readonly) return;
 		const files = Array.from(e.clipboardData?.files ?? []).filter((file) => this.#kindOf(file));
 		if (files.length && !showsText(e.clipboardData?.getData('text/html')))
-			prevent(() => this.insert(files));
+			prevent(() => this.insert(files, at));
 	};
 
-	/** Place a block per file at the selection (one paste), then upload each. */
-	insert = (files: readonly File[]) => {
+	/**
+	 * Place a block per file at the selection (one paste), or at a drop's
+	 * placement (`at`: beside, before, after or inside a block, one command),
+	 * then upload each.
+	 */
+	insert = (files: readonly File[], at?: DropAt) => {
 		const { edytor } = this;
 		const placed = files.flatMap((file) => {
 			const kind = this.#kindOf(file);
@@ -119,17 +145,42 @@ export class FileUploads {
 		const lines = placed.map(({ kind, id }) =>
 			jsonBlockToSpec({ id, type: kind.type, data: {}, content: [] })
 		);
-		edytor.dispatcher.run('insertFromPaste', () => pasteFlow(edytor, { lines }));
+		const target = at && edytor.idToBlock.get(at.block);
+		if (at && target)
+			edytor.dispatcher.run('insertFromDrop', () =>
+				placeNew(
+					edytor,
+					placed.map(({ kind, id }) => ({ id, type: kind.type })),
+					target,
+					at.position
+				)
+			);
+		else edytor.dispatcher.run('insertFromPaste', () => pasteFlow(edytor, { lines }));
 		for (const { file, kind, id } of placed) {
 			// Refused, or placed as no such block (a code line takes plain lines, `flow.lines`).
 			if (!edytor.facade.isVisibleBlock(id) || edytor.facade.blockTypeOf(id) !== kind.type)
 				continue;
-			const preview =
-				kind.preview && typeof URL.createObjectURL === 'function'
-					? URL.createObjectURL(file)
-					: null;
-			this.#uploads.set(id, { status: 'uploading', preview, progress: null });
-			void this.#send(id, kind, file, preview);
+			void this.#send(id, kind, file);
+		}
+	};
+
+	/**
+	 * Upload `file`, picked on the empty block `id` (its Upload), with its
+	 * kind's uploader, the block showing it meanwhile, and hand the answer to
+	 * `land` before the preview goes (so the block never shows nothing
+	 * between them): `false` when it failed (the block then shows no
+	 * upload; the caller says why).
+	 */
+	pick = async (id: string, file: File, land: (answer: string) => void): Promise<boolean> => {
+		const kind = this.edytor.idToBlock.get(id)?.definition.upload;
+		if (!kind) return false;
+		try {
+			land(await this.#run(id, kind, file));
+			return true;
+		} catch {
+			return false;
+		} finally {
+			this.#settle(id);
 		}
 	};
 
@@ -162,7 +213,21 @@ export class FileUploads {
 		this.#uploads.clear();
 	};
 
-	#send = async (id: string, kind: UploadKind, file: File, preview: string | null) => {
+	/**
+	 * Send `file` with the kind's uploader, block `id` showing it meanwhile
+	 * (`uploading`: its object URL, name, size and progress): the answer.
+	 * The object URL stays until `#settle` (after the answer is stored, so
+	 * the block never shows nothing between them).
+	 */
+	#run = (id: string, kind: KindUpload, file: File) => {
+		const preview = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null;
+		this.#uploads.set(id, {
+			status: 'uploading',
+			preview,
+			name: file.name,
+			size: file.size,
+			progress: null
+		});
 		const report: UploadReport = {
 			progress: (fraction) => {
 				const upload = this.#uploads.get(id);
@@ -170,22 +235,36 @@ export class FileUploads {
 				this.#uploads.set(id, { ...upload, progress: Math.min(1, Math.max(0, fraction)) });
 			}
 		};
+		return kind.send(file, report);
+	};
+
+	/** The upload of `id` ended: revoke its object URL and forget it, if it still runs. */
+	#settle = (id: string) => {
+		const upload = this.#uploads.get(id);
+		if (upload?.status !== 'uploading') return;
+		if (upload.preview) URL.revokeObjectURL(upload.preview);
+		this.#uploads.delete(id);
+	};
+
+	#send = async (id: string, kind: UploadKind, file: File) => {
 		let data: Record<string, unknown> | null;
 		try {
-			data = kind.data(file, await this.upload(file, report));
+			data = kind.data(file, await this.#run(id, kind, file));
 		} catch {
 			data = null;
 		}
 		const { edytor } = this;
-		if (preview) URL.revokeObjectURL(preview);
 		if (edytor.destroyed) return;
 		const block = edytor.idToBlock.get(id);
+		const upload = this.#uploads.get(id);
+		const preview = upload?.status === 'uploading' ? upload.preview : null;
 		// Given a source meanwhile (a peer, the link field): nothing to fill.
-		if (block?.isInTree && kind.filled(block.data)) return this.#uploads.delete(id);
-		if (!data) return this.#uploads.set(id, { status: 'failed' });
+		if (block?.isInTree && kind.filled(block.data)) this.#uploads.delete(id);
+		else if (!data) this.#uploads.set(id, { status: 'failed' });
 		// Not shown (undone, deleted): held until it shows again (`fill`).
-		if (!block?.isInTree) return this.#uploads.set(id, { status: 'landed', data });
-		this.#write(id, data);
+		else if (!block?.isInTree) this.#uploads.set(id, { status: 'landed', data });
+		else this.#write(id, data);
+		if (preview) URL.revokeObjectURL(preview);
 	};
 
 	/** The data's write, outside the history; refused (readonly), it is held for the next show. */
@@ -208,32 +287,24 @@ const showsText = (html: string | undefined) =>
 	typeof DOMParser !== 'undefined' &&
 	!!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 
-const views = new WeakMap<Edytor, FileUploads>();
-
-/** The view's uploads, when it lists the uploads plugin. */
-export const fileUploads = (edytor: Edytor | undefined): FileUploads | undefined =>
-	edytor && views.get(edytor);
-
-export type UploadsOptions = {
-	/**
-	 * Upload a file and answer its URL: an empty image or media block's
-	 * Upload, and the pasted and dropped files a kind takes, each placed as a
-	 * block of that kind at once (one undo step) and filled with the URL this
-	 * answers (the block shows the progress it reports).
-	 */
-	upload: Uploader;
+/** The view's uploads, when a media plugin with an `upload` is listed. */
+export const fileUploads = (edytor: Edytor | undefined): FileUploads | undefined => {
+	const uploads = viewUploads(edytor);
+	return uploads instanceof FileUploads ? uploads : undefined;
 };
 
 /**
- * File uploads (Notion's): the view's one uploader, for every kind whose
- * record takes files (`upload`: the image, file, video and audio kinds).
- * Without it, only links are embedded. The first listed claims the view.
+ * The hooks of a media plugin given an `upload` (its kind's record carries
+ * it, `KindUpload.send`): the first such plugin listed in a view claims the
+ * view's one `FileUploads` and runs its paste hook (a drop replays it) and
+ * teardown; the others add none.
  */
-export const createUploadsPlugin =
-	({ upload }: UploadsOptions): Plugin =>
-	(edytor) => {
-		if (!edytor || views.has(edytor)) return {};
-		const uploads = new FileUploads(edytor, upload);
-		views.set(edytor, uploads);
-		return { onPaste: uploads.paste, onEdytorAttached: () => uploads.destroy };
-	};
+export const uploadHooks = (
+	edytor: Edytor | undefined,
+	upload: Uploader | undefined
+): PluginOperations & PluginDefinitions => {
+	if (!edytor || !upload || viewUploads(edytor)) return {};
+	const uploads = new FileUploads(edytor);
+	claimUploads(edytor, uploads);
+	return { onPaste: uploads.paste, onEdytorAttached: () => uploads.destroy };
+};

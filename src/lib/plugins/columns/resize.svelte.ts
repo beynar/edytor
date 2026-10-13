@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { pin } from '$lib/surface/overlay.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { bandOf, gapBefore } from './gaps.js';
-import { stacks } from './stacking.js';
+import { stacks } from '$lib/dnd/stacking.js';
 import { columnsEnglish, labelsOf } from '$lib/labels.js';
 
 /** The guide line's width (the hover guide's and the drag's). */
@@ -13,6 +13,12 @@ export const GUIDE = 2;
 export const weightOf = (data: Record<string, unknown> | undefined) => {
 	const width = data?.width;
 	return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
+};
+
+/** The band's middle in a gap `width` px wide, from the gap's left. */
+const middleOf = (width: number) => {
+	const band = bandOf({ left: 0, right: width });
+	return band.left + band.width / 2;
 };
 
 /** The resize band in the gap between the columns `left` and `right` (`bandOf`), layer-relative. */
@@ -52,9 +58,9 @@ type Drag = {
 /**
  * The column resize (`docs/columns-plan.md`, "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
- * a band in each gap between two shown columns (`bandOf`: the gap's left
- * `BAND` px, the layout's height), above the block handles, whose `+` and
- * grip sit together right of it, flush with the block (`gaps.ts`, one
+ * a band in each gap between two shown columns (`bandOf`: `BAND` px centered
+ * in the gap, the layout's height), above the block handles,
+ * whose `+` and grip sit together flush with the block (`gaps.ts`, one
  * measurement):
  * wherever its gray guide shows (`--edytor-columns-resize-color`, Notion's,
  * at any height, block rows included), a press resizes. Dragging one
@@ -169,13 +175,8 @@ export class ColumnResize {
 		const strips = this.shown ? this.#gaps(origin) : [];
 		const drag = this.band.drag;
 		const guide = drag && {
-			// Where the hover guide showed: the band's middle, never the gap's (it would jump onto the `+`).
-			x:
-				drag.start +
-				this.#widthAt(drag) +
-				bandOf({ left: 0, right: drag.gap }).width / 2 -
-				GUIDE / 2 -
-				origin.left,
+			// Where the hover guide showed: the band's middle, the gap's (`bandOf`).
+			x: drag.start + this.#widthAt(drag) + middleOf(drag.gap) - GUIDE / 2 - origin.left,
 			top: drag.top - origin.top,
 			height: drag.height
 		};

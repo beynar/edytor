@@ -13,7 +13,6 @@ import {
 import { jsx } from '@tanstack/highlight/languages/jsx';
 import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
-import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Snippet } from 'svelte';
 import type { CodeHeader } from './header.svelte.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
@@ -187,9 +186,6 @@ export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	languages: CODE_LANGUAGES,
 	defaultLanguage: 'javascript'
 };
-
-/** Each view's code options, for its code blocks' header (which reads them through its view). */
-export const codeSettings = new WeakMap<Edytor, CodeSettings>();
 
 /** A code block's language id: its `data.language`, else the default. */
 export const languageOf = (

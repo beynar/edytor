@@ -54,6 +54,24 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 const POSITIONS: readonly BlockMovePosition[] = ['before', 'after', 'inside', ...BESIDE];
 
 /**
+ * The view's nesting rule (`allowNesting`, off by default): whether a user
+ * gesture may place `blocks` under `parent`. With nesting off, blocks land
+ * only at the root or in a block made to hold children — a container (a
+ * list, a column, a toggle's or a callout's body: `isContainer`, the kind's
+ * `container`), an island (a code block's lines) — or stay under the parent
+ * they already have (a document holding nested blocks still edits them).
+ * Every move (`destination`: keys, drops, menus, `edytor.move`) and every
+ * new block a drop places (`canPlaceNew`) reads it.
+ */
+export const nestsInto = (edytor: Edytor, parent: Block, blocks: readonly Block[] = []) =>
+	edytor.allowNesting ||
+	parent.isRoot ||
+	parent.isContainer ||
+	!!parent.definition.container ||
+	edytor.facade.isIsland(parent.id) ||
+	(blocks.length > 0 && blocks.every((block) => block.parent === parent));
+
+/**
  * The document write a move request is, or `null` when refused: a
  * well-formed request, then the document's one structural answer
  * (`canPlace` — the predicate the move applies at execution; an `out` step
@@ -89,7 +107,8 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 			? { blocks, write: () => edytor.unNestBlocks(ids) }
 			: null;
 	const to = parent?.isRoot ? null : parent?.id;
-	if (!parent || !edytor.facade.canPlace(ids, to)) return null;
+	if (!parent || !nestsInto(edytor, parent, blocks) || !edytor.facade.canPlace(ids, to))
+		return null;
 	const at =
 		position === 'inside' ? parent.children.length : target.index + (position === 'after' ? 1 : 0);
 	// The document counts the destination's children without the moved blocks.
@@ -153,4 +172,73 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	}
 	const result: OpResult = move.write();
 	return result.status === 'applied' ? move.blocks : [];
+};
+
+/** A new block a drop places (`placeNew`): its kind, and its id when the caller names it. */
+export type NewBlock = { type: string; id?: string };
+
+/**
+ * Whether new blocks of `kinds` may land at `target`'s `position` (a file
+ * dropped there, `placeNew`): the move's places (`destination`) asked of
+ * blocks not yet in the document — the container rule (`fits`) of the
+ * parent they land in, never inside a void or an island; beside, a layout
+ * kind and a target outside any island (`placeBeside` takes any block a
+ * column holds).
+ */
+export const canPlaceNew = (
+	edytor: Edytor,
+	kinds: readonly string[],
+	target: Block,
+	position: BlockMovePosition
+): boolean => {
+	const { facade } = edytor;
+	if (edytor.readonly || !kinds.length || !target.isInTree || target.isRoot) return false;
+	if (!POSITIONS.includes(position) || facade.insideIsland(target.id)) return false;
+	if (isBeside(position))
+		return (
+			[...edytor.blocks.values()].some((definition) => definition.layout) &&
+			!facade.isIsland(target.id)
+		);
+	const parent = position === 'inside' ? target : target.parent;
+	if (!parent || !nestsInto(edytor, parent)) return false;
+	const to = parent.isRoot ? null : parent.id;
+	if (to !== null && (facade.isVoid(to) || facade.isIsland(to))) return false;
+	return kinds.every((kind) => facade.fits(to, kind));
+};
+
+/**
+ * Insert new blocks at `target`'s `position` (a file drop's placement):
+ * before or after it, inside it (its last children), or beside it — inserted
+ * after the block it stands beside (`besideAt`) and moved there by the one
+ * move path (`layout.place-beside`) — in one transaction. The caller's
+ * command makes it one undo step. Answers the ids placed (none: refused).
+ */
+export const placeNew = (
+	edytor: Edytor,
+	blocks: readonly NewBlock[],
+	target: Block,
+	position: BlockMovePosition
+): string[] => {
+	const kinds = blocks.map((block) => block.type);
+	if (!canPlaceNew(edytor, kinds, target, position)) return [];
+	const beside = isBeside(position);
+	const at = beside ? (edytor.idToBlock.get(edytor.facade.besideAt(target.id)) ?? target) : target;
+	const parent = position === 'inside' ? target : at.parent;
+	const destination =
+		position === 'inside'
+			? { parent: target.id, index: target.children.length }
+			: {
+					parent: !parent || parent.isRoot ? null : parent.id,
+					index: at.index + (position === 'before' ? 0 : 1)
+				};
+	return edytor.transact((): string[] => {
+		const { ids } = edytor.insertBlocks(
+			destination,
+			blocks.map((block) => ({ ...block }))
+		);
+		if (!beside || !ids.length) return [...ids];
+		const placed = ids.flatMap((id) => edytor.idToBlock.get(id) ?? []);
+		move(edytor, { blocks: placed, target, position });
+		return [...ids];
+	});
 };

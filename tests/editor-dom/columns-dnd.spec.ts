@@ -369,8 +369,8 @@ test.describe('resizing columns', () => {
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
 		const [k1, k2] = [await box(page, 'K1'), await box(page, 'K2')];
-		// A 10px band, the gap's left part, the layout's height (round 5).
-		const bandMid = k1.x + k1.width + 5;
+		// A 10px band centered in the gap, the layout's height.
+		const bandMid = (k1.x + k1.width + k2.x) / 2;
 		expect(Math.abs(s.width - 10)).toBeLessThanOrEqual(1);
 		expect(Math.abs(s.x + s.width / 2 - bandMid)).toBeLessThanOrEqual(1);
 		expect(await strip(page).evaluate((node) => getComputedStyle(node).cursor)).toBe('col-resize');
@@ -397,7 +397,8 @@ test.describe('resizing columns', () => {
 				const [one, now] = [await box(page, 'K1'), await strip(page).boundingBox()];
 				return (
 					now !== null &&
-					Math.abs(now.x + now.width / 2 - (one.x + one.width + 5)) <= 1 &&
+					Math.abs(now.x + now.width / 2 - (one.x + one.width + (k2.x - k1.x - k1.width) / 2)) <=
+						1 &&
 					Math.abs(one.width - k1.width) <= 1
 				);
 			})

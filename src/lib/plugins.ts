@@ -1,6 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
+import type { BlockMovePosition } from './session/moves.js';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { TextTransform } from './surface/cells.js';
@@ -47,7 +48,12 @@ export type { Prevent };
 export type BlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: Readonly<D>;
+	/**
+	 * The block's data as plain state (`block.data`): reactive at any depth,
+	 * and writable, each write a dispatched `patchData`. In a suggestion's
+	 * preview it is a copy: a write there changes nothing.
+	 */
+	readonly data: D;
 	readonly selected: boolean;
 	readonly focused: boolean;
 	/**
@@ -210,7 +216,10 @@ export type TextRuleContext = {
 
 /** What an input rule's `replace` receives besides the match. */
 export type InputRuleContext = TextRuleContext & {
-	/** The typed text that completed the match: part of the match, not in the document. */
+	/**
+	 * The typed text that completed the match: the end of the match, already
+	 * in the document as its own undo step (`to` is after it).
+	 */
 	typed: string;
 	/**
 	 * Remove the matched text (`from` to `to`) in the same plan as the first
@@ -237,13 +246,14 @@ export type InputRule = {
 	 */
 	find: RegExp;
 	/**
-	 * The replacement. Return a string to replace the whole match with it
-	 * (one command and one undo step with the matched text's removal; the
-	 * caret after it), or write it yourself and return `true`, usually
-	 * through `ctx.remove(() => …)`. Return `false` or `null`, writing
-	 * nothing, to decline: the next rule is asked, then the typed text is
-	 * inserted as usual, as it is when the replacement is refused (by the
-	 * document, readonly or a plugin's veto).
+	 * The replacement, run once the typed text is in the document (its own
+	 * undo step, so the first undo gives the typed text back). Return a
+	 * string to replace the whole match with it (one command and one undo
+	 * step with the matched text's removal; the caret after it), or write it
+	 * yourself and return `true`, usually through `ctx.remove(() => …)`.
+	 * Return `false` or `null`, writing nothing, to decline: the next rule is
+	 * asked, and the typed text stays as typed, as it does when the
+	 * replacement is refused (by the document, readonly or a plugin's veto).
 	 */
 	replace: (match: RegExpExecArray, ctx: InputRuleContext) => string | boolean | null | void;
 };
@@ -264,6 +274,11 @@ export type TriggerContext = TextRuleContext & {
 export type Trigger<T = any> = {
 	/** The text that opens the menu (one or two characters: `@`, `[[`). */
 	char: string;
+	/**
+	 * The menu's name, read by its markup as `controller.trigger.name` (the
+	 * mention plugin's `kind`: one menu snippet can serve several triggers).
+	 */
+	name?: string;
 	/** The rows for `query`, at once or as a promise (a search); the newest query wins. */
 	items: (query: string, ctx: TriggerContext) => readonly T[] | Promise<readonly T[]>;
 	/**
@@ -352,8 +367,22 @@ export type PluginOperations = {
 	onCopy?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
 	/** Called when a cut event is detected */
 	onCut?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
-	/** Called when a paste event is detected */
-	onPaste?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
+	/**
+	 * Called when a paste event is detected, and for a drop (its data as the
+	 * clipboard's). `at`: where files dropped from outside land, the drop
+	 * indicator's placement (beside, before, after or inside `block`).
+	 */
+	onPaste?: (payload: {
+		prevent: Prevent;
+		e: ClipboardEvent;
+		at?: { block: string; position: BlockMovePosition };
+	}) => void;
+	/**
+	 * Its `onPaste` runs before the other plugins' (page link's `fromPaste`:
+	 * a pasted reference wins over the link and URL menu hooks).
+	 * @internal
+	 */
+	pasteFirst?: boolean;
 };
 
 /**
@@ -446,9 +475,11 @@ export type BlockDefinition = {
 	 */
 	rendersContent?: boolean;
 	/**
-	 * The files the kind takes (the image's `image/*`, the file block's any):
-	 * with the uploads plugin listed, an empty block's Upload sends one and a
-	 * pasted or dropped file becomes a block of this kind (`media.files`).
+	 * The files the kind takes (the image's `image/*`, the file block's any)
+	 * and who sends them (`send`: the media plugins set it from their
+	 * `upload` option): an empty block's Upload sends one, and a pasted or
+	 * dropped file becomes a block of this kind (`media.files`). A kind
+	 * without it takes no files.
 	 */
 	upload?: KindUpload;
 	/**
@@ -551,7 +582,8 @@ export type BlockDefinition = {
 export type InlineBlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
-	readonly data: Readonly<D>;
+	/** The atom's data as plain state (`atom.data`), writable; a suggested atom's is a copy. */
+	readonly data: D;
 	readonly selected: boolean;
 	/** The atom's id-only handle; a suggested atom has none. */
 	readonly handle: InlineBlock | undefined;

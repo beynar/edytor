@@ -153,7 +153,7 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
 };
 
 /**
- * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
+ * Tab / Shift+Tab, with `allowNesting`: nest or unnest the selected block, or the caret's block.
  * Selected blocks, or the blocks a text range spans, move one level per
  * group of siblings, a selected block's selected descendants with it, as
  * one command; the selection stays (its anchors moved with the blocks).
@@ -161,6 +161,8 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
 	({ edytor, prevent }) =>
+		// Nesting off (`allowNesting`, the default): the key is not the editor's, the browser moves the focus on.
+		edytor.allowNesting &&
 		prevent(() => {
 			const { selection } = edytor;
 			const { value } = selection;

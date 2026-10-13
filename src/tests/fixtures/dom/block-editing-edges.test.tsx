@@ -31,7 +31,11 @@ const render = (plugins: Plugin[], children: JSONBlock[]) =>
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, mentionPlugin, ...plugins], value: { children } }
+		{
+			allowNesting: true,
+			plugins: [richTextPlugin, mentionPlugin, ...plugins],
+			value: { children }
+		}
 	);
 
 const p = (id: string, children?: JSONBlock[]): JSONBlock => ({

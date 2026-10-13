@@ -26,7 +26,6 @@
 	import { setWords } from '../../routes/chrome/words.svelte.js';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
@@ -54,15 +53,14 @@
 		createSlashMenuPlugin(),
 		createToolbarPlugin(),
 		createBlockMenuPlugin({ linkTo: (block) => `#${block.id}` }),
-		createUploadsPlugin({ upload }),
 		mediaEmptyPlugin,
 		imageToolbarPlugin,
-		createImagePlugin(),
+		createImagePlugin({ upload }),
 		createEmbedPlugin(),
 		createBookmarkPlugin(),
-		createFilePlugin(),
-		createVideoPlugin(),
-		createAudioPlugin(),
+		createFilePlugin({ upload }),
+		createVideoPlugin({ upload }),
+		createAudioPlugin({ upload }),
 		createCodePlugin({ languages: frLanguages }),
 		createFindPlugin(),
 		suggestionsPlugin,

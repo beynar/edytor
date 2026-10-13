@@ -23,21 +23,15 @@
 	import { brandOf } from '$lib/plugins/brand.js';
 	import type { PartialLabels } from '$lib/labels.js';
 	import { createRichTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 
 	/**
 	 * The plugins every view has unless it lists one of their kind (or sets
 	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
-	 * block moves, the suggestion UI, the image kind, then rich text.
+	 * the suggestion UI, then rich text (an app lists `createArrowMovePlugin()`
+	 * for block moves and `createImagePlugin({ upload })` for images itself).
 	 */
-	const DEFAULTS = [
-		createArrowMovePlugin(),
-		createSuggestionsPlugin(),
-		createImagePlugin(),
-		createRichTextPlugin()
-	];
+	const DEFAULTS = [createSuggestionsPlugin(), createRichTextPlugin()];
 	const withDefaults = (plugins: Plugin[] = []): Plugin[] => {
 		const listed = new Set(plugins.map(brandOf));
 		return [...plugins, ...DEFAULTS.filter((plugin) => !listed.has(brandOf(plugin)))];
@@ -67,7 +61,7 @@
 
 	export type EdytorProps = {
 		plugins?: Plugin[];
-		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
+		/** Add rich text and the suggestion UI unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
 		class?: string;
 		/** The root textbox's accessible name (or name it with `aria-labelledby`). */
@@ -96,6 +90,13 @@
 		 * the connection.
 		 */
 		readonly?: boolean;
+		/**
+		 * Let users nest blocks (default `false`): Tab and Shift+Tab nest and
+		 * unnest, drops and handle keys may place a block inside another. Off,
+		 * Tab is left to the browser and no gesture nests; containers keep their
+		 * bodies. Read once.
+		 */
+		allowNesting?: boolean;
 		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. Read once. */
 		hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 		/** After every commit that changed the visible document: a `JSONDoc`, the type `value` takes. */
@@ -188,6 +189,7 @@
 		document: edytorDocument,
 		doc,
 		readonly = false,
+		allowNesting = false,
 		value = defaultValue,
 		hotkeys,
 		sync,
@@ -216,6 +218,7 @@
 
 	const initialEdytorOptions = untrack(() => ({
 		readonly,
+		allowNesting,
 		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
 		doc,
@@ -408,6 +411,29 @@
 {/if}
 
 <style>
+	/* Where a drag lands, a block handle's or files' from outside (`DropIndicator`):
+	 * the bar (4px) and the nest backdrop, placed in the overlay and shown
+	 * (`data-shown`) by the drag; their look is a theme's (`edytor/themes/notion.css`). */
+	:global([data-edytor-drop-indicator]),
+	:global([data-edytor-drop-backdrop]) {
+		position: absolute;
+		pointer-events: none;
+	}
+
+	:global([data-edytor-drop-indicator]) {
+		z-index: 100;
+		box-sizing: border-box;
+		height: 4px;
+	}
+
+	:global([data-edytor-drop-backdrop]) {
+		z-index: 99;
+	}
+
+	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
+		visibility: hidden;
+	}
+
 	/*
 	 * Room below the last block, where a press puts the caret in a trailing
 	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. No

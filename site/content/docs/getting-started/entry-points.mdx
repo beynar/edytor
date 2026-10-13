@@ -28,7 +28,9 @@ import {
 	Edytor, // the component
 	useEdytor, // the editor instance from inside the component tree
 	Block, Text, InlineBlock, // handle classes
-	createRichTextPlugin, createImagePlugin, createArrowMovePlugin, createSuggestionsPlugin, // the default plugins
+	createRichTextPlugin, createSuggestionsPlugin, // the default plugins
+	createArrowMovePlugin, // block moves from the keyboard, listed by the app
+	createImagePlugin,
 	textToBlocks, // a string or markdown as blocks (suggestions)
 	createCodePlugin, createMarkdownShortcutsPlugin,
 	createSlashMenuPlugin, createToolbarPlugin, createBlockMenuPlugin, createBlockHandlesPlugin,

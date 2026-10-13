@@ -214,8 +214,8 @@ test.describe('a text selection dragged into a gap stops at the column (round 5,
 	});
 });
 
-test.describe('the + and the grip stay together, the band left of them (round 5, issue 5)', () => {
-	test('at each column-2 row: band 10 | + 18 | grip 18, the pair flush with the block; each takes its own press', async ({
+test.describe('the + and the grip stay together, the band centered in the gap (round 5, issue 5; Notion’s spacing)', () => {
+	test('at each column-2 row: + 18 | grip 18 flush with the block, the band 10 in the gap’s middle; each takes its own press', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -230,19 +230,20 @@ test.describe('the + and the grip stay together, the band left of them (round 5,
 			const band = (await page.locator('[data-edytor-column-resize]').boundingBox())!;
 			const add = (await plus(page, id).boundingBox())!;
 			const move = (await grip(page, id).boundingBox())!;
-			// The band is the gap's left part, the layout's height.
-			expect(Math.abs(band.x - g.left)).toBeLessThanOrEqual(0.5);
+			// The band is the gap's middle 10px, the layout's height.
+			expect(Math.abs(band.x + band.width / 2 - g.mid)).toBeLessThanOrEqual(0.5);
 			expect(Math.round(band.width)).toBe(10);
 			expect(Math.abs(band.height - g.c.height)).toBeLessThanOrEqual(1);
-			// The pair together, right of the band, flush with the block (Notion's "+ ⋮⋮").
+			// The pair together, flush with the block (Notion's "+ ⋮⋮"): the grip right of
+			// the band, the + reaching under it (the band above it), both in the gap.
 			expect(Math.round(add.width)).toBe(18);
 			expect(Math.round(move.width)).toBe(18);
-			expect(add.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
+			expect(add.x).toBeGreaterThanOrEqual(g.left - 0.5);
 			expect(Math.abs(move.x - (add.x + add.width))).toBeLessThanOrEqual(1);
 			expect(Math.abs(move.x + move.width - g.right)).toBeLessThanOrEqual(1);
-			expect(overlap(add, band) || overlap(move, band)).toBe(false);
+			expect(overlap(move, band)).toBe(false);
 			expect(await hitAt(page, band.x + band.width / 2, row)).toBe('resize');
-			expect(await hitAt(page, add.x + add.width / 2, row)).toBe(`handle:${id}`);
+			expect(await hitAt(page, add.x + 4, row)).toBe(`handle:${id}`);
 			expect(await hitAt(page, move.x + move.width / 2, row)).toBe(`handle:${id}`);
 		}
 		issues.assertClean();
@@ -256,7 +257,7 @@ test.describe('the + and the grip stay together, the band left of them (round 5,
 		const g = await gapOf(page);
 		const t = await textBox(page, 'B2');
 		const row = t.y + t.height / 2;
-		const at = await walk(page, { x: t.x + 30, y: row }, { x: g.left + 5, y: row }, 3);
+		const at = await walk(page, { x: t.x + 30, y: row }, { x: g.mid, y: row }, 3);
 		expect(await hitAt(page, at.x, at.y)).toBe('resize');
 		expect(await guide(page)).toBe(true);
 		const before = await widths(page);

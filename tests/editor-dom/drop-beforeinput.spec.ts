@@ -187,7 +187,7 @@ test.describe('browser drop behavior', () => {
 		issues.assertClean();
 	});
 
-	test('routes dropped files to paste plugins and inserts nothing when unclaimed', async ({
+	test('swallows dropped files with no media plugin given an upload and inserts nothing', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -202,22 +202,25 @@ test.describe('browser drop behavior', () => {
 		});
 
 		expect(result).toEqual({ dragoverPrevented: true, dropPrevented: true });
-		// No bundled plugin claims Files yet — the payload must not degrade into
-		// silent file-name text.
+		// No media plugin with an upload here: the drop is ignored, and the payload
+		// must not degrade into silent file-name text.
 		await expect.poll(() => readBlockTexts(page)).toEqual(['lead', 'note', '']);
 
 		issues.assertClean();
 	});
 
-	test('lets a plugin claim dropped files through the paste hook', async ({ page }) => {
+	test('with a media plugin given an upload, a plugin listed first claims dropped files through the paste hook', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 
-		await gotoEditorRoute(page, '/test/dom?scenario=basic&empty=last');
+		await gotoEditorRoute(page, '/test/dom?scenario=basic&empty=last&uploads=1');
 		await setSelectionByTextIndex(page, 0, 2);
 
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.plugins.push({
+			// First, before the media plugins' own paste hook.
+			edytor.plugins.unshift({
 				onPaste: ({ prevent, e }: { prevent: (cb?: () => void) => void; e: ClipboardEvent }) => {
 					const files = e.clipboardData?.files;
 					if (files?.length) {
@@ -240,6 +243,41 @@ test.describe('browser drop behavior', () => {
 			.poll(() => page.evaluate(() => (window as any).__DROPPED_FILE__ ?? null))
 			.toBe('claimed.png');
 		await expect.poll(() => readBlockTexts(page)).toEqual(['lead', 'note', '']);
+
+		issues.assertClean();
+	});
+
+	test('without a media plugin given an upload, a file drop is ignored: no paste hook, no navigation', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await gotoEditorRoute(page, '/test/dom?scenario=basic&empty=last');
+		await setSelectionByTextIndex(page, 0, 2);
+
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			edytor.plugins.unshift({
+				onPaste: ({ prevent, e }: { prevent: (cb?: () => void) => void; e: ClipboardEvent }) => {
+					if (e.clipboardData?.files?.length)
+						prevent(() => {
+							(window as any).__DROPPED_FILE__ = 'seen';
+						});
+				}
+			});
+		});
+
+		const point = await getCaretPoint(page, 1, 2);
+		const result = await dispatchEditorDrop(page, {
+			files: [{ name: 'ignored.png', type: 'image/png' }],
+			point
+		});
+
+		// Both prevented: the browser never opens the file in place of the page.
+		expect(result).toEqual({ dragoverPrevented: true, dropPrevented: true });
+		expect(await page.evaluate(() => (window as any).__DROPPED_FILE__ ?? null)).toBeNull();
+		await expect.poll(() => readBlockTexts(page)).toEqual(['lead', 'note', '']);
+		expect(page.url()).toContain('/test/dom');
 
 		issues.assertClean();
 	});

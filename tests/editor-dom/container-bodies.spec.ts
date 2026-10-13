@@ -1,5 +1,11 @@
 import { expect, test, type Page } from './editorTest';
-import { modKey, trackPageIssues, waitForEditorReady, notionTheme } from './helpers';
+import {
+	modKey,
+	notionTheme,
+	setSelectionByTextIndex,
+	trackPageIssues,
+	waitForEditorReady
+} from './helpers';
 
 /**
  * A container's body in real browsers (`body.*` and `callout.icon` in
@@ -46,6 +52,12 @@ const iconOf = (page: Page, id: string) =>
 		id
 	);
 
+/** The caret at the end of the toggle's title, without a click (a press on a summary toggles it). */
+const titleEnd = async (page: Page) => {
+	await setSelectionByTextIndex(page, 0, 'Title'.length);
+	await expect.poll(() => caret(page)).toEqual(['root', 0, 5]);
+};
+
 const toggle = [
 	{ id: 't', type: 'toggle', content: [{ text: 'Title' }] },
 	{ id: 'p', type: 'paragraph', content: [{ text: 'after' }] }
@@ -90,6 +102,43 @@ test.describe('container bodies', () => {
 			.toEqual([['toggle "Title"', ['paragraph "Inside"']], 'paragraph "after"']);
 		await page.keyboard.press(`${modKey}+z`);
 		await page.keyboard.press(`${modKey}+z`);
+		await expect.poll(() => outline(page)).toEqual(['toggle "Title"', 'paragraph "after"']);
+		issues.assertClean();
+	});
+
+	test("ArrowDown from an open toggle's title goes into its empty body (body.down)", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, toggle);
+		const details = page.locator('[data-edytor-id="t"]');
+		await details.locator('summary').evaluate((summary) => {
+			(summary.parentElement as HTMLDetailsElement).open = true;
+		});
+		await expect(details.locator('[data-edytor-empty-body]')).toBeVisible();
+		await titleEnd(page);
+		await page.keyboard.press('ArrowDown');
+		await expect
+			.poll(() => outline(page))
+			.toEqual([['toggle "Title"', ['paragraph']], 'paragraph "after"']);
+		await expect.poll(() => caret(page)).toEqual(['t', 0, 0]);
+		await page.keyboard.type('Inside');
+		await expect
+			.poll(() => outline(page))
+			.toEqual([['toggle "Title"', ['paragraph "Inside"']], 'paragraph "after"']);
+		// One undo step takes the body back, the typing first.
+		await page.keyboard.press(`${modKey}+z`);
+		await page.keyboard.press(`${modKey}+z`);
+		await expect.poll(() => outline(page)).toEqual(['toggle "Title"', 'paragraph "after"']);
+		issues.assertClean();
+	});
+
+	test("ArrowDown from a closed toggle's title goes to the block after it", async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, toggle);
+		await titleEnd(page);
+		await page.keyboard.press('ArrowDown');
+		await expect.poll(() => caret(page)).toEqual(['root', 1, expect.any(Number)]);
 		await expect.poll(() => outline(page)).toEqual(['toggle "Title"', 'paragraph "after"']);
 		issues.assertClean();
 	});

@@ -15,12 +15,7 @@
  * Expected values come from the contract row, never from a run.
  */
 import { describe, expect, it } from 'vitest';
-import {
-	BESIDE_MARGIN,
-	DROP_REACH,
-	dropReach,
-	marginAt
-} from '$lib/plugins/blockHandles/geometry.js';
+import { BESIDE_MARGIN, DROP_REACH, dropReach, marginAt } from '$lib/dnd/geometry.js';
 
 /** Content from 100 to 700, a 46px handle column, the default reach. */
 const editor = { start: 100, end: 700, handles: 46, reach: DROP_REACH };

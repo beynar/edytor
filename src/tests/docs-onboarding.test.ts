@@ -2,10 +2,10 @@
  * Onboarding truth (WU-18, DOC-03/07/08/11/14): what a newcomer reads first
  * must hold. The room's internals live in one table every server page links;
  * the platform page names what the browser lanes run; a getting-started
- * route never server-renders an editable editor; the doc examples a reader
+ * route renders an editable editor on the server; the doc examples a reader
  * copies are type-checked (`pnpm check:docs`).
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -202,26 +202,70 @@ describe('onboarding truth (WU-18)', () => {
 		expect(read('site/content/docs/getting-started/index.mdx')).toContain(`Safari ${safari}`);
 	});
 
-	it('a getting-started route never server-renders an editable editor (DOC-03)', () => {
-		for (const path of pages(join(root, 'site/content/docs/getting-started'))) {
-			const blocks = fences(readFileSync(path, 'utf8'));
-			const ssrOff = blocks.some(
-				(block) => /\+page\.ts/.test(block.meta) && /export const ssr = false/.test(block.code)
-			);
-			for (const block of blocks) {
-				if (block.lang !== 'svelte' || !/src\/routes\//.test(block.meta)) continue;
-				const editable = [...block.code.matchAll(/<Edytor\b[^>]*>/g)].some(
-					([tag]) => !/\breadonly\b/.test(tag)
+	it('an editor server-renders in any route, with no mounted flag (DOC-03)', () => {
+		// `ssr-editable.test.ts` renders `<Edytor>` on the server: with a `value`,
+		// and with a room (its snapshot, its provider left to the browser). So no
+		// getting-started page guards it with `onMount` or turns SSR off.
+		expect(existsSync(join(root, 'src/tests/ssr-editable.test.ts'))).toBe(true);
+		for (const path of pages(join(root, 'site/content/docs/getting-started')))
+			for (const block of fences(readFileSync(path, 'utf8')))
+				expect(block.code, `${relative(root, path)}: ${block.meta}`).not.toMatch(
+					/onMount|isMounted|ssr = false/
 				);
-				if (!editable) continue;
-				const mounted = /onMount/.test(block.code) && /\{#if \w+\}/.test(block.code);
-				expect(mounted || ssrOff, `${relative(root, path)}: ${block.meta}`).toBe(true);
-			}
-		}
-		// The quick start says so where a reader copies the component.
 		expect(read('site/content/docs/getting-started/quick-start.mdx')).toContain(
-			'](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration)'
+			'renders on the server and hydrates'
 		);
+		expect(read('site/content/docs/getting-started/sveltekit.mdx')).toContain(
+			'**`<Edytor>` renders on the server in every case, with no guard in your page.**'
+		);
+	});
+
+	it('no page asks for a Vite setting, and the packed consumer builds with none', () => {
+		// `tests/packed-consumer` builds, server-renders and mounts the tarball with
+		// `svelte()` alone; a SvelteKit app's default config needs nothing either.
+		// One exception, Astro's: it bundles a package for the server only when told
+		// (`noExternal` in `astro.config`), a line naming `astro.config` itself.
+		const settings = /optimizeDeps|noExternal|dedupe/;
+		for (const path of [
+			...docs.filter((doc) => !doc.includes('/reference/')),
+			join(root, 'README.md')
+		]) {
+			const lines = readFileSync(path, 'utf8')
+				.split('\n')
+				.filter((line) => !line.includes('astro.config'));
+			expect(lines.join('\n'), relative(root, path)).not.toMatch(settings);
+		}
+		expect(
+			read('tests/packed-consumer/svelte-app/vite.config.mjs').replace(/\/\*[\s\S]*?\*\//g, '')
+		).not.toMatch(settings);
+	});
+
+	it('the quick start adds one plugin from the package, and the ready-made menus have their own page', () => {
+		const quickStart = read('site/content/docs/getting-started/quick-start.mdx');
+		// No copied chrome, no recipe: the quick start imports from `edytor` only.
+		expect(quickStart).not.toMatch(/degit|\$lib\/chrome|sed -i/);
+		expect(quickStart).toContain('](/docs/customization/ready-made-menus)');
+		const readme = read('README.md');
+		expect(readme).not.toMatch(/degit|\$lib\/chrome/);
+		expect(readme).toContain('/docs/customization/ready-made-menus');
+		// The page's recipe is the copy `check:docs` makes before it checks the
+		// page's `$lib/chrome/…` fence: `src/routes/chrome` into `src/lib/chrome`,
+		// its `$lib/index.js` imports naming `edytor`.
+		const page = read('site/content/docs/customization/ready-made-menus.mdx');
+		expect(page).toContain('npx degit beynar/edytor/src/routes/chrome src/lib/chrome');
+		expect(page).toContain(
+			"sed -i.bak 's#\\$lib/index\\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte"
+		);
+		expect(page).toContain('](https://github.com/beynar/edytor/tree/master/src/routes/chrome)');
+		const checker = read('scripts/check-docs.mjs');
+		expect(checker).toMatch(/readdirSync\(path\.join\(ROOT, 'src\/routes\/chrome'\)\)/);
+		expect(checker).toMatch(/'\$lib\/index\.js',\s*'edytor'/);
+		const checkedFence = fences(page).find((block) => checked(block.meta));
+		expect(checkedFence?.code).toMatch(/from '\$lib\/chrome\/plugins'/);
+		for (const name of checkedFence!.code.match(/\b\w+Plugin\b/g) ?? [])
+			expect(read('src/routes/chrome/plugins.ts'), name).toMatch(
+				new RegExp(`export const ${name}\\b`)
+			);
 	});
 
 	it('the docs type-check at least 150 examples, and every checked one can be checked (DOC-14)', () => {
@@ -244,5 +288,47 @@ describe('onboarding truth (WU-18)', () => {
 		const script = read('scripts/check-docs.mjs');
 		expect(script.match(/'fragments\.d\.ts'/g)).toHaveLength(1);
 		expect(script).toContain('tsconfig.fragments.json');
+	});
+
+	it("a plugin page's live demo runs the code the page shows, byte for byte", () => {
+		const demos = join(root, 'site/demos');
+		const folders = readdirSync(demos, { withFileTypes: true }).filter((entry) =>
+			entry.isDirectory()
+		);
+		expect(folders.length).toBeGreaterThan(0);
+		const titleOf = (meta: string) =>
+			/title="([^"]+)"/.exec(meta)?.[1] ??
+			meta.split(/\s+/).find((token) => token && token !== 'check');
+		for (const { name } of folders) {
+			// A plugin's page, or another page that names the demo (Ready-made menus).
+			const page = relative(
+				root,
+				docs.find((path) =>
+					readFileSync(path, 'utf8').includes(`<PluginDemo plugin="${name}" />`)
+				) ?? join(root, `site/content/docs/plugins/${name}.mdx`)
+			);
+			const text = read(page);
+			expect(text, page).toContain(`<PluginDemo plugin="${name}" />`);
+			const index = read(`site/demos/${name}/index.ts`);
+			if (/^\s*custom:/m.test(index))
+				expect(text, page).toContain(`<PluginDemo plugin="${name}" variant="custom" />`);
+			// Every file but `index.ts` is code a reader copies: a checked fence titled with its name.
+			const shown = fences(text).filter((block) => checked(block.meta));
+			for (const file of readdirSync(join(demos, name))) {
+				if (file === 'index.ts') continue;
+				const fence = shown.find((block) => titleOf(block.meta)?.split('/').pop() === file);
+				expect(fence, `${page} shows site/demos/${name}/${file} in a check fence`).toBeDefined();
+				expect(fence!.code.trimEnd(), `${page}: ${file}`).toBe(
+					read(`site/demos/${name}/${file}`).trimEnd()
+				);
+			}
+		}
+		// A page names only a demo that exists.
+		for (const path of docs)
+			for (const [, name] of readFileSync(path, 'utf8').matchAll(/<PluginDemo plugin="([^"]+)"/g))
+				expect(
+					folders.some((folder) => folder.name === name),
+					`${relative(root, path)}: site/demos/${name}/`
+				).toBe(true);
 	});
 });

@@ -120,11 +120,13 @@ if (caret) {
 
 It is an `insertInline` operation, visible to plugins. An atom's id is generated when you leave `id` out. An atom inserted at the caret keeps the caret's pending marks for the text typed after it.
 
-An atom's handle is an `InlineBlock`: `atom.data` reads its data, `atom.parent` is its block and `atom.index` its position in `block.content`. Write its data with a `patchData` on `{ block, atom }` (visible to plugins and refused in a readonly view; see [Properties](/docs/concepts/properties)), and remove it with `removeInline`:
+An atom's handle is an `InlineBlock`: `atom.data` is its data, read and written like plain state (each write a `patchData` on `{ block, atom }`, visible to plugins and refused in a readonly view; see [Properties](/docs/concepts/properties)), `atom.parent` is its block and `atom.index` its position in `block.content`. Remove it with `removeInline`:
 
 ```ts title="removeMention.ts" check
-const target = { block: block.id, atom: 'mention-1' };
-edytor.patchData(target, [{ path: ['label'], value: 'Ada L.' }]);
+import { InlineBlock } from 'edytor';
+
+const atom = block.content.find((part) => part instanceof InlineBlock && part.id === 'mention-1');
+if (atom instanceof InlineBlock) atom.data.label = 'Ada L.';
 edytor.removeInline(block.id, 'mention-1');
 ```
 

@@ -109,6 +109,8 @@ export type MediaLabels = {
 	audio: string;
 	/** A file's size, in bytes. */
 	fileSize: (bytes: number) => string;
+	/** A file that is uploading (its block's status, beside the progress). */
+	uploading: string;
 };
 
 export type CodeLabels = {
@@ -342,7 +344,8 @@ export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
 	file: 'File',
 	video: 'Video',
 	audio: 'Audio',
-	fileSize: bytes
+	fileSize: bytes,
+	uploading: 'Uploading…'
 });
 
 /** The `code` section in English. */

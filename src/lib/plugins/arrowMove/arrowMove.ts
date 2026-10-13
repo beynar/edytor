@@ -35,7 +35,7 @@ const move =
 		});
 	};
 
-/** Block moves from the keyboard (Mod+Up/Down, Mod+Shift+Up/Down): a default plugin. */
+/** Block moves from the keyboard (Mod+Up/Down, Mod+Shift+Up/Down): apps list it (`createArrowMovePlugin()`), it is not a default. */
 export const createArrowMovePlugin = (): Plugin =>
 	branded('arrowMove', () => ({
 		hotkeys: {

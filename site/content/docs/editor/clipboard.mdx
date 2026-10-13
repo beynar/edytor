@@ -44,7 +44,7 @@ A paste is handled by the first rule that applies:
 
 1. **An Edytor fragment**, from the custom format or embedded in the HTML. Pasted with full fidelity.
 2. **A plugin's `onPaste` hook**, if one calls `prevent()`.
-3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them. The uploads plugin handles them: each file becomes a block of the kind that takes it, uploaded ([Pasted and dropped files](#pasted-and-dropped-files)).
+3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them. A media plugin given an `upload` handles them: each file becomes a block of the kind that takes it, uploaded ([Pasted and dropped files](#pasted-and-dropped-files)).
 4. **External `text/html`**, imported as blocks and marks (below).
 5. **Markdown `text/plain`**, as its blocks ([Pasting markdown](#pasting-markdown)).
 6. **`text/plain`**, one block per line.
@@ -73,18 +73,20 @@ Pasted blocks and inline blocks always get new ids, so pasting twice never creat
 
 ## Pasted and dropped files
 
-With the uploads plugin listed, `createUploadsPlugin({ upload })` (the view's one uploader), every kind whose record takes files (its `upload`) takes the files of a paste or a drop that are its own, as Notion does: an image (`image/*`) to the [image](/docs/plugins/image#pasting-and-dropping-files) block, a video (`video/*`) to the [video](/docs/plugins/video) block, an audio file (`audio/*`) to the [audio](/docs/plugins/audio) block, and any other file to the [file](/docs/plugins/file) block, which takes only what no other kind takes, wherever it is listed.
+Each media plugin takes its own uploader, `upload` (`createImagePlugin({ upload })`, and the same for the file, video and audio plugins); every kind whose plugin has one takes the files of a paste or a drop that are its own, as Notion does: an image (`image/*`) to the [image](/docs/plugins/image#pasting-and-dropping-files) block, a video (`video/*`) to the [video](/docs/plugins/video) block, an audio file (`audio/*`) to the [audio](/docs/plugins/audio) block, and any other file to the [file](/docs/plugins/file) block, which takes only what no other kind takes, wherever it is listed. Each file is sent with its kind's plugin's `upload`. A kind whose plugin has no `upload` takes no files: no drop line for them, no Upload in its empty block, and its files go to the file block when that one uploads (else nowhere).
 
-- The files become one block each, in the clipboard's order, each of its own kind, placed as pasted blocks are (after the caret's line; a drop at the drop point). All of them are one command and **one undo step**. A file no kind takes is left out.
-- Each block shows its upload in this view (an image its local preview): a bar, with "Uploading…", that fills as your `upload` reports progress. `upload(file, report)` may call `report.progress(fraction)` (`0` to `1`) as the file goes; without it the bar is indeterminate. A peer sees the empty block until the URL arrives.
+- The files become one block each, in the clipboard's order, each of its own kind, placed as pasted blocks are (after the caret's line). All of them are one command and **one undo step**. A file no kind takes is left out.
+- **Dropped files land where the drop indicator shows**, as Notion does. While files are dragged from your desktop over the editor, the editor draws the line a block drag draws, under the same rules: the upper half of a block's row is before it, the lower half after it (moved right past one indent, inside it), the right edge of a row beside it (a new column, when a layout kind is listed), and the margins reorder the row next to them. Only places that take blocks of the files' kinds show. The drop places the files there; with no place under the pointer, at the drop point. It works with or without the [block handles](/docs/plugins/block-handles), and the drag leaving the editor clears the line. A readonly view shows no line and takes no drop. The drop line and the file drop come with the media plugins: without one given an `upload`, the editor ignores a drop that carries files (no line, no block, and the browser does not open the file in place of the page). A drop of text or HTML from another app still lands at the drop point in the text.
+- Each block shows its file at once in this view: an image from a local object URL (never stored, revoked once the upload ends), another file its name and size, with a bar, with "Uploading…", that fills as your `upload` reports progress. `upload(file, report)` may call `report.progress(fraction)` (`0` to `1`) as the file goes; without it the bar is indeterminate. A peer sees the empty block until the URL arrives.
 - The URL `upload` answers fills the block (a file's with its `name` and `size`) outside the history, so the paste stays the one step: undo removes the block, URL included, and redo brings it back whole, even when the upload ended while it was undone.
 - A failed upload, or an answer that is no accepted source, leaves the block empty, its panel open with "The upload failed: try again or paste a link."
 - A paste whose HTML shows text (an office app also puts a picture of the copied text on the clipboard) is imported as HTML instead. A readonly view takes nothing.
+- A plugin's [`onPaste`](#plugin-hooks) hook sees a drop of files with `at`, the indicator's placement (`{ block, position }`, `position` one of `before`, `after`, `inside`, `left`, `right`), and may claim it first.
 
 ```ts title="progress.ts" check
-import { createUploadsPlugin } from 'edytor';
+import { createImagePlugin } from 'edytor';
 
-export const uploads = createUploadsPlugin({
+export const image = createImagePlugin({
 	upload: (file, report) =>
 		new Promise<string>((resolve, reject) => {
 			const request = new XMLHttpRequest();
@@ -175,7 +177,7 @@ Hooks see `moveText` with its payload (`from`: the range's start and end, `to`: 
 
 ## Plugin hooks
 
-`onCopy`, `onCut` and `onPaste` run before Edytor handles the event. Call `prevent()` to take over; the browser's default is prevented too. For instance (the uploads plugin does this for you, with a placeholder while the file uploads and one undo step):
+`onCopy`, `onCut` and `onPaste` run before Edytor handles the event. Call `prevent()` to take over; the browser's default is prevented too. For instance (a media plugin's `upload` does this for you, with a placeholder while the file uploads and one undo step):
 
 ```ts title="imagePastePlugin.ts" check
 import type { Plugin } from 'edytor';

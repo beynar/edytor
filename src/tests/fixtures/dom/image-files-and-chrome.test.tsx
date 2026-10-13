@@ -45,7 +45,6 @@ import {
 	mediaEmptyPlugin,
 	imageToolbarPlugin
 } from '../../../routes/chrome/plugins.js';
-import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -71,12 +70,7 @@ const mount = (upload?: (file: File) => Promise<string>) =>
 			<paragraph>after</paragraph>
 		</root>,
 		{
-			plugins: [
-				...(upload ? [createUploadsPlugin({ upload })] : []),
-				richTextPlugin,
-				createImagePlugin(),
-				mediaEmptyPlugin
-			]
+			plugins: [richTextPlugin, createImagePlugin({ upload }), mediaEmptyPlugin]
 		}
 	);
 

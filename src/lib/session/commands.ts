@@ -544,6 +544,8 @@ export class Dispatcher {
 	 */
 	operate = <K extends Write>(operation: K, args: Parameters<DocumentWrites[K]>): OpResult => {
 		const { edytor } = this;
+		// The property writes queued in this task go first (`session/props`).
+		edytor.dataWrites.flush();
 		const own = (edytor.facade.prepare as unknown as Record<string, (...a: unknown[]) => Prepared>)[
 			operation
 		]!;

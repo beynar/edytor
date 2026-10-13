@@ -7,7 +7,7 @@ icon: download
 Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
 
 :::warning[New release]
-Edytor `1.0.0` is its first stable release: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet; read the [limitations](/docs/reference/limitations).
+Edytor `2.0.0` is on npm: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet; read the [limitations](/docs/reference/limitations).
 
 These docs describe that release. `edytor@0.0.11`, which npm installed without a tag before it, predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
 :::
@@ -15,7 +15,7 @@ These docs describe that release. `edytor@0.0.11`, which npm installed without a
 ## Requirements
 
 - **Svelte 5.** `svelte` is a peer dependency (`^5.0.0`). The editor uses runes and snippets, so Svelte 4 is not supported.
-- **A Svelte-aware bundler.** The root entry ships `.svelte` files. SvelteKit, or Vite with `@sveltejs/vite-plugin-svelte`, compiles them for you.
+- **A Svelte-aware bundler.** The root entry ships `.svelte` files. SvelteKit, or Vite with `@sveltejs/vite-plugin-svelte`, compiles them with its default config: nothing to add to `vite.config`. Astro renders a component from a package on the server only when that package is bundled, so add `vite: { ssr: { noExternal: ['edytor'] } }` to `astro.config` (without it, a server-rendered island fails with "Unknown file extension .svelte").
 - **Node.js 22 or later** (the package's `engines` field).
 - **A Baseline 2024 browser.** Chrome and Edge 120, Firefox 125, Safari 17.4 or Chrome on Android 120, or later; the current versions are tested. Real phones and their keyboards are not tested yet. See [Platform support](/docs/reference/platform-support).
 
@@ -41,51 +41,14 @@ Do not install `yjs` for Edytor. The collaboration engine (a fork of Yjs v14) is
 
 The package pulls in a few runtime dependencies on its own: Atlassian's Pragmatic Drag and Drop (block handles), TanStack Highlight (code block highlighting) and `lib0`.
 
-## Build from source
-
-To build the tarball yourself, from a clone of the repository (`master`):
-
-```bash
-cd edytor           # your clone
-pnpm install
-pnpm package        # builds dist/
-pnpm pack           # writes edytor-1.0.0.tgz
-```
-
-Then, in your project, install the file:
-
-```package-install
-pnpm add ../edytor/edytor-1.0.0.tgz
-```
-
-## Verify the install
-
-Render an editor. It needs no setup, but it is editable, so the page renders it in the browser only:
-
-```svelte title="src/routes/+page.svelte" check
-<script lang="ts">
-	import { Edytor } from 'edytor';
-</script>
-
-<Edytor />
-```
-
-```ts title="src/routes/+page.ts" check
-export const ssr = false; // an editable editor is client-only
-```
-
-Turning SSR off renders the whole page in the browser. To keep the rest of the page server-rendered, mount the editor after hydration instead, as the [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) does; [SvelteKit](/docs/getting-started/sveltekit) explains why.
-
-You should see one empty paragraph. An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image, arrow move and suggestions plugins by default, so this is already a working rich text editor, with its keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, …). It shows no menu, toolbar or block handle: those are snippets you pass their plugins. The [quick start](/docs/getting-started/quick-start#the-ready-made-menus-and-handles) gets you the demo's ready-made ones in one step.
-
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Quick start" href="/docs/getting-started/quick-start" icon="zap">
-    Add the ready-made menus and handles, content and change handling.
+    Render an editor, add a plugin and read the document.
   </Card>
   <Card title="SvelteKit" href="/docs/getting-started/sveltekit" icon="server">
-    Server rendering, readonly output and client-only mounting.
+    Server rendering, readonly pages and documents on the server.
   </Card>
   <Card title="Entry points" href="/docs/getting-started/entry-points" icon="package">
     What `edytor`, `edytor/crdt`, `edytor/crdt/edytor` and `edytor/cloudflare` contain.

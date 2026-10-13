@@ -79,11 +79,12 @@ kind (catalogue ids `block.<type><n>`).
   columns show the `+` and the ⋮⋮ grip, as Notion (revisited after the
   2026-10-04 review; first shipped grip-only): the `+`'s Alt+click adds a
   column right of the block's column (`addBlock` → `moveBlocks` `right`).
-  The gap budget (round 5): a 10px resize band, the gap's left part, above
-  the handles, the layout's height; a column block's handle spans the rest,
-  its compact `+` and its grip together flush with the block, Notion's
-  "+ ⋮⋮" (10 + 18 + 18 = the 46px gap): wherever the guide shows, a press
-  resizes. A layout handle stays the fallback.
+  The gap budget (Notion's spacing, 2026-10-13): a 10px resize band centered
+  in the 46px gap, the layout's height, above the handles; a
+  column block's handle box spans the gap from the band to the block, its
+  compact `+` and its grip together flush with the block, Notion's "+ ⋮⋮"
+  (36px, the `+` partly under the band); a column's blocks start at its edge.
+  Wherever the guide shows, a press resizes. A layout handle stays the fallback.
 - **D4 — (decided: as Notion) merges cross columns in reading order.**
   Backspace at the start of a column's first block merges it into the last
   line of the previous column (its text joins that line; an empty block is
@@ -223,8 +224,9 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
     for a new column in a layout); sticky never crosses a column boundary.
   - Drag preview clones at the source's width.
 - **Resize**: the overlay mounts a band in each gap (`gaps.ts` `bandOf`:
-  the gap's left 10px) while the pointer is over the layout, above the
-  handles (round 5; a column block's handle takes the rest, `handleSpan`); a
+  10px centered in the gap) while the pointer is over the layout, above the
+  handles (a column block's handle box takes the gap's right
+  part, `handleSpan`); a
   drag resizes both columns live
   through a view-only preview the column kind's `element(data, id)` reads
   (round 3: no write, no peer frame), a guide in the gap; release writes the

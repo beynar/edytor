@@ -10,7 +10,7 @@
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 	import { gapBefore, handleSpan } from '../columns/gaps.js';
 	import { renderSkipped, rendered } from '$lib/surface/overlay.js';
-	import { getOwnRowBottom } from './geometry.js';
+	import { getOwnRowBottom } from '$lib/dnd/geometry.js';
 
 	/**
 	 * The handles, in the overlay: one per registered movable block that
@@ -201,19 +201,24 @@
 		pointer-events: none;
 	}
 
-	/* Over a gap between two columns (one hit rule, the handles'): the handle
-	 * spans the gap right of the column resize band, its `+` (compact) and its
-	 * grip together flush with its block (Notion's "+ ⋮⋮"), and its box takes
-	 * the pointer at its block's whole row, shown or not — a pointer there
-	 * hovers the block, so its grip is reached from any side. The band is the
-	 * gap's left part (`columns/gaps.ts`, one measurement): at the default
-	 * 46px gap (10 + 18 + 18) neither button is under it, and where its guide
-	 * shows a press resizes. */
+	/* Over a gap between two columns (one hit rule, the handles'): the handle's
+	 * box spans the gap right of the column resize band, centered in the gap
+	 * (`columns/gaps.ts`, one measurement), and takes the pointer at its
+	 * block's whole row, shown or not — a pointer there hovers the block, so
+	 * its grip is reached from any side. Its `+` (compact) and grip stand
+	 * together flush with its block (Notion's "+ ⋮⋮"), never shrunk: wider
+	 * than the box, the `+` reaches left under the band (the resizers' layer
+	 * is above the handles'): where the band's guide shows, at every height,
+	 * a press resizes; the `+`'s part left of the band takes its own. */
 	[data-edytor-block-handle-host][data-over-gap='true'] {
 		box-sizing: border-box;
 		width: var(--edytor-handle-gap-width, auto);
 		justify-content: flex-end;
 		padding-inline-end: 0;
+	}
+
+	[data-edytor-block-handle-host][data-over-gap='true'] > :global(*) {
+		flex-shrink: 0;
 	}
 
 	[data-edytor-block-handle-host][data-over-gap='true']::before {
@@ -237,28 +242,5 @@
 			opacity: 1;
 			padding-inline-end: 0;
 		}
-	}
-
-	/* Where a handle's drag lands (`DropIndicator`): the bar (4px) and the nest
-	 * backdrop, placed in the overlay and shown (`data-shown`) by the plugin;
-	 * their look is a theme's (`edytor/themes/notion.css`). */
-	:global([data-edytor-drop-indicator]),
-	:global([data-edytor-drop-backdrop]) {
-		position: absolute;
-		pointer-events: none;
-	}
-
-	:global([data-edytor-drop-indicator]) {
-		z-index: 100;
-		box-sizing: border-box;
-		height: 4px;
-	}
-
-	:global([data-edytor-drop-backdrop]) {
-		z-index: 99;
-	}
-
-	:global([data-edytor-drop-backdrop]:not([data-shown='true'])) {
-		visibility: hidden;
 	}
 </style>

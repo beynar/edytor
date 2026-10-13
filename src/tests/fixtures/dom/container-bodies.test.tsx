@@ -168,6 +168,51 @@ describe('body.hint: an empty body shows where its content goes', () => {
 	});
 });
 
+describe('body.down: ArrowDown from a header goes into its empty body', () => {
+	const down = (editor: HTMLElement) => dispatchDomKeyDown(editor, { key: 'ArrowDown' });
+
+	it("an open toggle's title: its first child, the caret in it, one undo step", async () => {
+		const { edytor, editor } = await render(toggle());
+		(nodeOf(edytor, 't') as HTMLDetailsElement).open = true;
+		await atEnd(edytor, 't');
+		await down(editor);
+		expect(doc(edytor)).toEqual([['toggle "title"', ['paragraph']], 'paragraph "after"']);
+		expect(caret(edytor)).toEqual(['t', 0, 0, true]);
+		await undo();
+		expect(doc(edytor)).toEqual(['toggle "title"', 'paragraph "after"']);
+	});
+
+	it("a callout's title: its content's first child", async () => {
+		const { edytor, editor } = await render(callout());
+		await atEnd(edytor, 'c');
+		await down(editor);
+		expect(doc(edytor)).toEqual([['callout "note"', ['paragraph']], 'paragraph "after"']);
+		expect(caret(edytor)).toEqual(['c', 0, 0, true]);
+	});
+
+	it('a closed toggle, a body with a child, a readonly view: nothing written', async () => {
+		const closed = await render(toggle());
+		await atEnd(closed.edytor, 't');
+		await down(closed.editor);
+		expect(doc(closed.edytor)).toEqual(['toggle "title"', 'paragraph "after"']);
+		document.body.innerHTML = '';
+		const filled = await render(
+			callout([{ id: 'b', type: 'paragraph', content: [{ text: 'body' }] }])
+		);
+		await atEnd(filled.edytor, 'c');
+		await down(filled.editor);
+		expect(doc(filled.edytor)).toEqual([
+			['callout "note"', ['paragraph "body"']],
+			'paragraph "after"'
+		]);
+		document.body.innerHTML = '';
+		const readonly = await render(callout(), [richTextPlugin], { readonly: true });
+		await atEnd(readonly.edytor, 'c');
+		await down(readonly.editor);
+		expect(doc(readonly.edytor)).toEqual(['callout "note"', 'paragraph "after"']);
+	});
+});
+
 describe('body.open: a toggle this view creates opens', () => {
 	it('`> ` typed on a new line makes an open toggle; Enter after its title goes into the body', async () => {
 		const { edytor, editor } = await render(

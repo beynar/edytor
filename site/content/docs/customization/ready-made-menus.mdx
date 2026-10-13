@@ -1,0 +1,65 @@
+---
+title: Ready-made menus
+description: Copy the demo's Notion-style menus, toolbar, handles and panels from the repository into your app and pass their plugins.
+icon: copy
+---
+
+The package draws no menu, toolbar, handle or panel: each is a snippet you pass its plugin ([Menus and handles](/docs/customization/menus)). The demo draws all of them the Notion way, and its markup is yours to copy: the folder [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) of the repository.
+
+<PluginDemo plugin="ready-made-menus" />
+
+## What the folder holds
+
+- `chrome.svelte`: one snippet per surface (the slash menu, the toolbar and its link card, the block handles and the block menu, the code header and its language list, the table's grips and menus, the image toolbar, the empty media panel, the callout icon picker, the comment cards, the find bar, the version history…).
+- One component per surface (`SlashMenu.svelte`, `Toolbar.svelte`, `BlockMenu.svelte`…), with its styles.
+- `plugins.ts`: each package factory given the demo's snippets. `slashMenuPlugin` is `createSlashMenuPlugin` with the demo's `menu`; `slashMenu(options)` and the others take the factory's options too.
+- `words.svelte.ts` (the words), `icons.ts` (the icons) and `palette.ts` (the colors).
+
+## Copy it
+
+Copy the folder into your app, then make its imports name the package (they name `$lib/index.js`, the package's own sources):
+
+```bash
+npx degit beynar/edytor/src/routes/chrome src/lib/chrome
+sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
+```
+
+Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v2.0.0`): without one you get `master`'s, which follows the next release.
+
+## Pass its plugins
+
+```svelte title="src/lib/NotionEditor.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+	import 'edytor/themes/notion.css';
+	import {
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		calloutIconsPlugin,
+		codePlugin,
+		imageToolbarPlugin,
+		mediaEmptyPlugin,
+		slashMenuPlugin,
+		toolbarPlugin
+	} from '$lib/chrome/plugins';
+
+	const plugins = [
+		slashMenuPlugin,
+		toolbarPlugin,
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		codePlugin,
+		imageToolbarPlugin,
+		mediaEmptyPlugin,
+		calloutIconsPlugin
+	];
+</script>
+
+<div class="edytor-notion">
+	<Edytor {plugins} />
+</div>
+```
+
+That is the editor above: a `/` menu, a toolbar over a selection, a `+` and a grip beside each block with its block menu, a code block with its language list, the image toolbar and the empty image's panel, and the callout's icon picker. The `edytor-notion` class applies the imported [Notion theme](/docs/customization/styling#notion-theme). Take only the plugins you need: a plugin left out takes its chrome with it, and the editor still edits.
+
+The files are yours from here: change the markup, the words in `words.svelte.ts`, the icons in `icons.ts`. To draw one surface your own way instead, give its factory your snippet: see [Menus and handles](/docs/customization/menus).

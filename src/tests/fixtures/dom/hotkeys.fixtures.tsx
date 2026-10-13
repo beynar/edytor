@@ -41,6 +41,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineDomFixture({
 		description: 'nests the current block on tab and preserves the caret offset',
+		allowNesting: true,
 		input: (
 			<root>
 				<paragraph>First</paragraph>
@@ -71,6 +72,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineDomFixture({
 		description: 'tab over a selection of sibling blocks nests them all and keeps them selected',
+		allowNesting: true,
 		input: (
 			<root>
 				<paragraph>First</paragraph>
@@ -103,6 +105,7 @@ export const fixtures = defineFixtures([
 	defineDomFixture({
 		description:
 			'shift+tab over selected sibling blocks outdents them; the siblings after them follow the last',
+		allowNesting: true,
 		input: (
 			<root>
 				<paragraph>
@@ -137,6 +140,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineDomFixture({
 		description: 'shift+tab on a middle nested item takes its following siblings along',
+		allowNesting: true,
 		input: (
 			<root>
 				<paragraph>

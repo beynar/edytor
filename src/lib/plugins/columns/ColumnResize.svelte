@@ -3,8 +3,9 @@
 
 	/**
 	 * The resize bands of the hovered layout and the guide of a drag
-	 * (`ColumnResize`), in the overlay: each band the gap's left part, above
-	 * the block handles (their `+` and grip together right of it, `gaps.ts`);
+	 * (`ColumnResize`), in the overlay: each band centered in its gap, above
+	 * the block handles (their `+` and grip flush with the
+	 * column, `gaps.ts`);
 	 * hovered, it shows a gray guide in its middle: where the guide shows, a
 	 * press resizes. A band is a focusable separator: its arrows resize
 	 * (`resize.key`), focused it shows its guide in the resize color.

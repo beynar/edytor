@@ -745,6 +745,12 @@ declare const bindCrdt: (Y: EngineApi) => {
             blockDataOf: (id: string) => Record<string, unknown> | undefined;
             docData: () => import("./doc/types.js").JsonObj;
             dataItemIds: (target: import("./edytor-doc.js").DataTarget, path: readonly string[]) => string[];
+            dataPreview: (target: import("./edytor-doc.js").DataTarget, pending: readonly import("./data.js").DataPatch[]) => {
+                data: {
+                    [x: string]: unknown;
+                };
+                ids: (path: readonly string[]) => string[];
+            } | null;
             blockAttribution: (id: string) => import("./index.js").BlockAttribution | undefined;
             crdtId: (id: string) => string | null;
             resolveBlock: (id: string) => import("./engine-api.js").EngineNode | null;

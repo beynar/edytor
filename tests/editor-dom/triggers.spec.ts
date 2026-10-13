@@ -83,7 +83,9 @@ test.describe('trigger menus', () => {
 		issues.assertClean();
 	});
 
-	test('an input rule replaces :smile: as one undo step', async ({ page }) => {
+	test('an input rule replaces :smile: as its own undo step, after the typed text', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		await page.keyboard.type('hi :smile:');
@@ -93,7 +95,25 @@ test.describe('trigger menus', () => {
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect.poll(() => firstBlock(page)).toBe('hi 😄');
 		await page.keyboard.press('ControlOrMeta+z');
-		await expect.poll(() => firstBlock(page)).toBe('hi :smile');
+		await expect.poll(() => firstBlock(page)).toBe('hi :smile:');
 		issues.assertClean();
 	});
+
+	for (const [typed, replaced] of [
+		['(c)', '©'],
+		['->', '→'],
+		[':smile:', '😄']
+	])
+		test(`undo after ${typed} gives the typed text back, the caret after it`, async ({ page }) => {
+			const issues = trackPageIssues(page);
+			await open(page);
+			await page.keyboard.type(`a ${typed}`);
+			await expect.poll(() => firstBlock(page)).toBe(`a ${replaced}`);
+			await page.keyboard.press('ControlOrMeta+z');
+			await expect.poll(() => firstBlock(page)).toBe(`a ${typed}`);
+			// The caret is after the typed text: typing goes on there.
+			await page.keyboard.type('!');
+			await expect.poll(() => firstBlock(page)).toBe(`a ${typed}!`);
+			issues.assertClean();
+		});
 });

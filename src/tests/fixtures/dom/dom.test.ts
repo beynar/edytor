@@ -11,6 +11,7 @@ await runFixtureEntries(modules, async ({ fixture }) => {
 	const rendered = await renderDomEdytor(fixture.input, {
 		plugins: fixture.plugins,
 		readonly: fixture.readonly,
+		allowNesting: fixture.allowNesting,
 		placeholder: fixture.placeholder,
 		translate: fixture.translate,
 		spellcheck: fixture.spellcheck,

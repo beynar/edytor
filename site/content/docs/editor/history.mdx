@@ -67,7 +67,7 @@ These rules do not depend on how fast you work: a menu action a few milliseconds
 
 - **One step each.** Each operation of the view (`edytor.insertBlocks`, `edytor.setBlock`, `edytor.patchData`, `edytor.formatRange`, deletions and the rest) is a step.
 - **Continuing at the caret.** Only `edytor.insertText` and `edytor.insertInline` can join the previous step, and only when they continue at the caret that step left, as typing does.
-- **Typing into a property.** A property write (`patchData`) that sets text joins the step of the one before it when it sets the same properties of the same block to text, such as typing into an input bound to `block.data.title`. A flag, a number or a delete is always its own step (see [Properties](/docs/concepts/properties#commands-hooks-and-undo)).
+- **Typing into a property.** A property write (`patchData`) that sets text joins the step of the one before it when it sets the same properties of the same block to text, such as typing into an input bound to `block.data.title`. The property writes of one task (`block.data.a = 1; block.data.b = 2`) are one step. A flag, a number or a delete in a task of its own is always its own step (see [Properties](/docs/concepts/properties#commands-hooks-and-undo)).
 
 ### Several commands as one step
 

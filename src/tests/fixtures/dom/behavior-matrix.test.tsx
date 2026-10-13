@@ -150,7 +150,11 @@ const run = async (kind: Kind, state: State, key: Key) => {
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, mentionPlugin, codePlugin, imagePlugin], value: { children } }
+		{
+			allowNesting: true,
+			plugins: [richTextPlugin, mentionPlugin, codePlugin, imagePlugin],
+			value: { children }
+		}
 	);
 	const x = edytor.idToBlock.get('x')!;
 	if (kind === 'toggle open') (x.node as HTMLDetailsElement).open = true;

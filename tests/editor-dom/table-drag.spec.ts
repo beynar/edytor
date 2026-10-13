@@ -237,6 +237,73 @@ test.describe('table.overflow: a table wider than its place scrolls in its own b
 		await expect(page.locator('[data-edytor-table-resize="2"]')).toBeAttached();
 		issues.assertClean();
 	});
+	test('scrolled inside a narrow column: the grips stand on the visible part and follow the scroll', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [
+			paragraph('P', 'before'),
+			{
+				id: 'L',
+				type: 'columns',
+				children: [
+					{ id: 'K1', type: 'column', children: [paragraph('Q', 'beside')] },
+					{ id: 'K2', type: 'column', children: [table([300, 300, 300])] }
+				]
+			},
+			paragraph('Z', 'after')
+		]);
+		const scrollTo = (left: number) =>
+			page.evaluate((left) => {
+				const node = document.querySelector<HTMLElement>('[data-edytor-table-scroll]')!;
+				node.scrollLeft = left;
+			}, left);
+		const rowGrip = page.locator('[data-edytor-table-grip="row"]');
+		const columnGrip = page.locator('[data-edytor-table-grip="column"]');
+		/** The row grip's center: on the box's visible left edge, beside row `row`. */
+		const expectRowGrip = async (row: string) => {
+			const view = await scroller(page);
+			const r = await blockBox(page, row);
+			await expect
+				.poll(async () => {
+					const g = (await rowGrip.boundingBox())!;
+					return Math.abs(g.x + g.width / 2 - view.left) <= 2;
+				})
+				.toBe(true);
+			const g = (await rowGrip.boundingBox())!;
+			expect(g.y + g.height / 2).toBeGreaterThanOrEqual(r.y);
+			expect(g.y + g.height / 2).toBeLessThanOrEqual(r.y + r.height);
+		};
+		const view = await scroller(page);
+		expect(view.scrollWidth).toBeGreaterThan(view.clientWidth);
+		// Scrolled right: the first column is out of view.
+		await scrollTo(400);
+		const c = await blockBox(page, 'C');
+		const d = await blockBox(page, 'D');
+		expect(c.x + c.width).toBeLessThan(view.left);
+		// Hover the second row in the visible part of its second cell.
+		await page.mouse.move(Math.max(d.x, view.left) + 10, d.y + d.height / 2);
+		await expect(rowGrip).toBeVisible();
+		await expectRowGrip('R2');
+		// The hovered column's grip stands on its visible top, inside the box.
+		await expect(columnGrip).toBeVisible();
+		const cg = (await columnGrip.boundingBox())!;
+		expect(cg.x + cg.width / 2).toBeGreaterThanOrEqual(view.left - 1);
+		expect(cg.x + cg.width / 2).toBeLessThanOrEqual(view.right + 1);
+		// The pointer on the row grip (its row and column stay hovered):
+		// scrolling the hovered column out of view hides its grip; the row
+		// grip follows the scroll.
+		const rg = (await rowGrip.boundingBox())!;
+		await page.mouse.move(rg.x + rg.width / 2, rg.y + rg.height / 2);
+		await scrollTo(0);
+		await expectRowGrip('R2');
+		await expect(columnGrip).toHaveCount(0);
+		// Back where it was: the grips realign.
+		await scrollTo(400);
+		await expectRowGrip('R2');
+		await expect(columnGrip).toBeVisible();
+		issues.assertClean();
+	});
 });
 
 /**

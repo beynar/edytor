@@ -11,6 +11,12 @@ A plugin declares two kinds of typing behavior as data, wired into its own hooks
 
 Both read and write positions as block offsets: an offset in the block's content, where an inline atom counts as 1. These are the offsets `edytor.document` takes and `edytor.selection.caret` reads ([Selection](/docs/editor/selection#the-caret)).
 
+## Try it
+
+<PluginDemo plugin="input-rules" />
+
+Type `:smile:`, `->` or `(c)` in the empty line, then press Mod+Z to get the typed text back. The editor is local to this page: a reload resets it.
+
 ## Input rules
 
 ```ts title="emoji.ts" check
@@ -42,7 +48,7 @@ export const emojiPlugin: Plugin = (edytor) =>
 
 A rule runs when text is typed at a collapsed caret: one `insertText` at the caret, which is what a key and the browser's own typing produce. An IME's commit is not checked, nor is a paste or a drop: a URL pasted at the caret completes no rule. An Android keyboard that composes the word being typed commits it as an IME does, so a rule may not run there until the composition ends; the rows are proven in desktop engines and their mobile emulation, not on a device. Rules do not run in the lines of a code block (a `lines` island).
 
-The typed text is not in the document yet when `replace` runs, so it is never written: a string replacement takes the place of the matched text before the caret and of the typed text. `hi :smile` + <kbd>:</kbd> gives `hi 😄`, the caret after the emoji.
+The typed text goes in first, as typed, and `replace` runs after it: a string replacement takes the place of the whole match, the typed text included. `hi :smile` + <kbd>:</kbd> gives `hi 😄`, the caret after the emoji.
 
 `replace` receives the match (its `input` is the text the pattern was tested on) and a context:
 
@@ -50,8 +56,8 @@ The typed text is not in the document yet when `replace` runs, so it is never wr
   type={{
     block: { type: "Block", description: "The block the caret is in." },
     from: { type: "number", description: "Where the match starts, in block offsets." },
-    to: { type: "number", description: "The caret: where the match ends in the document, the typed text left out." },
-    typed: { type: "string", description: "The typed text that completed the match." },
+    to: { type: "number", description: "The caret: where the match ends in the document, after the typed text." },
+    typed: { type: "string", description: "The typed text that completed the match, already in the document." },
     caret: { type: "(offset: number) => void", description: "Set the command's result caret at an offset of block." },
     remove: { type: "(then?: () => unknown) => boolean", description: "Remove from to to in the same plan as the first operation then runs. Answers whether it was written." },
     edytor: { type: "EdytorInstance", description: "The editor." },
@@ -60,11 +66,11 @@ The typed text is not in the document yet when `replace` runs, so it is never wr
 
 A pattern's `^` is the start of the caret's text segment, which starts after an inline atom; read `from === 0` for the block's start.
 
-### One command, one undo step
+### Two undo steps: the typed text, then the replacement
 
-The replacement is a command of its own. With a string, the matched text's removal and the insertion are one plan, so a plugin that refuses either one (in `onBeforeOperation`), a readonly view or the document refusing it writes neither. It is its own undo step, separate from the typing before it, also when the match is only the typed text (a smart quote replacing a typed `"`): undo after `:smile:` gives back `:smile`, without the colon that was never inserted. A rule that writes its replacement itself gets the same: its first operation starts a step of its own. The typing after a replacement starts another.
+The typed text is typing like any other: it joins the typing before it. The replacement is a command of its own and its own undo step. With a string, the matched text's removal and the insertion are one plan, so a plugin that refuses either one (in `onBeforeOperation`), a readonly view or the document refusing it writes neither. The first undo after `:smile:` gives back `:smile:`, the caret after it; the next undo removes the typing as usual. A rule that writes its replacement itself gets the same: its first operation starts a step of its own. The typing after a replacement starts another.
 
-When the replacement is refused or every matching rule declines, the typed text is inserted as usual, the caret after it.
+When the replacement is refused or every matching rule declines, the typed text stays as typed, the caret after it.
 
 ### Writing the replacement yourself
 

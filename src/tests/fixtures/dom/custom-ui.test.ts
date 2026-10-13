@@ -43,11 +43,37 @@ const click = async (element: Element) => {
 };
 
 describe('default plugins', () => {
-	it('rich text, images and block moves come without listing them', async () => {
+	it('rich text and block moves come without listing them; images and code blocks do not', async () => {
 		const { edytor } = await setup();
 		expect(edytor.blocks.has('heading')).toBe(true);
-		expect(edytor.blocks.has('image')).toBe(true);
-		expect(edytor.commands.has('block.image')).toBe(true);
+		expect(edytor.blocks.has('image')).toBe(false);
+		expect(edytor.commands.has('block.image')).toBe(false);
+		expect(edytor.blocks.has('code')).toBe(false);
+	});
+
+	it('the slash menu lists no Image', async () => {
+		const { edytor, editor } = await setup([
+			{ id: 'a', type: 'paragraph', content: [{ text: '' }] }
+		]);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '/' });
+		const rows = all('custom-slash').map((row) => row.textContent);
+		expect(rows).toContain('Heading 1');
+		expect(rows).not.toContain('Image');
+	});
+
+	it('a pasted <img> is dropped with its alt text, the text around it kept', async () => {
+		const { edytor, editor } = await setup([
+			{ id: 'a', type: 'paragraph', content: [{ text: '' }] }
+		]);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
+		await dispatchClipboardPaste(editor, {
+			'text/html':
+				'<p>see <img src="https://example.com/a.png" alt="A" width="640" height="480"> it</p>',
+			'text/plain': ''
+		});
+		await flushDomUpdates();
+		expect(edytor.value.children?.map((block) => block.content)).toEqual([[{ text: 'see it' }]]);
 	});
 });
 

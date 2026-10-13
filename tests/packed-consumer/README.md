@@ -37,12 +37,15 @@ the consumer's own `vite-plugin-svelte`, the documented bundler boundary:
 
 - **`vite build` (client)** — the app bundle compiles `edytor/dist`'s
   `.svelte` components + plugin modules through the consumer's vite config
-  (`svelte-app/vite.config.mjs`, `resolve.dedupe: ['svelte']`).
+  (`svelte-app/vite.config.mjs`: `svelte()` and nothing else, as a consumer's
+  default config; a change that needs `dedupe`, `noExternal` or
+  `optimizeDeps` fails here).
 - **`vite build --ssr` + `render()`** — the supported SSR check: a
   `readonly` `<Edytor>` server-renders to markup (`data-edytor` markup,
   seeded text, `contenteditable="false"`). Plain node importing `.svelte`
   stays an expected failure — the SSR check goes through the Svelte build
-  path instead (`ssr.noExternal: ['edytor']` so the bundle compiles it).
+  path instead (vite-plugin-svelte compiles `edytor` into the SSR bundle on
+  its own, from its `svelte` export condition).
 - **Browser mount** — `vite preview` serves the built app; the repo's
   playwright drives a real browser: editable + readonly editors mount,
   seeded paragraphs/marks render through `createRichTextPlugin()`, a real

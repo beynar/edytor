@@ -6,7 +6,23 @@ icon: arrow-up-down
 
 `createArrowMovePlugin()` moves blocks with the keyboard. <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the block holding the caret one step, as in Notion; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the selected blocks. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
 
-`<Edytor>` includes it by default, after your plugins. List `createArrowMovePlugin()` yourself to put it elsewhere in the order, or pass `defaultPlugins={false}` to leave it out (see [Default plugins](/docs/plugins#default-plugins)). It takes no options.
+It is not a default plugin: list `createArrowMovePlugin()` in `plugins` to move blocks from the keyboard (see [Default plugins](/docs/plugins#default-plugins)). It takes no options.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createArrowMovePlugin } from 'edytor';
+
+	const plugins = [createArrowMovePlugin()];
+</script>
+
+<Edytor {plugins} />
+```
+
+## Try it
+
+<PluginDemo plugin="arrow-move" />
+
+Put the caret in a line and press <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd> or <kbd>↓</kbd> to move it. The editor is local to this page: a reload resets it.
 
 ## Behavior
 
@@ -27,7 +43,7 @@ A key is claimed only when a block can take the step. Otherwise it keeps its def
 - Moving the caret's block keeps the caret in it, at the same offset; moving a text range's blocks keeps the range. A code block moves as one block: a caret or a range in its lines moves the code block.
 - A group of selected siblings, or of sibling blocks a text range spans, moves together, in document order (a block's children move with it, selected or not: the block selection a grip click makes over a range holds the children it covers). Blocks that are not siblings do not move.
 - Moved selected blocks stay selected, their selected children too, so you can press the key again.
-- A move never nests a block. To nest or outdent, use <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, or a block handle's <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>Alt</kbd> + <kbd>←</kbd> (see [Block handles](/docs/plugins/block-handles#keyboard-moves)).
+- A move never nests a block. To nest or outdent, use <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> (with [`allowNesting`](/docs/editor/edytor-component)), or a block handle's <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>Alt</kbd> + <kbd>←</kbd> (see [Block handles](/docs/plugins/block-handles#keyboard-moves)).
 - Each move is one undo step, and it runs as a `moveBlocks` operation that plugins can refuse.
 
 The plugin calls `edytor.move({ blocks, direction })`, the same command block menus use. See [Commands](/docs/editor/commands).

@@ -3,6 +3,7 @@
 	import type { Plugin } from '$lib/plugins.js';
 	import { escapeHtml, fileNameOf, safeMediaSrc, type FileRowPayload } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
+	import type { Uploader } from '../uploads.svelte.js';
 
 	export type { FileRowPayload };
 
@@ -13,6 +14,14 @@
 		 * downloads the file. The first file plugin listed in a view gives its row.
 		 */
 		row?: Snippet<[FileRowPayload]>;
+		/**
+		 * Upload a file and answer its URL: an empty file block's Upload, and
+		 * the pasted and dropped files no other kind takes, each placed as a
+		 * file block at once (one undo step), its row showing the file's name,
+		 * size and progress, then filled with the URL this answers. Without
+		 * it, files are only linked.
+		 */
+		upload?: Uploader;
 	};
 
 	/**
@@ -42,6 +51,7 @@
 					return src ? { src, name: name || fileNameOf(src) } : undefined;
 				}
 			},
-			{ row: options.row }
+			{ row: options.row },
+			options.upload
 		);
 </script>

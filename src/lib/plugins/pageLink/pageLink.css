@@ -1,0 +1,6 @@
+/* Loaded by the plugin's module (a component's own <style> is dropped when only
+   its module is used: the plugin factory, never the component). */
+/* One unit, on one line; its look is a theme's. */
+.edytor-page-link {
+	white-space: nowrap;
+}

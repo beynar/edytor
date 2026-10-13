@@ -1,0 +1,17 @@
+/* Loaded by the plugin's module (a component's own <style> is dropped when only
+   its module is used: the plugin factory, never the component). */
+/* Where an image narrower than its block sits (Notion's alignment). */
+[data-edytor-image] {
+	display: flex;
+	position: relative;
+	justify-content: center;
+}
+[data-edytor-image][data-align='left'] {
+	justify-content: flex-start;
+}
+[data-edytor-image][data-align='right'] {
+	justify-content: flex-end;
+}
+[data-edytor-image] img {
+	max-width: 100%;
+}

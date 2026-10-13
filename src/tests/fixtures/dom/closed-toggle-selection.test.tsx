@@ -36,7 +36,12 @@ const render = (plugins: Plugin[], children: JSONBlock[], readonly?: boolean) =>
 		<root>
 			<paragraph>|</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, mentionPlugin, ...plugins], value: { children }, readonly }
+		{
+			allowNesting: true,
+			plugins: [richTextPlugin, mentionPlugin, ...plugins],
+			value: { children },
+			readonly
+		}
 	);
 type View = Awaited<ReturnType<typeof render>>;
 

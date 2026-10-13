@@ -99,6 +99,11 @@ export interface DocumentReads {
 	toJSON(): JSONDoc;
 	docData(): JsonObj;
 	dataItemIds(target: DataTarget, path: readonly string[]): string[];
+	/** @internal A data as it reads once `pending` patches apply (nothing written), with its items' ids. */
+	dataPreview(
+		target: DataTarget,
+		pending: readonly DataPatch[]
+	): { data: JsonObj; ids: (path: readonly string[]) => string[] } | null;
 	project(): ProjectedDoc;
 	blockJSON(id: BlockId): JSONBlock;
 	childrenIds(parent: BlockId | null): BlockId[];
@@ -209,6 +214,7 @@ export const DOCUMENT_OPERATIONS = [
 	'toJSON',
 	'docData',
 	'dataItemIds',
+	'dataPreview',
 	'project',
 	'blockJSON',
 	'childrenIds',

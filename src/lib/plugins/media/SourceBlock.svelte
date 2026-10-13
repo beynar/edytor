@@ -3,6 +3,9 @@
 	import EmptySlot from './EmptySlot.svelte';
 	import Control from '../Control.svelte';
 	import { labelsOf, mediaEnglish } from '$lib/labels.js';
+	import { emptyHosts } from './EmptySlot.svelte';
+	import UploadPreview from './UploadPreview.svelte';
+	import { fileUploads, uploadHooks, type Uploader } from '../uploads.svelte.js';
 	import {
 		claimed,
 		escapeHtml,
@@ -48,8 +51,8 @@
 	 * attachment; Notion's): a media kind (`mediaPlugin`) drawn by this
 	 * snippet, a link or an uploaded file stored as one data write (a file's
 	 * whole data, its source, name and size; a video's or audio track's
-	 * `src`), and with an `upload`, the pasted and dropped files it takes
-	 * (`media.files`, its first listing in a view). A video or an audio track
+	 * `src`), and with an `upload` (its uploader), the pasted, dropped and
+	 * picked files it takes (`media.files`). A video or an audio track
 	 * exports as its tag in a `figure` and imports from one (bare, or in a
 	 * `figure`) with a safe `src` or `source`; the file kind brings its own
 	 * (`record`), and its `row` markup (`own`).
@@ -69,11 +72,13 @@
 				return src ? { src } : undefined;
 			}
 		},
-		own: Pick<MediaView, 'row'> = {}
+		own: Pick<MediaView, 'row'> = {},
+		upload?: Uploader
 	): Plugin =>
-		mediaPlugin(kind, keywords, () => {
+		mediaPlugin(kind, keywords, (edytor) => {
 			return {
 				...own,
+				hooks: uploadHooks(edytor, upload),
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
 					if (!data) return 'invalid';
@@ -83,13 +88,16 @@
 				},
 				record: {
 					snippet: source,
-					// Its files: with the uploads plugin, an Upload and pasted or dropped files.
-					upload: {
-						accepts: ACCEPTS[kind],
-						fallback: kind === 'file',
-						data: (file, answer) => sourceData(kind, answer, file),
-						filled: (data) => safeMediaSrc(data.src) !== null
-					},
+					// Its files, with an `upload`: an Upload and pasted or dropped files.
+					...(upload && {
+						upload: {
+							send: upload,
+							accepts: ACCEPTS[kind],
+							fallback: kind === 'file',
+							data: (file: File, answer: string) => sourceData(kind, answer, file),
+							filled: (data: Record<string, unknown>) => safeMediaSrc(data.src) !== null
+						}
+					}),
 					...record
 				}
 			};
@@ -103,6 +111,8 @@
 -->
 {#snippet source({ block, content }: BlockSnippetPayload<Record<string, unknown>>)}
 	{@const src = safeMediaSrc(block.data.src)}
+	{@const pending =
+		block.handle && !src ? fileUploads(block.handle.edytor)?.of(block.id) : undefined}
 	{#if src && block.type === 'file'}
 		{@const name =
 			typeof block.data.name === 'string' && block.data.name ? block.data.name : fileNameOf(src)}
@@ -120,9 +130,33 @@
 						size === undefined
 							? ''
 							: labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(size),
+					uploading: false,
+					progress: null,
 					link: mediaLink({ draggable: 'false', download: name })
 				}}
 			/>
+		</div>
+	{:else if !src && pending?.status === 'uploading' && !emptyHosts.has(block.handle!.edytor)}
+		<!-- An upload with no empty markup to draw it: the file's name and size at once, its progress. -->
+		<div use:block.void data-edytor-media-empty>
+			{#if block.type === 'file' && pending.preview}
+				<Control
+					own={rowOf}
+					{initial}
+					payload={{
+						block: block.handle,
+						src: pending.preview,
+						name: pending.name,
+						size: pending.size,
+						sizeLabel: labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(pending.size),
+						uploading: true,
+						progress: pending.progress,
+						link: mediaLink({ draggable: 'false', download: pending.name })
+					}}
+				/>
+			{:else}
+				<UploadPreview upload={pending} />
+			{/if}
 		</div>
 	{:else if src && block.type === 'video'}
 		<div use:block.void data-edytor-video>
@@ -155,10 +189,12 @@
 {/snippet}
 
 <!-- A file: its name and size, a link downloading it. -->
-{#snippet initial({ src, name, sizeLabel, link }: FileRowPayload)}
+{#snippet initial({ src, name, sizeLabel, link, uploading, progress }: FileRowPayload)}
 	<a href={src} target="_blank" rel={LINK_REL} draggable="false" download={name} {@attach link}>
 		<span aria-hidden="true">📎</span>
 		<span data-edytor-file-name>{name}</span>
 		{#if sizeLabel}<span data-edytor-file-size>{sizeLabel}</span>{/if}
 	</a>
+	{#if uploading}<progress data-edytor-file-progress value={progress ?? undefined} max="1"
+		></progress>{/if}
 {/snippet}

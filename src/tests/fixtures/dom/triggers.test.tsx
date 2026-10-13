@@ -5,9 +5,10 @@
  * `plugins/mention`, `plugins/page-link`) and Notion:
  *
  * - a caret is `{ block, offset }` in block offsets, an inline atom counting 1;
- * - an input rule replaces the matched text and the typed text as one
- *   command and one undo step (undo gives back the text before the typed
- *   character); a refused or declined replacement types the text as typed;
+ * - the typed text that completes an input rule goes in as typed, its own
+ *   step; the replacement of the match is a second command and undo step
+ *   (the first undo gives back the typed text, the second removes it as
+ *   typing); a refused or declined replacement leaves the text as typed;
  * - `@` at a text's start or after whitespace opens the people menu; the
  *   text after it filters it; Enter picks the highlighted person: `@query`
  *   becomes a `mention` atom, the caret after it, one undo step; Escape
@@ -38,6 +39,11 @@ import {
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import {
+	serializeClipboardFragmentToHtml,
+	serializeClipboardFragmentToPlainText
+} from '$lib/clipboard/serializeClipboardFragment.js';
+import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import {
 	chrome,
 	codePlugin,
@@ -147,18 +153,46 @@ describe('the caret in block offsets', () => {
 });
 
 describe('input rules', () => {
-	it('a string replaces the match: one step, the caret after it, undo gives the text typed before', async () => {
+	it('a string replaces the match: a step after the typed one, the caret after it; undo gives the typed text back', async () => {
 		const { edytor, editor } = await render([p('a', 'hi :smile')], [emojiPlugin]);
 		await caretAt(edytor, 'a', 9);
+		edytor.undoManager.stopCapturing();
 		const steps = edytor.undoManager.undoStack.length;
 		await type(editor, ':');
 		expect(contentOf(edytor, 'a')).toBe('hi 😄');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 5 });
-		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('hi :smile:');
+		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 10 });
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(contentOf(edytor, 'a')).toBe('hi :smile');
 	});
+
+	for (const [typed, before, after] of [
+		['(c)', '', '\u00a9'],
+		['->', 'a ', 'a \u2192'],
+		[':smile:', '', '😄']
+	] as const)
+		it(`typing ${typed}: the replacement is undone first, giving ${typed} back`, async () => {
+			const symbols: Plugin = ruled(() => ({
+				inputRules: [
+					{ find: /\(c\)$/, replace: () => '\u00a9' },
+					{ find: /->$/, replace: () => '\u2192' },
+					emoji
+				]
+			}));
+			const { edytor, editor } = await render([p('a', before)], [symbols]);
+			await caretAt(edytor, 'a', before.length);
+			await type(editor, typed);
+			expect(contentOf(edytor, 'a')).toBe(after);
+			edytor.historyUndo();
+			await flushDomUpdates();
+			expect(contentOf(edytor, 'a')).toBe(before + typed);
+			expect(caretOf(edytor)).toEqual({ block: 'a', offset: before.length + typed.length });
+		});
 
 	it('typing goes on after the replacement', async () => {
 		const { edytor, editor } = await render([p('a', '')], [emojiPlugin]);
@@ -213,8 +247,8 @@ describe('input rules', () => {
 		);
 		await caretAt(edytor, 'a', 5);
 		await type(editor, '>');
-		// "ab" (2) + the atom (1) + "c" (1): the match starts at 4, the caret is at 5.
-		expect(seen).toEqual([[4, 5]]);
+		// "ab" (2) + the atom (1) + "c" (1): the match starts at 4, ends after the typed ">" at 6.
+		expect(seen).toEqual([[4, 6]]);
 		expect(edytor.idToBlock.get('a')!.lastText?.stringContent).toBe('c→');
 	});
 
@@ -255,7 +289,7 @@ describe('input rules', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(edytor.idToBlock.get('a')!.type).toBe('paragraph');
-		expect(contentOf(edytor, 'a')).toBe('->');
+		expect(contentOf(edytor, 'a')).toBe('-> ');
 		expect(edytor.undoManager.undoStack.length).toBeGreaterThanOrEqual(steps);
 
 		const veto: Plugin = () => ({
@@ -471,6 +505,139 @@ describe('the @ mention menu', () => {
 	});
 });
 
+const TICKERS: MentionItem[] = [
+	{ id: 'AAPL', label: 'AAPL', description: 'Apple' },
+	{ id: 'MSFT', label: 'MSFT', description: 'Microsoft' }
+];
+const tickers = (query: string) =>
+	TICKERS.filter((ticker) => ticker.label.toLowerCase().startsWith(query.toLowerCase()));
+const atoms = (edytor: Edytor, id: string) =>
+	(edytor.idToBlock.get(id)!.value.content ?? []).flatMap((part) =>
+		'text' in part ? [] : [{ type: part.type, data: part.data }]
+	);
+
+describe('several mention triggers (kind)', () => {
+	const both = () => [
+		createMentionPlugin({ items: people }),
+		createMentionPlugin({ char: '$', kind: 'ticker', items: tickers })
+	];
+	const menus = () => document.querySelectorAll('[data-testid="trigger-menu"]').length;
+
+	it('each char opens its own menu; a pick inserts its own kind; undo gives the query back', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '$');
+		expect(labels()).toEqual(['AAPL', 'MSFT']);
+		await type(editor, 'ms');
+		expect(labels()).toEqual(['MSFT']);
+		await dispatchDomKeyDown(document, { key: 'Enter' });
+		await type(editor, ' @gr');
+		expect(labels()).toEqual(['Grace Hopper']);
+		expect(menus()).toBe(1);
+		await dispatchDomKeyDown(document, { key: 'Enter' });
+		expect(atoms(edytor, 'a')).toEqual([
+			{ type: 'ticker', data: { id: 'MSFT', label: 'MSFT' } },
+			{ type: 'mention', data: { id: 'u3', label: 'Grace Hopper' } }
+		]);
+		expect(
+			[...document.querySelectorAll('[data-edytor-mention]')].map((el) => [
+				el.getAttribute('data-edytor-mention'),
+				el.textContent
+			])
+		).toEqual([
+			['ticker', '$MSFT'],
+			['mention', '@Grace Hopper']
+		]);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('[ticker:MSFT] @gr');
+	});
+
+	it('a $ opens no @ menu, and an @ no $ menu', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '@');
+		expect(labels()).toEqual(['Ada Lovelace', 'Alan Turing', 'Grace Hopper']);
+		await dispatchDomKeyDown(document, { key: 'Escape' });
+		await type(editor, ' $');
+		expect(labels()).toEqual(['AAPL', 'MSFT']);
+	});
+
+	it('the menu snippet reads its kind as controller.trigger.name', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		const kinds = () => rows().map((row) => row.getAttribute('data-mention-kind'));
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '$');
+		expect(kinds()).toEqual(['ticker', 'ticker']);
+		await dispatchDomKeyDown(document, { key: 'Escape' });
+		await type(editor, ' @a');
+		expect(kinds()).toEqual(['mention', 'mention', 'mention']);
+	});
+
+	it("plain text and HTML use each kind's char; HTML round-trips to the same kinds", async () => {
+		const { edytor } = await render([p('a', '')], both());
+		const fragment = {
+			version: 1 as const,
+			source: 'edytor' as const,
+			kind: 'blocks' as const,
+			blocks: [
+				{
+					type: 'paragraph',
+					content: [
+						{ text: 'buy ' },
+						{ type: 'ticker', data: { id: 'AAPL', label: 'AAPL' } },
+						{ text: ' with ' },
+						{ type: 'mention', data: { id: 'u1', label: 'Ada <L>' } }
+					]
+				}
+			]
+		};
+		expect(serializeClipboardFragmentToPlainText(fragment, edytor)).toBe('buy $AAPL with @Ada <L>');
+		const html = serializeClipboardFragmentToHtml(fragment, edytor);
+		expect(html).toContain(
+			'<span data-edytor-mention="ticker" data-mention-id="AAPL">$AAPL</span>'
+		);
+		expect(html).toContain('@Ada &lt;L&gt;');
+		const flow = flowOfHtml(edytor, html);
+		expect(JSON.stringify(flow)).toContain('"type":"ticker","data":{"id":"AAPL","label":"AAPL"}');
+		expect(JSON.stringify(flow)).toContain('"type":"mention","data":{"id":"u1","label":"Ada <L>"}');
+	});
+
+	it('the default instance is unchanged: @, mention, the bare attribute', async () => {
+		const { edytor } = await render(
+			[
+				{
+					id: 'a',
+					type: 'paragraph',
+					content: [{ type: 'mention', data: { id: 'u1', label: 'Ada' } }]
+				}
+			],
+			[createMentionPlugin({ items: people })]
+		);
+		expect(edytor.inlineBlocks.get('mention')?.plain?.({ id: 'u1', label: 'Ada' })).toBe('@Ada');
+		expect(document.querySelector('[data-edytor-mention="mention"]')?.textContent).toBe('@Ada');
+		const flow = flowOfHtml(
+			edytor,
+			'<p><span data-edytor-mention data-mention-id="u2">@Bo</span></p>'
+		);
+		expect(JSON.stringify(flow)).toContain('"type":"mention","data":{"id":"u2","label":"Bo"}');
+	});
+
+	it('two instances of one kind: the first listed defines it', async () => {
+		const { edytor } = await render(
+			[
+				{ id: 'a', type: 'paragraph', content: [{ type: 'ticker', data: { id: 'X', label: 'X' } }] }
+			],
+			[
+				createMentionPlugin({ char: '$', kind: 'ticker', items: tickers }),
+				createMentionPlugin({ char: '#', kind: 'ticker', items: tickers })
+			]
+		);
+		expect(edytor.inlineBlocks.get('ticker')?.plain?.({ label: 'X' })).toBe('$X');
+		expect(document.querySelector('[data-edytor-mention="ticker"]')?.textContent).toBe('$X');
+	});
+});
+
 const PAGES: PageLinkItem[] = [
 	{ id: 'p1', title: 'Roadmap', icon: '🗺️' },
 	{ id: 'p2', title: 'Meeting notes', href: 'https://example.com/notes' },
@@ -596,7 +763,7 @@ describe('review fixes', () => {
 		expect(contentOf(edytor, 'a')).toBe('a\u201c');
 		edytor.historyUndo();
 		await flushDomUpdates();
-		expect(contentOf(edytor, 'a')).toBe('a');
+		expect(contentOf(edytor, 'a')).toBe('a"');
 	});
 
 	it('rows sharing a key or a label render, each with its own element id', async () => {

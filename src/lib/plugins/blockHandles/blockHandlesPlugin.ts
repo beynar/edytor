@@ -6,6 +6,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
+import { isDropTarget } from '$lib/dnd/placement.js';
 import type { Attachment } from 'svelte/attachments';
 import { all, listen } from '$lib/utils/listen.js';
 
@@ -171,7 +172,7 @@ export const createBlockHandlesPlugin =
 			},
 			onBlockAttached: ({ node, block }) => {
 				// A table's rows move by its own row menus, its cells never (`table.fits`).
-				if (!block.movable || edytor.facade.isTableRow(block.id)) return;
+				if (!isDropTarget(edytor, block)) return;
 				const offDropTarget = controller.addDropTarget(node, block);
 				// A layout and its columns are drop targets but have no handle (as
 				// Notion): a block selection covering a layout stands for it.

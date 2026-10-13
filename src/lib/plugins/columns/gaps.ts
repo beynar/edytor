@@ -33,13 +33,18 @@ export const gapBefore = (column: Block): Gap | null => {
 };
 
 /**
- * The resize band of `gap`: its left part, `BAND` px (the gap's width when
- * narrower) from the column before it, where the guide shows. The handle of
- * a column's block takes the rest (`handleSpan`): its `+` and grip together
- * flush with the block (Notion's "+ ⋮⋮"), so at the default 46px gap
- * (`--edytor-columns-gap`: 10 + 18 + 18) neither is under the band.
+ * The resize band of `gap`: `BAND` px (the gap's width when narrower)
+ * centered in it, its guide on the gap's middle line (Notion's). The handle
+ * of a column's block takes the gap's right part (`handleSpan`): its box
+ * from the band to the block, its `+` and grip flush with the block
+ * (Notion's "+ ⋮⋮", over the band where the gap is narrower than they are).
+ * At the default 46px gap (`--edytor-columns-gap`): the band 18–28, the
+ * handle's box 28–46.
  */
-export const bandOf = ({ left, right }: Gap) => ({ left, width: Math.min(BAND, right - left) });
+export const bandOf = ({ left, right }: Gap) => {
+	const width = Math.min(BAND, right - left);
+	return { left: left + (right - left - width) / 2, width };
+};
 
 /** The width a column block's handle spans in `gap`: from the band's right edge to the block at `blockLeft`. */
 export const handleSpan = (gap: Gap, blockLeft: number) => {

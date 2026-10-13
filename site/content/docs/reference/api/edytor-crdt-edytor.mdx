@@ -344,6 +344,12 @@ declare const bindCrdt: (Y: EngineApi) => {
             blockDataOf: (id: string) => Record<string, unknown> | undefined;
             docData: () => import("./doc/types.js").JsonObj;
             dataItemIds: (target: import("./edytor-doc.js").DataTarget, path: readonly string[]) => string[];
+            dataPreview: (target: import("./edytor-doc.js").DataTarget, pending: readonly import("./data.js").DataPatch[]) => {
+                data: {
+                    [x: string]: unknown;
+                };
+                ids: (path: readonly string[]) => string[];
+            } | null;
             blockAttribution: (id: string) => import("./index.js").BlockAttribution | undefined;
             crdtId: (id: string) => string | null;
             resolveBlock: (id: string) => import("./engine-api.js").EngineNode | null;
@@ -1033,6 +1039,7 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "toJSON",
     "docData",
     "dataItemIds",
+    "dataPreview",
     "project",
     "blockJSON",
     "childrenIds",
@@ -1431,6 +1438,7 @@ export declare class EdytorDocument {
     readonly transaction: TRANSACTION;
     private _destroyed;
     readonly requireHydration: boolean;
+    get data(): Record<string, any>;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -1474,6 +1482,7 @@ export declare class EdytorDocument {
 - `attribution`: The attribution surface — compact per-block records and the replicated actor dictionary (`u/` profiles, `c/` replica bindings).
 - `transaction`: The document's own local-edit transaction origin — headless edits via `transact` carry it so history capture attributes them.
 - `requireHydration`: `DocumentOptions.requireHydration`: an empty document waits for a provider's `synced`.
+- `data`: The document's properties as a live object (`crdt/props`): a read follows the document, and a write at any depth (`document.data.title = 'Notes'`, `document.data.tags.push('x')`, `delete …`) is the raw `patchData` operation at once, as `document.patchData(null, …)`.
 - `clientID`: The replica id (`doc.clientID`) — identifies the replica, not the actor.
 - `ready`: `true` once the document's content state is decided — seeded locally or hydrated then synced.
 - `readiness`: `pending` | `local` | `hydrated` — distinguishes a locally-seeded ready from a provider-hydrated/restored ready (the contract consumers need to tell "I decided this content" from "sync brought it").

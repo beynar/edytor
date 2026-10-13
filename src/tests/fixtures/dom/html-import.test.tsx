@@ -377,6 +377,23 @@ describe('default colors import as no mark (P4.1 fix)', () => {
 	});
 });
 
+describe('a view without the image kind', () => {
+	// `<Edytor>`'s defaults list no image plugin: an `<img>` no kind claims is
+	// dropped with its alt text (only a glyph-sized image reads as its alt),
+	// the text around it kept, and a `<figure>` keeps only its caption's text.
+	row('an <img> no kind claims is dropped, the text around it kept', async () => {
+		const blocks = await imported(
+			'<p>before <img src="https://example.com/a.png" alt="A photo" width="640" height="480"> after</p>' +
+				'<figure><img src="https://example.com/b.png" alt="B"><figcaption>caption</figcaption></figure>',
+			[richTextPlugin]
+		);
+		expect(blocks).toEqual([
+			{ type: 'paragraph', content: [{ text: 'before after' }] },
+			{ type: 'paragraph', content: [{ text: 'caption' }] }
+		]);
+	});
+});
+
 describe('safety', () => {
 	row('an unsafe href, a hostile color and an event handler never reach the model', async () => {
 		const blocks = await imported(

@@ -257,7 +257,7 @@ const backdropShown = () =>
 	document.querySelector('[data-edytor-drop-backdrop][data-shown="true"]') !== null;
 
 const plugins: Plugin[] = [blockHandlesPlugin];
-const render = (children: JSONBlock[]) => renderColumns(children, plugins);
+const render = (children: JSONBlock[]) => renderColumns(children, plugins, { allowNesting: true });
 
 /** `P, C[K1[A, A2], K2[B]], Z, X`: X is the dragged block. */
 const withX = () => [...contractDoc(), p('X')];

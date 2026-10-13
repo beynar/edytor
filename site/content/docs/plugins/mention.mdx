@@ -42,6 +42,143 @@ icon: at-sign
 
 It is not a default plugin: list it in `plugins`, in every view of a document that holds mentions (a view without it renders the atoms as unknown inline blocks).
 
+## Try it
+
+<PluginDemo plugin="mention" />
+
+Type @ on the empty line, then a few letters of a name, and press <kbd>Enter</kbd> or click a person.
+
+## Customize
+
+This replaces the `menu` snippet: the people appear as cards with a coloured badge under the caret, drawn from the controller's `items`, `index`, `popup`, `option(index)` and `pick`.
+
+<PluginDemo plugin="mention" variant="custom" />
+
+```svelte title="MentionEditor.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createMentionPlugin,
+		type JSONDoc,
+		type MentionItem,
+		type Plugin,
+		type TriggerMenuController
+	} from 'edytor';
+
+	// The page's document and the rest of your editor's plugins.
+	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
+
+	const people: MentionItem[] = [
+		{ id: 'u1', label: 'Ada Lovelace', description: 'Engineering' },
+		{ id: 'u2', label: 'Alan Turing', description: 'Research' },
+		{ id: 'u3', label: 'Grace Hopper', description: 'Compilers' },
+		{ id: 'u4', label: 'Katherine Johnson', description: 'Orbits' },
+		{ id: 'u5', label: 'Margaret Hamilton', description: 'Flight software' }
+	];
+
+	const hues = [12, 45, 150, 200, 280];
+	const hueOf = (person: MentionItem) => hues[Number(person.id.slice(1)) % hues.length];
+
+	// People as cards under the caret.
+	const mentions = createMentionPlugin({
+		items: (query) =>
+			people.filter((person) => person.label.toLowerCase().includes(query.trim().toLowerCase())),
+		menu
+	});
+</script>
+
+<!-- A card list: a coloured badge, the name, the team underneath. -->
+{#snippet menu(menu: TriggerMenuController<MentionItem>)}
+	<div class="cards" onmousedown={(event) => event.preventDefault()} role="presentation">
+		<div class="title">Mention a teammate</div>
+		<div class="list" aria-label="People" {@attach menu.popup}>
+			{#each menu.items as person, index (person.id)}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+				<div
+					class="card"
+					data-selected={menu.index === index}
+					style="--hue: {hueOf(person)}"
+					onmousemove={() => (menu.index = index)}
+					onclick={() => void menu.pick(person)}
+					{@attach menu.option(index)}
+				>
+					<span class="badge" aria-hidden="true">{person.label.charAt(0)}</span>
+					<span class="who">
+						<strong>{person.label}</strong>
+						<small>{person.description}</small>
+					</span>
+				</div>
+			{:else}
+				<div class="empty" role="presentation">
+					{menu.loading ? 'Searching…' : 'Nobody by that name'}
+				</div>
+			{/each}
+		</div>
+	</div>
+{/snippet}
+
+<Edytor {value} plugins={[mentions, ...plugins]} aria-label="Mention demo" />
+
+<style>
+	.cards {
+		width: 270px;
+		padding: 10px;
+		border: 1px solid #e3e1dc;
+		border-radius: 14px;
+		background: #fffdf8;
+		box-shadow: 0 12px 30px rgb(60 40 10 / 0.16);
+		font: 13px/1.35 system-ui, sans-serif;
+		color: #2b2825;
+	}
+	.title {
+		margin: 0 4px 8px;
+		color: #8a857c;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.list {
+		display: grid;
+		gap: 4px;
+	}
+	.card {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 6px 8px;
+		border: 1px solid transparent;
+		border-radius: 10px;
+		cursor: pointer;
+	}
+	.card[data-selected='true'] {
+		border-color: hsl(var(--hue) 55% 70%);
+		background: hsl(var(--hue) 70% 94%);
+	}
+	.badge {
+		display: grid;
+		flex: none;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+		background: hsl(var(--hue) 55% 48%);
+		color: #fff;
+		font-weight: 700;
+	}
+	.who {
+		display: grid;
+	}
+	small {
+		color: #8a857c;
+	}
+	.empty {
+		padding: 6px 8px;
+		color: #8a857c;
+	}
+</style>
+```
+
 ## Options
 
 <TypeTable
@@ -51,7 +188,8 @@ It is not a default plugin: list it in `plugins`, in every view of a document th
       required: true,
       description: "The people matching the text typed after @. Return a promise to search your server: the newest query's answer wins.",
     },
-    char: { type: "string", description: "The character that opens the menu. Default @." },
+    char: { type: "string", description: "The character that opens the menu, and that the atom shows before its label. Default @." },
+    kind: { type: "string", description: "The inline kind the atoms are, and the menu's name (controller.trigger.name). Default mention. List the plugin once per kind to mention several things." },
     menu: { type: "Snippet<[TriggerMenuController<MentionItem>]>", description: "The menu, at the caret while it is open (without it, nothing shows). Keep its ARIA with {@attach controller.popup} on the list and {@attach controller.option(index)} on each row. See Menus and handles." },
   }}
 />
@@ -71,6 +209,52 @@ export const mentions = createMentionPlugin({
 });
 ```
 
+## Several triggers
+
+List the plugin once per thing to mention, each with its own `char` and `kind`: `@` for people, `$` for stock tickers. Each instance defines its own inline kind and opens its own menu; typing `$` never opens the people's menu.
+
+```svelte title="MentionsAndTickers.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createMentionPlugin,
+		type MentionItem,
+		type TriggerMenuController
+	} from 'edytor';
+
+	const people: MentionItem[] = [{ id: 'u1', label: 'Ada Lovelace' }];
+	const tickers: MentionItem[] = [
+		{ id: 'AAPL', label: 'AAPL', description: 'Apple' },
+		{ id: 'MSFT', label: 'MSFT', description: 'Microsoft' }
+	];
+	const matching = (rows: MentionItem[]) => (query: string) =>
+		rows.filter((row) => row.label.toLowerCase().includes(query.toLowerCase()));
+
+	const plugins = [
+		createMentionPlugin({ items: matching(people), menu }),
+		createMentionPlugin({ char: '$', kind: 'ticker', items: matching(tickers), menu })
+	];
+</script>
+
+<!-- One snippet for both menus: `trigger.name` is the instance's kind. -->
+{#snippet menu(controller: TriggerMenuController<MentionItem>)}
+	<ul
+		aria-label={controller.trigger.name === 'ticker' ? 'Tickers' : 'People'}
+		{@attach controller.popup}
+	>
+		{#each controller.items as row, index (row.id)}
+			<li {@attach controller.option(index)} onclick={() => void controller.pick(row)}>
+				{row.label}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+A ticker is `{ "type": "ticker", "data": { "id": "AAPL", "label": "AAPL" } }`: it renders `$AAPL` with `data-edytor-mention="ticker"` and copies as `$AAPL`. Two instances of one `kind` follow the first-listed rule: the first defines the kind (its `char` draws and copies the atoms), and each still opens its own menu. A document read with no view (a [room](/docs/server/quick-start), a headless document) needs nothing for a custom kind: a mention is an inline atom, which takes no structural role.
+
 ## The mention atom
 
 A mention is an inline block of type `mention` whose data is `{ id, label }`:
@@ -79,7 +263,7 @@ A mention is an inline block of type `mention` whose data is `{ id, label }`:
 { "type": "mention", "data": { "id": "u1", "label": "Ada Lovelace" } }
 ```
 
-It renders `<span class="edytor-mention" data-edytor-mention data-mention-id="u1">@Ada Lovelace</span>` (`data-selected="true"` while the atom is selected; the [Notion theme](/docs/customization/styling#notion-theme) draws its muted colour and its selection) and copies as plain text as `@Ada Lovelace`. Like every atom it is selected, copied and deleted as one unit ([Inline blocks](/docs/customization/inline-blocks)). The label is the one stored when it was picked: to show a current name, render your own snippet for it (a plugin listed first naming `inlineBlocks: { mention: snippet }`, see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) that looks the person up by `data.id`.
+It renders `<span class="edytor-mention" data-edytor-mention="mention" data-mention-id="u1">@Ada Lovelace</span>` (the attribute's value is the `kind`, so `[data-edytor-mention]` styles every kind and `[data-edytor-mention="ticker"]` one) (`data-selected="true"` while the atom is selected; the [Notion theme](/docs/customization/styling#notion-theme) draws its muted colour and its selection) and copies as plain text as `@Ada Lovelace`, and as HTML as that span (pasted back into an editor with the plugin, it is the same mention again). Like every atom it is selected, copied and deleted as one unit ([Inline blocks](/docs/customization/inline-blocks)). The label is the one stored when it was picked: to show a current name, render your own snippet for it (a plugin listed first naming `inlineBlocks: { mention: snippet }`, see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) that looks the person up by `data.id`.
 
 ## Behavior
 

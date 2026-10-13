@@ -113,7 +113,8 @@ export const fr: Labels = {
 		file: 'Fichier',
 		video: 'Vidéo',
 		audio: 'Audio',
-		fileSize: octets
+		fileSize: octets,
+		uploading: 'Envoi…'
 	},
 	code: {
 		code: 'Code'

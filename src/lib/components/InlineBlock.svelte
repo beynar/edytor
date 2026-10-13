@@ -28,7 +28,7 @@
 			return part.type;
 		},
 		get data() {
-			return block ? block.data : (part.data ?? {});
+			return block ? block.data : structuredClone(part.data ?? {});
 		},
 		get selected() {
 			return block?.selected ?? false;

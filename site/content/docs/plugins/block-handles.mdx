@@ -6,6 +6,107 @@ icon: grip-vertical
 
 Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block, or every block the selection covers; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). The plugin ships the placement, the hover, the drag and drop and the keys; the two buttons are your `handle` snippet.
 
+## Try it
+
+<PluginDemo plugin="block-handles" />
+
+Hover a block, then drag its grip to reorder, click the grip for the block menu, or click `+` to pick a block to add below. The editor is local to this page: a reload resets it.
+
+## Customize
+
+The `handle` snippet draws both buttons, so they can look like anything. Here, a round indigo `+` and a tinted grip pill that fills on hover; the plugin keeps the placement, the drag and the keys.
+
+<PluginDemo plugin="block-handles" variant="custom" />
+
+```svelte title="HandlesEditor.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createBlockHandlesPlugin,
+		type BlockHandleSnippetPayload,
+		type JSONDoc,
+		type Plugin
+	} from 'edytor';
+
+	// The page's document and the rest of your editor's plugins.
+	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
+
+	// A round + and a tinted grip pill, drawn by the handle snippet below.
+	const handles = createBlockHandlesPlugin({ handle });
+</script>
+
+{#snippet handle({ label, grip, plus, readonly, beside, draggable }: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button
+			class="plus"
+			contenteditable="false"
+			aria-label={beside ? `Add a column beside ${label}` : `Add a block below ${label}`}
+			title="Add below (Alt: above)"
+			{@attach plus}
+		>
+			+
+		</button>
+		<button
+			class="grip"
+			contenteditable="false"
+			data-draggable={draggable ? 'true' : undefined}
+			aria-label={`${label} block: drag to move, click for actions`}
+			title={label}
+			{@attach grip}
+		>
+			<span aria-hidden="true">⠿</span>
+		</button>
+	{/if}
+{/snippet}
+
+<Edytor {value} plugins={[handles, ...plugins]} aria-label="Block handles demo" />
+
+<style>
+	.plus,
+	.grip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 22px;
+		padding: 0;
+		border: 0;
+		cursor: pointer;
+		font: 600 14px/1 system-ui, sans-serif;
+		transition:
+			background-color 80ms ease,
+			color 80ms ease;
+	}
+	.plus {
+		width: 22px;
+		border-radius: 50%;
+		background: #eef0ff;
+		color: #4f46e5;
+	}
+	.grip {
+		width: 20px;
+		margin-left: 2px;
+		border-radius: 6px;
+		background: #f1efe9;
+		color: #8a857b;
+	}
+	.grip[data-draggable='true'] {
+		cursor: grab;
+	}
+	.plus:hover,
+	.plus:focus-visible {
+		background: #4f46e5;
+		color: #fff;
+		outline: 0;
+	}
+	.grip:hover,
+	.grip:focus-visible {
+		background: #4f46e5;
+		color: #fff;
+		outline: 0;
+	}
+</style>
+```
+
 ## Enabling and configuring
 
 List `createBlockHandlesPlugin({ handle })` in `plugins`; `handle` draws the `+` and the grip of each block (without it, no handle shows and no block drags):
@@ -94,6 +195,9 @@ Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` 
 ## Drag and drop
 
 Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) (a copy of its code inside the editor, not a dependency) and its [auto-scroll](#auto-scroll). Its drop zones follow the tree guidance of its [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about): each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the editor splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
+
+
+The placements that nest a block (inside a block, or among the children of a block that does not already hold it) need the view's [`allowNesting`](/docs/editor/edytor-component), off by default: without it a drop over a block is before or after it, never inside, except in a block made to hold children (a list, a toggle's or a callout's body, a column), and <kbd>Alt</kbd> + <kbd>→</kbd> moves nothing.
 
 | Pointer position | Drop |
 | --- | --- |
@@ -187,7 +291,7 @@ Beside a list item or a code line, the layout wraps the whole list or code block
 
 ### The drop indicator
 
-The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, a theme its look:
+The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. The editor draws the same indicator, by the same rules, for files dragged from your desktop, with or without this plugin ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, a theme its look:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
 - **Before a first child** (the lower half of a block whose children show): at that child's top, indented to its column.
@@ -242,7 +346,7 @@ While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
 | ------------------------------ | -------------------------------------------------------------------- |
 | <kbd>Alt</kbd> + <kbd>↑</kbd>    | Up: before the previous sibling, or before the parent from a first child |
 | <kbd>Alt</kbd> + <kbd>↓</kbd>    | Down: after the next sibling, or after the parent from a last child  |
-| <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling                           |
+| <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling (with `allowNesting`)     |
 | <kbd>Alt</kbd> + <kbd>←</kbd>    | Out: after the parent (a list's item leaves the list, [as Shift+Tab](/docs/customization/hotkeys#enter-and-backspace-by-role)) |
 
 The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a block the selection covers moves the same blocks a drag of it would ([Dragging several blocks](#dragging-several-blocks)), and they end selected as after a drop: a block selection holding them stays, a text range over them stays as it was (as with <kbd>Mod</kbd>+<kbd>Shift</kbd>+arrow), and a block moved alone is selected alone. Undo restores the selection you had. As a relative step, they must share one parent, else nothing moves. A move never puts a block directly in a list it is no item of, but a block already there (an image a merge left among the items) moves among them like an item, by key, menu or drag. A move never hides a block you saw: moving a block into a closed toggle, with <kbd>Alt</kbd> + <kbd>→</kbd> or a drop inside it, opens the toggle, as <kbd>Tab</kbd> does. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
@@ -297,5 +401,4 @@ if (target) {
 	edytor.selection.setCaret({ block: target, offset: 0 });
 	edytor.node?.focus({ preventScroll: true });
 }
-
 ```

@@ -35,7 +35,9 @@
 	const previewViewOf = (cell: PreviewCell): BlockView => ({
 		id: cell.id,
 		type: cell.type,
-		data: cell.data ?? {},
+		get data() {
+			return structuredClone(cell.data ?? {});
+		},
 		selected: false,
 		focused: false,
 		handle: undefined,

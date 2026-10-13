@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import './equation.css';
 	import type {
 		BlockSnippetPayload,
 		InlineBlockSnippetPayload,
@@ -273,11 +274,3 @@
 		role="presentation"><EquationView expression={expressionOf(block.data)} display={false} /></span
 	>
 {/snippet}
-
-<style>
-	/* A wide equation scrolls in its block; its look is a theme's. */
-	[data-edytor-equation] {
-		overflow-x: auto;
-		overflow-y: hidden;
-	}
-</style>

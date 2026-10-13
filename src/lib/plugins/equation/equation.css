@@ -1,0 +1,7 @@
+/* Loaded by the plugin's module (a component's own <style> is dropped when only
+   its module is used: the plugin factory, never the component). */
+/* A wide equation scrolls in its block; its look is a theme's. */
+[data-edytor-equation] {
+	overflow-x: auto;
+	overflow-y: hidden;
+}

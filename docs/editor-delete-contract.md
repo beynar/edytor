@@ -426,6 +426,27 @@ layout its lines (the first one joining the text, `flow.split`). Elsewhere
 a layout line is placed as a block (`flow.apart`: it shows no text). Pins:
 `columns-clipboard.test.tsx`.
 
+### `drop.files.place` — files dropped from outside land at the indicator
+
+Files dragged from outside over an editable view (a `dragover` of
+`Files`) show the block drag's drop indicator where they land, resolved by
+the block drag's one placement rule (`dnd/placement.ts`: halves of a
+block's own row, its levels, `inside` past one nesting step, the beside
+bands, the margins) for a drag that moves no block, whose places are those
+the document takes new blocks of the files' kinds at (the container rule,
+`fits`; beside, a layout kind; never in a void or an island). The drop
+places one block per file the view's uploads take, each of its kind
+(`KindUpload`, `fallback` last), in the transfer's order, at that place
+(`placeNew`: before, after, inside, or beside through `layout.place-beside`),
+as one command and one undo step; nothing is split. With no place under
+the pointer the drop lands at the drop point (`flow.apart`). The
+indicator shows with or without the block handles plugin, only when the
+view's uploads take one of the files; a `dragleave` out of the host and
+the drop clear it. A read-only view shows none, and swallows the drop
+(the browser must not open the file). A text or HTML drop keeps the drop
+point. Pins: `file-drop-placement.test.tsx`, `file-drop.spec.ts`,
+`image.spec.ts`.
+
 ### `flow.void` — a block that cannot split
 
 A void block (its caption) is never split: at a position inside one, the
@@ -1897,6 +1918,10 @@ reaches past the place (Notion's simple table). Its chrome shows over the
 visible part only: a column's grip or resize band whose edge is scrolled
 out of the box is not shown, and the `+` beside the table shows only while
 the last column's edge is in view.
+The row grip and its menu stand at the left edge of the part that shows
+(the box's edge once the grid is scrolled), beside their row, and every
+piece of the chrome follows the box's scroll (the overlay measures on any
+scroll).
 
 ### `table.drag` — a row or a column drags by its grip (view)
 
@@ -2066,6 +2091,18 @@ child, nothing written). A handle drag released over the hint nests the
 dragged blocks inside the block (`inside` first in either half,
 `overEmptyBody` in the handles' geometry). Pins:
 `container-bodies.test.tsx`, `container-bodies.spec.ts`.
+
+### `body.down` — ArrowDown from a header goes into its empty body
+
+ArrowDown with a collapsed caret on the last line of a header whose body
+shows and is empty (an open toggle or toggle heading, a callout without
+children) runs the hint's command, `openBody`: a first child of the
+default child kind, the caret in it, one undo step (Notion). A closed
+toggle, a header whose body has a child, a caret above the header's last
+line and a view that may not write keep the key's usual move (the stop
+below). The last line is `onLastLine` (`session/navigation.ts`), the one
+reading `nav.trailing.exit` shares; the binding is the rich text plugin's.
+Pins: `container-bodies.test.tsx`, `container-bodies.spec.ts`.
 
 ### `body.open` — a toggle this view creates opens
 
@@ -2264,7 +2301,10 @@ rule of its own (the code block's is gone).
   `ports.surface.sameLine`; an offset where a line wraps counts on the
   line it ends, so a doubt leaves the key to the browser), else after the
   block's last line break — with **no stop below** it, in a block that is
-  **not a top-level block of the root's default kind**.
+  **not a top-level block of the root's default kind**. A header whose
+  empty body shows (an open toggle, a callout without children) goes into
+  that body first (`body.down`, the rich text plugin's binding, which runs
+  before this one).
 - **A stop below** is a displayable block (`selection.displayable`: a
   mounted text not hidden by view state, so a closed toggle's body holds
   none, nor does a void) after the caret's block in document order, unless

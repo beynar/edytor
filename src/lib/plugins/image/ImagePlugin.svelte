@@ -1,7 +1,7 @@
 <script module lang="ts">
+	import './image.css';
 	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import EmptySlot from '../media/EmptySlot.svelte';
 	import ImageChrome from './ImageChrome.svelte';
@@ -23,6 +23,9 @@
 	import { MEDIA_ICONS, type EmptyView } from '../media/empty.svelte.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { listen } from '$lib/utils/listen.js';
+	import { fileUploads, uploadHooks, type Uploader } from '../uploads.svelte.js';
+	import { emptyHosts } from '../media/EmptySlot.svelte';
+	import UploadPreview from '../media/UploadPreview.svelte';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -43,15 +46,27 @@
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
 
+	export type ImagePluginOptions = {
+		/**
+		 * Upload an image file and answer its URL: an empty image's Upload,
+		 * and the pasted and dropped image files, each placed as an image at
+		 * once (one undo step), showing the file while it uploads, then filled
+		 * with the URL this answers. Without it, images are only linked. The
+		 * first image plugin listed in a view gives it.
+		 */
+		upload?: Uploader;
+	};
+
 	/**
 	 * Notion's image block: an "Add an image" panel until it has a source (a
 	 * pasted link, or an upload when `upload` is given), then the image with
 	 * an editable caption, its alt text, width and alignment set from the
 	 * chrome the plugin shows over it. Void: its only text is the caption.
 	 */
-	export const createImagePlugin = (): Plugin => {
+	export const createImagePlugin = ({ upload }: ImagePluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'image', imageEnglish);
+			const uploads = uploadHooks(edytor, upload);
 			const own: View = {
 				controls: new ImageControls(edytor),
 				// An accepted source; an inline image over the cap is never stored.
@@ -70,9 +85,12 @@
 			}
 			const owns = () => views.get(edytor) === own;
 			return {
+				onPaste: uploads.onPaste,
 				// The chrome: in the overlay, for the image under the pointer.
-				onEdytorAttached: ({ node }) => {
-					if (!owns()) return;
+				onEdytorAttached: (view) => {
+					const release = uploads.onEdytorAttached?.(view);
+					if (!owns()) return release;
+					const { node } = view;
 					const { controls } = own;
 					const over = (event: PointerEvent) => controls.hover(event.target);
 					const leave = (event: PointerEvent) =>
@@ -94,6 +112,7 @@
 						off2();
 						off3();
 						unmount();
+						if (typeof release === 'function') release();
 					};
 				},
 				blocks: {
@@ -101,16 +120,18 @@
 						...imageKinds.image,
 						snippet: image,
 						element: 'figure',
-						// Image files: with the uploads plugin, an Upload and pasted or dropped files.
-						upload: {
-							accepts: isImageFile,
-							data: (_file, answer) => {
-								const src = storableImageSrc(answer);
-								return src ? { src } : null;
-							},
-							filled: (data) => safeImageSrc(data.src) !== null,
-							preview: true
-						},
+						// Image files, with an `upload`: an Upload and pasted or dropped files.
+						...(upload && {
+							upload: {
+								send: upload,
+								accepts: isImageFile,
+								data: (_file, answer) => {
+									const src = storableImageSrc(answer);
+									return src ? { src } : null;
+								},
+								filled: (data) => safeImageSrc(data.src) !== null
+							}
+						}),
 						presets: [
 							{
 								label: labels.image,
@@ -143,7 +164,7 @@
 			};
 		};
 
-		return branded('image', plugin);
+		return plugin;
 	};
 </script>
 
@@ -153,6 +174,7 @@
 	<!-- A suggestion's preview (no handle) reads only its data. -->
 	{@const view = block.handle ? views.get(block.handle.edytor) : undefined}
 	{@const src = safeImageSrc(block.data.src)}
+	{@const pending = block.handle && !src ? fileUploads(block.handle.edytor)?.of(block.id) : undefined}
 	{#if src}
 		<div use:block.void data-edytor-image data-align={imageAlignOf(block.data)}>
 			<img
@@ -163,6 +185,11 @@
 					view ? view.controls.width(block.id, block.data) : imageWidthOf(block.data)
 				)}
 			/>
+		</div>
+	{:else if pending?.status === 'uploading' && !emptyHosts.has(block.handle!.edytor)}
+		<!-- An upload with no empty markup to draw it: the file at once, its progress over it. -->
+		<div use:block.void data-edytor-image-empty>
+			<UploadPreview upload={pending} image />
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>
@@ -176,21 +203,3 @@
 	The core renders the kind's <figure> around this markup.
 	--><!-- svelte-ignore a11y_figcaption_parent --><figcaption>{@render content()}</figcaption>
 {/snippet}
-
-<style>
-	/* Where an image narrower than its block sits (Notion's alignment). */
-	[data-edytor-image] {
-		display: flex;
-		position: relative;
-		justify-content: center;
-	}
-	[data-edytor-image][data-align='left'] {
-		justify-content: flex-start;
-	}
-	[data-edytor-image][data-align='right'] {
-		justify-content: flex-end;
-	}
-	[data-edytor-image] img {
-		max-width: 100%;
-	}
-</style>

@@ -8,10 +8,10 @@ icon: paperclip
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createFilePlugin, createUploadsPlugin } from 'edytor';
+	import { Edytor, createFilePlugin } from 'edytor';
 
-	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
-	const uploads = createUploadsPlugin({
+	// Optional: an Upload button, and pasted or dropped files uploaded.
+	const files = createFilePlugin({
 		upload: async (file) => {
 			const body = new FormData();
 			body.append('file', file);
@@ -21,14 +21,99 @@ icon: paperclip
 	});
 </script>
 
-<Edytor plugins={[uploads, createFilePlugin()]} />
+<Edytor plugins={[files]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without `upload`, files are linked only. The first media plugin given an `upload` (image, file, video or audio) also brings file drops: the drop line while files are dragged over the editor, and the blocks they become; without one, a file drop is ignored.
+
+## Try it
+
+<PluginDemo plugin="file" />
+
+Press Upload on the empty block and pick any file, or type `/file` on an empty line. Drag a file from your desktop over the editor: a line shows where it lands. The upload keeps the file in this tab as an object URL. The editor is local to this page: a reload resets it.
+
+## Customize
+
+The `row` snippet draws a file block that has a source. Here, a ticket with the extension as a badge, the name and the size.
+
+<PluginDemo plugin="file" variant="custom" />
+
+```svelte title="FileEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createFilePlugin, type FileRowPayload, type JSONDoc, type Plugin } from 'edytor';
+
+	// The page's document and the rest of your editor's plugins.
+	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
+
+	// File blocks drawn as a ticket: an extension badge, the name, the size.
+	// Uploads stay in this tab: the file's object URL.
+	const files = createFilePlugin({
+		row,
+		upload: async (file, report) => {
+			report.progress(1);
+			return URL.createObjectURL(file);
+		}
+	});
+
+	const extension = (name: string) => (name.split('.').pop() ?? 'file').slice(0, 4).toUpperCase();
+</script>
+
+{#snippet row(file: FileRowPayload)}
+	<a class="ticket" href={file.src} {@attach file.link}>
+		<span class="badge">{extension(file.name)}</span>
+		<span class="name">{file.name}</span>
+		{#if file.sizeLabel}<span class="size">{file.sizeLabel}</span>{/if}
+		<span class="arrow" aria-hidden="true">↓</span>
+	</a>
+	{#if file.uploading}<progress value={file.progress ?? undefined} max="1"></progress>{/if}
+{/snippet}
+
+<Edytor {value} plugins={[files, ...plugins]} aria-label="File demo" />
+
+<style>
+	.ticket {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 14px;
+		border: 1px dashed #c9a96e;
+		border-radius: 10px;
+		background: #fdf8ee;
+		color: #4a3b1c;
+		text-decoration: none;
+	}
+	.ticket:hover {
+		background: #faf0d8;
+	}
+	.badge {
+		padding: 2px 8px;
+		border-radius: 6px;
+		background: #4a3b1c;
+		color: #fdf8ee;
+		font: 700 11px/18px ui-monospace, SFMono-Regular, Menlo, monospace;
+		letter-spacing: 0.06em;
+	}
+	.name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 600;
+	}
+	.size {
+		color: #8a7547;
+		font-size: 12px;
+	}
+	.arrow {
+		color: #8a7547;
+	}
+</style>
+```
 
 ## Options
 
-`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
+`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin. `upload` (an `Uploader`, `(file, report) => Promise<string>`) stores a file and answers its URL: the empty block's Upload and pasted or dropped files no other kind takes; without it the plugin takes links only.
 
 <TypeTable
   type={{
@@ -39,7 +124,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
   }}
 />
 
-`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
+`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one), `uploading` (`true` while its file uploads: `name` and `size` are the file's at once, `src` its local object URL), `progress` (`0` to `1` while uploading, `null` until `upload` reports one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
 
 ```svelte title="Files.svelte" check
 <script lang="ts">
@@ -67,7 +152,7 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Withou
 
 An upload stores the URL `upload` answers with the picked file's `name` and `size` (bytes), as one data write, only when the block is still there, a file block and without a source (a source a collaborator set while the upload ran stays); a link stores its URL with the name read from its last path segment. A source is accepted only when it is an `http:`/`https:` URL with a host or a `blob:` URL of one (`safeMediaSrc`), never `data:`: a file stored inline would be sent in every update. The rendered link has `target="_blank"`, `rel="noopener noreferrer nofollow"` and `download` set to the name.
 
-The block is void like the [image](/docs/plugins/image), and its only text is the caption. The command id is `block.file`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder, so a viewer never runs `upload`. With `upload`, pasted and dropped files no other kind takes (a PDF, an archive; an image goes to the image block, a video or audio file to theirs when those kinds upload) become file blocks, shown uploading with a progress bar, one undo step for the paste; see [Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files).
+The block is void like the [image](/docs/plugins/image), and its only text is the caption. The command id is `block.file`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder, so a viewer never runs `upload`. With `upload`, pasted and dropped files no other kind takes (a PDF, an archive; an image goes to the image block, a video or audio file to theirs when those kinds upload) become file blocks, shown uploading with a progress bar, one undo step for the paste; a dropped file lands where the drop indicator shows while you drag it over the editor, between blocks, inside one or beside one, as a block drag does; see [Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files).
 
 ## Clipboard
 

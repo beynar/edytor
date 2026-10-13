@@ -352,7 +352,8 @@ export class TableChrome extends ChromeList {
 
 	/**
 	 * Where the grips stand, layer-relative, the point each centers on: the
-	 * row grip on the grid's left edge, at the middle of the row it stands
+	 * row grip on the left edge of the part of the grid its box shows
+	 * (`table.overflow`: the box's edge once the grid is scrolled), at the middle of the row it stands
 	 * for; the column grip on its top edge, at the middle of the column it
 	 * stands for, while that middle shows (the grip a drag started from
 	 * stays, its source, even scrolled out of view).
@@ -366,7 +367,7 @@ export class TableChrome extends ChromeList {
 		const x = c ? c.left + c.width / 2 : 0;
 		return [
 			...(row && r
-				? [{ ...row, kind: 'row' as const, x: row.layout.left, y: r.top + r.height / 2 }]
+				? [{ ...row, kind: 'row' as const, x: this.span.left, y: r.top + r.height / 2 }]
 				: []),
 			...(column && (this.moving?.kind === 'column' || this.inView(x))
 				? [{ ...column, kind: 'column' as const, x, y: column.layout.top }]
@@ -403,7 +404,7 @@ export class TableChrome extends ChromeList {
 		const { layout, index } = at;
 		if (kind === 'row') {
 			const row = layout.rows[index]!;
-			return { left: layout.left - 9, top: row.top + Math.min(row.height, 28) };
+			return { left: this.span.left - 9, top: row.top + Math.min(row.height, 28) };
 		}
 		const column = layout.columns[index]!;
 		return { left: column.left + column.width / 2 - 12, top: layout.top + 10 };

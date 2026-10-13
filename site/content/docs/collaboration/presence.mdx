@@ -75,45 +75,21 @@ The prop follows changes, so an app can narrow presence as a room fills up. Outs
 
 ## Who is online
 
-`awareness.getStates()` returns every client's state, keyed by client id. The `change` event fires when a client joins, leaves or changes its state:
-
-```ts title="src/lib/online.ts" check
-const awareness = edytor.awareness; // or document.awareness
-
-const online = () =>
-  [...awareness.getStates()]
-    .filter(([clientId]) => clientId !== awareness.clientID)
-    .map(([clientId, state]) => ({ clientId, ...(state.user as { name?: string; color?: string }) }));
-
-awareness.on('change', () => console.log(online()));
-```
-
-In Svelte, wrap it in a rune so the list updates:
+`edytor.presence.peers` is the list of the other people in the document: every client but this one, ordered by client id, each `{ clientId, name?, color?, …}` with the fields of its `user` state (the document's actor name and color when it set no `user`). It is reactive: read it in markup and the list follows joins, leaves and name changes. The view listens to the awareness only while something reads the list.
 
 ```svelte title="src/lib/Online.svelte" check
 <script lang="ts">
-  import type { EdytorDocument } from 'edytor';
+  import type { EdytorInstance } from 'edytor';
 
-  let { document }: { document: EdytorDocument } = $props();
-  let people = $state<{ id: number; name?: string; color?: string }[]>([]);
-
-  $effect(() => {
-    const awareness = document.awareness;
-    const update = () => {
-      people = [...awareness.getStates()]
-        .filter(([id]) => id !== awareness.clientID)
-        .map(([id, state]) => ({ id, ...(state.user as { name?: string; color?: string }) }));
-    };
-    update();
-    awareness.on('change', update);
-    return () => awareness.off('change', update);
-  });
+  let { edytor }: { edytor: EdytorInstance } = $props();
 </script>
 
-{#each people as person (person.id)}
+{#each edytor.presence.peers as person (person.clientId)}
   <span style:background={person.color}>{person.name ?? 'Anonymous'}</span>
 {/each}
 ```
+
+The instance from `<Edytor bind:edytor>` or `useEdytor()` is the same view, so `peers` reads the same there. Your own name is the `user` you set above.
 
 ## What the presence wire carries
 

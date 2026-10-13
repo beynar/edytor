@@ -96,15 +96,18 @@ export const createMarkdownShortcutsPlugin = (): Plugin => (edytor) => {
 			const text = block.textAtOffset(to)?.text;
 			if (!text) return false;
 			const { id } = block;
-			// The segment's start, in block offsets: the caret, less the text before it.
-			const at = to - before.length + found.start;
+			// The segment's start, in block offsets: the caret (after the typed text), less the text before it.
+			const at = to - match.input.length + found.start;
 			const { facade, dispatcher } = edytor;
 			const plan = () =>
 				facade.compose(
 					facade.prepare.formatRange(id, at + found.open, found.content, { [found.mark]: true }),
-					...(found.closing
-						? [facade.prepare.deleteText(id, at + found.open + found.content, found.closing)]
-						: []),
+					// The closing marker, the typed character with it.
+					facade.prepare.deleteText(
+						id,
+						at + found.open + found.content,
+						found.closing + typed.length
+					),
 					facade.prepare.deleteText(id, at, found.open)
 				);
 			const payload = { value: typed, start: before.length, end: before.length };

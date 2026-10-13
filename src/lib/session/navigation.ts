@@ -23,6 +23,7 @@
  * lands it on no caret stop (`landed`).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
 import {
 	getNextGraphemeEnd,
 	getNextWordEndOffset,
@@ -324,19 +325,27 @@ const stopBelow = (edytor: Edytor, block: string): boolean => {
  * cell, a code line, a heading). Never in a view that writes nothing.
  */
 const leavesLastStop = (edytor: Edytor): boolean => {
-	const { selection, root } = edytor;
-	const { value, projection } = selection;
+	const block = onLastLine(edytor);
+	const { root } = edytor;
+	if (!block || !root || !edytor.dispatcher.permits()) return false;
+	if (block.parent?.isRoot && block.type === edytor.defaultChild(root)) return false;
+	return !stopBelow(edytor, block.id);
+};
+
+/**
+ * The block a collapsed text caret sits on the last line of (a line box
+ * where the view lays one out, else a line break), if it does: where
+ * ArrowDown leaves the block (`nav.trailing.exit`, `body.down`).
+ */
+export const onLastLine = (edytor: Edytor): Block | undefined => {
+	const { value, projection } = edytor.selection;
 	const at = projection.start;
 	const block = at && edytor.idToBlock.get(at.block);
-	if (value.kind !== 'text' || !projection.isCollapsed || !block || !root) return false;
-	if (!edytor.dispatcher.permits()) return false;
-	if (block.parent?.isRoot && block.type === edytor.defaultChild(root)) return false;
+	if (value.kind !== 'text' || !projection.isCollapsed || !block) return;
 	const text = stringOf(edytor, at.block);
-	if (text.includes('\n', at.offset)) return false;
-	return (
-		edytor.ports.surface.sameLine(at, { block: at.block, offset: text.length }) !== false &&
-		!stopBelow(edytor, at.block)
-	);
+	if (text.includes('\n', at.offset)) return;
+	const last = edytor.ports.surface.sameLine(at, { block: at.block, offset: text.length });
+	return last === false ? undefined : block;
 };
 
 /**

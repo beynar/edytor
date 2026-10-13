@@ -155,7 +155,7 @@ test.describe('columns: a handle is reached by a person’s mouse path (R1)', ()
 			issues.assertClean();
 		});
 
-	test('the gap: the resize band its left part, then B’s handle box at its row (round 5)', async ({
+	test('the gap: the resize band centered in it, B’s + reaching under it, its handle box right of it', async ({
 		page
 	}) => {
 		await open(page);
@@ -164,26 +164,24 @@ test.describe('columns: a handle is reached by a person’s mouse path (R1)', ()
 			await page.locator('[data-edytor-id="A2"]').boundingBox(),
 			await page.locator('[data-edytor-id="B"]').boundingBox()
 		];
-		const gap = a!.x + a!.width + 5;
-		// From column 1's text across the gap at B's row: its left 10px are the
-		// band, the rest B's handle box (its + then its grip, flush with B).
+		const left = a!.x + a!.width;
+		const mid = (left + b!.x) / 2;
+		// From column 1's text across the gap at B's row: B's + (its part left of the
+		// band), the band in the gap's middle, then B's handle box (its grip, flush with B).
 		const y = b!.y + Math.min(b!.height, 24) / 2;
-		const left = a!.x + a!.width + 2;
-		await page.mouse.move(a!.x + a!.width - 10, y);
-		for (let x = a!.x + a!.width - 10; x < left; x += 4) await page.mouse.move(x, y);
-		await page.mouse.move(left, y);
-		expect(await hitAt(page, left, y)).toBe('resize');
-		await page.mouse.move(gap, y, { steps: 2 });
-		expect(await hitAt(page, gap, y)).toBe('resize');
-		await page.mouse.move(a!.x + a!.width + 14, y, { steps: 4 });
-		expect(await hitAt(page, a!.x + a!.width + 14, y)).toBe('handle:B');
+		await page.mouse.move(left - 10, y);
+		for (let x = left - 10; x < left + 13; x += 4) await page.mouse.move(x, y);
+		await page.mouse.move(left + 13, y);
+		expect(await hitAt(page, left + 13, y)).toBe('handle:B');
+		await page.mouse.move(mid, y, { steps: 3 });
+		expect(await hitAt(page, mid, y)).toBe('resize');
 		await page.mouse.move(b!.x - 4, y, { steps: 4 });
 		expect(await hitAt(page, b!.x - 4, y)).toBe('handle:B');
 		await expect(host(page, 'B')).toHaveAttribute('data-visible', 'true');
-		// Below B's row (A2's height), no handle is there: the band, the gap's left part.
+		// Below B's row (A2's height), no handle is there: the band, the gap's middle.
 		const low = a2!.y + a2!.height / 2;
-		await page.mouse.move(gap, low, { steps: 6 });
-		expect(await hitAt(page, gap, low)).toBe('resize');
+		await page.mouse.move(mid, low, { steps: 6 });
+		expect(await hitAt(page, mid, low)).toBe('resize');
 	});
 
 	test('a block dragged out of column 1 by its grip, reached along the path', async ({ page }) => {

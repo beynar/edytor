@@ -23,7 +23,7 @@ import {
 import { DEAD, findAtom, ownedLength } from '../text/model.js';
 import type { DisplayRoles, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
-import { itemIds, readData } from '../data.js';
+import { itemIds, previewData, readData, type DataPatch } from '../data.js';
 import { columnIds, listedColumns, unlistedOrder } from '../tables.js';
 import { cloneJsonSafe, type JSONBlock } from '../../utils/json.js';
 import { ref } from './plan.js';
@@ -105,6 +105,17 @@ export const docReads = (c: DocBase) => {
 			typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
 		const node = dataNode(id && ref(id), atom && ref(atom));
 		return node && Array.isArray(path) ? itemIds(node, path) : [];
+	};
+
+	/**
+	 * A block's, an atom's or the document's data once `pending` patches are
+	 * applied, without writing them, and its array items' ids (`previewData`):
+	 * what a view reads of its data writes not yet dispatched.
+	 */
+	const dataPreview = (target: DataTarget, pending: readonly DataPatch[]) => {
+		const [id, atom] =
+			typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
+		return previewData(dataNode(id && ref(id), atom && ref(atom)), pending);
 	};
 
 	/** Ordered visible children of `parent` (`null` = root) — canonical read. */
@@ -363,6 +374,7 @@ export const docReads = (c: DocBase) => {
 		blockDataOf,
 		docData,
 		dataItemIds,
+		dataPreview,
 		childrenIds,
 		positionOf,
 		pathOf,

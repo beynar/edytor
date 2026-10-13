@@ -201,7 +201,7 @@ test.describe('columns: the resize affordance', () => {
 			[x, y]
 		);
 
-	test('the band, the gap’s left part, resizes at every row; hovered, it shows a gray guide; dragging, the blue one', async ({
+	test('the band, centered in the gap, resizes at every row; hovered, it shows a gray guide; dragging, the blue one', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -213,8 +213,8 @@ test.describe('columns: the resize affordance', () => {
 			await box(page, 'A2')
 		];
 		const gap = { left: k1.x + k1.width, right: k2.x };
-		// The band: the gap's left 10px, the layout's height (round 5).
-		const mid = gap.left + 5;
+		// The band: 10px centered in the gap, the layout's height.
+		const mid = (gap.left + gap.right) / 2;
 		await page.mouse.move(a2.x + 10, a2.y + a2.height / 2);
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
@@ -236,7 +236,9 @@ test.describe('columns: the resize affordance', () => {
 		// dragged edge: it never jumps onto the next column's `+`.
 		const g = (await page.locator('[data-edytor-column-resize-guide]').boundingBox())!;
 		const k1now = await box(page, 'K1');
-		expect(Math.abs(g.x + g.width / 2 - (k1now.x + k1now.width + 5))).toBeLessThanOrEqual(1.5);
+		expect(
+			Math.abs(g.x + g.width / 2 - (k1now.x + k1now.width + (gap.right - gap.left) / 2))
+		).toBeLessThanOrEqual(1.5);
 		await page.mouse.up();
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(0);
 		issues.assertClean();

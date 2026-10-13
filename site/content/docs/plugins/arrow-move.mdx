@@ -6,7 +6,17 @@ icon: arrow-up-down
 
 `createArrowMovePlugin()` moves blocks with the keyboard. <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the block holding the caret one step, as in Notion; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the selected blocks. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
 
-`<Edytor>` includes it by default, after your plugins. List `createArrowMovePlugin()` yourself to put it elsewhere in the order, or pass `defaultPlugins={false}` to leave it out (see [Default plugins](/docs/plugins#default-plugins)). It takes no options.
+It is not a default plugin: list `createArrowMovePlugin()` in `plugins` to move blocks from the keyboard (see [Default plugins](/docs/plugins#default-plugins)). It takes no options.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createArrowMovePlugin } from 'edytor';
+
+	const plugins = [createArrowMovePlugin()];
+</script>
+
+<Edytor {plugins} />
+```
 
 ## Try it
 

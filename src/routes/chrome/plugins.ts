@@ -5,6 +5,7 @@
  * options builds its own with `chrome`.
  */
 import {
+	createArrowMovePlugin,
 	createBlockHandlesPlugin,
 	createBlockMenuPlugin,
 	createCodePlugin,
@@ -103,6 +104,8 @@ export const calloutIconsPlugin = calloutIcons();
 export const find = (options: FindPluginOptions = {}) =>
 	createFindPlugin({ bar: chrome.findBar, ...options });
 export const findPlugin = find();
+/** Block moves from the keyboard (Mod+Up/Down): not a default, listed where blocks move. */
+export const arrowMovePlugin = createArrowMovePlugin();
 export const suggestionsPlugin = createSuggestionsPlugin();
 /** The bar under each block suggestion. */
 export const suggestionBarPlugin = createSuggestionBarPlugin({ bar: chrome.suggestionBar });

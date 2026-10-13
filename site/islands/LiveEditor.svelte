@@ -10,8 +10,10 @@
 	import { demoDocument } from './demo-document';
 	// The demo's chrome (the package draws none), copied by scripts/pack-edytor.sh.
 	import {
+		arrowMovePlugin,
 		blockHandlesPlugin,
 		blockMenuPlugin,
+		arrowMovePlugin,
 		codePlugin,
 		image,
 		marquee,

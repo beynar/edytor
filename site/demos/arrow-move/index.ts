@@ -1,4 +1,5 @@
 import type { JSONDoc } from 'edytor';
+import { arrowMovePlugin } from '../../chrome/plugins';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 
@@ -15,6 +16,6 @@ const value: JSONDoc = {
 
 export default {
 	value,
-	// The editor adds arrow move itself, after these.
-	plugins: () => [...basePlugins()]
+	// Arrow move is not a default: the page lists it.
+	plugins: () => [arrowMovePlugin, ...basePlugins(arrowMovePlugin)]
 } satisfies PluginDemo;

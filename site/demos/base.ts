@@ -5,6 +5,7 @@
  */
 import { richTextPlaceholder, type Plugin, type Uploader } from 'edytor';
 import {
+	arrowMovePlugin,
 	blockHandlesPlugin,
 	blockMenuPlugin,
 	richTextPlugin,
@@ -14,8 +15,8 @@ import {
 
 /**
  * The editor around a demo: Notion's hints in empty blocks, the block
- * handles and their menu, the slash menu, the selection toolbar and rich
- * text. List the page's own plugins before these. A page whose Customize
+ * handles and their menu, block moves from the keyboard, the slash menu,
+ * the selection toolbar and rich text. List the page's own plugins before these. A page whose Customize
  * component configures one of them passes it (`basePlugins(toolbarPlugin)`)
  * to leave the demo's instance out: one view holds one of each.
  */
@@ -24,6 +25,7 @@ export const basePlugins = (...without: Plugin[]): Plugin[] =>
 		() => ({ placeholder: richTextPlaceholder }),
 		blockHandlesPlugin,
 		blockMenuPlugin,
+		arrowMovePlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
 		richTextPlugin

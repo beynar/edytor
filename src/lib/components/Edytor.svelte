@@ -23,16 +23,15 @@
 	import { brandOf } from '$lib/plugins/brand.js';
 	import type { PartialLabels } from '$lib/labels.js';
 	import { createRichTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 
 	/**
 	 * The plugins every view has unless it lists one of their kind (or sets
 	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
-	 * block moves, the suggestion UI, then rich text (an app lists
-	 * `createImagePlugin({ upload })` itself for images).
+	 * the suggestion UI, then rich text (an app lists `createArrowMovePlugin()`
+	 * for block moves and `createImagePlugin({ upload })` for images itself).
 	 */
-	const DEFAULTS = [createArrowMovePlugin(), createSuggestionsPlugin(), createRichTextPlugin()];
+	const DEFAULTS = [createSuggestionsPlugin(), createRichTextPlugin()];
 	const withDefaults = (plugins: Plugin[] = []): Plugin[] => {
 		const listed = new Set(plugins.map(brandOf));
 		return [...plugins, ...DEFAULTS.filter((plugin) => !listed.has(brandOf(plugin)))];
@@ -62,7 +61,7 @@
 
 	export type EdytorProps = {
 		plugins?: Plugin[];
-		/** Add rich text, arrow moves and the suggestion UI unless `plugins` lists them (default `true`). */
+		/** Add rich text and the suggestion UI unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
 		class?: string;
 		/** The root textbox's accessible name (or name it with `aria-labelledby`). */

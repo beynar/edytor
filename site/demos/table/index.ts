@@ -1,5 +1,5 @@
 import { tableBlock, type JSONDoc } from 'edytor';
-import { tablePlugin } from '../../chrome/plugins';
+import { tablePlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import TableEditor from './TableEditor.svelte';

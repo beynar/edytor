@@ -13,7 +13,7 @@ import { createDocument, defaultSemantics } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
-import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const M = bindModel(Y);
 

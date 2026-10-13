@@ -46,7 +46,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since S6. */
 const row = it;

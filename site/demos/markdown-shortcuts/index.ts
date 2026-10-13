@@ -1,5 +1,5 @@
 import { createMarkdownShortcutsPlugin, type JSONDoc } from 'edytor';
-import { codePlugin } from '../../chrome/plugins';
+import { codePlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 

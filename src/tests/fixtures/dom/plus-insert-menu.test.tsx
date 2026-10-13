@@ -21,7 +21,7 @@ import {
 	richTextPlugin,
 	slashMenu as createSlashMenuPlugin,
 	slashMenuPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

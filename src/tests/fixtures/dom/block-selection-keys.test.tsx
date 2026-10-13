@@ -19,7 +19,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

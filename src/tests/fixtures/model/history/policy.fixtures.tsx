@@ -6,7 +6,7 @@ import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { canonicalValue, runBeforeInput, runHotkey } from '../../../test.utils.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import { selectionState } from '../../../selection.js';
-import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const getHistoryState = (edytor: {
 	undoManager: { undoStack: unknown[]; redoStack: unknown[] };

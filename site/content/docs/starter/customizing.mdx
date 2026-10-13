@@ -1,0 +1,86 @@
+---
+title: Customizing
+description: Theme the starter editor with your shadcn-svelte tokens, edit the files the registry copied, replace a part or a chrome surface with a snippet, and change its words.
+icon: palette
+---
+
+The starter's files are in your app: everything below is a change to your own code. From the lightest:
+
+1. **Your shadcn tokens**: the page, the blocks and every menu read them.
+2. **A snippet per part**: the [cover, icon and title](/docs/starter/page#replace-a-part), a [property cell or the whole properties block](/docs/starter/properties#replace-a-cell), and each chrome surface through its plugin's options ([Props](/docs/starter/props#plugins)).
+3. **The copied files**: `$lib/components/edytor/starter` and `$lib/components/edytor/chrome` are plain Svelte and shadcn components; change their markup, their classes, their behaviour.
+
+## Theme: the shadcn tokens
+
+There is no `theme` prop: the starter has one way to theme it, your app's shadcn-svelte theme. `shadcn-svelte init` wrote its tokens in your CSS, `:root` for light and `.dark` for dark; the starter reads them all:
+
+| Token | Paints |
+| --- | --- |
+| `--background`, `--foreground` | the page and its text, the blocks' text |
+| `--popover`, `--popover-foreground` | every menu, toolbar, panel and card |
+| `--muted`, `--muted-foreground` | code blocks and panels, secondary text, property names, placeholders |
+| `--accent` | the hovered and highlighted rows, the hover of a block's controls |
+| `--border`, `--input` | dividers, the fields' and the cards' edges |
+| `--primary` | checked to-dos, pressed toolbar buttons, the suggestion accent |
+| `--ring` | focus rings, the text and block selection, the drop indicator |
+| `--destructive` | Delete rows, inline code, an equation's error |
+| `--radius` | the shadcn components' corners |
+
+`$lib/components/edytor/chrome/tokens.css` (imported by `StarterEditor`) maps the editor's own variables (`--notion-*`, `--edytor-*`, the [Notion theme](/docs/customization/styling#notion-theme)'s) onto those tokens, and gives the block colours and the code's syntax colours a dark palette under `.dark`. Put `.dark` on `<html>` (or any element around the editor), as shadcn-svelte's dark mode does, and the page, the blocks and the menus all turn dark.
+
+```css title="src/app.css"
+:root {
+	--primary: oklch(0.55 0.2 264);
+	--radius: 0.5rem;
+}
+.dark {
+	--background: oklch(0.16 0.01 264);
+}
+```
+
+The [shadcn-svelte themes](https://www.shadcn-svelte.com/themes) are sets of these tokens: paste one and the editor follows.
+
+## Layout variables
+
+The page's sizes are CSS variables on its root, `[data-edytor-starter]` (with the class `edytor-notion`):
+
+| Variable | What it sets | Default |
+| --- | --- | --- |
+| `--edytor-starter-max-width` | the column of text | `708px` |
+| `--edytor-starter-gutter` | the page's side padding | `96px` |
+| `--edytor-starter-gutter-narrow` | the side padding under 720px | `16px` |
+| `--edytor-starter-cover-height` | the cover | `30vh` (120 to 280px) |
+| `--edytor-starter-title-size` | the title's font size | `40px` (`32px` under 720px) |
+| `--edytor-starter-title-font` | the title's font | the body font |
+| `--edytor-starter-icon-size` | the page icon's box | `78px` (`64px` under 720px) |
+| `--edytor-starter-radius` | the icon's and the page controls' corners | `6px` |
+| `--notion-font`, `--notion-mono` | the blocks' fonts | Notion's |
+| `--edytor-color-<name>`, `--edytor-background-<name>` | the block colours, and a select option's | Notion's palette, light and dark |
+
+```css title="src/app.css"
+[data-edytor-starter] {
+	--edytor-starter-title-size: 48px;
+	--edytor-starter-max-width: 900px;
+}
+```
+
+The page parts carry attributes to style them by: `data-edytor-starter-cover`, `data-edytor-starter-icon`, `data-edytor-starter-title`, `data-edytor-starter-properties`, `data-edytor-starter-property="<id>"` and `data-edytor-starter-cell="<type>"`.
+
+## Edit the files
+
+- **A menu's markup**: `chrome/SlashMenu.svelte`, `chrome/Toolbar.svelte`… Each takes its plugin's controller: keep the controller's attachments (`{@attach controller.popup}`, `{@attach controller.keys}`, `{@attach controller.option(index)}`), which carry its focus, keys and ARIA; the rest is shadcn markup to change at will.
+- **A page part**: `starter/page/Cover.svelte`, `PropertyCell.svelte`… are shadcn `Popover`, `Select`, `Calendar`, `Command` and `Collapsible` compositions.
+- **The plugin list**: `starter/starterPlugins.ts` is the one place that lists the plugins and their options.
+- **A new shadcn component**: `npx shadcn-svelte@latest add tooltip`, then use it in any copied file.
+
+## Words
+
+The page's words (**Add icon**, **Untitled**, **Add a property**…) and the menus' are the chrome's, in `chrome/words.svelte.ts`: change any of them with `setWords`, a section at a time, or edit the file. The words of the editor itself (kind names, the document's) are `labels`, as on `<Edytor>`. See [Localization](/docs/customization/localization).
+
+```ts title="src/lib/words.ts" check
+import { setWords } from '$lib/components/edytor/chrome/index.js';
+
+/** The page in French: call it once, before the editor mounts. */
+export const useFrench = () =>
+	setWords({ starter: { untitled: 'Sans titre', addIcon: 'Ajouter une icône' } });
+```

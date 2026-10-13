@@ -22,7 +22,7 @@ import { onKeyDown } from '$lib/events/onKeyDown.js';
 import type { Awareness, OpResult, YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
 import { selectionState } from './selection.js';
-import { richTextPlugin } from '../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 type CursorPosition = {
 	path: number[];

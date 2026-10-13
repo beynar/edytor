@@ -3,7 +3,7 @@
  * fails the type check here until it is translated): what its menus, bars,
  * panels and cards show and say in a French view (`setWords(frWords)`).
  */
-import type { ChromeWords } from '../../routes/chrome/words.svelte.js';
+import type { ChromeWords } from '$registry/edytor/chrome/words.svelte.js';
 
 /** The demo chrome's words in French. */
 export const frWords: ChromeWords = {
@@ -246,5 +246,43 @@ export const frWords: ChromeWords = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat'
 	},
-	trigger: { menu: 'Suggestions', searching: 'Recherche…', noResults: 'Aucun résultat' }
+	trigger: { menu: 'Suggestions', searching: 'Recherche…', noResults: 'Aucun résultat' },
+	starter: {
+		page: 'Page',
+		content: 'Contenu de la page',
+		addIcon: 'Ajouter une icône',
+		addCover: 'Ajouter une couverture',
+		changeCover: 'Changer la couverture',
+		reposition: 'Repositionner',
+		savePosition: 'Enregistrer la position',
+		positionHint: 'Faites glisser l’image, ou utilisez les flèches haut et bas',
+		coverMenu: 'Options de la couverture',
+		icon: 'Icône de la page',
+		iconMenu: 'Options de l’icône',
+		emojis: 'Émojis',
+		upload: 'Importer',
+		uploading: 'Importation…',
+		link: 'Lien',
+		linkPlaceholder: 'Collez le lien d’une image…',
+		apply: 'Appliquer',
+		remove: 'Retirer',
+		close: 'Fermer',
+		title: 'Titre de la page',
+		untitled: 'Sans titre',
+		properties: 'Propriétés de la page',
+		addProperty: 'Ajouter une propriété',
+		hideProperty: (name: string) => `Masquer ${name}`,
+		showProperty: (name: string) => `Afficher ${name}`,
+		hiddenProperties: (count: number) =>
+			count === 1 ? '1 propriété masquée' : `${count} propriétés masquées`,
+		search: 'Rechercher…',
+		noOptions: 'Aucune option',
+		pickDate: 'Choisir une date',
+		clear: 'Effacer',
+		empty: 'Vide',
+		pick: 'Choisir une option',
+		yes: 'Oui',
+		no: 'Non',
+		removeValue: (name: string) => `Retirer ${name}`
+	}
 };

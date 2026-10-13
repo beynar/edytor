@@ -14,7 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### New
+
+- **The starter editor, a shadcn-svelte registry.** `npx shadcn-svelte@latest add https://edytor.dev/r/starter.json` copies `<StarterEditor />` into your app: `<Edytor>` with every useful bundled plugin, the Notion-style menus, handles, toolbars and panels, comments (with a `comments` client), and the page around the blocks: a cover, an icon, a title and typed page properties (text, number, select, multi-select, a date shown in your locale and picked from a calendar, checkbox, URL, person), all stored in the document's data so they sync in a room and undo like the blocks. Hiding a property keeps its value, under the hidden properties. It is built with shadcn-svelte components and reads your shadcn theme's tokens, so the page, the blocks and every menu follow `.dark`. The files are yours to edit; `<Edytor />` from `edytor` is unchanged. See [Starter editor](/docs/starter).
+- **The ready-made menus, a shadcn-svelte registry item.** `npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json` copies each bundled plugin drawn with them (`slashMenuPlugin`, `toolbarPlugin`, `blockHandlesPlugin`, `codePlugin`…), their snippets (`chrome`), their words (`setWords`) and the version history panel (`HistoryPanel`) into your app. See [Ready-made menus](/docs/customization/ready-made-menus).
 
 ### From 1.0.0
 
@@ -1346,6 +1349,8 @@ Every public change since 0.0.11, by area.
 - **`data-edytor-keep-selection`.** A press outside the editor and its overlay ends a block selection unless Shift or Mod is held or the press is inside an element carrying this attribute.
 
 ### Rendering, placeholder and chrome
+
+- The shadcn-svelte registry at `https://edytor.dev/r/`: `starter` (`StarterEditor`: every bundled plugin, the ready-made chrome, comments, the page's cover, icon, title and properties in the document's data, dates in a `locale`, hidden properties kept) and `edytor-chrome` (the ready-made chrome's plugins, snippets, words and `HistoryPanel`), on the app's shadcn tokens.
 
 - **Baseline 2024 browsers.** Chrome and Edge 120, Firefox 125, Safari 17.4 and Chrome on Android 120 are the oldest supported (they were 111, 119 and 16.4 as floors the code happened to need); code kept only for older engines is gone.
 - A placeholder is a plugin's `placeholder` (the `<Edytor placeholder>` prop and option are removed): a string or `(view: { type, data, focused, empty }, edytor) => string | null`; the snippet form is gone. It renders as `data-placeholder` on the empty text element with a shipped `::before` rule (style `[data-placeholder]::before`); `[data-edytor-text-placeholder]` and its click handlers are gone. `edytor.placeholderRepair` is removed.

@@ -35,7 +35,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
-import { codePlugin, richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin, slashMenuPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since S4. */
 const row = it;

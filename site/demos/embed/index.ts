@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { embedPlugin, mediaEmptyPlugin } from '../../chrome/plugins';
+import { embedPlugin, mediaEmptyPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins } from '../base';
 import type { PluginDemo } from '../types';
 import EmbedEditor from './EmbedEditor.svelte';

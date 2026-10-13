@@ -1,0 +1,84 @@
+---
+title: Props
+description: Every prop of StarterEditor, the bundled plugins it lists and how to configure or remove each one.
+icon: list
+---
+
+`<StarterEditor>` (`$lib/components/edytor/starter`, from `npx shadcn-svelte add https://edytor.dev/r/starter.json`) takes the props of [`<Edytor>`](/docs/editor/edytor-component) (all but `plugins`), and these:
+
+| Prop | Default | What it does |
+| --- | --- | --- |
+| `plugins` | every plugin on | Each bundled plugin by its key: `false` leaves it out, an object configures it (below). |
+| `extraPlugins` | `[]` | Your own plugins, listed before the bundled ones, so their kinds and keys win. |
+| `upload` | none | `(file, report) => Promise<url>`: stores the files of the image, file, video and audio blocks, and an uploaded cover or icon. |
+| `people` | `[]` | The people of `@` mentions and of `person` properties: `{ id, label, description?, avatar? }`. |
+| `pages` | none | The pages `[[` links to (`{ id, title, href?, icon? }`); the page link plugin is listed only with them, or with its own `search`. |
+| `cover` | `true` | The cover: `false` leaves it out, a snippet replaces it ([Page parts](/docs/starter/page)). |
+| `icon` | `true` | The page icon, the same way. |
+| `title` | `true` | The title, the same way. |
+| `properties` | none | The page's properties schema; none: no properties block ([Properties](/docs/starter/properties)). |
+| `editableProperties` | `true` | Users may add the schema's hidden properties and hide the shown ones. |
+| `propertyList` | the default block | A snippet replacing the whole properties block. |
+| `propertyCells` | the default cells | A snippet per property type replacing its cell. |
+| `comments` | none | A comments client: `createMemoryCommentsClient` locally, `createCommentsClient` with a room ([Comments](/docs/starter/comments)). |
+| `user` | the first of `people` | The current user's id among `people`: the comments' author. |
+| `locale` | `en-US` | The locale a `date` property is shown in (`Oct 13, 2026`), the same on the server and in the browser. |
+| `allowNesting` | `true` | Users may nest blocks (<kbd>Tab</kbd>, drops). |
+| `rootClass` | none | A class on the starter's root element (`class` is the editing host's, as on `<Edytor>`). |
+| `bind:edytor` | | The view, once it exists: `edytor.data` is the page's data, `edytor.historyUndo()`… |
+
+`value`, `onChange`, `readonly`, `labels`, `room`, `server`, `params`, `snapshot`, `sync`, `document`, `presence`, `actor`, `aria-label` and the other props of `<Edytor>` pass through as they are. The editor's `aria-label` defaults to the page's title.
+
+## Plugins
+
+Every key of `plugins`, on by default:
+
+| Key | Plugin | Its options |
+| --- | --- | --- |
+| `richText` | rich text (paragraphs, headings, lists, to-dos, quotes, callouts, toggles, marks) | `createRichTextPlugin`'s |
+| `placeholder` | Notion's hints in empty blocks | `true`/`false` |
+| `code` | code blocks, their header and language list | `createCodePlugin`'s |
+| `table` | tables, their grips and menus | `createTablePlugin`'s |
+| `columns` | columns | `true`/`false` |
+| `image`, `file`, `video`, `audio` | media blocks (the `upload` prop unless the options give one) | each factory's |
+| `mediaEmpty`, `imageToolbar` | the empty media panel, the image toolbar | `true`/`false` |
+| `embed`, `bookmark` | embeds and bookmarks, and the pasted-link menu | each factory's |
+| `equation` | equations and their panel | `createEquationPlugin`'s |
+| `mention` | `@` mentions over `people` | `createMentionPlugin`'s (an `items` of yours replaces `people`) |
+| `pageLink` | `[[` page links over `pages` | `createPageLinkPlugin`'s |
+| `toc` | the table of contents block | `true`/`false` |
+| `markdownShortcuts` | `#`, `-`, `[]`, `>`… at the start of a line | `true`/`false` |
+| `find` | find and replace (<kbd>Mod</kbd>+<kbd>F</kbd>) | `createFindPlugin`'s |
+| `marquee` | the rectangle selection from the margins | `createMarqueePlugin`'s |
+| `arrowMove` | block moves from the keyboard (<kbd>Mod</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>) | `true`/`false` |
+| `blockHandles`, `blockMenu` | the `+` and grip beside each block, and its menu | each factory's |
+| `slashMenu` | the `/` menu | `createSlashMenuPlugin`'s |
+| `toolbar` | the selection toolbar and link card | `createToolbarPlugin`'s |
+| `calloutIcons` | the callout's icon picker | `createCalloutIconsPlugin`'s |
+| `suggestions`, `suggestionBar` | [suggestions](/docs/editor/suggestions) and their bar | `true`/`false` |
+| `comments` | [comments](/docs/starter/comments), listed only with the `comments` prop | `createCommentsPlugin`'s but `client` |
+
+An object is given to the plugin's factory over the starter's own options, so a chrome snippet is one of them:
+
+```svelte title="src/lib/Notes.svelte" check
+<script lang="ts">
+	import type { SlashMenuController, Plugin } from 'edytor';
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
+
+	const shout: Plugin = () => ({ blocks: { shout: { element: 'strong' } } });
+</script>
+
+{#snippet menu(slash: SlashMenuController)}
+	<ul {@attach slash.popup}>
+		{#each slash.commands as command, index (command.id)}
+			<li {@attach slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<StarterEditor plugins={{ slashMenu: { menu }, table: false }} extraPlugins={[shout]} />
+```
+
+The plugins are read once, as `<Edytor>` reads its `plugins`. The list itself is `starterPlugins.ts` in your copy: edit it to add or reorder plugins for good.
+
+There is no `theme` prop: the starter reads your shadcn tokens ([Customizing](/docs/starter/customizing)).

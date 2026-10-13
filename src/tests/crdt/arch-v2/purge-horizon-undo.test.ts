@@ -8,7 +8,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { bindCrdt, createDocument, defaultSemantics } from '$lib/crdt/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const crdt = bindCrdt(Y);
 const PURGE = Symbol('purge');

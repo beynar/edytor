@@ -11,7 +11,7 @@ import type { PlaceholderView } from '$lib/plugins.js';
 import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const children: JSONBlock[] = [
 	{ type: 'heading', data: { level: 'h5' }, content: [{ text: 'five' }] },

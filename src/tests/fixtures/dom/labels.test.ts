@@ -18,7 +18,7 @@ import Localized from '../../dom/Localized.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { englishLabels } from '$lib/labels.js';
-import { englishWords } from '../../../routes/chrome/words.svelte.js';
+import { englishWords } from '$registry/edytor/chrome/words.svelte.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { findController } from '$lib/plugins/find/findPlugin.js';
 import { commentsController } from '$lib/plugins/comments/commentsPlugin.js';

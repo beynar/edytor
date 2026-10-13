@@ -5,7 +5,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 import { createAttachmentProbe } from '../helpers/attachments.js';
 import { dispatchDomBeforeInput, dispatchDomKeyDown, dragSelection } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const splitProbe = createAttachmentProbe();
 const backwardMergeProbe = createAttachmentProbe();

@@ -25,7 +25,7 @@ import {
 	tree
 } from './columns.helpers.js';
 import { selectionState } from '../../selection.js';
-import { slashMenuPlugin } from '../../../routes/chrome/plugins.js';
+import { slashMenuPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

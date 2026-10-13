@@ -33,7 +33,7 @@ import type { EdytorProps } from '$lib/components/Edytor.svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { WebsocketSyncOptions } from '$lib/collaboration/providers.js';
-import { richTextPlugin } from '../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const value: JSONDoc = { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'aa' }] }] };
 

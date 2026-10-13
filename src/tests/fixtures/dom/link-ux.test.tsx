@@ -32,7 +32,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin, toolbarPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const URL = 'https://edytor.dev/docs';
 const link = (href = URL) => ({ link: { href } });

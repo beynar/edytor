@@ -24,7 +24,7 @@ import {
 } from '../../dom/test.utils.js';
 import { d3KindsPlugin } from '../../dom/D3KindsPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** `[type, text]` of each child of the first root block. */
 const listShape = (edytor: Edytor) =>

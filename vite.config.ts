@@ -1,9 +1,13 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import { edytorAlias } from './edytor-alias';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	resolve: { alias: edytorAlias },
+	// The shadcn-svelte registry's source (`registry/`) the demo and the tests render.
+	server: { fs: { allow: ['registry'] } },
 	build: {
 		rolldownOptions: {
 			checks: {

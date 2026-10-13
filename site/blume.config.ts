@@ -1,6 +1,7 @@
 import { defineConfig } from "blume";
 import { cloudflare } from "blume/deploy";
 import type { AstroIntegration } from "astro";
+import { fileURLToPath } from "node:url";
 
 /**
  * `blume dev` only. Two Astro dev faults, fixed through Vite:
@@ -76,6 +77,45 @@ const serverRenderedEdytor: AstroIntegration = {
   },
 };
 
+/**
+ * The demos draw the starter and the ready-made chrome from the repository's
+ * shadcn-svelte registry (`../registry`, the one copy an app adds with
+ * `shadcn-svelte add`): `$registry` names it, and its imports (`edytor`,
+ * Svelte, bits-ui and the shadcn components' other packages) resolve from
+ * this site, one copy of each. `theme.css` scans it for Tailwind's classes.
+ */
+const registrySource: AstroIntegration = {
+  name: "edytor-registry-source",
+  hooks: {
+    "astro:config:setup": ({ updateConfig }) => {
+      const registry = fileURLToPath(new URL("../registry", import.meta.url));
+      const packages = [
+        "svelte",
+        "edytor",
+        "bits-ui",
+        "@lucide/svelte",
+        "tailwind-variants",
+        "cn",
+        "@internationalized/date",
+      ];
+      // On the server too: the registry's components, bits-ui and its runes
+      // helpers are Svelte sources Vite compiles.
+      const compiled = [...packages.slice(1), "svelte-toolbelt", "runed"];
+      const server = {
+        resolve: { alias: { $registry: registry }, dedupe: packages, noExternal: compiled },
+      };
+      updateConfig({
+        vite: {
+          resolve: { alias: { $registry: registry }, dedupe: packages },
+          ssr: { noExternal: compiled },
+          environments: { ssr: server, prerender: server },
+          server: { fs: { allow: [registry] } },
+        },
+      });
+    },
+  },
+};
+
 export default defineConfig({
   title: "Edytor",
   description:
@@ -95,7 +135,7 @@ export default defineConfig({
       display: "group",
     },
   },
-  integrations: [devIslands, serverRenderedEdytor],
+  integrations: [devIslands, serverRenderedEdytor, registrySource],
   deployment: cloudflare({ site: "https://edytor.dev" }),
   agents: {
     llmsTxt: true,

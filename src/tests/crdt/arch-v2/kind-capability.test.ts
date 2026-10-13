@@ -31,7 +31,7 @@ import { describe, expect, test } from 'vitest';
 import { createDocument, SemanticConflictError } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { createTestEdytor, runBeforeInput } from '../../test.utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
 

@@ -1,0 +1,126 @@
+/*
+ * The demos' shadcn-svelte tokens, as an app sets them (`shadcn-svelte
+ * init`): the registry's components (`../registry`) and the editor read
+ * them, light here and dark under Blume's dark mode. Blume's own utilities
+ * keep its tokens; inside a demo (`.edytor-notion`) the shared names
+ * (`bg-muted`, `bg-accent`, `border-border`…) are shadcn's.
+ */
+@import "tw-animate-css";
+@import "shadcn-svelte/tailwind.css";
+@source "../registry";
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
+}
+
+:root[data-theme="dark"] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* Inside a demo, the names Blume shares with shadcn are shadcn's. */
+.edytor-notion {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+}
+
+/*
+ * Blume's dark mode is `data-theme="dark"` on the root, where an app's is
+ * shadcn's `.dark` class: the editor's dark palette and syntax colours
+ * (`registry/edytor/chrome/tokens.css`) under Blume's selector.
+ */
+:root[data-theme="dark"] .edytor-notion {
+	--edytor-color-gray: #9b9b9b;
+	--edytor-color-brown: #ba856f;
+	--edytor-color-orange: #c77d48;
+	--edytor-color-yellow: #ca9849;
+	--edytor-color-green: #529e72;
+	--edytor-color-blue: #5e87c9;
+	--edytor-color-purple: #9d68d3;
+	--edytor-color-pink: #d15796;
+	--edytor-color-red: #df5452;
+	--edytor-background-gray: #2f2f2f;
+	--edytor-background-brown: #4a3229;
+	--edytor-background-orange: #5c3b23;
+	--edytor-background-yellow: #564328;
+	--edytor-background-green: #243d30;
+	--edytor-background-blue: #143a4e;
+	--edytor-background-purple: #3c2d49;
+	--edytor-background-pink: #4e2c3c;
+	--edytor-background-red: #522e2a;
+	color-scheme: dark;
+}
+
+:root[data-theme="dark"] .edytor-notion :is(.th-comment, .th-meta) {
+	color: #8b949e;
+}
+:root[data-theme="dark"] .edytor-notion :is(.th-keyword, .th-link) {
+	color: #79c0ff;
+}
+:root[data-theme="dark"] .edytor-notion :is(.th-string, .th-attr, .th-selector, .th-inserted) {
+	color: #a5d6a7;
+}
+:root[data-theme="dark"] .edytor-notion :is(.th-function, .th-type) {
+	color: #f497b0;
+}
+:is(.dark, :root .dark)
+	.edytor-notion
+	:is(.th-number, .th-literal, .th-tag, .th-property, .th-deleted) {
+	color: #e3a6d8;
+}
+:root[data-theme="dark"] .edytor-notion :is(.th-variable, .th-operator) {
+	color: #e0b97a;
+}

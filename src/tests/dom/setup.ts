@@ -41,6 +41,11 @@ afterAll(() => {
 	reportCellsCensus(file);
 });
 
+// bits-ui (the registry's shadcn components) releases an implicit pointer
+// capture on a press; jsdom has no pointer capture.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+
 if (!HTMLElement.prototype.scrollIntoView) {
 	HTMLElement.prototype.scrollIntoView = () => {};
 }

@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
+import { edytorAlias } from './edytor-alias';
 
 /**
  * CRDT lane: the vendored upstream Yjs v14 test suite (vendor-tests/yjs) plus
@@ -14,6 +15,7 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
 	plugins: [sveltekit()],
+	resolve: { alias: edytorAlias },
 	test: {
 		include: ['vendor-tests/**/*.test.{js,ts}', 'src/tests/crdt/**/*.test.{js,ts}'],
 		setupFiles: ['src/tests/setup/engine-reads.ts', 'src/tests/setup/index-checks.ts'],

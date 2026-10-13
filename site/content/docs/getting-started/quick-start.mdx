@@ -6,6 +6,10 @@ icon: zap
 
 Three steps, assuming you have [installed](/docs/getting-started) `edytor`.
 
+:::tip
+The fastest way to a full editor is the starter, a [shadcn-svelte](https://www.shadcn-svelte.com) registry item: `npx shadcn-svelte@latest add https://edytor.dev/r/starter.json` copies `<StarterEditor />` into your app, with every plugin, the Notion-style menus and handles, comments, and a page with a cover, an icon, a title and properties. See [Starter editor](/docs/starter). The steps below build your own, from the small `<Edytor />` up.
+:::
+
 ## 1. Render an editor
 
 ```svelte title="src/routes/+page.svelte" check
@@ -38,7 +42,7 @@ Every block kind beyond rich text is a plugin, imported from `edytor` and passed
 </div>
 ```
 
-[Plugins](/docs/plugins) lists them all: images and media, columns, mentions, comments, equations… Menus, toolbars and handles draw your own markup ([Menus and handles](/docs/customization/menus)); to start from Notion-style ones, copy the [ready-made menus](/docs/customization/ready-made-menus).
+[Plugins](/docs/plugins) lists them all: images and media, columns, mentions, comments, equations… Menus, toolbars and handles draw your own markup ([Menus and handles](/docs/customization/menus)); to start from Notion-style ones, add the [ready-made menus](/docs/customization/ready-made-menus) (the `edytor-chrome` registry item) and list them.
 
 ## 3. Use the document
 

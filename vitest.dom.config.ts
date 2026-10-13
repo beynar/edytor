@@ -1,10 +1,12 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { edytorAlias } from './edytor-alias';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	resolve: {
+		alias: edytorAlias,
 		conditions: ['browser']
 	},
 	test: {

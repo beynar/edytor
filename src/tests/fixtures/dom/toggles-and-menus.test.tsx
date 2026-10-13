@@ -22,7 +22,7 @@ import {
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
-import { blockMenuPlugin, codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { blockMenuPlugin, codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

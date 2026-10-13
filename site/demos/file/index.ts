@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { file, mediaEmptyPlugin } from '../../chrome/plugins';
+import { file, mediaEmptyPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import FileEditor from './FileEditor.svelte';

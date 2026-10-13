@@ -18,7 +18,7 @@ import { BLOCK_COLORS, colorable, setBlockColor } from '$lib/block/colors.js';
 import { convertToKind } from '$lib/kinds.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { blockMenuPlugin, codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { blockMenuPlugin, codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

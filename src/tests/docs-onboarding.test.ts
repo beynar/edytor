@@ -240,32 +240,37 @@ describe('onboarding truth (WU-18)', () => {
 		).not.toMatch(settings);
 	});
 
-	it('the quick start adds one plugin from the package, and the ready-made menus have their own page', () => {
+	it('the quick start adds one plugin from the package, and the ready-made menus come from the shadcn-svelte registry', () => {
 		const quickStart = read('site/content/docs/getting-started/quick-start.mdx');
-		// No copied chrome, no recipe: the quick start imports from `edytor` only.
+		// No copied folder, no recipe: the quick start imports from `edytor` only.
 		expect(quickStart).not.toMatch(/degit|\$lib\/chrome|sed -i/);
 		expect(quickStart).toContain('](/docs/customization/ready-made-menus)');
 		const readme = read('README.md');
-		expect(readme).not.toMatch(/degit|\$lib\/chrome/);
+		expect(readme).not.toMatch(/degit|\$lib\/chrome|edytor\/starter'/);
 		expect(readme).toContain('/docs/customization/ready-made-menus');
-		// The page's recipe is the copy `check:docs` makes before it checks the
-		// page's `$lib/chrome/…` fence: `src/routes/chrome` into `src/lib/chrome`,
-		// its `$lib/index.js` imports naming `edytor`.
+		// The ready-made chrome and the starter are registry items, one command each.
 		const page = read('site/content/docs/customization/ready-made-menus.mdx');
-		expect(page).toContain('npx degit beynar/edytor/src/routes/chrome src/lib/chrome');
-		expect(page).toContain(
-			"sed -i.bak 's#\\$lib/index\\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte"
+		expect(page).not.toMatch(/degit|sed -i|from 'edytor\/starter'/);
+		expect(page).toContain('npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json');
+		expect(read('site/content/docs/starter/index.mdx')).toContain(
+			'npx shadcn-svelte@latest add https://edytor.dev/r/starter.json'
 		);
-		expect(page).toContain('](https://github.com/beynar/edytor/tree/master/src/routes/chrome)');
-		const checker = read('scripts/check-docs.mjs');
-		expect(checker).toMatch(/readdirSync\(path\.join\(ROOT, 'src\/routes\/chrome'\)\)/);
-		expect(checker).toMatch(/'\$lib\/index\.js',\s*'edytor'/);
+		expect(readme).toContain('npx shadcn-svelte@latest add https://edytor.dev/r/starter.json');
+		expect(read('scripts/check-docs.mjs')).not.toContain('src/routes/chrome');
+		expect(read('site/scripts/pack-edytor.sh')).not.toMatch(/cp -R/);
+		// The quick start points at the starter editor first.
+		expect(quickStart).toContain('](/docs/starter)');
+		// No `edytor/starter` entry any more: one way to get the starter.
+		expect(Object.keys(JSON.parse(read('package.json')).exports)).not.toContain('./starter');
 		const checkedFence = fences(page).find((block) => checked(block.meta));
-		expect(checkedFence?.code).toMatch(/from '\$lib\/chrome\/plugins'/);
-		for (const name of checkedFence!.code.match(/\b\w+Plugin\b/g) ?? [])
-			expect(read('src/routes/chrome/plugins.ts'), name).toMatch(
+		expect(checkedFence?.code).toMatch(/from '\$lib\/components\/edytor\/chrome\/index\.js'/);
+		const entry = read('registry/edytor/chrome/index.ts');
+		for (const name of checkedFence!.code.match(/\b\w+Plugin\b/g) ?? []) {
+			expect(read('registry/edytor/chrome/plugins.ts'), name).toMatch(
 				new RegExp(`export const ${name}\\b`)
 			);
+			expect(entry, name).toMatch(new RegExp(`\\b${name},`));
+		}
 	});
 
 	it('the docs type-check at least 150 examples, and every checked one can be checked (DOC-14)', () => {

@@ -17,7 +17,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 import { HIDDEN } from '$lib/selection/visibility.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { blockHandlesPlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	// A drag a failed test left open would swallow the next test's.

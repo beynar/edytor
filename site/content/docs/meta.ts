@@ -6,6 +6,7 @@ export default defineMeta({
   pages: [
     "index",
     "getting-started",
+    "starter",
     "concepts",
     "editor",
     "plugins",

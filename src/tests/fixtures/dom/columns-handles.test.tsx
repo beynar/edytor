@@ -37,7 +37,7 @@ import { selectBlocks } from '../../selection.js';
 import {
 	blockHandlesPlugin,
 	blockMenu as createBlockMenuPlugin
-} from '../../../routes/chrome/plugins.js';
+} from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

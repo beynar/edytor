@@ -115,6 +115,26 @@ export const buildGraph = () => {
 	return { nodes: [...known].sort(), edges };
 };
 
+/**
+ * The imports of src/lib that reach the shadcn-svelte registry's source
+ * (`registry/`: the starter and the ready-made chrome, copied into apps):
+ * none may. The package never depends on its registry, value or type.
+ */
+export const registryImports = () => {
+	const out = [];
+	const registry = path.join(ROOT, 'registry');
+	for (const file of walk(LIB).filter((f) => isSource(rel(f)))) {
+		const text = fs.readFileSync(file, 'utf8');
+		const code = file.endsWith('.svelte') ? scriptOf(text) : text;
+		for (const [, spec] of code.matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
+			const resolved = spec.startsWith('.') ? path.resolve(path.dirname(file), spec) : '';
+			if (spec.startsWith('$registry') || resolved.startsWith(registry + path.sep))
+				out.push(`${rel(file)} -> ${spec}`);
+		}
+	}
+	return out;
+};
+
 /** Tarjan's strongly connected components (iterative), each sorted. */
 export const tarjan = (nodes, successors) => {
 	let index = 0;
@@ -254,7 +274,7 @@ const main = () => {
 		return crossing.length ? 1 : 0;
 	}
 	const missing = unassigned(graph);
-	const banned = forbiddenEdges(graph);
+	const banned = [...forbiddenEdges(graph), ...registryImports()];
 	if (args.includes('--json')) {
 		console.log(
 			JSON.stringify({ cycles: all, crossing, unassigned: missing, forbidden: banned }, null, 2)

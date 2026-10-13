@@ -22,7 +22,7 @@ import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { truthOf } from '../../oracles/truth.js';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
-import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** Red on the reference; green since P2.7. */
 const row = it;

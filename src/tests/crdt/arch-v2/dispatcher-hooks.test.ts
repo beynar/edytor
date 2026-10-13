@@ -24,7 +24,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { PreventionError } from '$lib/utils.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 /** A hook that throws its veto itself (a `PreventionError`) vetoes as `prevent` does. */
 const prevent = (cb?: () => void): never => {

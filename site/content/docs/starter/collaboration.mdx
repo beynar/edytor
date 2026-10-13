@@ -1,0 +1,23 @@
+---
+title: Collaboration
+description: The starter editor in a room, with its page parts synced, a snapshot for the first paint, readonly viewers and the value round trip.
+icon: users
+---
+
+`<StarterEditor>` passes `room`, `server`, `params`, `snapshot`, `sync`, `document`, `presence`, `actor` and `readonly` to its `<Edytor>`, so it joins a room as any view does ([Collaboration](/docs/collaboration)). The page's parts are the document's data: two people editing different properties both keep their change, and a cover, an icon or a title changed by one shows for the other at once.
+
+```svelte title="src/routes/doc/[id]/+page.svelte" check
+<script lang="ts">
+	import { page } from '$app/state';
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
+</script>
+
+<StarterEditor server="wss://rooms.example.com/rooms" room={page.params.id} />
+```
+
+- **A first paint from the server.** Give `snapshot` (the room's JSON, `documentSnapshot` or the room's `read()` in your load): the page renders it, cover and title included, until the view's document is ready. See [SvelteKit](/docs/getting-started/sveltekit).
+- **Readonly viewers.** `readonly` shows the page and its properties without a control, and keeps receiving the room's updates.
+- **The value.** Without a room, `value` and `onChange` round-trip the whole page: `value.data` holds the title, the icon, the cover and the properties.
+- **Undo is per view.** Each user's page edits are their own history steps, as their block edits are.
+- **Comments** live in the room too: give `comments` the room's client ([Comments](/docs/starter/comments#with-a-room)).
+- **Presence** is the editor's: the carets of the others show in the blocks; the page parts show no caret.

@@ -27,7 +27,7 @@ import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { CLOSE, validRoomId } from '$lib/crdt/providers/room.js';
 import { DOCUMENT_WRITES } from '$lib/crdt/operations.js';
-import { richTextPlugin } from '../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const root = join(import.meta.dirname, '../..');
 

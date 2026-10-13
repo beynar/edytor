@@ -11,7 +11,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
-import { codePlugin, imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -88,3 +88,14 @@ jobs:
             test-results/
             .artifacts/
           retention-days: 14
+
+  registry:
+    # The starter registry installed into a fresh SvelteKit + shadcn-svelte
+    # app, built and server-rendered (needs npm and the shadcn registry).
+    name: registry install (fresh SvelteKit app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:registry-install

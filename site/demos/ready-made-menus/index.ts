@@ -9,7 +9,7 @@ import {
 	richTextPlugin,
 	slashMenuPlugin,
 	toolbarPlugin
-} from '../../chrome/plugins';
+} from '$registry/edytor/chrome/index.js';
 import type { PluginDemo } from '../types';
 
 const value: JSONDoc = {

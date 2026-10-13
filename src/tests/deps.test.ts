@@ -16,16 +16,25 @@ import * as deps from '../../scripts/deps.mjs';
 
 type Graph = { nodes: string[]; edges: Map<string, Map<string, 'static' | 'dynamic'>> };
 type Cycle = { members: string[]; contexts: string[] };
-const { buildGraph, contextOf, crossingCycles, forbiddenEdges, specifiersOf, tarjan, unassigned } =
-	deps as unknown as {
-		buildGraph: () => Graph;
-		contextOf: (rel: string) => string | null;
-		crossingCycles: (graph?: Graph) => Cycle[];
-		forbiddenEdges: (graph?: Graph) => string[];
-		specifiersOf: (code: string) => [string, 'static' | 'dynamic'][];
-		tarjan: (nodes: string[], next: (node: string) => Iterable<string>) => string[][];
-		unassigned: (graph?: Graph) => string[];
-	};
+const {
+	buildGraph,
+	contextOf,
+	crossingCycles,
+	forbiddenEdges,
+	registryImports,
+	specifiersOf,
+	tarjan,
+	unassigned
+} = deps as unknown as {
+	buildGraph: () => Graph;
+	contextOf: (rel: string) => string | null;
+	crossingCycles: (graph?: Graph) => Cycle[];
+	forbiddenEdges: (graph?: Graph) => string[];
+	registryImports: () => string[];
+	specifiersOf: (code: string) => [string, 'static' | 'dynamic'][];
+	tarjan: (nodes: string[], next: (node: string) => Iterable<string>) => string[][];
+	unassigned: (graph?: Graph) => string[];
+};
 
 describe('the dependency check itself', () => {
 	it('finds strongly connected components (Tarjan)', () => {
@@ -86,6 +95,10 @@ describe('the dependency check itself', () => {
 
 describe('src/lib', () => {
 	const graph = buildGraph();
+
+	it('the package imports nothing of its shadcn-svelte registry (registry/)', () => {
+		expect(registryImports()).toEqual([]);
+	});
 
 	it('every module belongs to a context', () => {
 		expect(unassigned(graph)).toEqual([]);

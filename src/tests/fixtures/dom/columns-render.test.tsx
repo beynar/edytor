@@ -15,7 +15,7 @@ import { createDocument, layoutSemantics } from '$lib/crdt/index.js';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { renderDomEdytor } from '../../dom/test.utils.js';
 import { column, columns, contractDoc, p, renderColumns, tree } from './columns.helpers.js';
-import { richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -51,6 +51,9 @@ jobs:
       # stripped declarations, and the doc examples compile against them.
       - run: pnpm check:api
       - run: pnpm check:docs
+      # The shadcn-svelte registry the site serves (`site/public/r`) is built
+      # from `registry.json` and `registry/` as committed.
+      - run: pnpm check:registry
       - run: pnpm test:typecheck
       - run: pnpm test:dom:typecheck
       - run: pnpm test:do:typecheck

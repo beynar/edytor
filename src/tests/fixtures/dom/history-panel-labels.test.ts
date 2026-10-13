@@ -6,9 +6,9 @@
  * it. Expected words come from the dictionary, never from a run.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { englishWords, setWords } from '../../../routes/chrome/words.svelte.js';
+import { englishWords, setWords } from '$registry/edytor/chrome/words.svelte.js';
 import { render } from '@testing-library/svelte';
-import HistoryPanel from '../../../routes/chrome/HistoryPanel.svelte';
+import HistoryPanel from '$registry/edytor/chrome/HistoryPanel.svelte';
 import type { HistoryClient, HistoryVersion } from '$lib/collaboration/history/client.js';
 import { createDocument } from '$lib/crdt/index.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';

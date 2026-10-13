@@ -37,11 +37,14 @@
  * leave to the reader (`// your storage`, your backend, the `Env` that
  * `wrangler types` writes), so the rest of each block is checked as written.
  *
- * `$lib/chrome/…` is the demo's chrome as the ready-made menus page has the reader
- * copy it (`src/routes/chrome` into `src/lib/chrome`, its `$lib/index.js`
- * imports naming `edytor`): it is written beside the examples that way and
- * checked with them, against the package as a consumer installs it.
- * They declare functions and bindings, never a value a component reads: a
+ * The starter and the ready-made chrome are the shadcn-svelte registry's
+ * (`registry/`), which an app copies into `$lib/components` with
+ * `shadcn-svelte add`: they are written beside the examples as `add` writes
+ * them (`$lib/components/edytor/…`, the shadcn components at
+ * `$lib/components/ui/…`, `cn` at `$lib/utils`) and checked with them,
+ * against the package as a consumer installs it, so the registry reaching
+ * an `@internal` member fails too.
+ * The declaration files declare functions and bindings, never a value a component reads: a
  * component or module that uses `edytor` without binding, importing or
  * declaring it fails, as it would in an app.
  *
@@ -61,7 +64,7 @@
  * build, and `.svelte-kit` is ignored by git, prettier and eslint.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import path from 'node:path';
 import { buildPackage, ROOT } from './package-declarations.mjs';
@@ -69,9 +72,10 @@ import { buildPackage, ROOT } from './package-declarations.mjs';
 const DOCS = path.join(ROOT, 'site/content/docs');
 const OUT = path.join(ROOT, '.svelte-kit/docexamples');
 const DECLARATIONS = path.join(ROOT, 'scripts/doc-examples');
-const CHROME = path.join(OUT, 'chrome');
 const BIN = path.join(ROOT, 'node_modules/.bin');
 const DIST = path.join(ROOT, 'node_modules/.cache/edytor-docs/dist');
+// The registry as `shadcn-svelte add` writes it into an app's `$lib`.
+const REGISTRY = path.join(OUT, 'registry');
 const keep = process.argv.includes('--keep');
 
 // The fence-meta grammar Blume uses (a quoted attr, a `{1,3}` range, or a word).
@@ -183,30 +187,31 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
 for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
 	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
 rmSync(OUT, { recursive: true, force: true });
-// The demo's chrome, copied as the ready-made menus page says (`$lib/chrome/…`).
-mkdirSync(CHROME, { recursive: true });
-for (const name of readdirSync(path.join(ROOT, 'src/routes/chrome')))
-	writeFileSync(
-		path.join(CHROME, name),
-		readFileSync(path.join(ROOT, 'src/routes/chrome', name), 'utf8').replaceAll(
-			'$lib/index.js',
-			'edytor'
-		)
-	);
 // `$lib/x` names a block of the same page titled `src/lib/x`, as in an app.
 const local = ({ target, base, code }) =>
 	code.replace(/(['"])\$lib\/([^'"]+)\1/g, (whole, quote, rest) => {
-		const named = rest.startsWith('chrome/')
-			? path.join(CHROME, rest.slice('chrome/'.length))
-			: path.join(base, 'lib', rest);
-		if (named.startsWith(CHROME + path.sep)) {
-			const relative = path.relative(path.dirname(target), named).replaceAll(path.sep, '/');
-			return `${quote}${relative}${quote}`;
-		}
+		const named = path.join(base, 'lib', rest);
 		if (![named, `${named}.ts`].some((file) => sourcesOf.has(file))) return whole;
 		const relative = path.relative(path.dirname(target), named).replaceAll(path.sep, '/');
 		return `${quote}${relative.startsWith('.') ? relative : `./${relative}`}${quote}`;
 	});
+// The registry, copied as `add` copies it: its aliases become the app's.
+cpSync(path.join(ROOT, 'registry/edytor'), path.join(REGISTRY, 'components/edytor'), {
+	recursive: true
+});
+cpSync(path.join(ROOT, 'registry/ui'), path.join(REGISTRY, 'components/ui'), { recursive: true });
+cpSync(path.join(ROOT, 'registry/utils.ts'), path.join(REGISTRY, 'utils.ts'));
+const copied = (dir) =>
+	readdirSync(dir, { withFileTypes: true, recursive: true })
+		.filter((entry) => entry.isFile() && /\.(ts|svelte)$/.test(entry.name))
+		.map((entry) => path.join(entry.parentPath, entry.name));
+for (const file of copied(REGISTRY))
+	writeFileSync(
+		file,
+		readFileSync(file, 'utf8')
+			.replaceAll('$registry/ui/', '$lib/components/ui/')
+			.replaceAll('$registry/utils', '$lib/utils')
+	);
 for (const example of examples) {
 	const { target } = example;
 	mkdirSync(path.dirname(target), { recursive: true });
@@ -238,6 +243,9 @@ const paths = Object.fromEntries(
 		targets.map((target) => path.resolve(KIT, target))
 	])
 );
+paths['$lib/components/*'] = [path.join(REGISTRY, 'components/*')];
+paths['$lib/utils'] = [path.join(REGISTRY, 'utils.ts')];
+paths['$lib/utils.js'] = [path.join(REGISTRY, 'utils.ts')];
 const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 for (const [subpath, target] of Object.entries(pkg.exports)) {
 	const file = typeof target === 'string' ? target : target.types;
@@ -271,7 +279,12 @@ if (app.length) {
 			extends: path.join(ROOT, 'tsconfig.json'),
 			// `./$types` of a route under `app/` resolves into the project's types.
 			compilerOptions: { paths, rootDirs: [OUT, path.join(KIT, 'types')] },
-			include: [...ambient, path.join(CHROME, '**/*'), ...app.map((example) => example.target)],
+			include: [
+				...ambient,
+				path.join(REGISTRY, '**/*.ts'),
+				path.join(REGISTRY, '**/*.svelte'),
+				...app.map((example) => example.target)
+			],
 			exclude: []
 		})
 	);

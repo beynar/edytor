@@ -35,6 +35,7 @@ pnpm lint                  # prettier and eslint (the Worker-safe boundary, the 
 pnpm check:deps            # no import cycle across contexts (the unit lane runs it too: src/tests/deps.test.ts)
 pnpm check:worker          # Worker bundles of src/lib/crdt and src/lib/cloudflare
 pnpm check:docs            # type-checks the site's doc examples marked `check`
+pnpm check:registry        # the shadcn-svelte registry in site/public/r is built from registry/ as committed (pnpm registry:build)
 pnpm test:typecheck
 pnpm test:dom:typecheck
 pnpm test:do:typecheck
@@ -63,6 +64,7 @@ pnpm test:integration --project=mobile-chromium
 pnpm test:integration --project=mobile-webkit
 pnpm test:cdp              # Chromium through the DevTools IME path
 pnpm test:dst              # the editor-input corpus: solo in three engines, collab in Chromium
+pnpm test:registry-install # the starter registry added to a fresh SvelteKit + shadcn-svelte app, built, server-rendered (network)
 ```
 
 Real browser behaviour (selection, IME, Android drift) is proven only in these lanes; the jsdom
@@ -164,7 +166,7 @@ ruleset (Settings → Rules → Rulesets):
 `publish.yml` runs on a `v*` tag: it calls `ci.yml` on the tagged commit with the Chromium lane
 and publishes to npm only when it passed (`next` for a `-next.N` pre-release, `latest` for a
 release candidate and a release). `nightly.yml` runs Firefox, WebKit, the mobile
-projects, CDP and DST every night on `master` (WebKit's projects, CDP and DST on macOS:
+projects, CDP, DST and the registry install every night on `master` (WebKit's projects, CDP and DST on macOS:
 Apple's WebKit and the Mac keys the specs press; on another host the shared fixture makes an
 emulated Safari or iPhone report that host's platform, so `mod` is the key a spec presses); a
 red night is an issue to fix, not a gate.

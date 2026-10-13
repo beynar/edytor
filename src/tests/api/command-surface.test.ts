@@ -27,7 +27,7 @@ import {
 	type Text
 } from '$lib/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '../../routes/chrome/plugins.js';
+import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const p = (id: string, text: string): JSONBlock => ({ id, type: 'paragraph', content: [{ text }] });
 

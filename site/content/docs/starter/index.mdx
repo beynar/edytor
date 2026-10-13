@@ -1,0 +1,101 @@
+---
+title: Starter editor
+description: A full Notion-style editor in one component, added to your app with shadcn-svelte, with every plugin, the ready-made menus, comments and a page with a cover, an icon, a title and properties.
+icon: sparkles
+---
+
+`<Edytor />` is deliberately small: rich text, no menus, no handles. The starter is the other end: one component with everything on, built with [shadcn-svelte](https://www.shadcn-svelte.com) components and copied into your app, so the code is yours.
+
+```sh
+npx shadcn-svelte@latest add https://edytor.dev/r/starter.json
+```
+
+```svelte title="src/routes/+page.svelte" check
+<script lang="ts">
+	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
+</script>
+
+<StarterEditor />
+```
+
+That is a full editor:
+
+- **Every useful bundled plugin**: rich text, code, tables, columns, images, files, video and audio, embeds, bookmarks, equations, mentions, a table of contents, markdown shortcuts, find, the marquee selection and block moves from the keyboard, with nesting on. Page links join when you give it `pages`, [comments](/docs/starter/comments) when you give it a `comments` client.
+- **The ready-made menus**: the slash menu, the block handles and block menu, the selection toolbar and its link card, the table's grips and menus, the code header and its language list, the callout icon picker, the equation panel, the image toolbar, the empty media panel, the find bar, the marquee box, the suggestion bar and the comment cards.
+- **The page around the blocks**: a cover image, a page icon, a large title and [typed page properties](/docs/starter/properties) (a date picker, selects, people…), all stored in the document's data, so they sync in a room and undo like the blocks.
+- **Your shadcn theme**: the page, the blocks and every menu read your app's shadcn tokens, light and `.dark` ([Customizing](/docs/starter/customizing)).
+
+## Try it
+
+<StarterDemo />
+
+Hover the cover to change or reposition it, click the icon, edit a property, or press <kbd>Enter</kbd> in the title to start writing. The editor is local to this page: a reload resets it.
+
+## Install
+
+The starter is a [shadcn-svelte registry](https://www.shadcn-svelte.com/docs/registry) item: the CLI copies its source into your app, with the shadcn components it uses, and installs `edytor`.
+
+1. **A SvelteKit app with Tailwind v4.** `npx sv create my-app --add tailwindcss`, or `npx sv add tailwindcss` in an existing one.
+2. **shadcn-svelte.** `npx shadcn-svelte@latest init` writes `components.json`, your theme's tokens (`:root` and `.dark`) in your CSS and `cn` in `$lib/utils`.
+3. **The starter.**
+
+   ```sh
+   npx shadcn-svelte@latest add https://edytor.dev/r/starter.json
+   ```
+
+It writes:
+
+| Where | What |
+| --- | --- |
+| `$lib/components/edytor/starter/` | `StarterEditor.svelte`, its plugin list (`starterPlugins.ts`), its types and the page parts (`page/`) |
+| `$lib/components/edytor/chrome/` | the [ready-made menus](/docs/customization/ready-made-menus) (the `edytor-chrome` item, added with it) and `tokens.css`, the editor on your tokens |
+| `$lib/components/ui/` | the shadcn components they use: button, input, badge, calendar, checkbox, command, popover, select, collapsible, kbd, separator, avatar, textarea |
+| `package.json` | `edytor` and `@internationalized/date` |
+
+The paths follow your `components.json` aliases (`#lib/components` on a SvelteKit 3 app). Only the menus, without the page: `npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json`.
+
+## A real page
+
+The props `<Edytor>` takes pass through, so a document comes and goes as usual, and each part is a prop:
+
+```svelte title="src/lib/Page.svelte" check
+<script lang="ts">
+	import type { JSONDoc } from 'edytor';
+	import {
+		StarterEditor,
+		type StarterProperty
+	} from '$lib/components/edytor/starter/index.js';
+
+	let { value, save }: { value: JSONDoc; save: (value: JSONDoc) => void } = $props();
+
+	const properties: StarterProperty[] = [
+		{
+			id: 'status',
+			name: 'Status',
+			type: 'select',
+			options: [
+				{ value: 'todo', label: 'To do', color: 'gray' },
+				{ value: 'done', label: 'Done', color: 'green' }
+			]
+		},
+		{ id: 'due', name: 'Due', type: 'date' }
+	];
+	const upload = async (file: File) => {
+		const response = await fetch('/api/upload', { method: 'POST', body: file });
+		return (await response.json()).url as string;
+	};
+</script>
+
+<StarterEditor {value} onChange={save} {properties} {upload} plugins={{ equation: false }} />
+```
+
+- `upload` stores what a user adds: an image, a file, a video or an audio block, and the cover or the icon they upload. Without it those accept links only.
+- `plugins` turns a bundled plugin off (`false`) or configures it ([Props](/docs/starter/props#plugins)).
+- The page's data rides in the document: `value.data.title`, `value.data.cover`… ([Page parts](/docs/starter/page)).
+
+## Edge cases
+
+- **The code is yours.** The registry copies files, it does not install a package of the starter: edit them, rename `StarterEditor`, drop a part. Running `add` again offers to overwrite your copy (`-o` does it without asking); keep your changes in git and merge.
+- **`<Edytor />` does not grow.** The bare `edytor` package has no starter in it: an app that never adds the registry item ships none of it.
+- **It renders on the server** from `value` (or `snapshot`) and hydrates with the same markup; the controls that add a cover, an icon or a property appear once the view is live. Dates are formatted in the `locale` prop, the same text on the server and in the browser.
+- **Your own editor instead.** The same chrome, as plugins for your `<Edytor>`, is [Ready-made menus](/docs/customization/ready-made-menus).

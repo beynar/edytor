@@ -1,5 +1,5 @@
 import type { JSONDoc } from 'edytor';
-import { audio, mediaEmptyPlugin } from '../../chrome/plugins';
+import { audio, mediaEmptyPlugin } from '$registry/edytor/chrome/index.js';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import AudioEditor from './AudioEditor.svelte';

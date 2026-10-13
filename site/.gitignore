@@ -6,6 +6,4 @@ dist
 vendor
 # Written by scripts/pack-edytor.sh; served at the site root
 public/edytor-*.tgz
-# The demo's chrome (src/routes/chrome), copied by scripts/pack-edytor.sh for the live editor
-chrome
 .blume-verify/

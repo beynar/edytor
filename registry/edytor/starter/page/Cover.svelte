@@ -132,6 +132,11 @@
 						role="dialog"
 						aria-label={words.starter.coverMenu}
 						data-edytor-starter-cover-menu
+						onCloseAutoFocus={(event) => {
+							// Back on Change cover, even where a press gave it no focus (WebKit).
+							event.preventDefault();
+							frame?.querySelector<HTMLElement>('[data-edytor-starter-change-cover]')?.focus();
+						}}
 					>
 						<form class="flex gap-1.5" onsubmit={applyLink}>
 							<Input

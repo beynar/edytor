@@ -1,18 +1,12 @@
-<script lang="ts" module>
-	// Client only: the editor measures the DOM and opens a socket.
-	export const client = 'only';
-</script>
-
 <script lang="ts">
 	import {
 	Edytor,
 	createColumnsPlugin,
 	createMarkdownShortcutsPlugin,
 	richTextPlaceholder,
-	tableBlock,
-	type EdytorInstance,
-	type JSONDoc
+	type EdytorInstance
 } from 'edytor';
+	import { demoDocument } from './demo-document';
 	// The demo's chrome (the package draws none), copied by scripts/pack-edytor.sh.
 	import {
 		blockHandlesPlugin,
@@ -32,7 +26,18 @@
 
 	/** The public demo room (site/room): one shared document per UTC day. */
 	const SERVER = 'wss://edytor-room.beynar.workers.dev/rooms';
-	const room = `demo-${new Date().toISOString().slice(0, 10)}`;
+	/**
+	 * The server render (prerendered at build time) shows the seed as a read-only
+	 * snapshot and opens nothing, so what depends on the browser (today's room,
+	 * the guest id, a random name) is read only there; the room's label shows
+	 * once mounted, so the server and hydrated markup agree.
+	 */
+	const browser = typeof window !== 'undefined';
+	const room = browser ? `demo-${new Date().toISOString().slice(0, 10)}` : 'demo';
+	let roomLabel = $state('');
+	$effect(() => {
+		roomLabel = room;
+	});
 
 	const NAMES = ['Ada', 'Grace', 'Alan', 'Linus', 'Margaret', 'Tim', 'Barbara', 'Dennis', 'Radia', 'Ken'];
 	const COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
@@ -51,77 +56,7 @@
 		}
 	};
 
-	const value: JSONDoc = {
-		children: [
-			{ id: 'hello', type: 'heading', data: { level: 'h1' }, content: [{ text: 'Edit this page with everyone' }] },
-			{
-				id: 'intro',
-				type: 'paragraph',
-				content: [
-					{ text: 'This document is live. Open this page in another tab or send it to a friend: ' },
-					{ text: 'every keystroke syncs', marks: { bold: true } },
-					{ text: ' through a Cloudflare Durable Object, and it resets every day.' }
-				]
-			},
-			{
-				id: 'tip',
-				type: 'callout',
-				data: { icon: '💡' },
-				content: [{ text: 'Try it' }],
-				children: [
-					{
-						id: 'tip-body',
-						type: 'paragraph',
-						content: [
-							{ text: 'Type ' },
-							{ text: '/', marks: { code: true } },
-							{ text: ' for blocks, select text to format it, and drag the six-dot handle to move or nest a block. Drag from the margin to select several blocks at once.' }
-						]
-					}
-				]
-			},
-			{ id: 'todo-1', type: 'todo-item', data: { checked: true }, content: [{ text: 'Collaborative by default' }] },
-			{ id: 'todo-2', type: 'todo-item', data: { checked: false }, content: [{ text: 'Works offline, syncs when you are back' }] },
-			{ id: 'quote', type: 'quote', content: [{ text: 'Your words stay yours, even as the page changes.' }] },
-			{
-				id: 'columns',
-				type: 'columns',
-				children: [
-					{
-						id: 'column-left',
-						type: 'column',
-						children: [{ id: 'column-left-text', type: 'paragraph', content: [{ text: 'Drag a block to the edge of another to put them side by side.' }] }]
-					},
-					{
-						id: 'column-right',
-						type: 'column',
-						children: [{ id: 'column-right-text', type: 'paragraph', content: [{ text: 'Drag the gap between two columns to resize them.' }] }]
-					}
-				]
-			},
-			{
-				...tableBlock({
-					cells: [
-						['Block', 'What it holds'],
-						['Table', 'Rows of cells: drag a grip to move a row or a column'],
-						['Columns', 'Any blocks, side by side']
-					],
-					headerRow: true,
-					widths: [140, 320]
-				}),
-				id: 'table'
-			},
-			{
-				id: 'code',
-				type: 'code',
-				content: [{ text: '' }],
-				children: [{ id: 'code-line', type: 'codeLine', content: [{ text: 'const editor = "yours to shape";' }] }]
-			},
-			{ id: 'end', type: 'paragraph', content: [{ text: '' }] }
-		]
-	};
-
-	const guest = guestId();
+	const guest = browser ? guestId() : 'server';
 	/** The actor id is the user id the demo room's `authorize` gives this guest (`guest:<id>`). */
 	const actor = { id: `guest:${guest}`, name: `${pick(NAMES)} (guest)`, color: pick(COLORS) };
 	let edytor = $state<EdytorInstance>();
@@ -164,7 +99,7 @@
 <div class="live-editor-frame edytor-notion">
 	<div class="live-editor-bar">
 		<span class="live-crumb">🌱 Edit this page with everyone</span>
-		<span class="live-room" title="One shared page per day">{room}</span>
+		<span class="live-room" title="One shared page per day">{roomLabel}</span>
 		<span class="live-people">
 			{#each people.slice(0, 5) as person (person.id)}
 				<span class="live-avatar" style:background={person.color} title={person.name}
@@ -186,7 +121,8 @@
 	<div class="live-editor">
 		<Edytor
 			bind:edytor
-			{value}
+			value={demoDocument}
+			snapshot={demoDocument}
 			{actor}
 			server={SERVER}
 			{room}

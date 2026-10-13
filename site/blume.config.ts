@@ -61,6 +61,21 @@ const devIslands: AstroIntegration = {
   },
 };
 
+/**
+ * The home page's live editor renders on the server (its seed, read-only),
+ * so Vite compiles the packed `edytor`'s `.svelte` files for the server
+ * instead of handing them to Node.
+ */
+const serverRenderedEdytor: AstroIntegration = {
+  name: "edytor-server-render",
+  hooks: {
+    "astro:config:setup": ({ updateConfig }) => {
+      const server = { resolve: { noExternal: ["edytor"] } };
+      updateConfig({ vite: { ssr: { noExternal: ["edytor"] }, environments: { ssr: server, prerender: server } } });
+    },
+  },
+};
+
 export default defineConfig({
   title: "Edytor",
   description:
@@ -80,7 +95,7 @@ export default defineConfig({
       display: "group",
     },
   },
-  integrations: [devIslands],
+  integrations: [devIslands, serverRenderedEdytor],
   deployment: cloudflare({ site: "https://edytor.dev" }),
   agents: {
     llmsTxt: true,

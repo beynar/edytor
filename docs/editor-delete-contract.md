@@ -426,6 +426,27 @@ layout its lines (the first one joining the text, `flow.split`). Elsewhere
 a layout line is placed as a block (`flow.apart`: it shows no text). Pins:
 `columns-clipboard.test.tsx`.
 
+### `drop.files.place` — files dropped from outside land at the indicator
+
+Files dragged from outside over an editable view (a `dragover` of
+`Files`) show the block drag's drop indicator where they land, resolved by
+the block drag's one placement rule (`dnd/placement.ts`: halves of a
+block's own row, its levels, `inside` past one nesting step, the beside
+bands, the margins) for a drag that moves no block, whose places are those
+the document takes new blocks of the files' kinds at (the container rule,
+`fits`; beside, a layout kind; never in a void or an island). The drop
+places one block per file the view's uploads take, each of its kind
+(`KindUpload`, `fallback` last), in the transfer's order, at that place
+(`placeNew`: before, after, inside, or beside through `layout.place-beside`),
+as one command and one undo step; nothing is split. With no place under
+the pointer the drop lands at the drop point (`flow.apart`). The
+indicator shows with or without the block handles plugin, only when the
+view's uploads take one of the files; a `dragleave` out of the host and
+the drop clear it. A read-only view shows none, and swallows the drop
+(the browser must not open the file). A text or HTML drop keeps the drop
+point. Pins: `file-drop-placement.test.tsx`, `file-drop.spec.ts`,
+`image.spec.ts`.
+
 ### `flow.void` — a block that cannot split
 
 A void block (its caption) is never split: at a position inside one, the

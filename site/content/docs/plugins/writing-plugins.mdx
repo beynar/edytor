@@ -181,7 +181,7 @@ These hooks receive the DOM event as `e` and a `prevent` function.
 
 **`onCopy` and `onCut`** run before the editor writes its clipboard data. `prevent()` stops the editor from writing anything and prevents the event's default; write your own data in the callback with `e.clipboardData.setData(...)`. A prevented cut also deletes nothing. Cut does not run in a readonly editor.
 
-**`onPaste`** runs after the editor checked for its own fragment format (content copied from an Edytor pastes without asking plugins), and before it imports external HTML or plain text. Pasted files reach the editor only through this hook: unclaimed files insert nothing. The hook also runs for dropped files and HTML, with an `e` that carries only `clipboardData`. A Shift-paste of plain text skips it.
+**`onPaste`** runs after the editor checked for its own fragment format (content copied from an Edytor pastes without asking plugins), and before it imports external HTML or plain text. Pasted files reach the editor only through this hook: unclaimed files insert nothing. The hook also runs for dropped files and HTML, with an `e` that carries only `clipboardData`; for files dropped from outside it also gets `at`, where the drop indicator showed them landing (`{ block, position }`). A Shift-paste of plain text skips it.
 
 ```ts title="noFiles.ts" check
 import type { Plugin } from 'edytor';

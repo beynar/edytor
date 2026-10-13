@@ -309,6 +309,7 @@ export declare class BlockHandleController {
     private scrolling;
     private group;
     private readonly indicator;
+    private readonly drop;
     private held;
     private handle;
     private gripped;
@@ -323,27 +324,11 @@ export declare class BlockHandleController {
     addBlock(block: Block, alt?: boolean, anchor?: HTMLElement | null): void;
     registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
-    private gutter;
-    private margin;
-    private halves;
-    private pick;
-    private reorder;
     private moving;
     private covered;
     dragBlocks(source: Block): Block[];
     private select;
-    private fits;
-    private rowAt;
-    private get layouts();
-    private besideOf;
-    private layoutOf;
-    private beside;
-    private inside;
-    private shown;
-    private emptied;
-    private zones;
     private placement;
-    private carrier;
 }
 ```
 
@@ -3277,6 +3262,10 @@ export type PluginOperations = {
     onPaste?: (payload: {
         prevent: Prevent;
         e: ClipboardEvent;
+        at?: {
+            block: string;
+            position: BlockMovePosition;
+        };
     }) => void;
 };
 ```

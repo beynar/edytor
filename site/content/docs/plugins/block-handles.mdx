@@ -288,7 +288,7 @@ Beside a list item or a code line, the layout wraps the whole list or code block
 
 ### The drop indicator
 
-The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, a theme its look:
+The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. The editor draws the same indicator, by the same rules, for files dragged from your desktop, with or without this plugin ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)). It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, a theme its look:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
 - **Before a first child** (the lower half of a block whose children show): at that child's top, indented to its column.

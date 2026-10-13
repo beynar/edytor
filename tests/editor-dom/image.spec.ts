@@ -144,7 +144,9 @@ test.describe('image file paste and drop (WU-21)', () => {
 		issues.assertClean();
 	});
 
-	test('a dropped image file lands where the indicator shows, uploads, one step', async ({ page }) => {
+	test('a dropped image file lands where the indicator shows, uploads, one step', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		// The drop point: the lower half of `after image`'s row, in its text column

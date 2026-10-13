@@ -26,7 +26,11 @@
 <!-- A dashed drop zone: pick a file or paste a link. -->
 {#snippet emptySlot(panel: MediaEmptyController)}
 	{#if panel.pending?.status === 'uploading'}
-		<div class="zone" role="status">Uploading…</div>
+		<!-- The picture at once, from the file in this tab; the bar until it is stored. -->
+		<div class="zone" role="status">
+			{#if panel.preview}<img class="preview" src={panel.preview} alt="" />{/if}
+			<progress value={panel.progress ?? undefined} max="1">Uploading…</progress>
+		</div>
 	{:else if panel.readonly}
 		<div class="zone">No picture yet</div>
 	{:else}
@@ -176,5 +180,9 @@
 		color: #e6edf3;
 		font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
 		outline: none;
+	}
+	.preview {
+		max-width: 100%;
+		border-radius: 4px;
 	}
 </style>

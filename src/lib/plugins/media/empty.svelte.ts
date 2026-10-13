@@ -70,7 +70,7 @@ export class MediaEmptyController {
 		return !this.block || this.block.edytor.readonly;
 	}
 
-	/** The view lists the uploads plugin and the kind takes files: offer Upload. */
+	/** The kind's plugin was given an `upload`: offer Upload. */
 	get canUpload() {
 		const { block } = this;
 		return Boolean(block && fileUploads(block.edytor) && block.definition.upload);
@@ -80,6 +80,21 @@ export class MediaEmptyController {
 	get pending(): FileUpload | undefined {
 		const { block } = this;
 		return block ? fileUploads(block.edytor)?.of(block.id) : undefined;
+	}
+
+	/**
+	 * The file uploading into this block, shown at once: its object URL
+	 * (this view's only, never stored; revoked once the upload ends), else `null`.
+	 */
+	get preview(): string | null {
+		const { pending } = this;
+		return pending?.status === 'uploading' ? pending.preview : null;
+	}
+
+	/** The share of the upload sent, `0` to `1`; `null` before a report, or with no upload. */
+	get progress(): number | null {
+		const { pending } = this;
+		return pending?.status === 'uploading' ? pending.progress : null;
 	}
 
 	/** Store `value` on the block: why it did not take it, or `null`. */
@@ -93,26 +108,24 @@ export class MediaEmptyController {
 	};
 
 	/**
-	 * Upload `file` with the view's uploader (`createUploadsPlugin`) and store the URL it answers,
-	 * only on the block as it was picked from: still in the tree, of its kind
-	 * and empty (a peer may have set a source, or deleted it, meanwhile).
+	 * Upload `file` with its kind's uploader (its plugin's `upload`), the
+	 * block showing it meanwhile (`pending`, `preview`, `progress`), and
+	 * store the URL it answers, only on the block as it was picked from:
+	 * still in the tree, of its kind and empty (a peer may have set a
+	 * source, or deleted it, meanwhile).
 	 */
 	upload = async (picked: File) => {
 		const { block } = this;
-		const upload = this.canUpload && fileUploads(block?.edytor)?.upload;
-		if (!upload || !block || block.edytor.readonly) return;
+		const uploads = this.canUpload && fileUploads(block?.edytor);
+		if (!uploads || !block || block.edytor.readonly) return;
 		const { edytor, id, type } = block;
-		let src: string;
-		try {
-			src = await upload(picked, { progress: () => {} });
-		} catch {
-			this.failed = 'upload';
-			return;
-		}
-		const live = edytor.idToBlock.get(id);
-		if (!live?.isInTree || live.type !== type || edytor.readonly) return;
-		if (edytor.facade.blockDataOf(id)?.src !== undefined) return;
-		this.failed = this.#store(src, picked);
+		const stored = await uploads.pick(id, picked, (src) => {
+			const live = edytor.idToBlock.get(id);
+			if (!live?.isInTree || live.type !== type || edytor.readonly) return;
+			if (edytor.facade.blockDataOf(id)?.src !== undefined) return;
+			this.failed = this.#store(src, picked);
+		});
+		if (!stored) this.failed = 'upload';
 	};
 
 	/** The link field (`{@attach empty.field}`): Enter embeds its `draft`. */

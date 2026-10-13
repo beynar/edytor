@@ -13,7 +13,6 @@ export {
 	type CalloutIconPicker,
 	type CalloutIconsOptions
 } from './richtext/calloutIcons.svelte.js';
-export { createUploadsPlugin, type UploadsOptions } from './uploads.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
 export type { MenuItemPayload } from './chrome.js';
 export {
@@ -70,6 +69,7 @@ export type {
 } from './blockMenu/BlockMenuController.svelte.js';
 export {
 	createImagePlugin,
+	type ImagePluginOptions,
 	safeImageSrc,
 	storableImageSrc,
 	oversizedInlineImage,
@@ -99,8 +99,8 @@ export {
 	type FilePluginOptions,
 	type FileRowPayload
 } from './media/FilePlugin.svelte';
-export { createVideoPlugin } from './media/VideoPlugin.svelte';
-export { createAudioPlugin } from './media/AudioPlugin.svelte';
+export { createVideoPlugin, type VideoPluginOptions } from './media/VideoPlugin.svelte';
+export { createAudioPlugin, type AudioPluginOptions } from './media/AudioPlugin.svelte';
 export { safeWebUrl, safeMediaSrc, type MediaKind } from './media/media.js';
 export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
 export { createMediaEmptyPlugin, type MediaEmptyOptions } from './media/MediaEmpty.svelte';

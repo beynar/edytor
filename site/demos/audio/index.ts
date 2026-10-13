@@ -1,5 +1,5 @@
-import { createUploadsPlugin, type JSONDoc } from 'edytor';
-import { audioPlugin, mediaEmptyPlugin } from '../../chrome/plugins';
+import type { JSONDoc } from 'edytor';
+import { audio, mediaEmptyPlugin } from '../../chrome/plugins';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import AudioEditor from './AudioEditor.svelte';
@@ -19,9 +19,8 @@ const value: JSONDoc = {
 export default {
 	value,
 	plugins: () => [
-		audioPlugin,
+		audio({ upload: objectUrlUpload }),
 		mediaEmptyPlugin,
-		createUploadsPlugin({ upload: objectUrlUpload }),
 		...basePlugins()
 	],
 	custom: AudioEditor

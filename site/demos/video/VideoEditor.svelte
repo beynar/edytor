@@ -2,7 +2,6 @@
 	import {
 		Edytor,
 		createMediaEmptyPlugin,
-		createUploadsPlugin,
 		createVideoPlugin,
 		type JSONDoc,
 		type MediaEmptyController,
@@ -12,17 +11,15 @@
 	// The page's document and the rest of your editor's plugins.
 	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
 
+	// Every empty media block drawn with the snippet below.
+	const slot = createMediaEmptyPlugin({ empty });
 	// Uploads stay in this tab: the file's object URL.
-	const uploads = createUploadsPlugin({
+	const video = createVideoPlugin({
 		upload: async (file, report) => {
 			report.progress(1);
 			return URL.createObjectURL(file);
 		}
 	});
-
-	// Every empty media block drawn with the snippet below.
-	const slot = createMediaEmptyPlugin({ empty });
-	const video = createVideoPlugin();
 
 	let over = $state(false);
 </script>
@@ -82,7 +79,7 @@
 	{/if}
 {/snippet}
 
-<Edytor {value} plugins={[uploads, video, slot, ...plugins]} aria-label="Video demo" />
+<Edytor {value} plugins={[video, slot, ...plugins]} aria-label="Video demo" />
 
 <style>
 	.slate {

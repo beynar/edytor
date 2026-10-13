@@ -47,7 +47,6 @@ import {
 	videoPlugin,
 	mediaEmptyPlugin
 } from '../../../routes/chrome/plugins.js';
-import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -377,10 +376,7 @@ describe('bookmark', () => {
 describe('file', () => {
 	it('an upload stores the URL, name and size; the block renders a download link', async () => {
 		const upload = vi.fn(async () => 'https://files.example/report.pdf');
-		const { edytor } = await mount(
-			[createUploadsPlugin({ upload }), createFilePlugin()],
-			[{ id: 'f', type: 'file' }]
-		);
+		const { edytor } = await mount([createFilePlugin({ upload })], [{ id: 'f', type: 'file' }]);
 		document.querySelector<HTMLButtonElement>('[data-edytor-media-add]')!.click();
 		await flushDomUpdates();
 		const input = document.querySelector<HTMLInputElement>(
@@ -412,7 +408,7 @@ describe('file', () => {
 		let finish!: (src: string) => void;
 		const upload = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
 		const { edytor } = await mount(
-			[createUploadsPlugin({ upload }), createFilePlugin()],
+			[createFilePlugin({ upload })],
 			[
 				{ id: 'f', type: 'file' },
 				{ id: 'g', type: 'file' }
@@ -481,10 +477,7 @@ describe('video and audio', () => {
 
 	it('a video upload embeds the uploaded URL', async () => {
 		const upload = vi.fn(async () => 'https://cdn.example/clip.webm');
-		const { edytor } = await mount(
-			[createUploadsPlugin({ upload }), createVideoPlugin()],
-			[{ id: 'v', type: 'video' }]
-		);
+		const { edytor } = await mount([createVideoPlugin({ upload })], [{ id: 'v', type: 'video' }]);
 		document.querySelector<HTMLButtonElement>('[data-edytor-media-add]')!.click();
 		await flushDomUpdates();
 		const input = document.querySelector<HTMLInputElement>('input[type=file]')!;

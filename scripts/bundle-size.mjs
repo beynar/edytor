@@ -51,16 +51,17 @@ const APPS = {
 		createTocPlugin, createEquationPlugin, createMentionPlugin, createPageLinkPlugin, createMarqueePlugin,
 		createEmbedPlugin, createBookmarkPlugin, createFilePlugin, createVideoPlugin, createAudioPlugin,
 		createPagePlugin, createCommentsPlugin, createArrowMovePlugin, createCalloutIconsPlugin,
-		createUploadsPlugin, createMediaEmptyPlugin, createImageToolbarPlugin, createSuggestionBarPlugin
+		createMediaEmptyPlugin, createImageToolbarPlugin, createSuggestionBarPlugin
 	} from 'edytor';
+	const upload = async () => '';
 	const plugins = [
 		createBlockHandlesPlugin(), createBlockMenuPlugin(), createSlashMenuPlugin(), createToolbarPlugin(),
 		createCodePlugin(), createColumnsPlugin(), createTablePlugin(), createMarkdownShortcutsPlugin(),
 		createFindPlugin(), createTocPlugin(), createEquationPlugin(),
 		createMentionPlugin({ search: () => [] }), createPageLinkPlugin({ search: () => [] }),
-		createMarqueePlugin(), createEmbedPlugin(), createBookmarkPlugin(), createFilePlugin(),
-		createVideoPlugin(), createAudioPlugin(), createPagePlugin(), createCommentsPlugin({}),
-		createArrowMovePlugin(), createCalloutIconsPlugin(), createUploadsPlugin({ upload: async () => '' }),
+		createMarqueePlugin(), createEmbedPlugin(), createBookmarkPlugin(), createFilePlugin({ upload }),
+		createVideoPlugin({ upload }), createAudioPlugin({ upload }), createPagePlugin(), createCommentsPlugin({}),
+		createArrowMovePlugin(), createCalloutIconsPlugin(),
 		createMediaEmptyPlugin({ empty }), createImageToolbarPlugin({ toolbar: empty }),
 		createSuggestionBarPlugin({ bar: empty })
 	];

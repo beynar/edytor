@@ -455,9 +455,11 @@ export type BlockDefinition = {
 	 */
 	rendersContent?: boolean;
 	/**
-	 * The files the kind takes (the image's `image/*`, the file block's any):
-	 * with the uploads plugin listed, an empty block's Upload sends one and a
-	 * pasted or dropped file becomes a block of this kind (`media.files`).
+	 * The files the kind takes (the image's `image/*`, the file block's any)
+	 * and who sends them (`send`: the media plugins set it from their
+	 * `upload` option): an empty block's Upload sends one, and a pasted or
+	 * dropped file becomes a block of this kind (`media.files`). A kind
+	 * without it takes no files.
 	 */
 	upload?: KindUpload;
 	/**

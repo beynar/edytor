@@ -1,5 +1,5 @@
-import { createUploadsPlugin, type JSONDoc } from 'edytor';
-import { filePlugin, mediaEmptyPlugin } from '../../chrome/plugins';
+import type { JSONDoc } from 'edytor';
+import { file, mediaEmptyPlugin } from '../../chrome/plugins';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import FileEditor from './FileEditor.svelte';
@@ -23,11 +23,10 @@ const value: JSONDoc = {
 };
 
 // Uploads keep the file in this tab: its object URL.
-const uploads = () => createUploadsPlugin({ upload: objectUrlUpload });
 
 export default {
 	value,
-	plugins: () => [uploads(), filePlugin, mediaEmptyPlugin, ...basePlugins()],
+	plugins: () => [file({ upload: objectUrlUpload }), mediaEmptyPlugin, ...basePlugins()],
 	custom: FileEditor,
-	customPlugins: () => [uploads(), mediaEmptyPlugin, ...basePlugins()]
+	customPlugins: () => [mediaEmptyPlugin, ...basePlugins()]
 } satisfies PluginDemo;

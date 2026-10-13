@@ -59,6 +59,13 @@ export type FileRowPayload = {
 	/** That size in the view's words (`media.fileSize`), `''` without one. */
 	sizeLabel: string;
 	/**
+	 * The file is uploading (then `src` is its object URL, this view's only,
+	 * never stored): the row shows it at once, with `progress`.
+	 */
+	uploading: boolean;
+	/** The share sent while it uploads, `0` to `1`; `null` before a report or once stored. */
+	progress: number | null;
+	/**
 	 * The row's link (`<a href={row.src} {@attach row.link}>`): it downloads
 	 * the file under its name, in a new tab without the opener, never dragged
 	 * out of the editor.

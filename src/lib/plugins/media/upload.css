@@ -1,0 +1,23 @@
+/* Loaded by the preview's module: a file uploading, drawn by the plugin when
+   the view has no empty markup (`createMediaEmptyPlugin`). */
+[data-edytor-upload] {
+	display: flex;
+	position: relative;
+	flex-direction: column;
+	gap: 6px;
+}
+[data-edytor-upload] img {
+	display: block;
+	max-width: 100%;
+}
+[data-edytor-upload] progress {
+	width: 100%;
+	height: 4px;
+}
+[data-edytor-upload-image] progress {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	left: 8px;
+	width: auto;
+}

@@ -3,7 +3,6 @@
 	Edytor,
 	createColumnsPlugin,
 	createMarkdownShortcutsPlugin,
-	createUploadsPlugin,
 	richTextPlaceholder,
 	type Uploader,
 	type EdytorInstance
@@ -14,7 +13,7 @@
 		blockHandlesPlugin,
 		blockMenuPlugin,
 		codePlugin,
-		imagePlugin,
+		image,
 		marquee,
 		richTextPlugin,
 		slashMenuPlugin,
@@ -83,8 +82,9 @@
 	// frame's margin selects blocks.
 	/**
 	 * A dropped or pasted image goes into the shared page itself, as a `data:` URL
-	 * every visitor of the room sees (the demo has no file storage); a larger file,
-	 * or one that is not an image, is refused.
+	 * every visitor of the room sees (the demo has no file storage), shown at once
+	 * from the file while it is read; a larger file is refused. Only the image
+	 * plugin takes files here.
 	 */
 	const MAX_IMAGE = 200 * 1024;
 	const inlineImage: Uploader = (file, report) =>
@@ -101,7 +101,6 @@
 		});
 
 	const plugins = [
-		createUploadsPlugin({ upload: inlineImage }),
 		aiDemoPlugin,
 		blockHandlesPlugin,
 		blockMenuPlugin,
@@ -113,7 +112,7 @@
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
-		imagePlugin,
+		image({ upload: inlineImage }),
 		richTextPlugin
 	];
 </script>

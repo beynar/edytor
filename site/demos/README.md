@@ -36,7 +36,7 @@ export default {
 
 - `basePlugins()` is the editor around every demo: Notion's placeholders, the block handles, the block menu, the slash menu, the toolbar and rich text. List the page's plugins before it. `<Edytor>` adds its defaults (arrow move, image, suggestions) itself.
 - The page's plugin comes from `../../chrome/plugins` when the demo chrome has it (`codePlugin`, `tablePlugin`, `equation()`, `mention({ items })`, `comments({ client, user, users })`, …), else from `edytor`.
-- `customPlugins` never holds a second instance of the plugin the Customize component configures: the first plugin listed wins a kind, so a second instance's options would do nothing and only confuse a reader. When that plugin is one of `basePlugins()`, pass it to leave the demo's out: `customPlugins: () => basePlugins(toolbarPlugin)`. Add what else the page needs (a media plugin's uploads, the columns plugin) there.
+- `customPlugins` never holds a second instance of the plugin the Customize component configures: the first plugin listed wins a kind, so a second instance's options would do nothing and only confuse a reader. When that plugin is one of `basePlugins()`, pass it to leave the demo's out: `customPlugins: () => basePlugins(toolbarPlugin)`. Add what else the page needs (a media plugin with its `upload`, the columns plugin) there.
 - Keep ids unique in the seed and the document short: a heading or a sentence of context, the plugin's blocks, maybe one empty paragraph to type in.
 
 ## The Customize component
@@ -106,7 +106,7 @@ No room, no socket, no server, no persistence: no `server`, `room`, `sync` or `d
 | --- | --- |
 | Comments | `createMemoryCommentsClient({ user })` from `edytor` |
 | Mention people, page link pages | a fixed list: `items: searchBy(PEOPLE, (p) => p.label)` (`base.ts`) |
-| Uploads (image, file, video, audio) | `createUploadsPlugin({ upload: objectUrlUpload })` (`base.ts`): the file's object URL |
+| Uploads (image, file, video, audio) | each media plugin's `upload: objectUrlUpload` (`base.ts`): the file's object URL |
 | Bookmark unfurl | a function answering canned metadata after a short delay |
 | An image to show | a `data:image/svg+xml,…` URL |
 | A page to open (`page` plugin) | an `open` that changes nothing outside the editor |

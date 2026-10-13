@@ -14,7 +14,7 @@ icon: music
 <Edytor plugins={[createAudioPlugin()]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), audio files are linked only.
+A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. Without `upload` (`createAudioPlugin({ upload })`), audio files are linked only.
 
 ## Try it
 
@@ -34,7 +34,6 @@ The empty slot is your `empty` snippet (`createMediaEmptyPlugin({ empty })`), so
 		Edytor,
 		createAudioPlugin,
 		createMediaEmptyPlugin,
-		createUploadsPlugin,
 		type JSONDoc,
 		type MediaEmptyController,
 		type Plugin
@@ -43,17 +42,15 @@ The empty slot is your `empty` snippet (`createMediaEmptyPlugin({ empty })`), so
 	// The page's document and the rest of your editor's plugins.
 	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
 
-	// An app would upload to its storage; this keeps the file in the tab.
-	const uploads = createUploadsPlugin({
+	// The empty slot of every media block, drawn by the snippet below.
+	const empty = createMediaEmptyPlugin({ empty: slot });
+	// Uploads stay in this tab: the file's object URL.
+	const audio = createAudioPlugin({
 		upload: async (file, report) => {
 			report.progress(1);
 			return URL.createObjectURL(file);
 		}
 	});
-
-	// The empty slot of every media block, drawn by the snippet below.
-	const empty = createMediaEmptyPlugin({ empty: slot });
-	const audio = createAudioPlugin();
 </script>
 
 <!-- A drop zone: one big target, the link field below it. -->
@@ -99,7 +96,7 @@ The empty slot is your `empty` snippet (`createMediaEmptyPlugin({ empty })`), so
 	{/if}
 {/snippet}
 
-<Edytor {value} plugins={[audio, empty, uploads, ...plugins]} aria-label="Audio demo" />
+<Edytor {value} plugins={[audio, empty, ...plugins]} aria-label="Audio demo" />
 
 <style>
 	.zone {
@@ -161,7 +158,7 @@ The empty slot is your `empty` snippet (`createMediaEmptyPlugin({ empty })`), so
 
 ## Options
 
-`createAudioPlugin()` takes no options. The empty block is drawn by the view's media empty plugin ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). With the uploads plugin listed, the empty block has an Upload (`accept="audio/*"`) and pasted and dropped audio files become audio blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); the answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createAudioPlugin(options)` takes an `AudioPluginOptions`: `upload`, an `Uploader` that stores a file and answers its URL. The empty block is drawn by the view's media empty plugin ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). With `upload`, the empty block has an Upload (`accept="audio/*"`) and pasted and dropped audio files become audio blocks ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); the answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays. While it uploads, the block shows the file's name and size with the progress.
 
 ## The kind
 

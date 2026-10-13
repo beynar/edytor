@@ -1,5 +1,5 @@
-import { createUploadsPlugin, type JSONDoc } from 'edytor';
-import { imagePlugin, imageToolbarPlugin, mediaEmptyPlugin } from '../../chrome/plugins';
+import type { JSONDoc } from 'edytor';
+import { image, imageToolbarPlugin, mediaEmptyPlugin } from '../../chrome/plugins';
 import { basePlugins, objectUrlUpload } from '../base';
 import type { PluginDemo } from '../types';
 import ImageEditor from './ImageEditor.svelte';
@@ -39,11 +39,11 @@ const value: JSONDoc = {
 };
 
 // Uploads stay in this tab: the file's object URL.
-const uploads = () => createUploadsPlugin({ upload: objectUrlUpload });
+const images = () => image({ upload: objectUrlUpload });
 
 export default {
 	value,
-	plugins: () => [imagePlugin, imageToolbarPlugin, mediaEmptyPlugin, uploads(), ...basePlugins()],
+	plugins: () => [images(), imageToolbarPlugin, mediaEmptyPlugin, ...basePlugins()],
 	custom: ImageEditor,
-	customPlugins: () => [uploads(), ...basePlugins()]
+	customPlugins: () => [images(), ...basePlugins()]
 } satisfies PluginDemo;

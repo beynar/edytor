@@ -8,10 +8,10 @@ icon: paperclip
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createFilePlugin, createUploadsPlugin } from 'edytor';
+	import { Edytor, createFilePlugin } from 'edytor';
 
-	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
-	const uploads = createUploadsPlugin({
+	// Optional: an Upload button, and pasted or dropped files uploaded.
+	const files = createFilePlugin({
 		upload: async (file) => {
 			const body = new FormData();
 			body.append('file', file);
@@ -21,10 +21,10 @@ icon: paperclip
 	});
 </script>
 
-<Edytor plugins={[uploads, createFilePlugin()]} />
+<Edytor plugins={[files]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without `upload`, files are linked only.
 
 ## Try it
 
@@ -46,7 +46,14 @@ The `row` snippet draws a file block that has a source. Here, a ticket with the 
 	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
 
 	// File blocks drawn as a ticket: an extension badge, the name, the size.
-	const files = createFilePlugin({ row });
+	// Uploads stay in this tab: the file's object URL.
+	const files = createFilePlugin({
+		row,
+		upload: async (file, report) => {
+			report.progress(1);
+			return URL.createObjectURL(file);
+		}
+	});
 
 	const extension = (name: string) => (name.split('.').pop() ?? 'file').slice(0, 4).toUpperCase();
 </script>
@@ -58,6 +65,7 @@ The `row` snippet draws a file block that has a source. Here, a ticket with the 
 		{#if file.sizeLabel}<span class="size">{file.sizeLabel}</span>{/if}
 		<span class="arrow" aria-hidden="true">↓</span>
 	</a>
+	{#if file.uploading}<progress value={file.progress ?? undefined} max="1"></progress>{/if}
 {/snippet}
 
 <Edytor {value} plugins={[files, ...plugins]} aria-label="File demo" />
@@ -105,7 +113,7 @@ The `row` snippet draws a file block that has a source. Here, a ticket with the 
 
 ## Options
 
-`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin, its Upload by the uploads plugin.
+`createFilePlugin(options)` takes a `FilePluginOptions`; the empty block is drawn by the view's media empty plugin. `upload` (an `Uploader`, `(file, report) => Promise<string>`) stores a file and answers its URL: the empty block's Upload and pasted or dropped files no other kind takes; without it the plugin takes links only.
 
 <TypeTable
   type={{
@@ -116,7 +124,7 @@ The `row` snippet draws a file block that has a source. Here, a ticket with the 
   }}
 />
 
-`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
+`row` receives a `FileRowPayload`: `block` (`undefined` in a suggestion's preview), `src`, `name`, `size` (bytes, when it was uploaded), `sizeLabel` (that size in the view's words, `''` without one), `uploading` (`true` while its file uploads: `name` and `size` are the file's at once, `src` its local object URL), `progress` (`0` to `1` while uploading, `null` until `upload` reports one) and `link`, the attachment of your `a`, as a menu's row takes its own: `target="_blank"`, `rel="noopener noreferrer nofollow"`, `draggable="false"` and `download` (the name). Render its `href={file.src}` yourself, so a server-rendered readonly view links too. It is drawn inside the block's void wrapper (`[data-edytor-file]`), above the caption.
 
 ```svelte title="Files.svelte" check
 <script lang="ts">

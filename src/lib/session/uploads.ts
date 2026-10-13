@@ -1,6 +1,6 @@
 /**
  * The view's uploads as the other layers see them: the one per view the
- * uploads plugin claims (`createUploadsPlugin`), and whether it takes a
+ * first media plugin given an `upload` claims (`uploadHooks`), and whether it takes a
  * file (a kind's `upload` accepts it). A file dragged over the view shows
  * where it lands only when its uploads take it (`dnd/fileDrop.ts`).
  */

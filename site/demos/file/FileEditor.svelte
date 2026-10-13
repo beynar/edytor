@@ -5,7 +5,14 @@
 	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
 
 	// File blocks drawn as a ticket: an extension badge, the name, the size.
-	const files = createFilePlugin({ row });
+	// Uploads stay in this tab: the file's object URL.
+	const files = createFilePlugin({
+		row,
+		upload: async (file, report) => {
+			report.progress(1);
+			return URL.createObjectURL(file);
+		}
+	});
 
 	const extension = (name: string) => (name.split('.').pop() ?? 'file').slice(0, 4).toUpperCase();
 </script>
@@ -17,6 +24,7 @@
 		{#if file.sizeLabel}<span class="size">{file.sizeLabel}</span>{/if}
 		<span class="arrow" aria-hidden="true">↓</span>
 	</a>
+	{#if file.uploading}<progress value={file.progress ?? undefined} max="1"></progress>{/if}
 {/snippet}
 
 <Edytor {value} plugins={[files, ...plugins]} aria-label="File demo" />

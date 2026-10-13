@@ -46,6 +46,9 @@ import {
 	type SlashMenuOptions,
 	type FindPluginOptions,
 	type FilePluginOptions,
+	type ImagePluginOptions,
+	type VideoPluginOptions,
+	type AudioPluginOptions,
 	createSuggestionBarPlugin
 } from '$lib/index.js';
 import * as chrome from './chrome.svelte';
@@ -82,7 +85,7 @@ export const table = (options: TablePluginOptions = {}) =>
 export const tablePlugin = table();
 export const equation = (options: EquationPluginOptions = {}) =>
 	createEquationPlugin({ panel: chrome.equationPanel, ...options });
-export const image = () => createImagePlugin();
+export const image = (options: ImagePluginOptions = {}) => createImagePlugin(options);
 /** The image toolbar (alignments, alt text) over the hovered image. */
 export const imageToolbarPlugin = createImageToolbarPlugin({ toolbar: chrome.imageToolbar });
 export const imagePlugin = image();
@@ -110,8 +113,8 @@ export const mention = (options: MentionPluginOptions) =>
 export const pageLink = (options: PageLinkPluginOptions) =>
 	createPageLinkPlugin({ menu: chrome.pageLinkMenu, ...options });
 export const file = (options: FilePluginOptions = {}) => createFilePlugin(options);
-export const video = () => createVideoPlugin();
-export const audio = () => createAudioPlugin();
+export const video = (options: VideoPluginOptions = {}) => createVideoPlugin(options);
+export const audio = (options: AudioPluginOptions = {}) => createAudioPlugin(options);
 export const filePlugin = file();
 export const videoPlugin = video();
 export const audioPlugin = audio();

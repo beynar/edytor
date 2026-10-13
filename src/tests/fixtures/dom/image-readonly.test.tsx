@@ -13,7 +13,6 @@ import {
 	mediaEmptyPlugin,
 	richTextPlugin
 } from '../../../routes/chrome/plugins.js';
-import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -26,13 +25,7 @@ const mount = async (readonly: boolean) => {
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [
-				createUploadsPlugin({ upload }),
-				richTextPlugin,
-				mentionPlugin,
-				createImagePlugin(),
-				mediaEmptyPlugin
-			],
+			plugins: [richTextPlugin, mentionPlugin, createImagePlugin({ upload }), mediaEmptyPlugin],
 			readonly,
 			value: { children: [{ type: 'image', content: [{ text: '' }] }] }
 		}

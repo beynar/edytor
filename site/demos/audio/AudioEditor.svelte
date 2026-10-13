@@ -3,7 +3,6 @@
 		Edytor,
 		createAudioPlugin,
 		createMediaEmptyPlugin,
-		createUploadsPlugin,
 		type JSONDoc,
 		type MediaEmptyController,
 		type Plugin
@@ -12,17 +11,15 @@
 	// The page's document and the rest of your editor's plugins.
 	let { value, plugins = [] }: { value?: JSONDoc; plugins?: Plugin[] } = $props();
 
-	// An app would upload to its storage; this keeps the file in the tab.
-	const uploads = createUploadsPlugin({
+	// The empty slot of every media block, drawn by the snippet below.
+	const empty = createMediaEmptyPlugin({ empty: slot });
+	// Uploads stay in this tab: the file's object URL.
+	const audio = createAudioPlugin({
 		upload: async (file, report) => {
 			report.progress(1);
 			return URL.createObjectURL(file);
 		}
 	});
-
-	// The empty slot of every media block, drawn by the snippet below.
-	const empty = createMediaEmptyPlugin({ empty: slot });
-	const audio = createAudioPlugin();
 </script>
 
 <!-- A drop zone: one big target, the link field below it. -->
@@ -68,7 +65,7 @@
 	{/if}
 {/snippet}
 
-<Edytor {value} plugins={[audio, empty, uploads, ...plugins]} aria-label="Audio demo" />
+<Edytor {value} plugins={[audio, empty, ...plugins]} aria-label="Audio demo" />
 
 <style>
 	.zone {

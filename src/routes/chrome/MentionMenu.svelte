@@ -19,6 +19,7 @@
 			data-selected={controller.index === index}
 			{@attach controller.option(index)}
 			data-testid="trigger-menu-item"
+			data-mention-kind={controller.trigger.name}
 			onmousemove={() => (controller.index = index)}
 			onclick={() => void controller.pick(item)}
 		>

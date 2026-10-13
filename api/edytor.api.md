@@ -2883,6 +2883,7 @@ export type MentionItem = {
 export type MentionPluginOptions = {
     items: (query: string, ctx: TriggerContext) => readonly MentionItem[] | Promise<readonly MentionItem[]>;
     char?: string;
+    kind?: string;
     menu?: Snippet<[
         TriggerMenuController<MentionItem>
     ]>;
@@ -4260,6 +4261,7 @@ export type ToolbarOptions = {
 // plugins.d.ts
 export type Trigger<T = any> = {
     char: string;
+    name?: string;
     items: (query: string, ctx: TriggerContext) => readonly T[] | Promise<readonly T[]>;
     onPick: (item: T, ctx: TriggerContext) => unknown;
     label?: (item: T) => string;

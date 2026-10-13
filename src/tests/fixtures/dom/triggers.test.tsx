@@ -40,6 +40,11 @@ import {
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
 import {
+	serializeClipboardFragmentToHtml,
+	serializeClipboardFragmentToPlainText
+} from '$lib/clipboard/serializeClipboardFragment.js';
+import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
+import {
 	chrome,
 	codePlugin,
 	mention as createMentionPlugin,
@@ -497,6 +502,139 @@ describe('the @ mention menu', () => {
 		await caretAt(edytor, 'a', 0);
 		await type(editor, '@');
 		expect(document.querySelector('[data-testid="trigger-menu"]')).toBeNull();
+	});
+});
+
+const TICKERS: MentionItem[] = [
+	{ id: 'AAPL', label: 'AAPL', description: 'Apple' },
+	{ id: 'MSFT', label: 'MSFT', description: 'Microsoft' }
+];
+const tickers = (query: string) =>
+	TICKERS.filter((ticker) => ticker.label.toLowerCase().startsWith(query.toLowerCase()));
+const atoms = (edytor: Edytor, id: string) =>
+	(edytor.idToBlock.get(id)!.value.content ?? []).flatMap((part) =>
+		'text' in part ? [] : [{ type: part.type, data: part.data }]
+	);
+
+describe('several mention triggers (kind)', () => {
+	const both = () => [
+		createMentionPlugin({ items: people }),
+		createMentionPlugin({ char: '$', kind: 'ticker', items: tickers })
+	];
+	const menus = () => document.querySelectorAll('[data-testid="trigger-menu"]').length;
+
+	it('each char opens its own menu; a pick inserts its own kind; undo gives the query back', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '$');
+		expect(labels()).toEqual(['AAPL', 'MSFT']);
+		await type(editor, 'ms');
+		expect(labels()).toEqual(['MSFT']);
+		await dispatchDomKeyDown(document, { key: 'Enter' });
+		await type(editor, ' @gr');
+		expect(labels()).toEqual(['Grace Hopper']);
+		expect(menus()).toBe(1);
+		await dispatchDomKeyDown(document, { key: 'Enter' });
+		expect(atoms(edytor, 'a')).toEqual([
+			{ type: 'ticker', data: { id: 'MSFT', label: 'MSFT' } },
+			{ type: 'mention', data: { id: 'u3', label: 'Grace Hopper' } }
+		]);
+		expect(
+			[...document.querySelectorAll('[data-edytor-mention]')].map((el) => [
+				el.getAttribute('data-edytor-mention'),
+				el.textContent
+			])
+		).toEqual([
+			['ticker', '$MSFT'],
+			['mention', '@Grace Hopper']
+		]);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('[ticker:MSFT] @gr');
+	});
+
+	it('a $ opens no @ menu, and an @ no $ menu', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '@');
+		expect(labels()).toEqual(['Ada Lovelace', 'Alan Turing', 'Grace Hopper']);
+		await dispatchDomKeyDown(document, { key: 'Escape' });
+		await type(editor, ' $');
+		expect(labels()).toEqual(['AAPL', 'MSFT']);
+	});
+
+	it('the menu snippet reads its kind as controller.trigger.name', async () => {
+		const { edytor, editor } = await render([p('a', '')], both());
+		const kinds = () => rows().map((row) => row.getAttribute('data-mention-kind'));
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '$');
+		expect(kinds()).toEqual(['ticker', 'ticker']);
+		await dispatchDomKeyDown(document, { key: 'Escape' });
+		await type(editor, ' @a');
+		expect(kinds()).toEqual(['mention', 'mention', 'mention']);
+	});
+
+	it("plain text and HTML use each kind's char; HTML round-trips to the same kinds", async () => {
+		const { edytor } = await render([p('a', '')], both());
+		const fragment = {
+			version: 1 as const,
+			source: 'edytor' as const,
+			kind: 'blocks' as const,
+			blocks: [
+				{
+					type: 'paragraph',
+					content: [
+						{ text: 'buy ' },
+						{ type: 'ticker', data: { id: 'AAPL', label: 'AAPL' } },
+						{ text: ' with ' },
+						{ type: 'mention', data: { id: 'u1', label: 'Ada <L>' } }
+					]
+				}
+			]
+		};
+		expect(serializeClipboardFragmentToPlainText(fragment, edytor)).toBe('buy $AAPL with @Ada <L>');
+		const html = serializeClipboardFragmentToHtml(fragment, edytor);
+		expect(html).toContain(
+			'<span data-edytor-mention="ticker" data-mention-id="AAPL">$AAPL</span>'
+		);
+		expect(html).toContain('@Ada &lt;L&gt;');
+		const flow = flowOfHtml(edytor, html);
+		expect(JSON.stringify(flow)).toContain('"type":"ticker","data":{"id":"AAPL","label":"AAPL"}');
+		expect(JSON.stringify(flow)).toContain('"type":"mention","data":{"id":"u1","label":"Ada <L>"}');
+	});
+
+	it('the default instance is unchanged: @, mention, the bare attribute', async () => {
+		const { edytor } = await render(
+			[
+				{
+					id: 'a',
+					type: 'paragraph',
+					content: [{ type: 'mention', data: { id: 'u1', label: 'Ada' } }]
+				}
+			],
+			[createMentionPlugin({ items: people })]
+		);
+		expect(edytor.inlineBlocks.get('mention')?.plain?.({ id: 'u1', label: 'Ada' })).toBe('@Ada');
+		expect(document.querySelector('[data-edytor-mention="mention"]')?.textContent).toBe('@Ada');
+		const flow = flowOfHtml(
+			edytor,
+			'<p><span data-edytor-mention data-mention-id="u2">@Bo</span></p>'
+		);
+		expect(JSON.stringify(flow)).toContain('"type":"mention","data":{"id":"u2","label":"Bo"}');
+	});
+
+	it('two instances of one kind: the first listed defines it', async () => {
+		const { edytor } = await render(
+			[
+				{ id: 'a', type: 'paragraph', content: [{ type: 'ticker', data: { id: 'X', label: 'X' } }] }
+			],
+			[
+				createMentionPlugin({ char: '$', kind: 'ticker', items: tickers }),
+				createMentionPlugin({ char: '#', kind: 'ticker', items: tickers })
+			]
+		);
+		expect(edytor.inlineBlocks.get('ticker')?.plain?.({ label: 'X' })).toBe('$X');
+		expect(document.querySelector('[data-edytor-mention="ticker"]')?.textContent).toBe('$X');
 	});
 });
 

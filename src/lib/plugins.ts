@@ -274,6 +274,11 @@ export type TriggerContext = TextRuleContext & {
 export type Trigger<T = any> = {
 	/** The text that opens the menu (one or two characters: `@`, `[[`). */
 	char: string;
+	/**
+	 * The menu's name, read by its markup as `controller.trigger.name` (the
+	 * mention plugin's `kind`: one menu snippet can serve several triggers).
+	 */
+	name?: string;
 	/** The rows for `query`, at once or as a promise (a search); the newest query wins. */
 	items: (query: string, ctx: TriggerContext) => readonly T[] | Promise<readonly T[]>;
 	/**

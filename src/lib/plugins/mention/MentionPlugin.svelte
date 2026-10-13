@@ -3,7 +3,13 @@
 <script module lang="ts">
 	import './mention.css';
 	import type { Snippet } from 'svelte';
-	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
+	import type {
+		InlineBlockDefinition,
+		InlineBlockSnippetPayload,
+		InlineBlockView,
+		Plugin,
+		TriggerContext
+	} from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
 	import { withRulesAndTriggers } from '../triggers/triggers.js';
 
@@ -19,7 +25,7 @@
 		avatar?: string;
 	};
 
-	/** What a `mention` atom stores. */
+	/** What a mention atom stores (whatever its kind). */
 	export type MentionData = { id: string; label: string };
 
 	export type MentionPluginOptions = {
@@ -28,8 +34,15 @@
 			query: string,
 			ctx: TriggerContext
 		) => readonly MentionItem[] | Promise<readonly MentionItem[]>;
-		/** The character that opens the menu (default `@`). */
+		/** The character that opens the menu, and that the atom shows before its label (default `@`). */
 		char?: string;
+		/**
+		 * The inline kind the atoms are (default `mention`), and the name of the
+		 * trigger menu (`controller.trigger.name`). List the plugin once per kind
+		 * to mention several things (`@` people, `$` tickers as `ticker`); two
+		 * instances of one kind: the first listed defines it.
+		 */
+		kind?: string;
 		/**
 		 * The menu's markup and its words; it renders while `controller.isOpen`,
 		 * at the caret (without it, nothing shows). Keep its ARIA with `{@attach
@@ -39,40 +52,71 @@
 		menu?: Snippet<[TriggerMenuController<MentionItem>]>;
 	};
 
+	/** A mention kind's record: its `char` read by the atom's markup. */
+	type MentionKind = InlineBlockDefinition & { char: string };
+
+	/** The char of the atom's kind (the first listed instance's); `@` with no view (a suggestion). */
+	const charOf = (atom: InlineBlockView) =>
+		(atom.handle?.edytor.inlineBlocks.get(atom.type) as Partial<MentionKind> | undefined)?.char ??
+		'@';
+
+	const escape = (value: string) =>
+		value.replace(
+			/[&<>"]/g,
+			(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!
+		);
+
 	/**
 	 * People mentions, as in Notion: `@` opens a menu of the people your app's
 	 * `items(query)` answers; picking one replaces `@query` with a `mention`
 	 * atom (`{ id, label }`) and puts the caret after it, in one undo step.
+	 * `char` and `kind` make another one (`$` tickers as `ticker` atoms).
 	 */
-	export const createMentionPlugin =
-		(options: MentionPluginOptions): Plugin =>
-		(edytor) =>
+	export const createMentionPlugin = (options: MentionPluginOptions): Plugin => {
+		const char = options.char ?? '@';
+		const kind = options.kind ?? 'mention';
+		const labelOf = (data: unknown) => {
+			const label = (data as Partial<MentionData> | undefined)?.label;
+			return typeof label === 'string' ? label : '';
+		};
+		const atom: MentionKind = {
+			snippet: mention,
+			char,
+			plain: (data) => char + labelOf(data),
+			html: (data) => {
+				const id = (data as Partial<MentionData> | undefined)?.id;
+				return (
+					`<span data-edytor-mention="${escape(kind)}"` +
+					(typeof id === 'string' ? ` data-mention-id="${escape(id)}"` : '') +
+					`>${escape(char + labelOf(data))}</span>`
+				);
+			},
+			parse: (element) => {
+				// A bare `data-edytor-mention` (an older export) is a `mention`.
+				const own = element.dataset.edytorMention;
+				if (own === undefined || (own || 'mention') !== kind) return undefined;
+				const text = element.textContent ?? '';
+				const label = text.startsWith(char) ? text.slice(char.length) : text;
+				return { id: element.dataset.mentionId ?? '', label };
+			}
+		};
+		return (edytor) =>
 			withRulesAndTriggers(
 				edytor,
-				{
-					inlineBlocks: {
-						mention: {
-							snippet: mention,
-							plain: (data) => {
-								const label = (data as Partial<MentionData> | undefined)?.label;
-								return typeof label === 'string' && label ? `@${label}` : '@';
-							}
-						}
-					}
-				},
+				{ inlineBlocks: { [kind]: atom } },
 				{
 					triggers: [
 						{
-							char: options.char ?? '@',
+							char,
+							name: kind,
 							items: (query, ctx) => options.items(query, ctx),
-							label: (person: MentionItem) => person.label,
-							key: (person: MentionItem) => person.id,
+							label: (item: MentionItem) => item.label,
+							key: (item: MentionItem) => item.id,
 							menu: options.menu,
-							onPick: (person: MentionItem, { edytor, block, from, caret }) => {
-								const data: MentionData = { id: person.id, label: person.label };
+							onPick: (item: MentionItem, { edytor, block, from, caret }) => {
+								const data: MentionData = { id: item.id, label: item.label };
 								const written =
-									edytor.insertInline(block.id, from, { type: 'mention', data }).status ===
-									'applied';
+									edytor.insertInline(block.id, from, { type: kind, data }).status === 'applied';
 								if (written) caret(from + 1);
 								return written;
 							}
@@ -80,13 +124,14 @@
 					]
 				}
 			);
+	};
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}
 	<span
 		class="edytor-mention"
 		data-selected={block.selected ? 'true' : undefined}
-		data-edytor-mention
-		data-mention-id={block.data.id}>@{block.data.label ?? ''}</span
+		data-edytor-mention={block.type}
+		data-mention-id={block.data.id}>{charOf(block)}{block.data.label ?? ''}</span
 	>
 {/snippet}

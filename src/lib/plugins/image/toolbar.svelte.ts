@@ -10,13 +10,12 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { onPress, takeKeys } from '$lib/events/onFocus.js';
-import { pin } from '$lib/surface/overlay.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 import { imageAlignOf, imageAltOf, type ImageAlign } from './image.js';
 import { imageControls, type ImageControls } from './controls.svelte.js';
-import { identify, keepFocus } from '../chrome.js';
+import { identify, keepFocus, onPressOutside, virtualAnchor } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
-import ImageToolbarHost from './ImageToolbarHost.svelte';
+import { keysOf } from '../list.svelte.js';
 
 /** Where a press keeps the alt field open: the toolbar (its Alt button toggles it) and the field's own. */
 const ALT_CHROME =
@@ -29,10 +28,24 @@ const ALT_CHROME =
  * your markup its behavior (`bar`, `altField`).
  */
 export class ImageToolbar {
+	/** @internal */
 	constructor(
 		/** @internal */
-		readonly controls: ImageControls
+		readonly controls: ImageControls,
+		/** The app's markup. @internal */
+		readonly snippet: Snippet<[ImageToolbar]>
 	) {}
+
+	/**
+	 * Where the toolbar stands (`ChromeAnchor`): the image the chrome is
+	 * on, whose top right your `toolbar` places itself in.
+	 */
+	readonly anchor = virtualAnchor(
+		() => this.#image()?.getBoundingClientRect(),
+		() => this.#image()
+	);
+
+	#image = () => this.#block()?.node?.querySelector('[data-edytor-image] img');
 
 	/** The measured image the toolbar is on (`null`: none). */
 	get box() {
@@ -81,19 +94,6 @@ export class ImageToolbar {
 		this.#edytor.overlay.invalidate();
 	};
 
-	/**
-	 * A press anywhere (`onPress`, capture): one outside the alt panel and the
-	 * toolbar (whose Alt button toggles it) closes the field, so the chrome
-	 * follows the pointer again.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		const target = event.target as Element | null;
-		if (this.editing === null) return;
-		if (target?.closest?.(ALT_CHROME)) return;
-		this.closeAlt();
-	};
-
 	/** Focus left the alt field: for somewhere outside its panel, the field closes. @internal */
 	blurred = (event: FocusEvent) => {
 		const to = event.relatedTarget;
@@ -127,12 +127,11 @@ export class ImageToolbar {
 		identify(node, this.#edytor.popups.idOf('image-alt'));
 		node.setAttribute('data-edytor-image-alt', '');
 		node.focus({ preventScroll: true });
-		const keydown = (event: KeyboardEvent) => {
-			if (event.isComposing || (event.key !== 'Enter' && event.key !== 'Escape')) return;
-			event.preventDefault();
-			this.closeAlt(true);
-		};
-		return all(listen(node, 'keydown', keydown), listen(node, 'focusout', this.blurred));
+		const close = () => this.closeAlt(true);
+		return all(
+			listen(node, 'keydown', keysOf({ Enter: close, Escape: close })),
+			listen(node, 'focusout', this.blurred)
+		);
 	};
 
 	/** Close the alt field; with `keys`, the editor takes the keys back. */
@@ -167,18 +166,11 @@ export const createImageToolbarPlugin =
 		onEdytorAttached: ({ node }) => {
 			const controls = imageControls.get(edytor);
 			if (!controls || controls.toolbar) return;
-			const bar = (controls.toolbar = new ImageToolbar(controls));
+			const bar = (controls.toolbar = new ImageToolbar(controls, toolbar));
 			return all(
-				// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
-				onPress(edytor, node.ownerDocument, bar.pressed, true),
-				edytor.overlay.mount(
-					ImageToolbarHost,
-					{ toolbar: bar, snippet: toolbar },
-					'edytor-image-toolbar-host',
-					// With the image chrome: above the block handles and the column bands.
-					7,
-					(host) => () => pin(host)
-				),
+				// A press outside the alt panel and the toolbar (whose Alt button toggles it)
+				// closes it (WebKit's lone `mousedown` too).
+				onPressOutside(edytor, node.ownerDocument, ALT_CHROME, () => bar.closeAlt()),
 				() => (controls.toolbar = undefined)
 			);
 		}

@@ -1,4 +1,5 @@
 <script lang="ts" generics="T">
+	import { float } from './float.js';
 	import { words } from './words.svelte.js';
 	import type { Snippet } from 'svelte';
 	import type { TriggerMenuController } from 'edytor';
@@ -35,6 +36,7 @@
 	data-trigger={controller.char}
 	role="presentation"
 	onmousedown={(event) => event.preventDefault()}
+	{@attach float(() => controller.anchor)}
 >
 	<div
 		class="edytor-trigger-items"

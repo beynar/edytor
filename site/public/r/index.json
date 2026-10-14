@@ -5,7 +5,8 @@
 		"type": "registry:block",
 		"description": "The ready-made menus, toolbar, handles, panels and cards of every bundled edytor plugin, in shadcn-svelte components and tokens.",
 		"dependencies": [
-			"edytor@^2.0.0"
+			"edytor@^2.0.0",
+			"@floating-ui/dom@^1.8.0"
 		],
 		"registryDependencies": [
 			"button",

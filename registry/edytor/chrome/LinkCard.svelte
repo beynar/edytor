@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { words } from './words.svelte.js';
 	import { linkIcon } from './icons.js';
@@ -20,6 +21,7 @@
 	data-edytor-link-card
 	role="toolbar"
 	aria-label={labels.card}
+	{@attach float(() => controller.cardAnchor, { gap: 0 })}
 >
 	<span class="link-card-url" style:--link-card-icon={linkIcon} title={controller.hoveredHref}
 		>{controller.hoveredHref}</span

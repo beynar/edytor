@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Input } from '$registry/ui/input/index.js';
 	import { Separator } from '$registry/ui/separator/index.js';
 	import { cn } from '$registry/utils.js';
@@ -15,6 +16,8 @@
 
 	/** Notion's block menu, drawn for `createBlockMenuPlugin({ menu })`. */
 	let { controller }: { controller: BlockMenuController } = $props();
+	/** The menu's element: its flyout stands beside it. */
+	let menuNode = $state<HTMLElement>();
 	const rows = $derived(controller.rows);
 	const labels = $derived(words.blockMenu);
 
@@ -122,6 +125,8 @@
 		data-testid="block-menu"
 		data-edytor-block-menu
 		tabindex="-1"
+		bind:this={menuNode}
+		{@attach float(() => controller.anchor, { placement: 'right-start', fallback: ['left-start'] })}
 	>
 		<div class="block-menu-search">
 			<Input
@@ -152,6 +157,11 @@
 			role="menu"
 			aria-label={flyout === 'color' ? labels.color : labels.turnInto}
 			{@attach controller.flyoutMenu}
+			{@attach float(() => menuNode, {
+				placement: 'right-start',
+				gap: 4,
+				fallback: ['left-start']
+			})}
 		>
 			<div class="block-menu-rows" role="presentation">
 				{@render list(controller.flyoutRows, true)}

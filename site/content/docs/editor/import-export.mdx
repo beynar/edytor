@@ -87,7 +87,7 @@ Marks: `**bold**`, `*italic*` (both: `***x***`), `~~strike~~`, `` `code` ``, `[t
 Docs written in MDX use components: `<Endpoint operationId="getPet" />` for an API operation, `<Callout type="warning">` around a note. `fromMarkdown` reads these tags when you name them, each as the kind it stands for, and `toMarkdown` writes them back:
 
 ```ts title="src/lib/apiDocs.ts" check
-import { bundledForms, fromMarkdown, mdxComponent, toMarkdown, type BlockForms } from 'edytor/export';
+import { fromMarkdown, toMarkdown } from 'edytor/export';
 import type { JSONDoc } from 'edytor';
 
 /** Each tag and the kind it reads as. */
@@ -107,12 +107,6 @@ export const doc: JSONDoc = fromMarkdown(source, {
 // doc.children[1]: { type: 'endpoint', data: { operationId: 'getPet', method: 'get', version: 2, deprecated: false }, content: [] }
 
 export const back = toMarkdown(doc, { components }); // === source
-
-/** Or say it in the kind's own markdown form, for every export of it. */
-export const endpoint: BlockForms = {
-	markdown: (block, content, children) => mdxComponent('Endpoint', block.data, content, children)
-};
-export const kinds = { blocks: { ...bundledForms.blocks, endpoint } };
 ```
 
 What is read:
@@ -124,6 +118,45 @@ What is read:
 What is not, kept as text and told to `onUnknown(issue)` (`issue.reason`, `issue.name`, `issue.source`): a tag `components` does not name (`component`), an attribute holding an expression or a spread (`{a + b}`, `{...props}`, `expression`), a tag without its closing tag (`unclosed`), and `import` and `export` lines. Inline tags in the middle of a line, JSX expressions as children and `{/* comments */}` are not read: they stay text, unreported.
 
 `toMarkdown(doc, { components })` writes every block of a listed kind as its tag, the first tag naming it: its data as attributes, by `mdxComponent`. A value with no literal (an object, an array, `null`, a string with a newline or with both quote marks) is left out. Without text or children the tag self-closes; with text only, the text sits inside the tag on one line; with children, the tag has its own lines, the text first. That is the form `fromMarkdown` reads back, so `toMarkdown(fromMarkdown(source, { components }), { components })` gives `source` back when it is written that way. A `components` entry for a bundled kind (`Callout: 'callout'`) also writes the `> [!NOTE]` callouts of a document as tags.
+
+### Writing the tag yourself: `mdxComponent`
+
+`components` writes a block as its tag with **all** of its data as attributes. That is what you want most of the time. Write the tag yourself when the block's markdown should differ from its data:
+
+- **Only some fields belong in the source.** An `endpoint` block may keep the spec's resolved operation (`data.cached`, an object) or a UI choice (`data.lang`, the code tab shown). Neither should be written into the docs' source.
+- **An attribute is named differently in your MDX** than in `block.data`.
+- **Something follows the tag**, such as a generated code sample under each endpoint.
+
+A kind's `markdown` form says how its blocks are written: a function from the block (and its content and children, already written as markdown) to the markdown text. `mdxComponent(name, data, content?, children?)` builds the tag text for you. It writes each value of `data` that has a literal as an attribute (`"text"`, `{2}`, `{true}`), leaves out anything else, and self-closes the tag when there is no content and no children:
+
+```ts title="src/lib/apiDocsExport.ts" check
+import { bundledForms, mdxComponent, toMarkdown, type BlockForms } from 'edytor/export';
+import type { JSONDoc } from 'edytor';
+
+/** An endpoint is its operation id in the source, and a curl sample under it. */
+const endpoint: BlockForms = {
+	markdown: (block) => {
+		const operationId = String(block.data?.operationId ?? '');
+		const tag = mdxComponent('Endpoint', { operationId });
+		return `${tag}\n\n\`\`\`bash\ncurl https://api.example.com/ops/${operationId}\n\`\`\``;
+	}
+};
+
+/** The bundled kinds' forms, with this one added. */
+const kinds = { blocks: { ...bundledForms.blocks, endpoint } };
+
+export const exportDocs = (doc: JSONDoc) => toMarkdown(doc, { kinds });
+// <Endpoint operationId="getPet" />
+// ```bash
+// curl https://api.example.com/ops/getPet
+// ```
+```
+
+Three things to know:
+
+- **Pass `kinds`, not `components`, to `toMarkdown` for that kind.** A kind `components` names is always written by `components`, all of its data as attributes, and its own `markdown` form is not used. Reading is unchanged: `fromMarkdown(source, { components: { Endpoint: 'endpoint' } })` still reads the tag.
+- **What you add does not read back into the block.** Above, `fromMarkdown` reads the tag as the `endpoint` block (`operationId` only) and the sample as a separate code block. Write extras only when the markdown is published, not edited again; for a round trip, keep the block's markdown to its tag.
+- **The same form is used by the editor.** A custom kind's record can carry the same `markdown` form (`blocks: { endpoint: { …, markdown } }` in your plugin), so `toMarkdown(doc, { kinds: edytor })` writes it from a live view too.
 
 ## Import HTML
 

@@ -1,7 +1,5 @@
 import type { Snippet } from 'svelte';
 import type { InitializedPlugin, Plugin } from '$lib/plugins.js';
-import { caretRect } from '../triggers/place.js';
-import { placeNear } from '$lib/surface/overlay.js';
 import { SlashMenuController } from './SlashMenuController.svelte.js';
 import { handleMenuEvents, mountChrome } from '../chrome.js';
 import { withTriggerMenus } from '../triggers/triggers.js';
@@ -26,19 +24,14 @@ export const createSlashMenuPlugin =
 		const controller = new SlashMenuController(edytor);
 
 		/**
-		 * Beside the caret (below a `+` it was opened from), kept in the
-		 * viewport; measured in the overlay's frame, written after, as
-		 * is the close of a `+` menu whose block is gone.
+		 * Measured in the overlay's frame, written after: the close of a `+`
+		 * menu whose block is gone (a peer's or a command's delete), as the
+		 * block menu does. The menu places itself by `controller.anchor`.
 		 */
-		const positionMenu = (host: HTMLElement) => {
-			if (!edytor.node || !controller.isOpen) return;
+		const positionMenu = () => {
 			const { addition } = controller;
-			// Its block is gone (a peer's or a command's delete): the `+` menu closes, as the block menu does.
-			if (addition && !addition.block.isInTree) return () => controller.dismiss();
-			const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
-			const box = anchor?.getBoundingClientRect();
-			const rect = box && (box.width || box.height) ? box : caretRect(edytor);
-			return rect && placeNear(host, rect, [310, 350]);
+			if (controller.isOpen && addition && !addition.block.isInTree)
+				return () => controller.dismiss();
 		};
 
 		const plugin: InitializedPlugin = {

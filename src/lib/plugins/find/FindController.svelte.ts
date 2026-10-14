@@ -10,6 +10,8 @@ import { showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
 import { listen } from '$lib/utils/listen.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { keysOf } from '../list.svelte.js';
+import { virtualAnchor } from '../chrome.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
 export type ReplaceMatches = Commands['replaceMatches'];
@@ -21,6 +23,15 @@ export type ReplaceMatches = Commands['replaceMatches'];
  * dispatcher command; the bar and the highlights render from it.
  */
 export class FindController {
+	/**
+	 * Where the bar stands (`ChromeAnchor`): the editor, whose top right
+	 * your `bar` places itself in.
+	 */
+	readonly anchor = virtualAnchor(
+		() => this.edytor.node?.getBoundingClientRect(),
+		() => this.edytor.node
+	);
+
 	isOpen = $state(false);
 	/** The replacement text. */
 	replacement = $state('');
@@ -169,16 +180,14 @@ export class FindController {
 	 * closes, Mod+F selects the query.
 	 */
 	#keys = (node: HTMLInputElement, query: boolean) => {
-		const keydown = (event: KeyboardEvent) => {
-			if (event.isComposing) return;
-			const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
-			if (event.key === 'Enter')
-				(query ? (event.shiftKey ? this.previous : this.next) : this.replace)();
-			else if (event.key === 'Escape') this.close();
-			else if (query && mod && event.key.toLowerCase() === 'f') node.select();
-			else return;
-			event.preventDefault();
-		};
+		const select = (event: KeyboardEvent) =>
+			query && (this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey) && node.select();
+		const keydown = keysOf({
+			Enter: (event) => (query ? (event.shiftKey ? this.previous : this.next) : this.replace)(),
+			Escape: () => this.close(),
+			f: select,
+			F: select
+		});
 		return listen(node, 'keydown', keydown);
 	};
 

@@ -13,6 +13,7 @@ import { attribute } from '../chrome.js';
 import { languageOf, type CodeSettings } from './languages.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
+import { keysOf } from '../list.svelte.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
 const COPIED_FOR = 1200;
@@ -125,13 +126,12 @@ export class CodeHeader {
 			const mousedown = (event: MouseEvent) => event.preventDefault();
 			// A click from Enter or Space has no pointer (`detail` 0): the keys opened it.
 			const click = (event: MouseEvent) => this.toggle(event.detail === 0);
-			const keydown = (event: KeyboardEvent) => {
-				if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-					if (!this.expanded) this.toggle(true);
-				} else if (event.key === 'Escape') this.menu?.release();
-				else return;
-				event.preventDefault();
-			};
+			const open = () => this.expanded || this.toggle(true);
+			const keydown = keysOf({
+				ArrowDown: open,
+				ArrowUp: open,
+				Escape: () => this.menu?.release()
+			});
 			const off = listen(node, 'mousedown', mousedown);
 			const off2 = listen(node, 'click', click);
 			const off3 = listen(node, 'keydown', keydown);

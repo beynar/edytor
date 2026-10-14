@@ -9,12 +9,16 @@
  * none of it.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload, InitializedPlugin, InputRule, Trigger } from '$lib/plugins.js';
+import type {
+	ChangePayload,
+	InitializedPlugin,
+	InputRule,
+	TextRuleContext,
+	Trigger
+} from '$lib/plugins.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import { inputRulesHook } from '$lib/session/inputRules.js';
 import { TriggerMenuController, type TextTriggerController } from './TriggerController.svelte.js';
-import { caretRect } from './place.js';
-import { placeNear } from '$lib/surface/overlay.js';
 import { listHotkeys, type HeldList } from '../list.svelte.js';
 import { mountChrome } from '../chrome.js';
 
@@ -30,6 +34,19 @@ const both =
 
 /** The triggers each view numbered so far: a trigger's popup owner name. */
 const counts = new WeakMap<Edytor, number>();
+
+/**
+ * Write `atom` where the matched text starts (`ctx.from`: a trigger's pick,
+ * an input rule's replacement), the caret after it; whether it was written.
+ */
+export const placeAtom = (
+	{ edytor, block, from, caret }: TextRuleContext,
+	atom: Parameters<Edytor['insertInline']>[2]
+) => {
+	const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+	if (written) caret(from + 1);
+	return written;
+};
 
 /**
  * `plugin` with `inputRules` (text typed at the caret that a rule
@@ -77,22 +94,14 @@ export const withRulesAndTriggers = (
 					: undefined,
 			close: () => controller.close()
 		}),
-		// Below the caret (above it when there is no room), kept in the viewport.
+		// Its markup places itself by the controller's `anchor` (the caret).
 		(controller) =>
 			mountChrome(
 				edytor,
 				controller.trigger.menu,
 				controller,
 				() => controller.isOpen,
-				{
-					name: 'edytor-trigger-menu-host',
-					zIndex: 50,
-					measure: (host) => {
-						if (!controller.isOpen) return;
-						const rect = caretRect(edytor);
-						return rect && placeNear(host, rect, [280, 240]);
-					}
-				},
+				{ name: 'edytor-trigger-menu-host', zIndex: 50 },
 				() => controller.close()
 			)
 	);

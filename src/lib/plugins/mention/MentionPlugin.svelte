@@ -12,7 +12,7 @@
 		TriggerContext
 	} from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { withRulesAndTriggers } from '../triggers/triggers.js';
+	import { placeAtom, withRulesAndTriggers } from '../triggers/triggers.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -88,13 +88,11 @@
 							label: (item: MentionItem) => item.label,
 							key: (item: MentionItem) => item.id,
 							menu: options.menu,
-							onPick: (item: MentionItem, { edytor, block, from, caret }) => {
-								const data: MentionData = { id: item.id, label: item.label };
-								const written =
-									edytor.insertInline(block.id, from, { type: kind, data }).status === 'applied';
-								if (written) caret(from + 1);
-								return written;
-							}
+							onPick: (item: MentionItem, ctx) =>
+								placeAtom(ctx, {
+									type: kind,
+									data: { id: item.id, label: item.label } satisfies MentionData
+								})
 						}
 					]
 				}

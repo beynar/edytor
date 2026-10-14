@@ -9,7 +9,10 @@
  * Without a media plugin given an `upload` the view takes no file drop
  * (the media plugins install it): the drop is swallowed, nothing shows.
  *
- * jsdom has no layout: the rows' boxes and the hit test are stubbed.
+ * The drag is Pragmatic's external adapter's: a `dragenter` from outside the
+ * window starts it, the host is its drop target, a `dragleave` out of the
+ * window ends it. jsdom has no layout: the rows' boxes and the hit test are
+ * stubbed.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -22,6 +25,8 @@ import {
 } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
+	// No drag outlives its row (the adapter allows one at a time).
+	window.dispatchEvent(new Event('dragend'));
 	document.body.innerHTML = '';
 	vi.restoreAllMocks();
 });
@@ -46,6 +51,22 @@ const mount = (readonly = false, media = true) =>
 					: [])
 			],
 			readonly
+		}
+	);
+
+/** A view whose only uploader is the image plugin's (no file block). */
+const mountImageOnly = () =>
+	renderDomEdytor(
+		<root>
+			<paragraph>one</paragraph>
+			<paragraph>two</paragraph>
+		</root>,
+		{
+			plugins: [
+				richTextPlugin,
+				mediaEmptyPlugin,
+				createImagePlugin({ upload: () => new Promise<string>(() => {}) })
+			]
 		}
 	);
 
@@ -80,8 +101,10 @@ const transfer = (files: File[]) =>
 	({
 		types: ['Files'],
 		files,
-		items: files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => null })),
+		// The adapter reads the files at the drop only (an engine lists none before it).
+		items: files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => f })),
 		getData: () => '',
+		setDragImage: () => {},
 		dropEffect: 'none'
 	}) as unknown as DataTransfer;
 
@@ -129,6 +152,7 @@ describe('drop.files.place', () => {
 		const { edytor, editor } = await mount();
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 45));
 		editor.dispatchEvent(dragEvent('dragover', data, 45));
 		expect(indicator()?.dataset.position).toBe('before');
 		editor.dispatchEvent(dragEvent('drop', data, 45));
@@ -136,23 +160,43 @@ describe('drop.files.place', () => {
 		expect(types(edytor)).toEqual(['paragraph', 'image', 'paragraph']);
 	});
 
-	it('a drag leaving the view clears the indicator', async () => {
+	it('a drag moving off the view, to the page around it, clears the indicator', async () => {
 		const { edytor, editor } = await mount();
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		editor.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).not.toBeNull();
-		const leave = dragEvent('dragleave', data, 30);
-		Object.defineProperty(leave, 'relatedTarget', { value: document.body });
-		editor.dispatchEvent(leave);
+		document.body.dispatchEvent(dragEvent('dragenter', data, 30));
+		document.body.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).toBeNull();
 		expect(editor.querySelector('[data-edytor-block-drop-position]')).toBeNull();
+		// Back over the view: it shows again.
+		editor.dispatchEvent(dragEvent('dragover', data, 30));
+		expect(indicator()?.dataset.position).toBe('after');
+	});
+
+	it('a drag leaving the window clears the indicator and ends the drag', async () => {
+		const { edytor, editor } = await mount();
+		layOut(edytor);
+		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
+		editor.dispatchEvent(dragEvent('dragover', data, 30));
+		expect(indicator()).not.toBeNull();
+		// Out of the window: no element it enters (`relatedTarget` none).
+		editor.dispatchEvent(dragEvent('dragleave', data, 30));
+		expect(indicator()).toBeNull();
+		// A drag coming back in is a new one, shown again.
+		editor.dispatchEvent(dragEvent('dragenter', data, 45));
+		editor.dispatchEvent(dragEvent('dragover', data, 45));
+		expect(indicator()?.dataset.position).toBe('before');
 	});
 
 	it('a read-only view shows no indicator and takes no drop', async () => {
 		const { edytor, editor } = await mount(true);
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		editor.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).toBeNull();
 		const drop = dragEvent('drop', data, 30);
@@ -167,6 +211,7 @@ describe('drop.files.place', () => {
 		const { edytor, editor } = await mount(false, false);
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		const over = dragEvent('dragover', data, 30);
 		editor.dispatchEvent(over);
 		expect(over.defaultPrevented).toBe(true);
@@ -178,5 +223,49 @@ describe('drop.files.place', () => {
 		// Swallowed: the browser must not open the file in place of the page.
 		expect(drop.defaultPrevented).toBe(true);
 		expect(types(edytor)).toEqual(['paragraph', 'paragraph']);
+	});
+
+	describe("the line reads the dragged files' types", () => {
+		const drag = async (files: File[]) => {
+			const { edytor, editor } = await mountImageOnly();
+			layOut(edytor);
+			const data = transfer(files);
+			editor.dispatchEvent(dragEvent('dragenter', data, 30));
+			editor.dispatchEvent(dragEvent('dragover', data, 30));
+			const shown = indicator()?.dataset.position ?? null;
+			editor.dispatchEvent(dragEvent('drop', data, 30));
+			await flushDomUpdates();
+			return { shown, types: types(edytor) };
+		};
+
+		it('a PDF over a view with only an image uploader shows no line and inserts nothing', async () => {
+			expect(await drag([file('notes.pdf', 'application/pdf')])).toEqual({
+				shown: null,
+				types: ['paragraph', 'paragraph']
+			});
+		});
+
+		it('a PNG over the same view shows the line and inserts an image there', async () => {
+			expect(await drag([file('photo.png', 'image/png')])).toEqual({
+				shown: 'after',
+				types: ['paragraph', 'image', 'paragraph']
+			});
+		});
+
+		it('mixed files: the line shows where the insertable ones fit, and only they land', async () => {
+			expect(
+				await drag([file('notes.pdf', 'application/pdf'), file('photo.png', 'image/png')])
+			).toEqual({ shown: 'after', types: ['paragraph', 'image', 'paragraph'] });
+		});
+
+		it('types the engine hides: the line shows where any uploaded kind fits', async () => {
+			const { edytor, editor } = await mountImageOnly();
+			layOut(edytor);
+			const data = transfer([file('photo.png', 'image/png')]);
+			(data.items as unknown as { type: string }[])[0].type = '';
+			editor.dispatchEvent(dragEvent('dragenter', data, 30));
+			editor.dispatchEvent(dragEvent('dragover', data, 30));
+			expect(indicator()?.dataset.position).toBe('after');
+		});
 	});
 });

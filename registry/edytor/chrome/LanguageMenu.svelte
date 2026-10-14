@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Input } from '$registry/ui/input/index.js';
 	import { words } from './words.svelte.js';
 	import type { LanguageMenu } from 'edytor';
@@ -11,7 +12,7 @@
 	let { menu }: { menu: LanguageMenu } = $props();
 </script>
 
-<div data-edytor-code-language-menu>
+<div data-edytor-code-language-menu {@attach float(() => menu.anchor, { gap: 4 })}>
 	<Input
 		type="text"
 		placeholder={words.code.search}

@@ -62,7 +62,6 @@ export function getScrollChange({
   axis,
   hitbox,
   edge,
-  isDistanceDampeningEnabled,
   config
 }) {
   // We have two forms of speed dampening:
@@ -77,13 +76,13 @@ export function getScrollChange({
     timeSinceLastFrame,
     config
   });
-  const percentageDistanceDampening = isDistanceDampeningEnabled ? getDistanceDampening({
+  const percentageDistanceDampening = getDistanceDampening({
     client,
     edge,
     hitbox,
     axis,
     config
-  }) : 1;
+  });
 
   // Dampen speed by time
   const percentageThroughTimeDampening = getPercentageInRange({

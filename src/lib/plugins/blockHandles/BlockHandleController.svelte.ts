@@ -12,9 +12,8 @@ import {
 	type SelectionValue
 } from '$lib/session/selection.js';
 import {
-	draggable,
 	dropTargetForElements,
-	setCustomNativeDragPreview,
+	elementScrollers,
 	type ElementDropTargetEventPayloadMap
 } from '$lib/dnd/pragmatic.js';
 import {
@@ -26,11 +25,10 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { kindLabel } from '$lib/kinds.js';
 import { siblingSlot } from '$lib/session/handles.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
-import { dragPreview } from './dragPreview.js';
+import { dragSource, ghost } from './dragPreview.js';
 import { DropIndicator } from '$lib/dnd/dropIndicator.js';
 import { DropResolver, SLOP_X, SLOP_Y, type Drag, type Input } from '$lib/dnd/placement.js';
 import { getOwnRowBottom, ownRow, type DropPlacement } from '$lib/dnd/geometry.js';
@@ -360,14 +358,13 @@ export class BlockHandleController {
 
 	registerHandle(element: HTMLElement, block: Block): () => void {
 		if (!this.options.draggable) return () => {};
-		return draggable({
-			element,
+		return dragSource(element, {
 			canDrag: () => !this.edytor.readonly && block.movable,
-			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
-			getInitialDataForExternal: () => ({ [EDYTOR_BLOCK_DRAG_MIME]: block.id }),
+			data: () => ({ owner: this.owner, blockId: block.id }),
+			id: () => block.id,
 			// The moved blocks are known, and drop targets exist, from the start of
 			// our drag (before any target is looked up).
-			onGenerateDragPreview: ({ nativeSetDragImage, location }) => {
+			begin: (pointer, setImage) => {
 				this.dragging = block.id;
 				this.handle = element.closest<HTMLElement>('[data-edytor-block-handle-host]') ?? element;
 				const group = (this.group = this.dragBlocks(block));
@@ -375,45 +372,41 @@ export class BlockHandleController {
 				// removed with the drag library's container once the drag starts.
 				const root = this.edytor.node;
 				const nodes = group.flatMap((moved) => (moved.node ? [moved.node] : []));
-				if (nativeSetDragImage && root && nodes.length) {
-					const preview = dragPreview(root, nodes, location.current.input);
-					setCustomNativeDragPreview({
-						nativeSetDragImage,
-						getOffset: preview.offset,
-						render: ({ container }) => container.append(preview.element)
-					});
-				}
+				ghost(setImage, root, nodes, pointer);
 				for (const [node, target] of this.targets) this.#registerDropTarget(node, target);
 				this.#registerDropTarget(element.ownerDocument.body, null);
 				this.scrolling?.();
-				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
+				this.scrolling = root
+					? autoScrollFor(
+							root,
+							elementScrollers((data) => data.owner === this.owner)
+						)
+					: null;
 				this.indicator.begin(element.ownerDocument);
 			},
 			// The moved blocks show selected while they move (a text range becomes their
 			// block selection); the drop's undo step restores the selection held before.
-			onDragStart: () => {
+			start: () => {
 				const { selectedBlocks, value } = this.edytor.selection;
 				if (holdsBlocks(selectedBlocks, this.group)) return;
 				this.held = value;
 				this.select(block);
 			},
-			// PDD notifies the source before drop targets. Keep the shown
-			// placement and the targets until the target has committed its move.
-			// A drop on one of ours gives the keys to the editor (Notion: Mod+Z
-			// right after a drag), whatever it selected.
-			onDrop: ({ location }) =>
-				queueMicrotask(() => {
-					if (location.current.dropTargets.length) takeKeys(this.edytor);
-					this.indicator.end();
-					this.scrolling?.();
-					this.scrolling = null;
-					for (const off of this.registered.values()) off();
-					this.registered.clear();
-					this.dragging = null;
-					this.handle = null;
-					this.group = [];
-					this.held = null;
-				})
+			// Kept the shown placement and the targets until the target has
+			// committed its move. A drop on one of ours gives the keys to the
+			// editor (Notion: Mod+Z right after a drag), whatever it selected.
+			end: (dropped) => {
+				if (dropped) takeKeys(this.edytor);
+				this.indicator.end();
+				this.scrolling?.();
+				this.scrolling = null;
+				for (const off of this.registered.values()) off();
+				this.registered.clear();
+				this.dragging = null;
+				this.handle = null;
+				this.group = [];
+				this.held = null;
+			}
 		});
 	}
 
@@ -454,14 +447,12 @@ export class BlockHandleController {
 			canDrop: ({ source, input }) => {
 				const dragSource = this.#getDragSource(source.data);
 				if (!dragSource) return false;
-				if (!target) return Boolean(this.drop.margin(this.#drag(dragSource), input));
+				const drag = this.#drag(dragSource);
+				if (!target) return Boolean(this.drop.margin(drag, input));
 				if (this.drop.inHandleColumn(input.clientX)) return false;
-				const row = this.drop.rowAt(this.#drag(dragSource), target, node, input);
-				const { before, after } = this.drop.zones(this.#drag(dragSource), row, input);
-				return (
-					[...before, ...after].some(this.#drag(dragSource).fits) ||
-					Boolean(this.drop.beside(this.#drag(dragSource), row, input))
-				);
+				const row = this.drop.rowAt(drag, target, node, input);
+				const { before, after } = this.drop.zones(drag, row, input);
+				return [...before, ...after].some(drag.fits) || Boolean(this.drop.beside(drag, row, input));
 			},
 			// The row at the pointer and the half of its own row (not its subtree's)
 			// the pointer is in: held while the target is sticky (the drag library

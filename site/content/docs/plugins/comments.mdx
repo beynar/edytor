@@ -401,3 +401,5 @@ The client merges what it hears by `rev`, so an answer and a change arriving in 
 ## Localization
 
 The toolbar's Comment button and the sidebar's and a card's accessible names are the view's `comments` [labels](/docs/customization/localization); your `card` and `header` write their own words (the fields, the buttons, who resolved a thread, when a comment was written). A user without a `name` is named by their id: your card says "You" for `comments.user` if you like.
+
+**Placement.** The package places no popup: your markup places itself by `comments.anchor` (the text of the thread being written, else the active one), for a card you place yourself, a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

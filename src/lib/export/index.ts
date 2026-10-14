@@ -35,11 +35,7 @@ import {
 } from './exportForms.js';
 import { textToBlocks, type MarkdownComponents, type MarkdownOptions } from './markdown.js';
 import { mdxComponent } from './mdx.js';
-import { DEFAULT_CALLOUT_ICON } from '$lib/plugins/richtext/callouts.js';
-
-/** A callout's icon on a server: its own, else the bundled default. */
-const defaultCalloutIcon = (data: Record<string, unknown> | undefined) =>
-	typeof data?.icon === 'string' ? data.icon : DEFAULT_CALLOUT_ICON;
+import { iconOf } from '$lib/plugins/richtext/callouts.js';
 import type { AtomForms, BlockForms, MarkForms } from './forms.js';
 
 export { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
@@ -95,7 +91,7 @@ const PRESETS: Record<string, BlockForms['presets']> = {
 	quote: [{}],
 	divider: [{}]
 };
-const rich = { paragraph: {}, ...richTextForms(defaultCalloutIcon) };
+const rich = { paragraph: {}, ...richTextForms(iconOf) };
 const richWithPresets = Object.fromEntries(
 	Object.entries(rich).map(([type, form]) => [type, { ...form, presets: PRESETS[type] }])
 ) as Record<keyof typeof rich, BlockForms>;

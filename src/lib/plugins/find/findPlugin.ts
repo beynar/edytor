@@ -26,19 +26,6 @@ const MAX_HIGHLIGHTS = 1000;
 export const findController = (edytor: Edytor): FindController | undefined =>
 	controllers.get(edytor);
 
-/** At the editor's top right, inside the viewport; measured in the overlay's frame. */
-const place = (edytor: Edytor, find: FindController) => (host: HTMLElement) => {
-	const editor = edytor.node;
-	const view = editor?.ownerDocument.defaultView;
-	if (!editor || !view || !find.isOpen) return;
-	const rect = editor.getBoundingClientRect();
-	const width = host.firstElementChild?.getBoundingClientRect().width || 420;
-	const right = Math.min(rect.right, view.innerWidth - 8);
-	const left = `${Math.max(8, right - width)}px`;
-	const top = `${Math.max(8, rect.top + 8)}px`;
-	return () => Object.assign(host.style, { left, top });
-};
-
 /**
  * Find and replace (Notion's find in page), opt-in: Mod+F opens a bar over
  * the editor's top right. It searches the document's text in reading order,
@@ -85,8 +72,7 @@ export const createFindPlugin =
 				});
 				const unmountBar = mountChrome(edytor, options.bar, find, () => find.isOpen, {
 					name: 'edytor-find-host',
-					zIndex: 55,
-					measure: place(edytor, find)
+					zIndex: 55
 				});
 				return () => {
 					find.destroy();

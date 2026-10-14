@@ -604,7 +604,9 @@
 				]
 			: []),
 		createArrowMovePlugin(),
-		data.scenario === 'image' || data.uploads ? image({ upload: scenarioUpload }) : imagePlugin,
+		data.scenario === 'image' || data.uploads || data.imageUploadsOnly
+			? image({ upload: scenarioUpload })
+			: imagePlugin,
 		mediaEmptyPlugin,
 		imageToolbarPlugin,
 		...(data.scenario === 'image' || data.uploads ? [file({ upload: scenarioUpload })] : []),

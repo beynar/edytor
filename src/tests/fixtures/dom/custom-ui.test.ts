@@ -744,7 +744,7 @@ describe('custom snippets with the attachments', () => {
 			await open(editor);
 			const panel = one('custom-equation-panel')!;
 			expect(document.querySelector('[data-edytor-equation-editor]')).toBeNull();
-			expect(panel.closest('[data-edytor-equation-panel][data-display="block"]')).not.toBeNull();
+			expect(panel.closest('[data-edytor-equation-editor-host]')).not.toBeNull();
 			const field = one('custom-equation-field') as HTMLInputElement;
 			expect(document.activeElement).toBe(field);
 			expect(field.value).toBe('x^2');

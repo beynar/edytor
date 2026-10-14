@@ -1,5 +1,4 @@
 import type { Snippet } from 'svelte';
-import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { onPress } from '$lib/events/onFocus.js';
 import MarqueeBox from './MarqueeBox.svelte';
@@ -27,12 +26,6 @@ export type MarqueePluginOptions = {
 /** The handle gutter: a block handle's own box, around its buttons (never a button). */
 const HANDLE_HOST = '[data-edytor-block-handle-host]';
 
-const controllers = new WeakMap<Edytor, MarqueeController>();
-
-/** The marquee's controller of `edytor`; `undefined` when the plugin is not listed. @internal */
-export const marqueeController = (edytor: Edytor): MarqueeController | undefined =>
-	controllers.get(edytor);
-
 /**
  * Block selection with a rectangle (Notion's rubber band), opt-in: a press
  * in the editor's empty area — the margins beside the blocks (the handle
@@ -47,7 +40,6 @@ export const createMarqueePlugin =
 	(options: MarqueePluginOptions = {}): Plugin =>
 	(edytor) => {
 		const controller = new MarqueeController(edytor, options.threshold ?? 4);
-		controllers.set(edytor, controller);
 		return {
 			onEdytorAttached: ({ node }) => {
 				const layer = edytor.overlay.layer!;

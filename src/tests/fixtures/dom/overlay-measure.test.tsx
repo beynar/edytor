@@ -56,7 +56,7 @@ describe('overlay measures', () => {
 });
 
 describe('menu placement', () => {
-	it('the slash menu is placed below the caret, inside the viewport', async () => {
+	it('the slash menu is placed by its anchor, the caret, inside the viewport', async () => {
 		const { editor } = await renderDomEdytor(
 			<root>
 				<paragraph>|</paragraph>
@@ -65,12 +65,16 @@ describe('menu placement', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '/' });
 		await frame();
-		const host = document.querySelector<HTMLElement>('[data-edytor-slash-menu-host]')!;
-		// jsdom lays nothing out: a zero caret rect, the default menu size, clamped to the 8px edge.
-		expect([host.style.left, host.style.top]).toEqual(['8px', '8px']);
+		// The package places nothing: the markup places itself by the controller's
+		// anchor (the caret), fixed in the viewport, 8px inside its edge (jsdom lays
+		// nothing out).
+		const menu = document.querySelector<HTMLElement>('[data-testid="slash-menu"]')!;
+		await frame();
+		expect(menu.style.position).toBe('fixed');
+		expect([menu.style.left, menu.style.top]).toEqual(['8px', '8px']);
 	});
 
-	it('the block menu sits beside its handle, and closes once the handle leaves the view', async () => {
+	it('the block menu stands by its handle, and closes once the handle leaves the view', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>|one</paragraph>
@@ -83,9 +87,10 @@ describe('menu placement', () => {
 		editor.dispatchEvent(new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor } }));
 		await flushDomUpdates();
 		await frame();
-		const host = document.querySelector<HTMLElement>('[data-edytor-block-menu-host]')!;
-		// A zero anchor rect: 8px right of it, top-aligned.
-		expect([host.style.left, host.style.top]).toEqual(['8px', '0px']);
+		// Placed by its anchor (the handle): right of it, top-aligned.
+		const menu = document.querySelector<HTMLElement>('[data-testid="block-menu"]')!;
+		await frame();
+		expect([menu.style.position, menu.style.left, menu.style.top]).toEqual(['fixed', '8px', '8px']);
 
 		anchor.getBoundingClientRect = () => new DOMRect(0, window.innerHeight + 10, 20, 20);
 		edytor.overlay.invalidate();

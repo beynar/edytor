@@ -243,9 +243,7 @@ export type MonitorGetFeedbackArgs<DragType extends AllDragTypes> = {
      */
     source: DragType['payload'];
 };
-export type MonitorArgs<DragType extends AllDragTypes> = Partial<AllEvents<DragType>> & {
-    canMonitor?: (args: MonitorGetFeedbackArgs<DragType>) => boolean;
-};
+export type MonitorArgs<DragType extends AllDragTypes> = Partial<AllEvents<DragType>>;
 export type DropTargetGetFeedbackArgs<DragType extends AllDragTypes> = {
     /**
      * The users _current_ input
@@ -318,11 +316,6 @@ export type DropTargetArgs<DragType extends AllDragTypes> = {
      * dropped on.
      */
     canDrop?: (args: DropTargetGetFeedbackArgs<DragType>) => boolean;
-    /**
-     * Optionally provide a _drop effect_ to be applied when
-     * this drop target is the innermost drop target being dragged over.
-     */
-    getDropEffect?: (args: DropTargetGetFeedbackArgs<DragType>) => DropTargetAllowedDropEffect;
     /**
      * Return `true` if you want your drop target to hold onto
      * selection after the user is no longer dragging over this drop target.

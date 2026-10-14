@@ -1,62 +1,125 @@
 /**
  * Files dragged from outside over a view (Notion): the drop indicator a
- * block drag shows, where the files land, and that placement for the drop
- * (the core's `onDrop.ts` asks the view's uploads, `ViewUploads.drop`, and passes it to the occurrence; the view's uploads place one
- * block per file there, one command). The placement is the block drag's
- * own resolution (`DropResolver`) for a drag that moves no block, whose
- * places are the ones the document takes new blocks of the files' kinds
- * at (`canPlaceNew`). Shown only in an editable view whose uploads take
- * one of the files (`viewUploads`); with or without the block handles.
- * Plugin-owned: the view's `FileUploads` (the first media plugin listed with
- * an `upload`) installs it, so a view without one ships none of it.
+ * block drag shows, where the files land, and that placement for the drop.
+ * The drag is Pragmatic's external adapter's (`dnd/external.ts`), the same
+ * pipeline as the block and table drags: the host is its drop target, which
+ * takes a drag of files in an editable view. The placement is the block
+ * drag's own resolution (`DropResolver`) for a drag that moves no block,
+ * whose places are the ones the document takes new blocks of the files'
+ * kinds at (`canPlaceNew`). With or without the block handles.
+ *
+ * While they are dragged the browser shows each file's MIME type, not the
+ * file (the adapter's items carry it, a vendored change, `UPSTREAM.md`): the
+ * kinds are the ones the uploads would place those files as, so the line
+ * shows only where they land; none (a PDF with only an image uploader): no
+ * line, and the drop inserts nothing. Where the engine hides the types (no
+ * item, or an empty type), every kind the uploads take. The drop resolves
+ * again with the files themselves.
+ * Its listeners are the window's, capturing, so the drop target's `onDrop`
+ * runs before the host's own `drop` listener (`events/onDrop.ts`), which
+ * takes the placement (`ViewUploads.drop.take`) and runs the drop's
+ * occurrence (the uploads' paste hook places one block per file there, one
+ * command). Plugin-owned: the view's `FileUploads` (the first media plugin
+ * listed with an `upload`) installs it, so a view without one ships none of it.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DropAt } from '$lib/session/attempt.js';
 import { canPlaceNew } from '$lib/session/moves.js';
-import { viewUploads } from '$lib/session/uploads.js';
+import { autoScrollFor } from '$lib/dnd/autoScroll.js';
 import { DropIndicator } from '$lib/dnd/dropIndicator.js';
-import type { DropPlacement } from '$lib/dnd/geometry.js';
+import {
+	containsFiles,
+	dropTargetForExternal,
+	externalScrollers,
+	getFiles
+} from '$lib/dnd/external.js';
 import { DropResolver, isDropTarget, type Drag, type Input } from '$lib/dnd/placement.js';
+import { isKindControl } from '$lib/events/nativeInteractiveControl.js';
 
-/** The kinds the files of a drag would be, by their types (a `dragover` sees no file, only its type). */
-const kindsOf = (edytor: Edytor, dataTransfer: DataTransfer | null) => {
-	const uploads = viewUploads(edytor);
-	if (!uploads || !dataTransfer) return [];
-	const kinds = new Set<string>();
-	for (const item of Array.from(dataTransfer.items ?? []))
-		if (item.kind === 'file') {
-			const file = item.getAsFile() ?? new File([], 'file', { type: item.type });
-			const kind = uploads.kindOf(file);
-			if (kind) kinds.add(kind);
-		}
-	// An engine that lists no item for a file (WebKit before the drop): its files themselves.
-	if (!kinds.size)
-		for (const file of Array.from(dataTransfer.files ?? [])) {
-			const kind = uploads.kindOf(file);
-			if (kind) kinds.add(kind);
-		}
-	return [...kinds];
+/** What the drag asks of the view's uploads. */
+export type DropUploads = {
+	/** The kind that takes `file`, if any. */
+	kindOf(file: File): string | undefined;
+	/** Every kind that takes files. */
+	readonly types: readonly string[];
 };
 
-class FileDrag {
-	readonly indicator: DropIndicator;
-	readonly resolver: DropResolver;
+export class FileDrag {
+	readonly #indicator: DropIndicator;
+	readonly #resolver: DropResolver;
+	#scrolling: (() => void) | null = null;
+	#dropped: DropAt | null = null;
 	#begun = false;
+	#kinds: readonly string[] = [];
 
-	constructor(private readonly edytor: Edytor) {
-		this.indicator = new DropIndicator(edytor, {
+	constructor(
+		private readonly edytor: Edytor,
+		private readonly uploads: DropUploads
+	) {
+		this.#indicator = new DropIndicator(edytor, {
 			group: () => [],
-			besideOf: (block) => this.resolver.besideOf(block),
-			layoutOf: (outer) => this.resolver.layoutOf(outer)
+			besideOf: (block) => this.#resolver.besideOf(block),
+			layoutOf: (outer) => this.#resolver.layoutOf(outer)
 		});
-		this.resolver = new DropResolver(edytor, {
+		this.#resolver = new DropResolver(edytor, {
 			targetOf: (node) => {
 				const block = edytor.idToBlock.get(node.dataset.edytorId ?? '');
 				return block?.node === node && isDropTarget(edytor, block) ? block : undefined;
 			},
 			handle: () => null,
-			indicator: this.indicator
+			indicator: this.#indicator
 		});
+	}
+
+	/** The host takes drags of files from outside while it is editable; the answer releases it. */
+	attach(host: HTMLElement) {
+		const release = dropTargetForExternal({
+			element: host,
+			canDrop: ({ source }) =>
+				!this.edytor.readonly && containsFiles({ source }) && this.uploads.types.length > 0,
+			onDragEnter: ({ source, location }) => {
+				this.#kinds = this.#draggedKinds(source.items);
+				this.#dropped = null;
+				this.#scrolling ??= autoScrollFor(
+					host,
+					externalScrollers(() => !this.edytor.readonly)
+				);
+				this.#over(this.#kinds, location.current.input);
+			},
+			onDrag: ({ location }) => this.#over(this.#kinds, location.current.input),
+			onDragLeave: () => this.#end(),
+			onDrop: ({ source, location }) => {
+				const kinds = new Set(
+					getFiles({ source }).flatMap((file) => this.uploads.kindOf(file) ?? [])
+				);
+				const placement = kinds.size ? this.#over([...kinds], location.current.input) : null;
+				this.#end();
+				this.#dropped = placement && { block: placement.target.id, position: placement.position };
+			}
+		});
+		return () => {
+			release();
+			this.#end();
+		};
+	}
+
+	/** The placement the last drop of files landed at, once (the host's `drop` takes it). */
+	take(): DropAt | null {
+		const dropped = this.#dropped;
+		this.#dropped = null;
+		return dropped;
+	}
+
+	/** The kinds the dragged files would be, by their types; hidden types: every kind that takes files. */
+	#draggedKinds(items: readonly { kind: string; type: string }[]): readonly string[] {
+		const files = items.filter((item) => item.kind === 'file');
+		if (!files.length || files.some((item) => !item.type)) return this.uploads.types;
+		const kinds = new Set<string>();
+		for (const { type } of files) {
+			const kind = this.uploads.kindOf(new File([], 'file', { type }));
+			if (kind) kinds.add(kind);
+		}
+		return [...kinds];
 	}
 
 	/** The drag of files of `kinds`: no block moves; a place takes them all. */
@@ -69,66 +132,40 @@ class FileDrag {
 
 	/**
 	 * The placement at the pointer, shown (`null`: none, and nothing shows):
-	 * over a drop target, its row's; elsewhere in the host, its margins'.
+	 * over a drop target, its row's; elsewhere in the host, its margins'; on
+	 * a kind's own control, none.
 	 */
-	over(kinds: readonly string[], input: Input): DropPlacement | null {
-		const document = this.edytor.node?.ownerDocument;
+	#over(kinds: readonly string[], input: Input) {
+		const host = this.edytor.node;
+		const document = host?.ownerDocument;
 		if (!document) return null;
 		if (!this.#begun) {
 			this.#begun = true;
-			this.indicator.begin(document);
+			this.#indicator.begin(document);
 		}
+		const at = document.elementsFromPoint?.(input.clientX, input.clientY)[0] ?? null;
+		const control = at !== null && isKindControl(host, at);
 		const drag = this.#drag(kinds);
-		const node = this.resolver.hitAt(input);
-		const placement = node
-			? this.resolver.over(drag, node, input)
-			: this.resolver.margin(drag, input);
+		const node = control ? null : this.#resolver.hitAt(input);
+		const placement = control
+			? null
+			: node
+				? this.#resolver.over(drag, node, input)
+				: this.#resolver.margin(drag, input);
 		if (!placement) {
-			this.indicator.clear();
+			this.#indicator.clear();
 			return null;
 		}
 		// A margin's placement shows as the block drag's page target does (its reorder holds).
-		this.indicator.show(node ?? document.body, placement);
+		this.#indicator.show(node ?? document.body, placement);
 		return placement;
 	}
 
-	/** The drag left the view, or dropped: nothing shows. */
-	end() {
+	/** The drag left the view, or dropped: nothing shows, nothing scrolls. */
+	#end() {
+		this.#scrolling?.();
+		this.#scrolling = null;
 		this.#begun = false;
-		this.indicator.end();
+		this.#indicator.end();
 	}
 }
-
-const drags = new WeakMap<Edytor, FileDrag>();
-const dragOf = (edytor: Edytor) => {
-	let drag = drags.get(edytor);
-	if (!drag) drags.set(edytor, (drag = new FileDrag(edytor)));
-	return drag;
-};
-
-/**
- * A `dragover` of files from outside: where they land, shown (Notion's
- * indicator), `null` where none (a read-only view, no uploads taking them,
- * no place the document takes them at).
- */
-export const fileDragOver = (edytor: Edytor, event: DragEvent): DropPlacement | null => {
-	const kinds = edytor.readonly ? [] : kindsOf(edytor, event.dataTransfer);
-	if (!kinds.length) {
-		drags.get(edytor)?.end();
-		return null;
-	}
-	return dragOf(edytor).over(kinds, event);
-};
-
-/**
- * A drop of files from outside: the placement shown (re-resolved at the
- * drop point), in block terms, and nothing shows any more.
- */
-export const fileDropAt = (edytor: Edytor, event: DragEvent): DropAt | null => {
-	const placement = fileDragOver(edytor, event);
-	fileDragEnd(edytor);
-	return placement && { block: placement.target.id, position: placement.position };
-};
-
-/** The files' drag left the view (or ended): the indicator goes. */
-export const fileDragEnd = (edytor: Edytor) => drags.get(edytor)?.end();

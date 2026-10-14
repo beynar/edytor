@@ -163,7 +163,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 				const transfer = new DataTransfer();
 				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
 				const editor = document.querySelector('[data-edytor]')!;
-				for (const type of ['dragover', 'drop'] as const) {
+				for (const type of ['dragenter', 'dragover', 'drop'] as const) {
 					const event = new DragEvent(type, {
 						bubbles: true,
 						cancelable: true,
@@ -217,7 +217,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 				const transfer = new DataTransfer();
 				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
 				const editor = document.querySelector('[data-edytor]')!;
-				for (const type of ['dragover', 'drop'] as const) {
+				for (const type of ['dragenter', 'dragover', 'drop'] as const) {
 					const event = new DragEvent(type, {
 						bubbles: true,
 						cancelable: true,
@@ -273,7 +273,7 @@ test.describe('image file paste and drop (WU-21)', () => {
 				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
 				transfer.items.add(new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' }));
 				const editor = document.querySelector('[data-edytor]')!;
-				for (const type of ['dragover', 'drop'] as const) {
+				for (const type of ['dragenter', 'dragover', 'drop'] as const) {
 					const event = new DragEvent(type, {
 						bubbles: true,
 						cancelable: true,

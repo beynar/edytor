@@ -1,7 +1,5 @@
 import { bind, bindAll } from '../../bind-event-listener/index.js';
-import { maxZIndex } from '../util/max-z-index.js';
 import { popoverResetUserAgentStyles } from '../util/popover-reset-styles.js';
-import { supportsPopover } from '../util/supports-popover.js';
 import { honeyPotDataAttribute } from './honey-pot-data-attribute.js';
 const honeyPotSize = 2;
 const halfHoneyPotSize = honeyPotSize / 2;
@@ -137,9 +135,8 @@ function mountHoneyPot({
   // including elements using z-index and other stacking contexts.
   // "manual" means no light dismiss — we manage the lifecycle ourselves.
   // Falls back to position:fixed + maxZIndex when the popover API is not available.
-  if (supportsPopover()) {
-    element.setAttribute('popover', 'manual');
-  }
+  // edytor: every supported engine has the Popover API (no fallback).
+  element.setAttribute('popover', 'manual');
 
   // can shift during the drag thanks to Firefox
   let clientRect = getHoneyPotRectFor({
@@ -147,14 +144,7 @@ function mountHoneyPot({
   });
   Object.assign(element.style, {
     position: 'fixed',
-    ...(supportsPopover() ?
-    // needs to come first as it has 'inset: unset' which
-    // needs to be overridden by our top / left values
-    popoverResetUserAgentStyles : {
-      // Fallback: using maximum possible z-index so that this element
-      // will always be on top of other positioned content.
-      zIndex: maxZIndex
-    }),
+    ...popoverResetUserAgentStyles,
     // Setting a background color explicitly to avoid any inherited styles.
     // Looks like this could be `opacity: 0`, but worried that _might_
     // cause the element to be ignored on some platforms.
@@ -172,9 +162,7 @@ function mountHoneyPot({
     })
   });
   document.body.appendChild(element);
-  if (supportsPopover()) {
-    element.showPopover();
-  }
+  element.showPopover();
 
   /**
    *  🦊 In firefox we can get `"pointermove"` events after the drag

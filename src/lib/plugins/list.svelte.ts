@@ -101,6 +101,24 @@ export const stepRow = (
 type Steps = { columns?: number; ends?: boolean; usable?: (index: number) => boolean };
 
 /**
+ * A field's or a control's keys (`keydown`): `keys[event.key]` runs and the
+ * key's default is prevented (with `stop`, it goes no further), unless the
+ * handler answers `false`; a key an IME composes, or one already prevented,
+ * is left alone.
+ */
+export const keysOf =
+	(
+		keys: Partial<Record<string, (event: KeyboardEvent) => unknown>>,
+		stop = false
+	): ((event: KeyboardEvent) => void) =>
+	(event) => {
+		const run = keys[event.key];
+		if (event.defaultPrevented || event.isComposing || !run || run(event) === false) return;
+		event.preventDefault();
+		if (stop) event.stopPropagation();
+	};
+
+/**
  * A key on a menu that holds the keyboard itself, not a field (WAI-ARIA's
  * menu keys): the arrows, Home and End move its row (`stepRow`), Enter and
  * Space pick it, Escape and Tab close it. Whether the key was the menu's
@@ -250,6 +268,11 @@ export abstract class ChromeList {
 
 	/** How many rows the keyboard walks. */
 	protected abstract get count(): number;
+
+	/** The view is readonly (reactive): the list closes. */
+	get readonly(): boolean {
+		return this.edytor.readonly;
+	}
 
 	/** The list's element id (page-unique), for `aria-controls`. */
 	get listId() {

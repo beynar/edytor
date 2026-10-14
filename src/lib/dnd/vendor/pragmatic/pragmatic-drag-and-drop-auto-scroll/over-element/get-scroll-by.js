@@ -1,8 +1,7 @@
 import { canScrollOnEdge } from '../shared/can-scroll-on-edge.js';
-import { edgeAxisLookup, edges } from '../shared/edges.js';
+import { edges } from '../shared/edges.js';
 import { getOverElementHitbox } from '../shared/get-over-element-hitbox.js';
 import { getScrollChange } from '../shared/get-scroll-change.js';
-import { isAxisAllowed } from '../shared/is-axis-allowed.js';
 import { isWithin } from '../shared/is-within.js';
 function getRectDefault(element) {
   return element.getBoundingClientRect();
@@ -13,7 +12,6 @@ export function getScrollBy({
   timeSinceLastFrame,
   engagement,
   config,
-  allowedAxis,
   getRect = getRectDefault
 }) {
   const client = {
@@ -26,15 +24,6 @@ export function getScrollBy({
       clientRect,
       config
     });
-    const axis = edgeAxisLookup[edge];
-
-    // Note: changing the allowed axis during a drag will not
-    // reset time dampening. It was decided it would be too
-    // complex to implement initially, and we can add it
-    // later if needed.
-    if (!isAxisAllowed(axis, allowedAxis)) {
-      return map;
-    }
     if (!isWithin({
       client,
       clientRect: hitbox
@@ -50,66 +39,21 @@ export function getScrollBy({
     });
     return map;
   }, new Map());
-  const left = (() => {
-    const axis = 'horizontal';
-    const leftEdge = scrollableEdges.get('left');
-    if (leftEdge) {
-      return getScrollChange({
-        client,
-        edge: leftEdge.edge,
-        hitbox: leftEdge.hitbox,
-        axis,
-        timeSinceLastFrame,
-        engagement,
-        isDistanceDampeningEnabled: true,
-        config
-      });
-    }
-    const rightEdge = scrollableEdges.get('right');
-    if (rightEdge) {
-      return getScrollChange({
-        client,
-        edge: rightEdge.edge,
-        hitbox: rightEdge.hitbox,
-        axis,
-        timeSinceLastFrame,
-        engagement,
-        isDistanceDampeningEnabled: true,
-        config
-      });
-    }
-    return 0;
-  })();
-  const top = (() => {
-    const axis = 'vertical';
-    const bottomEdge = scrollableEdges.get('bottom');
-    if (bottomEdge) {
-      return getScrollChange({
-        client,
-        edge: bottomEdge.edge,
-        hitbox: bottomEdge.hitbox,
-        axis,
-        timeSinceLastFrame,
-        engagement,
-        isDistanceDampeningEnabled: true,
-        config
-      });
-    }
-    const topEdge = scrollableEdges.get('top');
-    if (topEdge) {
-      return getScrollChange({
-        client,
-        edge: topEdge.edge,
-        hitbox: topEdge.hitbox,
-        axis,
-        timeSinceLastFrame,
-        engagement,
-        isDistanceDampeningEnabled: true,
-        config
-      });
-    }
-    return 0;
-  })();
+  // edytor: one change per axis, the first of its edges the pointer is over.
+  const change = (axis, first, second) => {
+    const entry = scrollableEdges.get(first) ?? scrollableEdges.get(second);
+    return entry ? getScrollChange({
+      client,
+      edge: entry.edge,
+      hitbox: entry.hitbox,
+      axis,
+      timeSinceLastFrame,
+      engagement,
+      config
+    }) : 0;
+  };
+  const left = change('horizontal', 'left', 'right');
+  const top = change('vertical', 'bottom', 'top');
   return {
     left,
     top

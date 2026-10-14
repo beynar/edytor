@@ -3,19 +3,19 @@
  * first media plugin given an `upload` claims (`uploadHooks`), and whether it takes a
  * file (a kind's `upload` accepts it). A file dragged over the view shows
  * where it lands only when its uploads take it (`drop`, the plugin layer's
- * `plugins/fileDrop.ts`); a view without uploads ignores dropped files.
+ * `plugins/fileDrop.ts`, Pragmatic's external adapter); a view without uploads ignores dropped files.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DropAt } from './attempt.js';
 
-/** Files dragged from outside over the view: where they land, shown. */
+/** Files dragged from outside over the view: where they land. */
 export interface FileDropPort {
-	/** A `dragover` of files: show where they land; `false` where none does (nothing shows). */
-	over(event: DragEvent): boolean;
-	/** The drop: the placement shown, re-resolved at the drop point, and nothing shows any more. */
-	at(event: DragEvent): DropAt | null;
-	/** The drag left the view, or ended: nothing shows. */
-	end(): void;
+	/**
+	 * The placement the drop of files being handled landed at, once (the
+	 * plugin layer's drop target resolves it before the host's `drop`
+	 * listener runs); `null` where none shows.
+	 */
+	take(): DropAt | null;
 }
 
 /** What the view's uploads answer about a file. */

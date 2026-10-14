@@ -335,3 +335,5 @@ Copying writes each equation as MathML whose `application/x-tex` annotation is i
 | `[data-edytor-equation-editor]` | The editor, in the overlay (`data-display="block"` or `"inline"`); `--edytor-equation-editor-background` |
 
 The plugin's own stylesheet only lets a wide block equation scroll sideways; the rest (the hover and editing shade, the centred drawing, the placeholder's panel, the source's monospace font, the error's red) is the [Notion theme](/docs/customization/styling#notion-theme)'s. KaTeX's own classes (`.katex`, `.katex-display`) style the drawing, from KaTeX's stylesheet: the plugin adds it to the page's head with the CDN default or a URL (`link[data-edytor-katex]`); with your own loader, your app imports it.
+
+**Placement.** The package places no popup: your markup places itself by `editor.anchor` (the edited equation: centered under a block one), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

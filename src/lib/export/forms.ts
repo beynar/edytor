@@ -9,7 +9,7 @@
  * reads only its own direction's tables. No Svelte, no DOM state:
  * Worker-safe.
  */
-import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import {
 	sanitizeCssColorValue,
 	sanitizeLinkHref,

@@ -1,9 +1,7 @@
 <script module lang="ts">
 	import { mediaForms } from '$lib/export/forms.js';
-	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
-	import EmptySlot from './EmptySlot.svelte';
-	import Control from '../Control.svelte';
+	import type { Plugin } from '$lib/plugins.js';
+	import { source } from './SourceBlock.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import {
@@ -12,11 +10,7 @@
 		EMBED_SANDBOX,
 		MEDIA_ICONS,
 		embedSourceOf,
-		mediaControl,
-		mediaLink,
-		LINK_REL,
 		mediaPlugin,
-		mediaView,
 		safeWebUrl,
 		type EmbedFallbackPayload,
 		type EmbedProvider
@@ -53,16 +47,6 @@
 		fallback?: Snippet<[EmbedFallbackPayload]>;
 	};
 
-	/** The view's fallback markup, if the app gave one. */
-	const fallbackOf = mediaControl('embed', 'fallback');
-
-	/**
-	 * The view's allowlist: the first embed plugin listed in it (first wins,
-	 * as for the kind). Never a broader list: no entry plays nothing.
-	 */
-	const providers = (block: Block | undefined) =>
-		mediaView(block?.edytor, 'embed')?.providers ?? [];
-
 	/**
 	 * Notion's embed block: an "Embed a link" panel until it has a link, then
 	 * the provider's player in a sandboxed frame, with an editable caption.
@@ -97,61 +81,10 @@
 					options.menu
 				),
 				record: {
-					snippet: embed,
+					snippet: source,
 					...mediaForms(allowed).embed
 				}
 			})
 		);
 	};
 </script>
-
-{#snippet embed({ block, content }: BlockSnippetPayload<{ url?: string }>)}
-	{@const player = block.handle ? embedSourceOf(block.data.url, providers(block.handle)) : null}
-	{@const url = safeWebUrl(block.data.url)}
-	{#if player}
-		{@const { height, aspectRatio = '16 / 9' } = player.provider}
-		<div
-			use:block.void
-			data-edytor-embed
-			style:aspect-ratio={height ? undefined : aspectRatio}
-			style:height={height ? `${height}px` : undefined}
-		>
-			<iframe
-				src={player.src}
-				title={player.provider.name}
-				sandbox={EMBED_SANDBOX}
-				allow={EMBED_ALLOW}
-				referrerpolicy="strict-origin-when-cross-origin"
-				loading="lazy"
-				allowfullscreen
-				style="display: block; width: 100%; height: 100%; border: 0"
-			></iframe>
-		</div>
-	{:else if url}
-		<!-- A link no provider plays (a peer may store any), or a suggestion's preview (no handle, so no
-		view's allowlist): a plain link, never a frame. -->
-		<div use:block.void data-edytor-embed-unsupported>
-			<Control
-				own={fallbackOf}
-				{initial}
-				payload={{ block: block.handle, url, link: mediaLink() }}
-			/>
-		</div>
-	{:else}
-		<div use:block.void data-edytor-media-empty>
-			<EmptySlot
-				block={block.handle}
-				kind="embed"
-				viewOf={(edytor) => mediaView(edytor, 'embed')}
-			/>
-		</div>
-	{/if}
-	<!-- The core renders the kind's <figure> around this markup. -->
-	<!-- svelte-ignore a11y_figcaption_parent -->
-	<figcaption>{@render content()}</figcaption>
-{/snippet}
-
-<!-- The link itself. -->
-{#snippet initial({ url, link }: EmbedFallbackPayload)}
-	<a href={url} target="_blank" rel={LINK_REL} {@attach link}>{url}</a>
-{/snippet}

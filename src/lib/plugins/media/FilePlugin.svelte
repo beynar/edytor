@@ -1,5 +1,4 @@
 <script module lang="ts">
-	import { mediaForms } from '$lib/export/forms.js';
 	import type { Snippet } from 'svelte';
 	import type { Plugin } from '$lib/plugins.js';
 	import { type FileRowPayload } from './media.js';
@@ -34,7 +33,6 @@
 		sourcePlugin(
 			'file',
 			['attachment', 'upload', 'pdf', 'document'],
-			mediaForms().file,
 			{ row: options.row },
 			options.upload
 		);

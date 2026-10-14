@@ -373,7 +373,7 @@ declare const codeForms: () => {
         defaultChild: string;
     };
     codeLine: {
-        html: (_: import("..").JSONBlock, content: string) => string;
+        html: (_: JSONBlock, content: string) => string;
     };
 };
 ```
@@ -384,16 +384,16 @@ declare const codeForms: () => {
 // export/forms.d.ts
 declare const columnsForms: () => {
     columns: {
-        html: (_: import("..").JSONBlock, __: string, children: string) => string;
-        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
+        html: (_: JSONBlock, __: string, children: string) => string;
+        plain: (_: JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {} | undefined;
         layout: true;
         rendersContent: false;
         defaultChild: string;
     };
     column: {
-        html: (block: import("..").JSONBlock, _: string, children: string) => string;
-        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
+        html: (block: JSONBlock, _: string, children: string) => string;
+        plain: (_: JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => Record<string, number> | undefined;
         rendersContent: false;
     };
@@ -407,8 +407,8 @@ declare const columnsForms: () => {
 declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
-            html: (block: import("..").JSONBlock) => string;
-            plain: (block: import("..").JSONBlock) => string;
+            html: (block: JSONBlock) => string;
+            plain: (block: JSONBlock) => string;
             parse: (element: HTMLElement) => import("../plugins/equation/tex.js").EquationData | undefined;
             void: true;
             rendersContent: false;
@@ -451,7 +451,7 @@ declare const fromMarkdown: (source: string, options?: MarkdownOptions) => JSOND
 // export/forms.d.ts
 declare const imageForms: () => {
     image: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => Record<string, string | number> | undefined;
         void: true;
     };
@@ -471,16 +471,16 @@ declare const mdxComponent: (name: string, data?: Record<string, SerializableCon
 // export/forms.d.ts
 declare const mediaForms: (providers?: readonly EmbedProvider[]) => {
     embed: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
-        plain: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
+        plain: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             url: string;
         } | undefined;
         void: true;
     };
     bookmark: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
-        plain: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
+        plain: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             title?: string | undefined;
             url: string;
@@ -488,8 +488,8 @@ declare const mediaForms: (providers?: readonly EmbedProvider[]) => {
         void: true;
     };
     file: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
-        plain: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
+        plain: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
             name: string;
@@ -497,26 +497,26 @@ declare const mediaForms: (providers?: readonly EmbedProvider[]) => {
         void: true;
     };
     video: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
         void: true;
     } | {
-        html: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
         void: true;
     };
     audio: {
-        html: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
         void: true;
     } | {
-        html: (block: import("..").JSONBlock, caption: string) => string;
+        html: (block: JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
@@ -545,8 +545,8 @@ declare const mentionForms: (kind?: string, char?: string) => {
 // export/forms.d.ts
 declare const pageForms: (options?: PagePluginOptions, untitled?: string) => {
     page: {
-        html: (block: import("..").JSONBlock) => string;
-        plain: (block: import("..").JSONBlock) => string;
+        html: (block: JSONBlock) => string;
+        plain: (block: JSONBlock) => string;
         parse: (el: HTMLElement) => {
             title?: string | undefined;
             pageId: string;
@@ -576,7 +576,7 @@ declare const richTextForms: (callout: (data: Data) => string) => {
         parse: (el: HTMLElement) => {
             level: string;
         } | undefined;
-        html: (block: import("..").JSONBlock, content: string, children: string) => string;
+        html: (block: JSONBlock, content: string, children: string) => string;
     };
     'bulleted-list-item': {
         element: {
@@ -598,8 +598,8 @@ declare const richTextForms: (callout: (data: Data) => string) => {
         html: string;
     };
     'todo-item': {
-        html: (block: import("..").JSONBlock, content: string, children: string) => string;
-        plain: (block: import("..").JSONBlock, content: string, children: string) => string;
+        html: (block: JSONBlock, content: string, children: string) => string;
+        plain: (block: JSONBlock, content: string, children: string) => string;
     };
     toggle: {
         element: string;
@@ -610,10 +610,10 @@ declare const richTextForms: (callout: (data: Data) => string) => {
         parse: (el: HTMLElement) => {
             level: string;
         } | undefined;
-        html: (block: import("..").JSONBlock, content: string, children: string) => string;
+        html: (block: JSONBlock, content: string, children: string) => string;
     };
     callout: {
-        html: (block: import("..").JSONBlock, content: string, children: string) => string;
+        html: (block: JSONBlock, content: string, children: string) => string;
         parse: (el: HTMLElement) => {
             icon: string;
         } | undefined;
@@ -733,8 +733,8 @@ declare const richTextMarkForms: {
 // export/forms.d.ts
 declare const tableForms: () => {
     table: {
-        html: (block: import("..").JSONBlock, _: string, children: string) => string;
-        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
+        html: (block: JSONBlock, _: string, children: string) => string;
+        plain: (_: JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {
             headerColumn?: boolean | undefined;
             headerRow?: boolean | undefined;
@@ -747,15 +747,15 @@ declare const tableForms: () => {
         defaultChild: string;
     };
     tableRow: {
-        html: (_: import("..").JSONBlock, __: string, children: string) => string;
-        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
+        html: (_: JSONBlock, __: string, children: string) => string;
+        plain: (_: JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {} | undefined;
         rendersContent: false;
         defaultChild: string;
     };
     tableCell: {
-        html: (_: import("..").JSONBlock, content: string) => string;
-        plain: (_: import("..").JSONBlock, content: string) => string;
+        html: (_: JSONBlock, content: string) => string;
+        plain: (_: JSONBlock, content: string) => string;
         parse: (element: HTMLElement) => {
             column: string;
         } | undefined;

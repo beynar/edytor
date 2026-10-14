@@ -12,7 +12,7 @@ import type { BlockDefinition, MarkDefinition, InlineBlockDefinition } from '$li
 import { sanitizeLinkHref } from '$lib/utils/sanitize.js';
 import { DEFAULT_CALLOUT_ICON } from '$lib/plugins/richtext/callouts.js';
 import { imageAltOf, safeImageSrc } from '$lib/plugins/image/image.js';
-import { fileNameOf, safeMediaSrc, safeWebUrl } from '$lib/plugins/media/sources.js';
+import { fileNameFor, safeMediaSrc, safeWebUrl } from '$lib/plugins/media/sources.js';
 import { pageIdOf, pageTitleOf, type PagePluginOptions } from '$lib/plugins/page/page.js';
 import { expressionOf } from '$lib/plugins/equation/tex.js';
 import {
@@ -221,8 +221,7 @@ export const blockMarkdown = (options: PagePluginOptions = {}, untitled = 'Untit
 		},
 		file: (block, caption, children) => {
 			const src = safeMediaSrc(block.data?.src);
-			const name = String(block.data?.name || (src && fileNameOf(src)) || '');
-			return linkLine(name, src, caption, children);
+			return linkLine(fileNameFor(block.data, src), src, caption, children);
 		},
 		video: source,
 		audio: source,

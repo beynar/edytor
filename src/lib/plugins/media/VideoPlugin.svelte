@@ -20,5 +20,5 @@
 	 * text is the caption.
 	 */
 	export const createVideoPlugin = ({ upload }: VideoPluginOptions = {}): Plugin =>
-		sourcePlugin('video', ['movie', 'mp4', 'clip'], undefined, {}, upload);
+		sourcePlugin('video', ['movie', 'mp4', 'clip'], {}, upload);
 </script>

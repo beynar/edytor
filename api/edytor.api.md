@@ -5005,14 +5005,14 @@ declare const safeImageSrc: (value: unknown) => string | null;
 ### safeMediaSrc
 
 ```ts
-// plugins/media/sources.d.ts
+// utils/sanitize.d.ts
 declare const safeMediaSrc: (value: unknown) => string | null;
 ```
 
 ### safeWebUrl
 
 ```ts
-// plugins/media/sources.d.ts
+// utils/sanitize.d.ts
 declare const safeWebUrl: (value: unknown) => string | null;
 ```
 

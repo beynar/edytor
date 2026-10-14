@@ -3,36 +3,9 @@
  * render, the embed providers and their players, a file's name, the element
  * an import reads. No DOM state, no Svelte: the export entry reads them too.
  */
-import { sanitizeLinkHref } from '$lib/utils/sanitize.js';
+import { safeMediaSrc, safeWebUrl } from '$lib/utils/sanitize.js';
 
-/**
- * A web page's URL a media block may store or render: the link sanitizer's
- * reading of it (`sanitizeLinkHref`: ASCII control characters and spaces stripped,
- * tab/newline anywhere), then only an absolute `http:`/`https:` URL with a
- * host. `null` for anything else: a script or `data:` URL, a `mailto:`, a
- * relative path, a bare domain.
- */
-export const safeWebUrl = (value: unknown): string | null => {
-	const href = sanitizeLinkHref(value);
-	if (href === null) return null;
-	try {
-		const url = new URL(href);
-		return (url.protocol === 'http:' || url.protocol === 'https:') && url.host ? href : null;
-	} catch {
-		return null;
-	}
-};
-
-/**
- * A media file's source (a video, an audio track, an attachment): a
- * {@link safeWebUrl}, or a `blob:` URL an upload answered. Never `data:`:
- * an inline file would be stored in the document and sent in every update.
- */
-export const safeMediaSrc = (value: unknown): string | null => {
-	const blob = typeof value === 'string' ? /^blob:(.*)$/is.exec(value.trim()) : null;
-	const origin = blob && safeWebUrl(blob[1]);
-	return origin ? `blob:${origin}` : safeWebUrl(value);
-};
+export { safeMediaSrc, safeWebUrl };
 
 /** One allowlisted embed provider: which links it plays, and its player. */
 export type EmbedProvider = {
@@ -61,37 +34,27 @@ export const EMBED_ALLOW = 'fullscreen; picture-in-picture; encrypted-media; cli
 
 const ID = /^[\w-]{1,128}$/;
 const HASH = /^[\da-f]{1,32}$/i;
-/** `url`'s path segments (empty ones dropped) when its host is one of `hosts`, else none. */
-const on = (url: URL, ...hosts: string[]) =>
-	hosts.includes(url.hostname.toLowerCase()) ? url.pathname.split('/').filter(Boolean) : [];
+/** `url`'s path segments (empty ones dropped) when its host is exactly one `hosts` matches, else none. */
+const on = (url: URL, hosts: RegExp) =>
+	hosts.test(url.hostname) ? url.pathname.split('/').filter(Boolean) : [];
 
-/** A YouTube start time (`t=42`, `t=42s`, `start=42`) in seconds. */
-const youtubeStart = (url: URL) => {
-	const t = url.searchParams.get('t') ?? url.searchParams.get('start');
-	return t && /^\d{1,6}s?$/.test(t) ? `?start=${parseInt(t, 10)}` : '';
-};
 const youtube: EmbedProvider = {
 	name: 'YouTube',
 	embed: (url) => {
-		const [first, second] = on(
+		const [first = '', second] = on(
 			url,
-			'youtu.be',
-			'youtube.com',
-			'www.youtube.com',
-			'm.youtube.com',
-			'music.youtube.com',
-			'www.youtube-nocookie.com'
+			/^((www\.|m\.|music\.)?youtube\.com|youtu\.be|www\.youtube-nocookie\.com)$/
 		);
 		const id =
-			url.hostname.toLowerCase() === 'youtu.be'
+			url.hostname === 'youtu.be'
 				? first
 				: first === 'watch'
 					? url.searchParams.get('v')
-					: first && ['shorts', 'embed', 'live'].includes(first)
-						? second
-						: undefined;
+					: /^(shorts|embed|live)$/.test(first) && second;
+		// A start time (`t=42`, `t=42s`, `start=42`) in seconds.
+		const t = url.searchParams.get('t') ?? url.searchParams.get('start');
 		return id && /^[\w-]{11}$/.test(id)
-			? `https://www.youtube-nocookie.com/embed/${id}${youtubeStart(url)}`
+			? `https://www.youtube-nocookie.com/embed/${id}${t && /^\d{1,6}s?$/.test(t) ? `?start=${parseInt(t, 10)}` : ''}`
 			: null;
 	}
 };
@@ -99,19 +62,20 @@ const youtube: EmbedProvider = {
 const vimeo: EmbedProvider = {
 	name: 'Vimeo',
 	embed: (url) => {
-		const [player, ...video] = on(url, 'player.vimeo.com');
-		const [id, hash] = player === 'video' ? video : on(url, 'vimeo.com', 'www.vimeo.com');
-		if (!id || !/^\d{1,12}$/.test(id)) return null;
+		const [player, ...video] = on(url, /^player\.vimeo\.com$/);
+		const [id, hash] = player === 'video' ? video : on(url, /^(www\.)?vimeo\.com$/);
 		const h = hash && HASH.test(hash) ? hash : url.searchParams.get('h');
-		return `https://player.vimeo.com/video/${id}${h && HASH.test(h) ? `?h=${h}` : ''}`;
+		return id && /^\d{1,12}$/.test(id)
+			? `https://player.vimeo.com/video/${id}${h && HASH.test(h) ? `?h=${h}` : ''}`
+			: null;
 	}
 };
 
 const loom: EmbedProvider = {
 	name: 'Loom',
 	embed: (url) => {
-		const [kind, id] = on(url, 'loom.com', 'www.loom.com');
-		return (kind === 'share' || kind === 'embed') && id && /^[\da-f]{32}$/i.test(id)
+		const [kind = '', id = ''] = on(url, /^(www\.)?loom\.com$/);
+		return /^(share|embed)$/.test(kind) && /^[\da-f]{32}$/i.test(id)
 			? `https://www.loom.com/embed/${id}`
 			: null;
 	}
@@ -120,10 +84,8 @@ const loom: EmbedProvider = {
 const figma: EmbedProvider = {
 	name: 'Figma',
 	embed: (url) => {
-		const [kind, key] = on(url, 'figma.com', 'www.figma.com');
-		return key &&
-			ID.test(key) &&
-			['file', 'design', 'proto', 'board', 'slides', 'deck'].includes(kind!)
+		const [kind = '', key = ''] = on(url, /^(www\.)?figma\.com$/);
+		return ID.test(key) && /^(file|design|proto|board|slides|deck)$/.test(kind)
 			? `https://www.figma.com/embed?embed_host=edytor&url=${encodeURIComponent(url.href)}`
 			: null;
 	}
@@ -132,8 +94,8 @@ const figma: EmbedProvider = {
 const codepen: EmbedProvider = {
 	name: 'CodePen',
 	embed: (url) => {
-		const [user, kind, id] = on(url, 'codepen.io');
-		return user && ID.test(user) && (kind === 'pen' || kind === 'embed') && id && ID.test(id)
+		const [user = '', kind = '', id = ''] = on(url, /^codepen\.io$/);
+		return ID.test(user) && /^(pen|embed)$/.test(kind) && ID.test(id)
 			? `https://codepen.io/${user}/embed/${id}?default-tab=result`
 			: null;
 	},
@@ -143,11 +105,10 @@ const codepen: EmbedProvider = {
 const spotify: EmbedProvider = {
 	name: 'Spotify',
 	embed: (url) => {
-		let parts = on(url, 'open.spotify.com');
-		if (parts[0] === 'embed' || /^intl-[a-z-]+$/i.test(parts[0] ?? '')) parts = parts.slice(1);
-		const [kind, id] = parts;
-		return ['track', 'album', 'playlist', 'episode', 'show', 'artist'].includes(kind!) &&
-			id &&
+		let parts = on(url, /^open\.spotify\.com$/);
+		if (/^(embed|intl-[a-z-]+)$/i.test(parts[0] ?? '')) parts = parts.slice(1);
+		const [kind = '', id = ''] = parts;
+		return /^(track|album|playlist|episode|show|artist)$/.test(kind) &&
 			/^[A-Za-z0-9]{1,64}$/.test(id)
 			? `https://open.spotify.com/embed/${kind}/${id}`
 			: null;

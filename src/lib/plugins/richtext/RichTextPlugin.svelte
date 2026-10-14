@@ -17,36 +17,37 @@
 	import { marksForInsertion } from '$lib/session/editing/text.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
-	import { mediaKinds } from '$lib/crdt/semantics.js';
+	import { mediaKinds, richTextKinds } from '$lib/crdt/semantics.js';
 	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
 	import RichTextControl from './RichTextControl.svelte';
-	import {
-		DEFAULT_CALLOUT_ICON,
-		calloutHtml,
-		calloutIcons,
-		calloutPickers,
-		iconOf
-	} from './callouts.js';
+	import { DEFAULT_CALLOUT_ICON, calloutIcons, calloutPickers, iconOf } from './callouts.js';
 	import { listen } from '$lib/utils/listen.js';
 	import {
-		bulletedForms,
-		calloutForms,
-		dividerForms,
-		headingForms,
 		HEADING_LEVELS,
+		calloutRead,
+		calloutWrite,
+		dividerRead,
+		dividerWrite,
 		headingLevel,
-		listItemForms,
-		numberedForms,
-		orderedListForms,
-		quoteForms,
+		headingRead,
+		headingWrite,
+		itemRead,
+		itemWrite,
+		numberedRead,
+		orderedRead,
+		orderedWrite,
+		quoteRead,
+		quoteWrite,
 		richTextMarkForms,
-		todoForms,
-		toggleForms,
-		toggleHeadingForms,
-		unorderedListForms
+		todoWrite,
+		toggleHeadingRead,
+		toggleHeadingWrite,
+		toggleRead,
+		unorderedRead,
+		unorderedWrite
 	} from '$lib/export/forms.js';
 	import { onLastLine } from '$lib/session/navigation.js';
 	import { bodyShows } from '$lib/selection/visibility.js';
@@ -402,7 +403,8 @@
 					])
 				},
 				heading: {
-					...headingForms,
+					...headingRead,
+					...headingWrite,
 					snippet: textThenChildren,
 					presets: presets(
 						'heading',
@@ -416,7 +418,8 @@
 					)
 				},
 				'bulleted-list-item': {
-					...bulletedForms,
+					...itemRead,
+					...itemWrite,
 					continues: true,
 					snippet: listItem,
 					presets: presets('bulleted-list-item', [
@@ -429,7 +432,8 @@
 					])
 				},
 				'numbered-list-item': {
-					...numberedForms,
+					...numberedRead,
+					...itemWrite,
 					continues: true,
 					snippet: listItem,
 					presets: presets('numbered-list-item', [
@@ -442,7 +446,7 @@
 					])
 				},
 				'todo-item': {
-					...todoForms,
+					...todoWrite,
 					continues: true,
 					// The app's control markup, if any, through its own snippet: the default costs no branch.
 					snippet: checkbox ? todoItemOwn : todoItem,
@@ -457,7 +461,7 @@
 					])
 				},
 				toggle: {
-					...toggleForms,
+					...toggleRead,
 					continues: true,
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
@@ -476,7 +480,8 @@
 				// kept); from a toggle, `#`, `##` or `###` + space; so `> # ` typed on a new
 				// line is a toggle heading 1.
 				'toggle-heading': {
-					...toggleHeadingForms,
+					...toggleHeadingRead,
+					...toggleHeadingWrite,
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
@@ -502,7 +507,7 @@
 				// text) and a content (its children, any blocks), which shows even empty
 				// (`body`): Enter at the end of the title goes into it.
 				callout: {
-					...calloutForms,
+					...calloutRead,
 					container: true,
 					body: true,
 					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
@@ -510,8 +515,7 @@
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
 					// A callout without its own icon exports the view's.
-					html: (block, content, children) =>
-						calloutHtml(iconOf(block.data, edytor), content, children),
+					...calloutWrite((data) => iconOf(data, edytor)),
 					// The block menu's Change icon, while the view lists a picker: the keyboard's way to it.
 					menu: (block) => {
 						const picker = calloutPickers.get(edytor);
@@ -528,22 +532,35 @@
 					}
 				},
 				quote: {
-					...quoteForms,
+					...quoteRead,
+					...quoteWrite,
 					container: true,
 					snippet: textThenChildren,
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
 					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }])
 				},
 				divider: {
-					...dividerForms,
+					...richTextKinds.divider,
+					...dividerRead,
+					...dividerWrite,
 					presets: presets('divider', [
 						{ label: kinds.divider, icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
 					]),
 					empty: { content: [], children: [] }
 				},
-				'ordered-list': { ...orderedListForms, snippet: list },
-				'unordered-list': { ...unorderedListForms, snippet: list },
-				'list-item': { ...listItemForms, snippet: listItem }
+				'ordered-list': {
+					...richTextKinds['ordered-list'],
+					...orderedRead,
+					...orderedWrite,
+					snippet: list
+				},
+				'unordered-list': {
+					...richTextKinds['unordered-list'],
+					...unorderedRead,
+					...unorderedWrite,
+					snippet: list
+				},
+				'list-item': { ...itemRead, ...itemWrite, snippet: listItem }
 			}
 		};
 	};

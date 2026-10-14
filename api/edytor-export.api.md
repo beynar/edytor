@@ -137,152 +137,20 @@ export type MathML = (tex: string, display: boolean) => string;
 // export/index.d.ts
 declare const bundledForms: {
     blocks: {
-        columns: {
-            html: (_: JSONBlock, __: string, children: string) => string;
-            plain: (_: JSONBlock, __: string, children: string) => string;
-            parse: (element: HTMLElement) => {} | undefined;
-            layout: true;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        column: {
-            html: (block: JSONBlock, _: string, children: string) => string;
-            plain: (_: JSONBlock, __: string, children: string) => string;
-            parse: (element: HTMLElement) => Record<string, number> | undefined;
-            rendersContent: false;
-        };
         equation: {
-            html: (block: JSONBlock) => string;
-            plain: (block: JSONBlock) => string;
-            parse: (element: HTMLElement) => import("../index.js").EquationData | undefined;
-            void: true;
-            rendersContent: false;
+            itemKind?: string;
+            island?: boolean;
+            rendersContent: boolean;
+            defaultChild?: string;
+            void: boolean;
+            lines?: boolean;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string);
+            markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
+            plain?: (block: JSONBlock, content: string, children: string) => string;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
+            element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
+            contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
         };
-        toc: {
-            html: () => string;
-            plain: () => string;
-            parse: (el: HTMLElement) => {} | undefined;
-            void: true;
-            rendersContent: false;
-        };
-        page: {
-            html: (block: JSONBlock) => string;
-            plain: (block: JSONBlock) => string;
-            parse: (el: HTMLElement) => {
-                title?: string | undefined;
-                pageId: string;
-            } | undefined;
-            void: true;
-            rendersContent: false;
-        };
-        embed: {
-            html: (block: JSONBlock, caption: string) => string;
-            plain: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                url: string;
-            } | undefined;
-            void: true;
-        };
-        bookmark: {
-            html: (block: JSONBlock, caption: string) => string;
-            plain: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                title?: string | undefined;
-                url: string;
-            } | undefined;
-            void: true;
-        };
-        file: {
-            html: (block: JSONBlock, caption: string) => string;
-            plain: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                src: string;
-                name: string;
-            } | undefined;
-            void: true;
-        };
-        video: {
-            html: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                src: string;
-            } | undefined;
-            void: true;
-        } | {
-            html: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                src: string;
-            } | undefined;
-            void: true;
-        };
-        audio: {
-            html: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                src: string;
-            } | undefined;
-            void: true;
-        } | {
-            html: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => {
-                src: string;
-            } | undefined;
-            void: true;
-        };
-        image: {
-            html: (block: JSONBlock, caption: string) => string;
-            parse: (el: HTMLElement) => Record<string, string | number> | undefined;
-            void: true;
-        };
-        table: {
-            html: (block: JSONBlock, _: string, children: string) => string;
-            plain: (_: JSONBlock, __: string, children: string) => string;
-            parse: (element: HTMLElement) => {
-                headerColumn?: boolean | undefined;
-                headerRow?: boolean | undefined;
-                columns: {
-                    id: string;
-                }[];
-            } | undefined;
-            table: true;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        tableRow: {
-            html: (_: JSONBlock, __: string, children: string) => string;
-            plain: (_: JSONBlock, __: string, children: string) => string;
-            parse: (element: HTMLElement) => {} | undefined;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        tableCell: {
-            html: (_: JSONBlock, content: string) => string;
-            plain: (_: JSONBlock, content: string) => string;
-            parse: (element: HTMLElement) => {
-                column: string;
-            } | undefined;
-            island: true;
-        };
-        code: {
-            island: true;
-            lines: true;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        codeLine: {
-            html: (_: JSONBlock, content: string) => string;
-        };
-        paragraph: BlockForms;
-        quote: BlockForms;
-        divider: BlockForms;
-        "ordered-list": BlockForms;
-        "list-item": BlockForms;
-        "unordered-list": BlockForms;
-        toggle: BlockForms;
-        heading: BlockForms;
-        "todo-item": BlockForms;
-        "bulleted-list-item": BlockForms;
-        "numbered-list-item": BlockForms;
-        callout: BlockForms;
-        "toggle-heading": BlockForms;
     };
     marks: {
         bold: {
@@ -342,21 +210,13 @@ declare const bundledForms: {
     };
     inlineBlocks: {
         inlineEquation: {
-            plain: (data: any) => string;
-            html: (data: any) => string;
-            parse: (element: HTMLElement) => import("../index.js").EquationData | undefined;
+            html?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            markdown?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            plain?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
         };
-        mention: {
-            plain: (data: any) => string;
-            html: (data: any) => string;
-            parse: (element: HTMLElement) => {
-                id: string;
-                label: string;
-            } | undefined;
-        };
-        pageLink: {
-            plain: (data: any) => string;
-        };
+        mention: import("../clipboard/serializeClipboardFragment.js").AtomForms;
+        pageLink: import("../clipboard/serializeClipboardFragment.js").AtomForms;
     };
 };
 ```
@@ -365,39 +225,14 @@ declare const bundledForms: {
 
 ```ts
 // export/forms.d.ts
-declare const codeForms: () => {
-    code: {
-        island: true;
-        lines: true;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    codeLine: {
-        html: (_: JSONBlock, content: string) => string;
-    };
-};
+declare const codeForms: () => Rows;
 ```
 
 ### columnsForms
 
 ```ts
 // export/forms.d.ts
-declare const columnsForms: () => {
-    columns: {
-        html: (_: JSONBlock, __: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
-        parse: (element: HTMLElement) => {} | undefined;
-        layout: true;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    column: {
-        html: (block: JSONBlock, _: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
-        parse: (element: HTMLElement) => Record<string, number> | undefined;
-        rendersContent: false;
-    };
-};
+declare const columnsForms: () => Rows;
 ```
 
 ### equationForms
@@ -407,18 +242,26 @@ declare const columnsForms: () => {
 declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
-            html: (block: JSONBlock) => string;
-            plain: (block: JSONBlock) => string;
-            parse: (element: HTMLElement) => import("../plugins/equation/tex.js").EquationData | undefined;
-            void: true;
-            rendersContent: false;
+            itemKind?: string;
+            island?: boolean;
+            rendersContent: boolean;
+            defaultChild?: string;
+            void: boolean;
+            lines?: boolean;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string);
+            markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
+            plain?: (block: JSONBlock, content: string, children: string) => string;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
+            element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
+            contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
         };
     };
     inlineBlocks: {
         inlineEquation: {
-            plain: (data: any) => string;
-            html: (data: any) => string;
-            parse: (element: HTMLElement) => import("../plugins/equation/tex.js").EquationData | undefined;
+            html?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            markdown?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            plain?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
         };
     };
 };
@@ -449,13 +292,7 @@ declare const fromMarkdown: (source: string, options?: MarkdownOptions) => JSOND
 
 ```ts
 // export/forms.d.ts
-declare const imageForms: () => {
-    image: {
-        html: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => Record<string, string | number> | undefined;
-        void: true;
-    };
-};
+declare const imageForms: () => Rows;
 ```
 
 ### mdxComponent
@@ -469,200 +306,35 @@ declare const mdxComponent: (name: string, data?: Record<string, SerializableCon
 
 ```ts
 // export/forms.d.ts
-declare const mediaForms: (providers?: readonly EmbedProvider[]) => {
-    embed: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            url: string;
-        } | undefined;
-        void: true;
-    };
-    bookmark: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            title?: string | undefined;
-            url: string;
-        } | undefined;
-        void: true;
-    };
-    file: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            src: string;
-            name: string;
-        } | undefined;
-        void: true;
-    };
-    video: {
-        html: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            src: string;
-        } | undefined;
-        void: true;
-    } | {
-        html: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            src: string;
-        } | undefined;
-        void: true;
-    };
-    audio: {
-        html: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            src: string;
-        } | undefined;
-        void: true;
-    } | {
-        html: (block: JSONBlock, caption: string) => string;
-        parse: (el: HTMLElement) => {
-            src: string;
-        } | undefined;
-        void: true;
-    };
-};
+declare const mediaForms: (providers?: readonly EmbedProvider[]) => Rows;
 ```
 
 ### mentionForms
 
 ```ts
 // export/forms.d.ts
-declare const mentionForms: (kind?: string, char?: string) => {
-    plain: (data: any) => string;
-    html: (data: any) => string;
-    parse: (element: HTMLElement) => {
-        id: string;
-        label: string;
-    } | undefined;
-};
+declare const mentionForms: (kind?: string, char?: string) => AtomForms;
 ```
 
 ### pageForms
 
 ```ts
 // export/forms.d.ts
-declare const pageForms: (options?: PagePluginOptions, untitled?: string) => {
-    page: {
-        html: (block: JSONBlock) => string;
-        plain: (block: JSONBlock) => string;
-        parse: (el: HTMLElement) => {
-            title?: string | undefined;
-            pageId: string;
-        } | undefined;
-        void: true;
-        rendersContent: false;
-    };
-};
+declare const pageForms: (options?: PagePluginOptions, untitled?: string) => Rows;
 ```
 
 ### pageLinkForms
 
 ```ts
 // export/forms.d.ts
-declare const pageLinkForms: () => {
-    plain: (data: any) => string;
-};
+declare const pageLinkForms: () => AtomForms;
 ```
 
 ### richTextForms
 
 ```ts
 // export/forms.d.ts
-declare const richTextForms: (callout: (data: Data) => string) => {
-    heading: {
-        contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-        parse: (el: HTMLElement) => {
-            level: string;
-        } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-    };
-    'bulleted-list-item': {
-        element: {
-            tag: "li" | "ol" | "ul";
-            attributes: {
-                role: string;
-            };
-        };
-        html: string;
-    };
-    'numbered-list-item': {
-        parse: (el: HTMLElement) => {} | undefined;
-        element: {
-            tag: "li" | "ol" | "ul";
-            attributes: {
-                role: string;
-            };
-        };
-        html: string;
-    };
-    'todo-item': {
-        html: (block: JSONBlock, content: string, children: string) => string;
-        plain: (block: JSONBlock, content: string, children: string) => string;
-    };
-    toggle: {
-        element: string;
-    };
-    'toggle-heading': {
-        element: string;
-        contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-        parse: (el: HTMLElement) => {
-            level: string;
-        } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-    };
-    callout: {
-        html: (block: JSONBlock, content: string, children: string) => string;
-        parse: (el: HTMLElement) => {
-            icon: string;
-        } | undefined;
-    };
-    quote: {
-        contentElement: string;
-        html: string;
-    };
-    divider: {
-        element: string;
-        html: () => string;
-        plain: () => string;
-        void: true;
-        rendersContent: false;
-    };
-    'ordered-list': {
-        itemKind: string;
-        element: {
-            tag: "li" | "ol" | "ul";
-            attributes: {
-                role: string;
-            };
-        };
-        html: string;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    'unordered-list': {
-        itemKind: string;
-        element: {
-            tag: "li" | "ol" | "ul";
-            attributes: {
-                role: string;
-            };
-        };
-        html: string;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    'list-item': {
-        element: {
-            tag: "li" | "ol" | "ul";
-            attributes: {
-                role: string;
-            };
-        };
-        html: string;
-    };
-};
+declare const richTextForms: (callout: (data: Data) => string) => Rows;
 ```
 
 ### richTextMarkForms
@@ -731,37 +403,7 @@ declare const richTextMarkForms: {
 
 ```ts
 // export/forms.d.ts
-declare const tableForms: () => {
-    table: {
-        html: (block: JSONBlock, _: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
-        parse: (element: HTMLElement) => {
-            headerColumn?: boolean | undefined;
-            headerRow?: boolean | undefined;
-            columns: {
-                id: string;
-            }[];
-        } | undefined;
-        table: true;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    tableRow: {
-        html: (_: JSONBlock, __: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
-        parse: (element: HTMLElement) => {} | undefined;
-        rendersContent: false;
-        defaultChild: string;
-    };
-    tableCell: {
-        html: (_: JSONBlock, content: string) => string;
-        plain: (_: JSONBlock, content: string) => string;
-        parse: (element: HTMLElement) => {
-            column: string;
-        } | undefined;
-        island: true;
-    };
-};
+declare const tableForms: () => Rows;
 ```
 
 ### textToBlocks
@@ -789,15 +431,7 @@ declare const toMarkdown: (doc: JSONDoc | readonly JSONBlock[], options?: Export
 
 ```ts
 // export/forms.d.ts
-declare const tocForms: () => {
-    toc: {
-        html: () => string;
-        plain: () => string;
-        parse: (el: HTMLElement) => {} | undefined;
-        void: true;
-        rendersContent: false;
-    };
-};
+declare const tocForms: () => Rows;
 ```
 
 ## Reachable, not exported
@@ -1825,6 +1459,18 @@ export type EdytorOptions = {
 
 ```ts
 type Data = Record<string, unknown> | undefined;
+```
+
+#### export/forms.d.ts#Form
+
+```ts
+type Form = Omit<BlockForms, 'presets'>;
+```
+
+#### export/forms.d.ts#Rows
+
+```ts
+type Rows = Record<string, Form>;
 ```
 
 #### kinds.d.ts#KindRow

@@ -11,32 +11,31 @@ import { blocksToHtml, type ExportKinds } from '$lib/clipboard/serializeClipboar
 import { blocksToMarkdown } from './markdownWriter.js';
 import { linesOfHtml, type HtmlParser, type ImportKinds } from '$lib/clipboard/htmlFlow.js';
 import {
-	HEADING_LEVELS,
+	bundledMarkdown,
+	bundledRead,
+	bundledWrite,
 	codeForms,
 	columnsForms,
 	equationForms,
+	htmlExtras,
 	imageForms,
+	listSiblings,
+	markdownExtras,
 	mediaForms,
 	mentionForms,
 	pageForms,
 	pageLinkForms,
+	parseExtras,
 	richTextForms,
 	richTextMarkForms,
 	tableForms,
 	tocForms,
 	type KindForms
 } from './forms.js';
-import {
-	atomMarkdown,
-	blockExtras,
-	blockMarkdown,
-	listSiblings,
-	markMarkdown
-} from './exportForms.js';
 import { textToBlocks, type MarkdownComponents, type MarkdownOptions } from './markdown.js';
 import { mdxComponent } from './mdx.js';
 import { iconOf } from '$lib/plugins/richtext/callouts.js';
-import type { AtomForms, BlockForms, MarkForms } from './forms.js';
+import type { BlockForms } from './forms.js';
 
 export { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 export {
@@ -71,50 +70,34 @@ export type { MarkdownContext } from '$lib/plugins.js';
 /**
  * Every bundled kind's, mark's and atom's forms, with each plugin's
  * default options: what `toHTML`, `toMarkdown` and `fromHTML` read when
- * given no `kinds`. A view's own records (`kinds: edytor`) carry its
- * options (its callout icon, its embed providers, its page links).
+ * given no `kinds` (each its own direction of them). A view's own records
+ * (`kinds: edytor`) carry its options (its callout icon, its embed
+ * providers, its page links).
  */
-/**
- * The rich text kinds' presets' data, as their plugin lists them: HTML
- * import finds a kind by a preset's tag (an `h2`, a `blockquote`). A view's
- * records carry their own presets; only a server reading needs these.
- */
-const levels = HEADING_LEVELS.map((level) => ({ data: { level } }));
-const PRESETS: Record<string, BlockForms['presets']> = {
-	heading: levels,
-	'toggle-heading': levels,
-	'bulleted-list-item': [{}],
-	'numbered-list-item': [{}],
-	'todo-item': [{ data: { checked: false } }],
-	toggle: [{}],
-	callout: [{}],
-	quote: [{}],
-	divider: [{}]
-};
-const rich = { paragraph: {}, ...richTextForms(iconOf) };
-const richWithPresets = Object.fromEntries(
-	Object.entries(rich).map(([type, form]) => [type, { ...form, presets: PRESETS[type] }])
-) as Record<keyof typeof rich, BlockForms>;
-
-export const bundledForms = {
-	blocks: {
-		...richWithPresets,
-		...codeForms(),
-		...tableForms(),
-		...imageForms(),
-		...mediaForms(),
-		...pageForms(),
-		...tocForms(),
-		...equationForms().blocks,
-		...columnsForms()
-	},
-	marks: richTextMarkForms,
-	inlineBlocks: {
-		mention: mentionForms(),
-		pageLink: pageLinkForms(),
-		...equationForms().inlineBlocks
-	}
-} satisfies Required<KindForms>;
+export const bundledForms = /* @__PURE__ */ (() => {
+	const read = bundledRead().blocks;
+	const rich = { paragraph: {}, ...richTextForms(iconOf) } as Record<string, BlockForms>;
+	// A rich text kind's presets' data, as its plugin lists them: HTML import finds a kind by a
+	// preset's tag (an `h2`, a `blockquote`). A view's records carry their own.
+	for (const type in rich)
+		if (read[type]?.presets) rich[type] = { ...rich[type], presets: read[type].presets };
+	const equation = equationForms();
+	return {
+		blocks: {
+			...rich,
+			...codeForms(),
+			...tableForms(),
+			...imageForms(),
+			...mediaForms(),
+			...pageForms(),
+			...tocForms(),
+			...equation.blocks,
+			...columnsForms()
+		},
+		marks: richTextMarkForms,
+		inlineBlocks: { mention: mentionForms(), pageLink: pageLinkForms(), ...equation.inlineBlocks }
+	} satisfies Required<KindForms>;
+})();
 
 /** Which forms a conversion reads. */
 export type ExportOptions = {
@@ -148,52 +131,39 @@ export type ImportOptions = ExportOptions & {
 const isView = (kinds: KindForms | ExportKinds): kinds is ExportKinds =>
 	kinds.blocks instanceof Map;
 
-/** `kinds` as the records the conversions read. */
-const recordsOf = (kinds: KindForms | ExportKinds = bundledForms): ExportKinds => {
-	if (isView(kinds)) return kinds;
-	const forms = kinds as KindForms;
+/** A direction's default records (`bundledWrite`, …) as the records the conversions read. */
+type Defaults = Required<KindForms>;
+
+/**
+ * `kinds` as the records a conversion reads, each with the forms of
+ * `extras` (by name) it lacks: its own win. A section left out is the
+ * direction's bundled one.
+ */
+const recordsOf = (
+	kinds: KindForms | ExportKinds | undefined,
+	defaults: () => Defaults,
+	extras: Defaults
+) => {
+	const own = kinds && isView(kinds) ? kinds : undefined;
+	const forms = (kinds ?? {}) as KindForms;
+	let bundled: Defaults | undefined;
+	const section = <K extends keyof Defaults>(key: K) =>
+		new Map(
+			[...(own?.[key] ?? Object.entries(forms[key] ?? (bundled ??= defaults())[key]))].map(
+				([name, form]) => [
+					name,
+					{
+						...(Object.hasOwn(extras[key], name) && extras[key][name]),
+						...Object.fromEntries(Object.entries(form).filter(([, value]) => value !== undefined))
+					}
+				]
+			)
+		) as Map<string, NonNullable<Defaults[K][string]>>;
 	return {
-		blocks: new Map(Object.entries(forms.blocks ?? bundledForms.blocks)),
-		marks: new Map(Object.entries(forms.marks ?? bundledForms.marks)),
-		inlineBlocks: new Map(Object.entries(forms.inlineBlocks ?? bundledForms.inlineBlocks))
+		blocks: section('blocks'),
+		marks: section('marks'),
+		inlineBlocks: section('inlineBlocks')
 	};
-};
-
-const BLOCK_MARKDOWN: Record<string, BlockForms['markdown']> = blockMarkdown();
-const EXTRAS: Record<string, BlockForms> = blockExtras;
-const MARK_MARKDOWN: Record<string, MarkForms['markdown']> = markMarkdown;
-const ATOM_MARKDOWN: Record<string, AtomForms['markdown']> = atomMarkdown;
-
-/** Each record with the export's forms it lacks (`exportForms.ts`), by its name: its own win. */
-const fill = <T extends { markdown?: unknown }>(
-	map: ReadonlyMap<string, T>,
-	markdown: Record<string, T['markdown']>,
-	extras: Record<string, Partial<T>> = {}
-) =>
-	new Map(
-		[...map].map(([name, form]) => [
-			name,
-			{
-				...(Object.hasOwn(extras, name) && extras[name]),
-				...(Object.hasOwn(markdown, name) && { markdown: markdown[name] }),
-				...Object.fromEntries(Object.entries(form).filter(([, value]) => value !== undefined))
-			} as T
-		])
-	);
-const complete = (records: ExportKinds, components: MarkdownComponents = {}): ExportKinds => ({
-	blocks: tagged(fill(records.blocks, BLOCK_MARKDOWN, EXTRAS), components),
-	marks: fill(records.marks, MARK_MARKDOWN),
-	inlineBlocks: fill(records.inlineBlocks, ATOM_MARKDOWN)
-});
-
-/** Each kind `components` lists written as its tag (the first tag naming it). */
-const tagged = (blocks: Map<string, BlockForms>, components: MarkdownComponents) => {
-	for (const [tag, type] of Object.entries(components).reverse())
-		blocks.set(type, {
-			...blocks.get(type),
-			markdown: (block, content, children) => mdxComponent(tag, block.data, content, children)
-		});
-	return blocks;
 };
 
 const blocksOf = (doc: JSONDoc | readonly JSONBlock[]) =>
@@ -214,7 +184,11 @@ export const toHTML = (
 	doc: JSONDoc | readonly JSONBlock[],
 	options: ExportOptions = {}
 ): string => {
-	const records = complete(recordsOf(options.kinds));
+	const records = recordsOf(options.kinds, bundledWrite, {
+		blocks: htmlExtras(),
+		marks: {},
+		inlineBlocks: {}
+	});
 	return blocksToHtml([...blocksOf(doc)], records, listSiblings(records));
 };
 
@@ -229,10 +203,14 @@ export const toMarkdown = (
 	doc: JSONDoc | readonly JSONBlock[],
 	options: ExportOptions = {}
 ): string => {
-	const md = blocksToMarkdown(
-		[...blocksOf(doc)],
-		complete(recordsOf(options.kinds), options.components)
-	);
+	const records = recordsOf(options.kinds, bundledMarkdown, markdownExtras());
+	// Each kind `components` lists written as its tag (the first tag naming it).
+	for (const [tag, type] of Object.entries(options.components ?? {}).reverse())
+		records.blocks.set(type, {
+			...records.blocks.get(type),
+			markdown: (block, content, children) => mdxComponent(tag, block.data, content, children)
+		});
+	const md = blocksToMarkdown([...blocksOf(doc)], records);
 	return md ? `${md}\n` : '';
 };
 
@@ -280,7 +258,11 @@ const settle = (
  * ```
  */
 export const fromHTML = (html: string, options: ImportOptions = {}): JSONDoc => {
-	const records = complete(recordsOf(options.kinds));
+	const records = recordsOf(options.kinds, bundledRead, {
+		blocks: parseExtras(),
+		marks: {},
+		inlineBlocks: {}
+	});
 	const own = (options.kinds as { document?: ImportKinds['document'] } | undefined)?.document;
 	const defaultChild =
 		own?.defaultChild.bind(own) ??

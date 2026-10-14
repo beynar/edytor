@@ -13,7 +13,6 @@
 	import { equationEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
-	import EquationEditorPanel from './EquationEditor.svelte';
 	import {
 		EquationEditor,
 		EquationRenderer,
@@ -157,7 +156,17 @@
 						if (!view || !owns()) return;
 						const { editor } = view;
 						const { panel } = options;
-						return panel && editor.panel.mount(node, EquationEditorPanel, { editor, panel });
+						return (
+							panel &&
+							editor.panel.mount(node, panel, editor, {
+								place: () => editor.place,
+								center: () => editor.display,
+								attributes: () => ({
+									'data-edytor-equation-panel': '',
+									'data-display': editor.display ? 'block' : 'inline'
+								})
+							})
+						);
 					},
 					// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
 					onAfterOperation: (change) => {

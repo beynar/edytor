@@ -10,11 +10,11 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { onPress, takeKeys } from '$lib/events/onFocus.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
 import { imageAlignOf, imageAltOf, type ImageAlign } from './image.js';
 import { imageControls, type ImageControls } from './controls.svelte.js';
-import { identify, keepFocus } from '../chrome.js';
+import { identify, keepFocus, onPressOutside } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
 import ImageToolbarHost from './ImageToolbarHost.svelte';
 import { keysOf } from '../list.svelte.js';
@@ -80,19 +80,6 @@ export class ImageToolbar {
 	toggleAlt = () => {
 		this.editing = this.editing ? null : (this.box?.id ?? null);
 		this.#edytor.overlay.invalidate();
-	};
-
-	/**
-	 * A press anywhere (`onPress`, capture): one outside the alt panel and the
-	 * toolbar (whose Alt button toggles it) closes the field, so the chrome
-	 * follows the pointer again.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		const target = event.target as Element | null;
-		if (this.editing === null) return;
-		if (target?.closest?.(ALT_CHROME)) return;
-		this.closeAlt();
 	};
 
 	/** Focus left the alt field: for somewhere outside its panel, the field closes. @internal */
@@ -169,8 +156,9 @@ export const createImageToolbarPlugin =
 			if (!controls || controls.toolbar) return;
 			const bar = (controls.toolbar = new ImageToolbar(controls));
 			return all(
-				// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
-				onPress(edytor, node.ownerDocument, bar.pressed, true),
+				// A press outside the alt panel and the toolbar (whose Alt button toggles it)
+				// closes it (WebKit's lone `mousedown` too).
+				onPressOutside(edytor, node.ownerDocument, ALT_CHROME, () => bar.closeAlt()),
 				edytor.overlay.mount(
 					ImageToolbarHost,
 					{ toolbar: bar, snippet: toolbar },

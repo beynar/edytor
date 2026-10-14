@@ -146,6 +146,26 @@ export const attribute = (node: HTMLElement, name: string, value: string | undef
 export const namesRows = (node: HTMLElement) => isField(node) || node.hasAttribute('role');
 
 /**
+ * Every press in `document` (capture; WebKit's lone `mousedown` after a
+ * drag too, `onPress`) outside the elements `inside` matches: `outside`
+ * hears it. Answers the teardown.
+ */
+export const onPressOutside = (
+	edytor: Edytor,
+	document: Document,
+	inside: string,
+	outside: (event: MouseEvent) => void
+) =>
+	onPress(
+		edytor,
+		document,
+		(event) => {
+			if (!(event.target as Element | null)?.closest?.(inside)) outside(event);
+		},
+		true
+	);
+
+/**
  * A handle menu's events on the editor `node` (the block menu, the `+`'s
  * menu): a grip's activation (`BLOCK_ACTIVATE_EVENT`), a `+`'s offer
  * (`BLOCK_ADD_EVENT`), and every press outside the elements `inside`
@@ -163,12 +183,5 @@ export const handleMenuEvents = (
 	all(
 		listen(node, BLOCK_ACTIVATE_EVENT, activate),
 		listen(node, BLOCK_ADD_EVENT, add),
-		onPress(
-			edytor,
-			node.ownerDocument,
-			(event) => {
-				if (!(event.target as Element | null)?.closest?.(inside)) outside();
-			},
-			true
-		)
+		onPressOutside(edytor, node.ownerDocument, inside, outside)
 	);

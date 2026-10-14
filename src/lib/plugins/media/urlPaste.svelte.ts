@@ -4,11 +4,10 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { placeNear } from '$lib/surface/overlay.js';
-import { onPress } from '$lib/events/onFocus.js';
 import { convertToKind, holdsNothing } from '$lib/kinds.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import { mountChrome } from '../chrome.js';
+import { mountChrome, onPressOutside } from '../chrome.js';
 import { ChromeList, inPage, listHotkeys } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
@@ -151,11 +150,12 @@ export class UrlPasteController extends ChromeList {
 			if (this.open && !this.stays()) this.close();
 		},
 		onEdytorAttached: ({ node }) => {
-			const outside = (event: MouseEvent) => {
-				const target = event.target as Element | null;
-				if (!target?.closest?.('[data-edytor-url-paste-host]')) this.close();
-			};
-			const offPress = onPress(this.edytor, node.ownerDocument, outside, true);
+			const offPress = onPressOutside(
+				this.edytor,
+				node.ownerDocument,
+				'[data-edytor-url-paste-host]',
+				this.close
+			);
 			const unmount = mountChrome(
 				this.edytor,
 				this.#menu,

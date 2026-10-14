@@ -9,7 +9,6 @@
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
 	import { siblingSlot } from '$lib/session/handles.js';
 	import CodeHeader from './CodeHeader.svelte';
-	import LanguageMenuPanel from './LanguageMenu.svelte';
 	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
 	import { codeEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import {
@@ -116,7 +115,13 @@
 				onEdytorAttached: ({ node }) => {
 					const menu = ownMenu();
 					const snippet = menu?.settings.menu;
-					return snippet && menu.panel.mount(node, LanguageMenuPanel, { menu, snippet });
+					return (
+						snippet &&
+						menu.panel.mount(node, snippet, menu, {
+							place: () => menu.open && menu.panel.place(4),
+							attributes: () => ({ 'data-edytor-code-language-panel': '' })
+						})
+					);
 				},
 				hotkeys: {
 					// Alt+F10 at a caret in a code line: the keys go to its language button

@@ -19,7 +19,6 @@ import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.
 import { Anchored } from '../anchored.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { calloutPickers, iconOf } from './callouts.js';
-import CalloutIconHost from './CalloutIconPicker.svelte';
 import { all, listen } from '$lib/utils/listen.js';
 
 /** The picker's choices unless `createCalloutIconsPlugin({ icons })` names others. */
@@ -251,6 +250,17 @@ export const createCalloutIconsPlugin =
 		return {
 			// With the menus: above the handles and the image chrome.
 			onEdytorAttached: ({ node }) =>
-				menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70)
+				menu &&
+				picker.panel.mount(
+					node,
+					menu,
+					picker,
+					{
+						shown: () => picker.isOpen,
+						place: () => picker.isOpen && picker.panel.place(4),
+						attributes: () => ({ 'data-edytor-callout-icons': '' })
+					},
+					70
+				)
 		};
 	};

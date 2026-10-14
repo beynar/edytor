@@ -6,7 +6,8 @@
  * a press or a focus outside the panel and its anchor, the view turning
  * readonly.
  */
-import type { Component } from 'svelte';
+import type { ComponentProps, Snippet } from 'svelte';
+import AnchoredPanel from './AnchoredPanel.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { onPress } from '$lib/events/onFocus.js';
 import { layerBox, pin, sameValues, type LayerBox } from '$lib/surface/overlay.js';
@@ -50,13 +51,15 @@ export class Anchored {
 
 	/**
 	 * Mount the panel in the overlay at `zIndex` (above the block handles, 5,
-	 * by default), with a press listener (capture) on `node`'s document and
-	 * the readonly rule. Answers the teardown, which closes it.
+	 * by default): the app's `snippet` with `payload`, placed as `panel` says
+	 * (`AnchoredPanel`), with a press listener (capture) on `node`'s document
+	 * and the readonly rule. Answers the teardown, which closes it.
 	 */
-	mount = <Props extends Record<string, unknown>>(
+	mount = <T>(
 		node: HTMLElement,
-		component: Component<Props>,
-		props: Props,
+		snippet: Snippet<[T]>,
+		payload: T,
+		panel: Omit<ComponentProps<typeof AnchoredPanel<T>>, 'snippet' | 'payload'>,
 		zIndex = 7
 	) => {
 		const { edytor } = this;
@@ -71,15 +74,22 @@ export class Anchored {
 				),
 			true
 		);
-		const unmount = edytor.overlay.mount(component, props, this.name, zIndex, (host, origin) => {
-			const anchor = this.anchor();
-			const box = layerBox(anchor, origin);
-			return () => {
-				pin(host);
-				if (anchor === null) return this.dismiss();
-				if (!sameValues(box, this.box)) this.box = box;
-			};
-		});
+		const props = { snippet, payload, ...panel };
+		const unmount = edytor.overlay.mount(
+			AnchoredPanel<T>,
+			props,
+			this.name,
+			zIndex,
+			(host, origin) => {
+				const anchor = this.anchor();
+				const box = layerBox(anchor, origin);
+				return () => {
+					pin(host);
+					if (anchor === null) return this.dismiss();
+					if (!sameValues(box, this.box)) this.box = box;
+				};
+			}
+		);
 		const offLock = $effect.root(() => {
 			$effect(() => {
 				if (edytor.readonly) this.dismiss();

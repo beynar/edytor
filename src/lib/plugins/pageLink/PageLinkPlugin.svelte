@@ -1,6 +1,7 @@
 <svelte:options runes />
 
 <script module lang="ts">
+	import { pageLinkForms } from '$lib/export/forms.js';
 	import './pageLink.css';
 	import type { Snippet } from 'svelte';
 	import type {
@@ -175,11 +176,8 @@
 						: {}),
 					inlineBlocks: {
 						pageLink: {
-							snippet: pageLink,
-							plain: (data) => {
-								const title = (data as Partial<PageLinkData> | undefined)?.title;
-								return typeof title === 'string' ? title : '';
-							}
+							...pageLinkForms(),
+							snippet: pageLink
 						}
 					}
 				},

@@ -1655,10 +1655,15 @@ Options of `routeDocumentSocket` and `routeDocumentHistory`.
 ```ts
 export type RouteDocumentOptions = {
     allowedOrigins?: readonly string[] | ((origin: string) => boolean);
+    cors?: boolean | {
+        credentials?: boolean;
+        maxAge?: number;
+    };
 };
 ```
 
 - `allowedOrigins`: The page origins (`https://app.example.com`, scheme, host and port) whose browser requests may reach the document, or a predicate over the `Origin` header.
+- `cors`: Answer a page on another origin (the app on `app.example.com`, the room on `rooms.example.com`): `OPTIONS` preflights are answered `204` (`GET, POST`, the headers the page asked for), and every HTTP answer (comments, history, the probes) carries `Access-Control-Allow-Origin`.
 
 ## routeDocumentSocket
 

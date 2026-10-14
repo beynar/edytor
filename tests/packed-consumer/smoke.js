@@ -342,4 +342,31 @@ assert.deepEqual(
 	`v13 engine artifacts must not materialize in a packed consumer install: ${offenders}`
 );
 
+// ── edytor/export: plain node imports it (no Svelte), and it converts both ways ──
+{
+	const { toHTML, toMarkdown, fromHTML, fromMarkdown, textToBlocks } =
+		await import('edytor/export');
+	const { DOMParser } = await import('linkedom');
+	const value = {
+		children: [
+			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Plan' }] },
+			{ type: 'paragraph', content: [{ text: 'bold', marks: { bold: true } }] }
+		]
+	};
+	assert.equal(toHTML(value), '<h2>Plan</h2><p><strong>bold</strong></p>');
+	assert.equal(toMarkdown(value), '## Plan\n\n**bold**\n');
+	assert.deepEqual(textToBlocks(toMarkdown(value)), value.children);
+	assert.deepEqual(
+		fromHTML('<h2>Plan</h2><p><b>bold</b><script>x()</script></p>', { DOMParser }).children,
+		value.children
+	);
+	// The markdown parser (`@tanstack/markdown`) resolves from the installed package.
+	const mdx = '<Endpoint operationId="getPet" />\n';
+	const components = { Endpoint: 'endpoint' };
+	assert.deepEqual(fromMarkdown(mdx, { components }).children, [
+		{ type: 'endpoint', data: { operationId: 'getPet' }, content: [] }
+	]);
+	assert.equal(toMarkdown(fromMarkdown(mdx, { components }), { components }), mdx);
+}
+
 console.log('packed-consumer smoke OK — engine + public boundary work at runtime');

@@ -1111,6 +1111,10 @@ export type RoomMetrics = {
 // cloudflare/routeDocumentSocket.d.ts
 export type RouteDocumentOptions = {
     allowedOrigins?: readonly string[] | ((origin: string) => boolean);
+    cors?: boolean | {
+        credentials?: boolean;
+        maxAge?: number;
+    };
 };
 ```
 

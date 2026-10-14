@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { pageForms } from '$lib/export/forms.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
@@ -6,7 +7,6 @@
 	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
 	import {
-		pageHtml,
 		pageIdOf,
 		pageTitleOf,
 		pageOptions as optionsOf,
@@ -63,15 +63,8 @@
 						...pageKinds.page,
 						snippet: page,
 						empty: { content: [], children: [] },
-						html: (block) => pageHtml(block.data, own, labels.untitled),
-						plain: (block) => pageTitleOf(block.data?.title) ?? labels.untitled,
 						// Its own export: a `p[data-edytor-page]` naming the page.
-						parse: (el) => {
-							const pageId = pageIdOf(el.getAttribute('data-edytor-page'));
-							if (el.localName !== 'p' || !pageId) return;
-							const title = pageTitleOf(el.textContent);
-							return { pageId, ...(title && { title }) };
-						}
+						...pageForms(own, labels.untitled).page
 					}
 				},
 				commands: create

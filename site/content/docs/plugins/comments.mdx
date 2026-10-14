@@ -16,7 +16,6 @@ icon: message-square
 	const comments = createCommentsPlugin({
 		client: createCommentsClient({
 			server: 'https://example.com/comments',
-			socket: 'wss://example.com/rooms',
 			room: id,
 			params: { token }
 		}),
@@ -277,7 +276,11 @@ Comments come from everyone in the document live: the client hears each change t
 
 ## The sidebar
 
-The sidebar is the plugin's placement of your cards: `card` draws each one, a thread's or the one being written (`thread: null`), and `header` the top of the margin (Notion's **Resolved (n)**). The writing, posting, replying and resolving described above are what the demo's card does with the controller (`submit`, `reply`, `resolve`, `reopen`, `remove`, `cancel`); its markup is `CommentCard.svelte` in the repository's [`registry/edytor/chrome`](https://github.com/beynar/edytor/tree/master/registry/edytor/chrome) (the `edytor-chrome` registry item, in your app after `shadcn-svelte add`). When the viewport has room right of the editor (288 px and a 32 px gap), the cards sit there, Notion's margin, each at its text's height, without overlapping. On a narrow screen only the active thread's card shows, under its text. Open threads whose text was deleted have no place in the margin; they stay in `commentsController(edytor).threads` with no runs.
+The sidebar is the plugin's placement of your cards: `card` draws each one, a thread's or the one being written (`thread: null`), and `header` the top of the margin (Notion's **Resolved (n)**). The writing, posting, replying and resolving described above are what the demo's card does with the controller (`submit`, `reply`, `resolve`, `reopen`, `remove`, `cancel`); its markup is `CommentCard.svelte` in the repository's [`registry/edytor/chrome`](https://github.com/beynar/edytor/tree/master/registry/edytor/chrome) (the `edytor-chrome` registry item, in your app after `shadcn-svelte add`).
+
+The width rule is one measure of the editor's host (the element `<Edytor>` renders) against the viewport: when the host's right edge leaves at least 328 px before the viewport's right edge (a 32 px gap, the 288 px card, 8 px to spare), every open thread's card shows in that margin, Notion's, each at its text's height, without overlapping and without a click. With less room, only the active thread's card shows, under its text: click a highlight, or start a comment, to open one. The host's padding counts as part of it, the page's own gutter beside it does not: in a layout with a sidebar of its own, or a page column wider than its text, narrow the column (the starter's `--edytor-starter-max-width` and `--edytor-starter-gutter`) or widen the window until the host ends 328 px before the viewport's edge.
+
+Open threads whose text was deleted have no place in the margin; they stay in `commentsController(edytor).threads` with no runs.
 
 The sidebar lives in the editor's [overlay](/docs/customization/styling#the-overlay), beside the host, never inside it. The highlight is a stylesheet in the page's `head` (`style[data-edytor-comments-style]`) for each open thread's mark element (`[data-edytor-mark="comment:<id>"]`): nothing is written on the editor's own elements. The text of a thread being written is highlighted in the overlay.
 
@@ -335,7 +338,7 @@ The plugin reads and writes threads through a `CommentsClient`:
 | `subscribe(listener)` | Optional: hear every change (`{ type: 'change', change }`), and every thread at each (re)connect (`{ type: 'snapshot', seq, threads }`); answers the unsubscribe |
 | `attach(document)` | Optional: the plugin gives a client whose store has no document of its own the view's document, to remove a removed thread's anchor |
 
-`createCommentsClient({ server, room, params, fetch, socket })` is the default one: `GET` and `POST <server>/<room>` (the requests [`routeDocumentComments`](/docs/server/comments#over-http) answers), `params` (an object, or a function read at each request) as query parameters, and a refusal thrown as a `CommentRequestError` with its HTTP `status`. Its `subscribe` hears the room on the socket of the page's websocket sync for the same room, `socket` (default: `server` read as `ws:`/`wss:`): set it to the `server` of `<Edytor>` when the two routes differ. While a listener is subscribed, that socket asks the room for the changes, and again at each reconnect. Without a websocket sync, the client lists the threads when the editor mounts and hears no change.
+`createCommentsClient({ server, room, params, fetch, socket })` is the default one: `GET` and `POST <server>/<room>` (the requests [`routeDocumentComments`](/docs/server/comments#over-http) answers), `params` (an object, or a function read at each request) as query parameters, and a refusal thrown as a `CommentRequestError` with its HTTP `status`. Its `subscribe` hears the room on the socket the page's websocket sync already holds for the same room (the `server` of `<Edytor>`, whatever its route: `/rooms` beside `/comments` needs nothing more); `socket` names one sync's `server` when the page holds several for that room. While a listener is subscribed, that socket asks the room for the changes, and again at each reconnect. Without a websocket sync, the client lists the threads when the editor mounts and hears no change.
 
 Every request and change carries whole threads:
 

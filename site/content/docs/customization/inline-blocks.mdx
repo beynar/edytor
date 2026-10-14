@@ -34,6 +34,10 @@ Content always starts and ends with text, and text runs separate atoms; the edit
       type: "(data) => string",
       description: "The atom's HTML on copy, inline markup you escape yourself. Without one, an empty `<span data-edytor-inline-block>`.",
     },
+    markdown: {
+      type: "(data) => string",
+      description: "The atom's markdown (toMarkdown), escaped by you. Without one, its plain form.",
+    },
     parse: {
       type: "(element: HTMLElement) => Record<string, SerializableContent> | undefined",
       description: "HTML import: the atom's data when `element`, met inside a line of pasted or dropped HTML, is this atom, else `undefined`. Its contents are then not read as text.",

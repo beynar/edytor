@@ -1747,3 +1747,31 @@ describe('docs readability (WU-19)', () => {
 		expect(readme).toMatch(/\[changelog\]\(https:\/\/edytor\.dev\/docs\/reference\/migration\)/);
 	});
 });
+
+describe('the README matches the 2.0 release', () => {
+	const readme = readFileSync(join(root, 'README.md'), 'utf8');
+
+	it('installs with a bare `pnpm add edytor`, no tag', () => {
+		const installs = readme.match(/^pnpm add edytor\S*.*$/gm) ?? [];
+		expect(installs).toEqual(['pnpm add edytor']);
+		expect(readme).not.toMatch(/`next` tag|--tag next/);
+	});
+
+	it('every repository path it names in backticks exists', () => {
+		const paths = [...readme.matchAll(/`([\w.-]+(?:\/[\w.-]*)*)`/g)]
+			.map(([, path]) => path)
+			.filter((path) => /\/|^[A-Z]+\.md$/.test(path) && !path.startsWith('edytor'));
+		expect(paths.length).toBeGreaterThan(0);
+		expect(paths.filter((path) => !existsSync(join(root, path)))).toEqual([]);
+	});
+
+	it('neither the README nor the docs name `edytor@next`, `src/routes/chrome` or built-in handles', () => {
+		const pages = [join(root, 'README.md'), ...files(join(root, 'site/content'))].filter(
+			(path) => !path.endsWith('reference/migration.mdx')
+		);
+		const stale = pages.filter((path) =>
+			/edytor@next|src\/routes\/chrome|with block handles/.test(readFileSync(path, 'utf8'))
+		);
+		expect(stale.map((path) => relative(root, path))).toEqual([]);
+	});
+});

@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { mediaForms } from '$lib/export/forms.js';
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 	import EmptySlot from './EmptySlot.svelte';
 	import Control from '../Control.svelte';
@@ -7,13 +8,10 @@
 	import UploadPreview from './UploadPreview.svelte';
 	import { fileUploads, uploadHooks, type Uploader } from '../uploads.svelte.js';
 	import {
-		claimed,
-		escapeHtml,
 		fileNameOf,
 		mediaControl,
 		mediaLink,
 		mediaPlugin,
-		mediaSourceOf,
 		mediaView,
 		safeMediaSrc,
 		LINK_REL,
@@ -60,18 +58,7 @@
 	export const sourcePlugin = (
 		kind: SourceKind,
 		keywords: string[],
-		record: Partial<BlockDefinition> = {
-			html: (block, caption) => {
-				const src = safeMediaSrc(block.data?.src);
-				// The tag, then its attributes: `<video src="…" controls></video>`.
-				const media = src ? `<${kind}` + ` src="${escapeHtml(src)}" controls></${kind}>` : '';
-				return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-			},
-			parse: (el) => {
-				const src = mediaSourceOf(claimed(el, kind));
-				return src ? { src } : undefined;
-			}
-		},
+		record: Partial<BlockDefinition> = mediaForms()[kind as 'video' | 'audio'],
 		own: Pick<MediaView, 'row'> = {},
 		upload?: Uploader
 	): Plugin =>

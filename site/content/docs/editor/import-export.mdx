@@ -1,0 +1,198 @@
+---
+title: Import and export
+description: A document as HTML or Markdown and back, in the browser, in Node or in a Worker, by the same forms the clipboard uses, your own kinds included.
+icon: file-down
+---
+
+`edytor/export` turns a document's JSON into HTML or Markdown, and HTML or Markdown into a document. It reads each kind's own forms, the ones the [clipboard](/docs/editor/clipboard#how-content-is-exported) writes and reads, so a copy, an export and an import of a block always agree. It is Svelte-free: it runs in the browser, in Node and in a Worker.
+
+| Function | Gives |
+| --- | --- |
+| `toHTML(doc, options?)` | HTML: each block by its kind's `html` form, a run of list items in its `ul` or `ol`, marks as their elements. |
+| `toMarkdown(doc, options?)` | Markdown (CommonMark with GFM tables, task lists and strikethrough). |
+| `fromHTML(html, options?)` | A `JSONDoc`, read the way a paste reads HTML. Safe: only known kinds and marks survive. |
+| `fromMarkdown(source, options?)` | A `JSONDoc` from markdown, MDX-lite tags included ([below](#mdx-lite)). |
+| `textToBlocks(text, options?)` | `JSONBlock[]` from markdown or plain text: the same reading as `fromMarkdown`, with GFM tables, code languages, nested marks and `streaming` ([details](/docs/editor/suggestions#text-to-blocks)). The editor's paste reads with a smaller one. |
+| `mdxComponent(name, data, content?, children?)` | An MDX-lite tag, for a kind's `markdown` form ([below](#mdx-lite)). |
+
+`doc` is a `JSONDoc` (`{ children }`, what `onChange` hands you) or a `JSONBlock[]`.
+
+```ts title="src/lib/exportPage.ts" check
+import { fromHTML, fromMarkdown, toHTML, toMarkdown } from 'edytor/export';
+import type { JSONDoc } from 'edytor';
+
+export const exportPage = (value: JSONDoc) => ({
+	html: toHTML(value),
+	markdown: toMarkdown(value)
+});
+
+/** A pasted or stored HTML string as a document, its markup sanitized. */
+export const importHtml = (html: string): JSONDoc => fromHTML(html);
+
+/** A markdown file as a document. */
+export const importMarkdown = (markdown: string): JSONDoc => fromMarkdown(markdown);
+```
+
+## JSON
+
+The document's JSON is the lossless format: store `onChange`'s value and give it back as `value` ([document model](/docs/concepts/document-model)). HTML and Markdown are for other apps, a static site, an email or a model; read what each one keeps below.
+
+## HTML
+
+`toHTML` writes what the clipboard writes for other apps, without the clipboard's embedded copy:
+
+- a paragraph is a `<p>`, a heading an `<h1>` to `<h3>`, a quote a `<blockquote>`, a divider an `<hr>`;
+- list items next to each other are one `<ul>` (bulleted items and to-dos) or `<ol>` (numbered items), nested items inside their item; a to-do's `<li>` holds a checkbox;
+- a code block is one `<pre>` with its language (`<pre data-language="ts"><code class="language-ts">`);
+- a table is a `<table>`, its header row's cells `<th>`; a toggle a `<details>` with its `<summary>`; a callout a `<div data-edytor-callout>` naming its icon; an image a `<figure>` with its caption;
+- marks are their elements: `<strong>`, `<em>`, `<a href>`, `<code>`, `<s>`, a color's `<span style>`; a block's colours are classes (`block-color-red`).
+
+The clipboard writes the same forms, except three that only `edytor/export` holds: a toggle's `<details>` (a copy writes its text, then its body), a code block's one `<pre>` naming its language (a copy writes a `<pre>` per line), and the `<ul>`/`<ol>` around sibling items (a copy writes the `<li>`s). They stay out of the editor's bundle.
+
+Every value is escaped, a link's href and an image's or a media block's source go through the same sanitizers as the editor's render (a `javascript:` link is an `<a>` with no href), and ids and empty data are never written.
+
+## Markdown
+
+`toMarkdown` writes:
+
+| Block | Markdown |
+| --- | --- |
+| Heading | `#`, `##`, `###` |
+| Bulleted, numbered, to-do item | `- `, `1. `, `- [ ] ` / `- [x] `, nested items indented under their item |
+| Quote | `> ` |
+| Code block | a fence with its language (` ```ts `) |
+| Table | a GFM table, its first row the header |
+| Divider | `---` |
+| Image | `![alt](src "caption")` |
+| Callout | a GitHub alert: `> [!NOTE]`, then the icon and the text, then the content |
+| Toggle | `<details>` and `<summary>`, which GitHub and most readers show folded |
+| Equation | `$$ … $$`; an inline equation `$…$` |
+| Bookmark, file, embed, video, audio | a link to it, then its caption |
+| Page, mention, page link | their text (a page with an `href` option a link) |
+
+Marks: `**bold**`, `*italic*` (both: `***x***`), `~~strike~~`, `` `code` ``, `[text](href)`; a mark spanning several marks opens once (`**a *b***`, `[**a bold link**](url)`). Underline, colors, superscript and subscript have no markdown: their text is kept. Text that markdown would read as syntax is escaped (`\*`, `\# not a heading`).
+
+`fromMarkdown` (and `textToBlocks`) reads all of it back, so the common set round-trips: `fromMarkdown(toMarkdown(value))` gives the same blocks (spaces at a mark's edges move outside it, and table rows a header).
+
+## Import Markdown
+
+`fromMarkdown(source)` parses with [TanStack Markdown](https://github.com/TanStack/markdown) (`@tanstack/markdown`, a dependency only `edytor/export` loads: `<Edytor>` does not ship it) and maps its syntax tree to blocks. Edytor's own syntax, the `> [!NOTE]` callout and its icon, `<details>` toggles, `$$` equations and `<https://…>` autolinks, is read by TanStack extensions over the same parser. It is safe for markdown from a user or a model:
+
+- **Raw HTML is text.** `<img onerror>`, `<script>` or `<b>` inside markdown is kept as the characters it is, never as markup.
+- **Links and images go through the sanitizers.** A `javascript:` link is its text, an image whose source is not `http(s)`, `blob:`, an inline image or a relative path is its alt text.
+- **Reference links** (`[text][ref]` with `[ref]: url` below) are links; **footnotes** are text (`[^1]`, and `[^1]: …` paragraphs at the end).
+
+## MDX-lite
+
+Docs written in MDX use components: `<Endpoint operationId="getPet" />` for an API operation, `<Callout type="warning">` around a note. `fromMarkdown` reads these tags when you name them, each as the kind it stands for, and `toMarkdown` writes them back:
+
+```ts title="src/lib/apiDocs.ts" check
+import { bundledForms, fromMarkdown, mdxComponent, toMarkdown, type BlockForms } from 'edytor/export';
+import type { JSONDoc } from 'edytor';
+
+/** Each tag and the kind it reads as. */
+export const components = { Endpoint: 'endpoint', Callout: 'callout' };
+
+const source = `# Pets
+
+<Endpoint operationId="getPet" method="get" version={2} deprecated={false} />
+
+<Callout type="warning" title="Rate limits">At most **10** calls a second.</Callout>
+`;
+
+export const doc: JSONDoc = fromMarkdown(source, {
+	components,
+	onUnknown: (issue) => console.warn(`kept as text (${issue.reason}): ${issue.source}`)
+});
+// doc.children[1]: { type: 'endpoint', data: { operationId: 'getPet', method: 'get', version: 2, deprecated: false }, content: [] }
+
+export const back = toMarkdown(doc, { components }); // === source
+
+/** Or say it in the kind's own markdown form, for every export of it. */
+export const endpoint: BlockForms = {
+	markdown: (block, content, children) => mdxComponent('Endpoint', block.data, content, children)
+};
+export const kinds = { blocks: { ...bundledForms.blocks, endpoint } };
+```
+
+What is read:
+
+- **A tag `components` names**, starting a line, with a capitalised name: self-closing (`<Endpoint id="a" />`), on one line around inline markdown (`<Callout>Read **this**</Callout>`: the block's text), or on its own lines around markdown (the first paragraph is the block's text, the rest its children, as in a quote). Tags of the same name nest.
+- **Literal attributes**: `name="text"` or `name='text'` (a string), `name={2}` (a number), `name={true}` / `name={false}`, and a bare `name` (`true`). They become `block.data`.
+- **The kind** is the one the map names. Whether it takes children is the document's to settle when you load the value, as for any JSON.
+
+What is not, kept as text and told to `onUnknown(issue)` (`issue.reason`, `issue.name`, `issue.source`): a tag `components` does not name (`component`), an attribute holding an expression or a spread (`{a + b}`, `{...props}`, `expression`), a tag without its closing tag (`unclosed`), and `import` and `export` lines. Inline tags in the middle of a line, JSX expressions as children and `{/* comments */}` are not read: they stay text, unreported.
+
+`toMarkdown(doc, { components })` writes every block of a listed kind as its tag, the first tag naming it: its data as attributes, by `mdxComponent`. A value with no literal (an object, an array, `null`, a string with a newline or with both quote marks) is left out. Without text or children the tag self-closes; with text only, the text sits inside the tag on one line; with children, the tag has its own lines, the text first. That is the form `fromMarkdown` reads back, so `toMarkdown(fromMarkdown(source, { components }), { components })` gives `source` back when it is written that way. A `components` entry for a bundled kind (`Callout: 'callout'`) also writes the `> [!NOTE]` callouts of a document as tags.
+
+## Import HTML
+
+`fromHTML(html)` reads HTML as a paste does ([Paste](/docs/editor/clipboard#paste)): each element is claimed by a kind's `parse` hook or its tag, inline elements by a mark's, and everything else is its text. It is the import to use for HTML from a user, another app or a form field:
+
+- **Only known kinds and marks survive.** `script`, `style`, `iframe` (unless an [embed](/docs/plugins/embed) provider plays it), forms and unknown elements carry nothing but their text.
+- **Nothing runs.** The parser only parses; no attribute is copied (`onerror`, `onclick`, `style`), only the values each record's `parse` hook reads, through its sanitizer: a `javascript:` link is its text, an image needs an `http(s)` or inline image source.
+- **Pass fewer kinds to allow fewer** (an allowlist, below).
+
+### On a server
+
+`fromHTML` needs a `DOMParser`. The browser has one; Node and Workers do not, so pass one. [linkedom](https://github.com/WebReflection/linkedom) is small and runs in both:
+
+```ts title="src/routes/api/import/+server.ts" check
+import { json, type RequestHandler } from '@sveltejs/kit';
+import { DOMParser } from 'linkedom';
+import { fromHTML, toMarkdown, type HtmlParser } from 'edytor/export';
+
+export const POST: RequestHandler = async ({ request }) => {
+	const doc = fromHTML(await request.text(), { DOMParser: DOMParser as unknown as HtmlParser });
+	return json({ doc, markdown: toMarkdown(doc) });
+};
+```
+
+jsdom's works too (`new JSDOM().window.DOMParser`), in Node only. `toHTML`, `toMarkdown` and `textToBlocks` need no parser.
+
+Import the functions from `edytor/export`, not from `edytor`: the package root also exports the `<Edytor>` component, whose `.svelte` files plain Node cannot load. `edytor/export` loads no Svelte and keeps `<Edytor>`'s bundle as it was.
+
+## Your own kinds
+
+Without `kinds`, the functions read the bundled kinds, marks and atoms, each with its plugin's default options (`bundledForms`). Two ways to read others:
+
+- **In a view, pass the view**: `toHTML(value, { kinds: edytor })` reads its own records, your kinds and its plugins' options included (its callout icon, its embed providers, its page links).
+- **Elsewhere, pass forms by name**. A section you list replaces the bundled one, so spread it to add yours, or list fewer to allow fewer:
+
+```ts title="src/lib/forms.ts" check
+import { bundledForms, escapeHtml, toHTML, toMarkdown, type BlockForms } from 'edytor/export';
+import type { JSONDoc } from 'edytor';
+
+/** A `banner` kind's forms, as its kind record declares them. */
+const banner: BlockForms = {
+	html: (block, content) =>
+		`<aside data-tone="${escapeHtml(String(block.data?.tone ?? 'info'))}">${content}</aside>`,
+	markdown: (block, content) => `> **${String(block.data?.tone ?? 'info')}:** ${content}`,
+	parse: (element) =>
+		element.localName === 'aside' ? { tone: element.dataset.tone ?? 'info' } : undefined
+};
+
+export const kinds = { blocks: { ...bundledForms.blocks, banner } };
+
+export const exportPage = (value: JSONDoc) => ({
+	html: toHTML(value, { kinds }),
+	markdown: toMarkdown(value, { kinds })
+});
+
+/** Only paragraphs, headings, bold and links: an allowlist for a form field's HTML. */
+export const fieldKinds = {
+	blocks: { paragraph: {}, heading: bundledForms.blocks.heading },
+	marks: { bold: bundledForms.marks.bold, link: bundledForms.marks.link },
+	inlineBlocks: {}
+};
+```
+
+The forms are the fields of your [kind record](/docs/customization/blocks#export-and-import), so one object serves the plugin and the server: `html`, `plain` and `markdown` export, `parse` imports. A mark's are `tag`, `attributes`, `markdown` (its delimiters, `['==', '==']`) and `parse`; an atom's `html`, `plain`, `markdown` and `parse`. The bundled kinds' `markdown` forms, and the three HTML forms above, live in `edytor/export` by kind name, not on the records, so the editor ships none of them: a record's own form wins, a record without one gets the bundled one of its name (in a view too), else its `plain` form, else its text.
+
+`markdown(block, content, children, context)` receives the block, its text as inline markdown, its children's markdown (blocks a blank line apart) and `context`: `index`, its position among same-kind siblings (a numbered item's number), `indent(text, prefix)`, which prefixes every line, and `inline(content)`, which writes any rich text as inline markdown (a table's cells).
+
+## Limitations
+
+- **HTML and Markdown are not lossless**: block data the forms do not write (a column's width in Markdown, a code block's wrap) is left out. Store JSON.
+- **Markdown in** is the set `fromMarkdown` reads; a table's column alignment (`:---:`) is not kept, HTML inside markdown stays text, two `>` quotes a blank line apart are one quote (the second its child), and a `|` inside a code span in a table cell splits the cell (escape it, `\|`).
+- **Comments** are not exported: a comment's anchor has no form, as it is not copied.

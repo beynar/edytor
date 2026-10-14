@@ -541,6 +541,20 @@ export type BlockDefinition = {
 	/** Clipboard plain-text form; default content then children, one per line. */
 	plain?: (block: JSONBlock, content: string, children: string) => string;
 	/**
+	 * Markdown form (`toMarkdown`): `content` is the block's text as inline
+	 * markdown (marks by their own `markdown` forms), `children` its children's
+	 * markdown, blocks apart by a blank line (indent them yourself:
+	 * {@link MarkdownContext.indent}). Default: the bundled kind's of that
+	 * name (`edytor/export` holds them; the bundled records carry none), else
+	 * the `plain` form when the kind has one, else the content, then the children.
+	 */
+	markdown?: (
+		block: JSONBlock,
+		content: string,
+		children: string,
+		context: MarkdownContext
+	) => string;
+	/**
 	 * HTML import: the block's data when `element` is this kind, else
 	 * `undefined`. Checked before the tag tables (a preset's export form or
 	 * element tag), which need no hook.
@@ -602,6 +616,8 @@ export type InlineBlockDefinition = {
 	 * an empty `<span data-edytor-inline-block>`.
 	 */
 	html?: (data: JSONInlineBlock['data']) => string;
+	/** Markdown form of the atom (`toMarkdown`, escaped by you); default its `plain` form. */
+	markdown?: (data: JSONInlineBlock['data']) => string;
 	/**
 	 * HTML import: the atom's data when `element`, met in a line's inline
 	 * content, is this atom, else `undefined`. Its contents are then not read
@@ -629,6 +645,12 @@ export type MarkDefinition = {
 	 * matches its bare `tag` (value `true`).
 	 */
 	parse?: (element: HTMLElement) => SerializableContent | undefined;
+	/**
+	 * Markdown form (`toMarkdown`): the delimiters around the marked text
+	 * (`['**', '**']`), or a function of the value giving them (a link's
+	 * `['[', '](href)']`). Without one the text is exported unmarked.
+	 */
+	markdown?: readonly [string, string] | ((value: any) => readonly [string, string] | undefined);
 	void?: boolean;
 	/** Whether typing at the mark's edges extends it (`marksForInsertion`); default `inclusive`. */
 	edge?: MarkEdge;
@@ -733,3 +755,13 @@ export type InitializedPlugin = ReturnType<Plugin>;
 // They can not accept children nor be merged with other blocks
 // If the content of the void block is rendered, it will still be editable. This to allow for rendering caption of the void block. I
 // In void blocks the content is treated as an island
+
+/** What a kind's `markdown` form is given beside its block, content and children. */
+export type MarkdownContext = {
+	/** The block's position in its run of same-kind siblings, from 1 (a numbered item's number). */
+	index: number;
+	/** Every line of `text` prefixed with `prefix` (`'  '` under a list item, `'> '` in a quote). */
+	indent: (text: string, prefix: string) => string;
+	/** Rich text as inline markdown, by the marks' and atoms' forms (a table cell's). */
+	inline: (content: JSONBlock['content']) => string;
+};

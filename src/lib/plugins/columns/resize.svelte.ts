@@ -9,11 +9,9 @@ import { columnsEnglish, labelsOf } from '$lib/labels.js';
 /** The guide line's width (the hover guide's and the drag's). */
 export const GUIDE = 2;
 
-/** A column's weight: `data.width`, a positive number, else 1. */
-export const weightOf = (data: Record<string, unknown> | undefined) => {
-	const width = data?.width;
-	return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
-};
+import { weightOf } from '$lib/export/forms.js';
+
+export { weightOf };
 
 /** The band's middle in a gap `width` px wide, from the gap's left. */
 const middleOf = (width: number) => {

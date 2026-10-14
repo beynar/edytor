@@ -21,7 +21,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 
 ## Features
 
-- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with block handles: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme, a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`createMarkdownShortcutsPlugin()`) code blocks and images (`createImagePlugin({ upload })`).
+- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme and the plugins you want: block handles and a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`createMarkdownShortcutsPlugin()`), code blocks and images (`createImagePlugin({ upload })`). The package draws no chrome: each handle and menu is your snippet, or the ready-made registry item.
 - **Pages and a table of contents, opt-in.** `createPagePlugin` links a block to another document (a page per room, opened and named by your app), and `createTocPlugin()` lists the headings live ([Page](https://edytor.dev/docs/plugins/page), [Table of contents](https://edytor.dev/docs/plugins/table-of-contents)).
 - **Columns, opt-in.** List `createColumnsPlugin()` for Notion's multi-column layouts: drag a block to the edge of another to put them side by side, or pick "2 columns" to "5 columns"; drag the gap to resize. Layouts converge across collaborators and the room ([Columns](https://edytor.dev/docs/plugins/columns)).
 - **Tables, opt-in.** List `createTablePlugin()` for Notion's simple table: cells of text, <kbd>Tab</kbd> between them, rows and columns added, moved and deleted from the table's edges and grips, resizable columns, header row and column, HTML tables pasted and copied. Concurrent row and column edits converge on every replica ([Table](https://edytor.dev/docs/plugins/table)).
@@ -35,11 +35,12 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 - **Real-time collaboration.** One `EdytorDocument` shared by any number of views, or none (headless). Presence cursors, identity-preserving moves, splits and merges, and undo that only takes back your own edits.
 - **Offline first.** A local IndexedDB copy and cross-tab sync; offline edits survive reloads and reach the server on reconnect.
 - **A Cloudflare Durable Object room.** `edytor/cloudflare` stores in SQLite, acknowledges after the write, binds identity to the socket and hibernates.
+- **Import and export.** `edytor/export` turns a document into HTML or Markdown and back (`toHTML`, `toMarkdown`, `fromHTML`, `textToBlocks`), by each kind's own forms, in the browser, Node or a Worker; HTML import is sanitized ([Import and export](https://edytor.dev/docs/editor/import-export)).
 - **Headless and Worker-safe.** `edytor/crdt/edytor` runs in Node and Workers without Svelte.
 
 ## Install
 
-The pre-release is on npm under the `next` tag. Name the tag: a bare `edytor` is the old, incompatible `0.0.11`.
+Edytor `2.0.0` is on npm under `latest`:
 
 ```bash
 pnpm add edytor

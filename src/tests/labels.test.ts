@@ -28,7 +28,7 @@ const SKIPPED = ['crdt/', 'cloudflare/'];
 
 /** Literals that name something but are not words to translate: an embed provider's name is a brand. */
 const NOT_WORDS: Array<[file: string, line: RegExp]> = [
-	['plugins/media/media.ts', /^name: '[A-Za-z]+',$/]
+	['plugins/media/sources.ts', /^name: '[A-Za-z]+',$/]
 ];
 const notWord = (name: string, line: string) =>
 	NOT_WORDS.some(([file, pattern]) => name === file && pattern.test(line.trim()));

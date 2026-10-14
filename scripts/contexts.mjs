@@ -38,7 +38,8 @@ export const CONTEXTS = [
 	['session', /^(kinds|edytor\.utils)\.ts$/],
 	['root', /^(edytor\.svelte\.ts|index\.ts|components\/Edytor\.svelte)$/],
 	['surface', /^(surface|events|components|selection|dnd)\//],
-	['plugins', /^plugins(\/|\.ts$)/]
+	['plugins', /^plugins(\/|\.ts$)/],
+	['plugins', /^export\//]
 ];
 
 /**

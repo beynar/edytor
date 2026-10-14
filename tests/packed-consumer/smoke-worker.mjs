@@ -74,11 +74,15 @@ const VIEW =
 	/\/dist\/(components|plugins|selection|surface|session|events|block|text|hotkeys|clipboard|collaboration|dnd)\/|\/dist\/index\.js$|\/dist\/edytor[^/]*$|\.svelte(\.[jt]s)?$/;
 // The Worker-safe module set (WORKER_SAFE in the repo's eslint.config.js).
 const WORKER_SAFE = /\/dist\/(crdt\/.*|cloudflare\/.*|utils\/json\.js|utils\.js|constants\.js)$/;
+// `edytor/export` and the kinds' pure form modules it reads (the repo's check:worker EXPORT_SAFE).
+const EXPORT_SAFE =
+	/\/dist\/(export\/.*|utils\/sanitize\.js|clipboard\/(serializeClipboardFragment|htmlFlow|textBlocks|types)\.js|block\/(contentRange|colors)\.js|plugins\/(richtext\/callouts|image\/image|media\/sources|page\/page|equation\/tex)\.js)$/;
 const breaches = inputs.filter(
 	(path) =>
-		VIEW.test(path) ||
+		// The view-layer paths are edytor's own (a parser's `dist/index.js` is none).
+		(path.includes('node_modules/edytor/') && !EXPORT_SAFE.test(path) && VIEW.test(path)) ||
 		/(^|\/)node_modules\/(svelte|@sveltejs)\//.test(path) ||
-		(path.includes('node_modules/edytor/') && !WORKER_SAFE.test(path))
+		(path.includes('node_modules/edytor/') && !WORKER_SAFE.test(path) && !EXPORT_SAFE.test(path))
 );
 assert.deepEqual(breaches, [], 'the Worker bundle must not reach Svelte or DOM view modules');
 console.log(
@@ -138,6 +142,15 @@ const until = async (cond, what, timeout = 5000) => {
 try {
 	await miniflare.ready;
 	const health = await miniflare.dispatchFetch('http://local/health');
+	const exported = await miniflare.dispatchFetch('http://local/export', {
+		method: 'POST',
+		body: '<h2>Plan</h2><p><b>bold</b> <a href="javascript:x()">link</a><img src=x onerror="x()"></p>'
+	});
+	assert.equal(
+		await exported.text(),
+		'## Plan\n\n**bold** link\n',
+		'edytor/export runs in the Worker'
+	);
 	assert.equal(await health.text(), 'ready');
 	const denied = await dial('smoke', '?user=denied');
 	await until(() => denied.closed() !== null, 'the denial close');

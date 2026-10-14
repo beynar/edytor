@@ -9,7 +9,7 @@ Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component,
 :::warning[New release]
 Edytor `2.0.0` is on npm: its API follows semantic versioning, and every change is listed in the changelog. It has no production track record yet; read the [limitations](/docs/reference/limitations).
 
-These docs describe that release. `edytor@0.0.11`, which npm installed without a tag before it, predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
+These docs describe that release. `edytor@0.0.11`, the version `latest` named before it, predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
 :::
 
 ## Requirements
@@ -27,7 +27,7 @@ Edytor is on npm under `latest`:
 pnpm add edytor
 ```
 
-Each release is published from CI with npm provenance. The pre-releases before it are under the `next` tag.
+Each release is published from CI with npm provenance. The `2.0.0` pre-releases stay on npm under the `next` tag; do not install them.
 
 Earlier installs by URL keep working: this site still serves every pre-release tarball it hosted, each at its versioned URL, and the bytes under a URL never change, so a lockfile's URL and integrity hash stay valid. Switch to `edytor` when you upgrade.
 

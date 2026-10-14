@@ -1,5 +1,6 @@
 // The JavaScript an app ships with edytor, measured as a consumer builds it:
-// two probe apps (`<Edytor />` with its default plugins, and every plugin)
+// three probe apps (`<Edytor />` with its default plugins, every plugin, and
+// `edytor/export` alone)
 // compiled by Vite + vite-plugin-svelte against the packaged `dist/`, each
 // byte of the output attributed to its source file through the source map.
 //
@@ -67,7 +68,14 @@ const APPS = {
 	];
 </script>
 {#snippet empty()}{/snippet}
-<Edytor {plugins} />`
+<Edytor {plugins} />`,
+	// \`edytor/export\` alone: the HTML and Markdown conversions and the markdown parser.
+	export: `<script>
+	import { fromHTML, fromMarkdown, textToBlocks, toHTML, toMarkdown } from 'edytor/export';
+	const doc = fromMarkdown('# x', { components: { X: 'x' } });
+	const out = [toHTML(doc), toMarkdown(doc), fromHTML('<p>x</p>'), textToBlocks('x', { streaming: true })];
+</script>
+{out.length}`
 };
 
 if (!flag('--no-package')) execSync('pnpm package', { cwd: root, stdio: 'ignore' });
@@ -122,7 +130,13 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 		logLevel: 'error',
 		configFile: false,
 		plugins: [svelte()],
-		resolve: { dedupe: ['svelte'], alias: { edytor: join(root, 'dist/index.js') } },
+		resolve: {
+			dedupe: ['svelte'],
+			alias: {
+				'edytor/export': join(root, 'dist/export/index.js'),
+				edytor: join(root, 'dist/index.js')
+			}
+		},
 		build: {
 			outDir: join(dir, 'out'),
 			emptyOutDir: true,

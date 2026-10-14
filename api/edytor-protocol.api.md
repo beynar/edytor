@@ -1048,7 +1048,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
-        watchComments: (server: string, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
+        watchComments: (server: string | null, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
         storeState: (idbPersistence: {
             db: IDBDatabase | null;
             name: string;
@@ -1713,7 +1713,7 @@ declare const bindProviders: (Y: EngineApi) => {
             off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
-    watchComments: (server: string, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);
+    watchComments: (server: string | null, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);
     storeState: (idbPersistence: {
         db: IDBDatabase | null;
         name: string;

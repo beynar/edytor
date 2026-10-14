@@ -1,12 +1,47 @@
-import type { JSONBlock, JSONText } from '$lib/utils/json.js';
-import type { Edytor } from '$lib/edytor.svelte.js';
+/**
+ * The document's export forms, one reading for the clipboard and for
+ * `toHTML` / `toMarkdown` (`edytor/export`): each kind, mark and atom
+ * declares its own forms (`html`, `plain`, `markdown`; a mark's `tag` and
+ * `attributes`), and this module only walks the blocks. Pure: no view, no
+ * DOM, no Svelte.
+ */
+import type { JSONBlock, JSONText, SerializableContent } from '$lib/utils/json.js';
+import type { BlockDefinition, InlineBlockDefinition, MarkDefinition } from '$lib/plugins.js';
 import type { EdytorClipboardFragment, JSONContentPart } from './types.js';
 import { EDYTOR_FRAGMENT_ATTRIBUTE } from './types.js';
 import { isTextPart } from '$lib/block/contentRange.js';
 import { colorClasses } from '$lib/block/colors.js';
 
-/** The records the export reads: each kind, mark and atom declares its own forms. */
-export type ExportKinds = Pick<Edytor, 'blocks' | 'marks' | 'inlineBlocks'>;
+/** A kind's export and import forms: the fields of its record the export and HTML import read. */
+export type BlockForms = Pick<
+	BlockDefinition,
+	| 'html'
+	| 'plain'
+	| 'markdown'
+	| 'parse'
+	| 'element'
+	| 'contentElement'
+	| 'void'
+	| 'island'
+	| 'lines'
+	| 'rendersContent'
+	| 'defaultChild'
+	| 'itemKind'
+> & {
+	/** The data of each way to create the kind: HTML import finds a preset's tag. */
+	presets?: { data?: Record<string, SerializableContent> }[];
+};
+/** A mark's export and import forms. */
+export type MarkForms = Pick<MarkDefinition, 'tag' | 'attributes' | 'parse' | 'markdown'>;
+/** An atom's export and import forms. */
+export type AtomForms = Pick<InlineBlockDefinition, 'html' | 'plain' | 'markdown' | 'parse'>;
+
+/** The records the export reads: each kind, mark and atom declares its own forms (a view is one). */
+export type ExportKinds = {
+	readonly blocks: ReadonlyMap<string, BlockForms>;
+	readonly marks: ReadonlyMap<string, MarkForms>;
+	readonly inlineBlocks: ReadonlyMap<string, AtomForms>;
+};
 
 export const encodeClipboardJson = (value: unknown) =>
 	btoa(encodeURIComponent(JSON.stringify(value)));
@@ -32,7 +67,7 @@ const textHtml = (part: JSONText, kinds: ExportKinds) => {
 };
 
 /** The content as HTML, or as plain text: an atom by its kind's form (`html`, `plain`). */
-const contentOf = (content: JSONContentPart[] = [], kinds: ExportKinds, html: boolean) =>
+export const contentOf = (content: JSONContentPart[] = [], kinds: ExportKinds, html: boolean) =>
 	content
 		.map((part) => {
 			if (isTextPart(part)) return html ? textHtml(part, kinds) : part.text;
@@ -56,10 +91,26 @@ const withClasses = (html: string, classes: string) =>
 			})
 		: html;
 
+/**
+ * How sibling blocks' HTML joins (`edytor/export` wraps a run of list items
+ * in its list): the blocks, their HTML, and their parent's `html` form.
+ * Without one, one after another (the clipboard's).
+ */
+export type SiblingsHtml = (
+	blocks: JSONBlock[],
+	html: string[],
+	parent?: BlockForms['html']
+) => string;
+
 /** A block and its subtree as HTML (its colours as Notion's classes), or as plain text. */
-const blockOf = (block: JSONBlock, kinds: ExportKinds, html: boolean): string => {
+const blockOf = (
+	block: JSONBlock,
+	kinds: ExportKinds,
+	html: boolean,
+	wrap?: SiblingsHtml
+): string => {
 	const content = contentOf(block.content, kinds, html);
-	const kids = block.children?.map((child) => blockOf(child, kinds, html)) ?? [];
+	const kids = block.children?.map((child) => blockOf(child, kinds, html, wrap)) ?? [];
 	const kind = kinds.blocks.get(block.type);
 	if (!html) {
 		const children = kids.filter(Boolean).join('\n');
@@ -67,8 +118,8 @@ const blockOf = (block: JSONBlock, kinds: ExportKinds, html: boolean): string =>
 			? kind.plain(block, content, children)
 			: [content, children].filter(Boolean).join('\n');
 	}
-	const children = kids.join('');
 	const form = kind?.html;
+	const children = wrap ? wrap(block.children ?? [], kids, form) : kids.join('');
 	const out = !form
 		? `<p>${content}</p>${children}`
 		: typeof form === 'string'
@@ -77,6 +128,13 @@ const blockOf = (block: JSONBlock, kinds: ExportKinds, html: boolean): string =>
 	// A block's colours as Notion's export names them (`block-color-red`).
 	return withClasses(out, colorClasses(block.data));
 };
+
+/** Blocks as HTML: the clipboard's and `toHTML`'s one reading of the kinds' forms. */
+export const blocksToHtml = (blocks: JSONBlock[], kinds: ExportKinds, wrap: SiblingsHtml) =>
+	wrap(
+		blocks,
+		blocks.map((block) => blockOf(block, kinds, true, wrap))
+	);
 
 export const serializeClipboardFragmentToPlainText = (
 	fragment: EdytorClipboardFragment,

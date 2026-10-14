@@ -1,9 +1,10 @@
 <script module lang="ts">
+	import { tableForms } from '$lib/export/forms.js';
 	import './table.css';
 	import type { BlockSnippetPayload, BlockView, KindMenuAction, Plugin } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { tableKinds } from '$lib/crdt/semantics.js';
+
 	import { listedColumns, tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { all } from '$lib/utils/listen.js';
@@ -161,6 +162,8 @@
 					...switches
 				];
 			};
+			/** The kinds' export and import forms. */
+			const forms = tableForms();
 			/** Tab and Shift+Tab (`step`) walk the cells, unless blocks are selected. */
 			const tab =
 				(step: 1 | -1): HotKey =>
@@ -181,7 +184,7 @@
 				},
 				blocks: {
 					table: {
-						...tableKinds.table,
+						...forms.table,
 						element: (data) => ({
 							tag: 'div',
 							attributes: {
@@ -208,26 +211,17 @@
 								group: 'Advanced blocks'
 							}
 						],
-						menu: menuOf,
-						html: (block, _, children) => tableHtml(block.data ?? {}, children),
-						plain: (_, __, children) => children,
-						parse: (element) => (element.localName === 'table' ? parseTable(element) : undefined)
+						menu: menuOf
 					},
 					tableRow: {
-						...tableKinds.tableRow,
+						...forms.tableRow,
 						element: { tag: 'div', attributes: { 'data-edytor-table-row': '', role: 'row' } },
-						snippet: row,
-						html: (_, __, children) => `<tr>${children}</tr>`,
-						plain: (_, __, children) => children.split('\n').join('\t'),
-						parse: (element) => (element.localName === 'tr' ? {} : undefined)
+						snippet: row
 					},
 					tableCell: {
-						...tableKinds.tableCell,
+						...forms.tableCell,
 						element: cellElement,
-						snippet: cell,
-						html: (_, content) => `<td>${content}</td>`,
-						plain: (_, content) => content.replace(/\n/g, ' '),
-						parse: (element) => (/^t[dh]$/.test(element.localName) ? parseCell(element) : undefined)
+						snippet: cell
 					}
 				},
 				hotkeys: {
@@ -278,13 +272,21 @@
 		return plugin;
 	};
 
-	/** `table`'s grid template: each column's width (the resize preview while a band drags it). */
+	/**
+	 * `table`'s grid template: each column's width (the resize preview while a
+	 * band drags it). In a suggestion's preview, the widths its data lists.
+	 */
 	const templateOf = (view: BlockView) => {
 		const edytor = view.handle?.edytor;
 		const chrome = edytor && chromes.get(edytor);
 		const listed = view.data.columns;
 		const fallback = chrome?.columnWidth ?? 120;
-		const columns = edytor ? columnsOfTable(edytor, view.id) : [];
+		// A suggestion's preview has no handle (no document grid): its listed columns, in order.
+		const columns = edytor
+			? columnsOfTable(edytor, view.id)
+			: Array.isArray(listed)
+				? listed.map((c, i) => String((c as { id?: unknown } | null)?.id ?? i))
+				: [];
 		if (Array.isArray(listed)) {
 			const entry = (id: string) => listed.find((c) => (c as { id?: unknown } | null)?.id === id);
 			return columns
@@ -322,42 +324,6 @@
 	};
 
 	/** The table's HTML (`<table>`): its header row's and header column's cells are `th`. */
-	const tableHtml = (data: Record<string, unknown>, rows: string) => {
-		let html = rows;
-		if (data.headerColumn === true)
-			html = html.replace(/<tr><td>([\s\S]*?)<\/td>/g, '<tr><th>$1</th>');
-		if (data.headerRow === true)
-			html = html.replace(
-				/^<tr>([\s\S]*?)<\/tr>/,
-				(_, row: string) => `<tr>${row.replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>')}</tr>`
-			);
-		return `<table><tbody>${html}</tbody></table>`;
-	};
-
-	/** The rows of an imported `<table>` (its own, not a nested table's). */
-	const rowsOf = (table: HTMLElement): HTMLTableRowElement[] =>
-		[...table.querySelectorAll('tr')].filter((tr) => tr.closest('table') === table);
-
-	/** An imported `<table>`'s data: a column per cell of its widest row, its header flags. */
-	const parseTable = (table: HTMLElement) => {
-		const rows = rowsOf(table);
-		const width = Math.max(1, ...rows.map((tr) => tr.cells.length));
-		const head = (cell: Element | undefined) => cell?.localName === 'th';
-		const headerRow = rows.length > 1 && [...(rows[0]?.cells ?? [])].every((c) => head(c));
-		const headerColumn =
-			rows.length > 0 && rows.slice(headerRow ? 1 : 0).every((tr) => head(tr.cells[0]));
-		return {
-			columns: Array.from({ length: width }, (_, i) => ({ id: `c${i + 1}` })),
-			...(headerRow && { headerRow: true }),
-			...(headerColumn && !headerRow && { headerColumn: true })
-		};
-	};
-
-	/** An imported cell's column: its position in its row (`c1`, `c2`, … as its table's). */
-	const parseCell = (cell: HTMLElement) => {
-		const index = (cell as HTMLTableCellElement).cellIndex;
-		return { column: `c${(Number.isInteger(index) && index >= 0 ? index : 0) + 1}` };
-	};
 </script>
 
 <!--

@@ -48,8 +48,12 @@ const BLOCK_LINE = /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|(?:-{3,}|\*{3,}|_{3,
 export const hasBlockMarkdown = (text: string): boolean =>
 	text.split(/\r?\n/).some((line) => BLOCK_LINE.test(line));
 
-/** One line's kind, data and text, or `null` for a paragraph line. */
-const lineKind = (line: string): (Omit<JSONBlock, 'content'> & { text: string }) | null => {
+/**
+ * One line's kind, data and text, or `null` for a paragraph line: the one
+ * reading of a markdown line's block marker (`edytor/export`'s full reader
+ * reads its lines with it too).
+ */
+export const lineKind = (line: string): (Omit<JSONBlock, 'content'> & { text: string }) | null => {
 	let m = /^(#{1,6})\s+(.*)$/.exec(line);
 	if (m) return { type: 'heading', data: { level: `h${Math.min(3, m[1]!.length)}` }, text: m[2]! };
 	m = /^(?:[-*+]\s+)?\[([ xX])\]\s+(.*)$/.exec(line);

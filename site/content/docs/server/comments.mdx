@@ -64,6 +64,33 @@ The requests a `POST` carries:
 
 A refusal is a status: `400` for an invalid document id, request or id, an empty body or one over 10,000 characters; `401` when `authorize` returns `{ expired: true }`; `403` when it denies the request, when a read-only identity writes, or when a user deletes another user's comment; `404` for a thread or comment the room does not hold, or a room with comments off; `405` for another method; `409` for a thread or comment id already taken; `413` for a request body over 64 KiB (read no further, with or without a `Content-Length`), a thread of 500 comments, a document of 5,000 threads, or a thread or reply past the room's [comment bytes](#quotas); `429` when the user is past the room's [comment rate](#quotas); `503` when the room cannot serve it.
 
+### Another origin
+
+When the app and the room are on different origins (the page on `app.example.com`, the Worker on `rooms.example.com`), the browser asks before each comments request (an `OPTIONS` preflight: a `POST` sends JSON) and reads the answer only with CORS headers. Pass `cors` to the route, with the app's origins in `allowedOrigins`:
+
+```ts src/cors.ts check
+import { routeDocumentComments, type RouteDocumentOptions } from 'edytor/cloudflare';
+
+const options: RouteDocumentOptions = {
+  allowedOrigins: ['https://app.example.com'],
+  cors: { credentials: true } // the page sends its cookies: fetch(…, { credentials: 'include' })
+};
+
+export const comments = (
+  request: Request,
+  rooms: Parameters<typeof routeDocumentComments>[1],
+  documentId: string,
+  authorize: Parameters<typeof routeDocumentComments>[3]
+) => routeDocumentComments(request, rooms, documentId, authorize, options);
+```
+
+| `cors` | Does |
+| --- | --- |
+| omitted | No CORS headers; `OPTIONS` answers `405` (a page on the room's own origin needs none). |
+| `true`, `{ credentials?, maxAge? }` | A preflight is answered `204` (`GET, POST`, the headers it asked for, kept `maxAge` seconds, 600 by default), and every answer, a refusal included, carries `Access-Control-Allow-Origin`. With `allowedOrigins`, the request's `Origin` is echoed (`Vary: Origin`), `credentials: true` adds `Access-Control-Allow-Credentials`, and a preflight from another origin answers `403`. Without `allowedOrigins`, every origin gets `*` and no credentials. |
+
+The same option serves `routeDocumentHistory` and the probes of `routeDocumentSocket` (`?lastUpdated`, `?snapshot`); a WebSocket dial needs none.
+
 ## The rules
 
 One rule decides every request, in the room and in the clients' [memory store](/docs/plugins/comments#a-client-without-a-room) alike (`decideComment`, exported for a store of your own):

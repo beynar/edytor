@@ -1,20 +1,28 @@
-import type { Edytor } from '$lib/edytor.svelte.js';
 import { colorsOfClasses } from '$lib/block/colors.js';
 import type { Flow } from '$lib/crdt/flow.js';
-import type { BlockDefinition } from '$lib/plugins.js';
 import { isTextPart, type JSONContentPart } from '$lib/block/contentRange.js';
 import { jsonBlockToSpec, type JSONBlock, type SerializableContent } from '$lib/utils/json.js';
+import type { AtomForms, BlockForms, MarkForms } from './serializeClipboardFragment.js';
 
 /** What HTML import reads: the kind, mark and atom records, and the document's default child. */
-export type ImportKinds = Pick<Edytor, 'blocks' | 'marks'> &
-	Partial<Pick<Edytor, 'inlineBlocks'>> & {
-		document: Pick<Edytor['document'], 'defaultChild'>;
-	};
+export type ImportKinds = {
+	readonly blocks: ReadonlyMap<string, BlockForms>;
+	readonly marks: ReadonlyMap<string, MarkForms>;
+	readonly inlineBlocks?: ReadonlyMap<string, AtomForms>;
+	readonly document: { defaultChild: (parent: string | null) => string };
+};
 
+/** A `DOMParser` constructor: the browser's, or a server's (`linkedom`, `jsdom`, `happy-dom`). */
+export type HtmlParser = new () => {
+	parseFromString(html: string, type: 'text/html'): { body: Node | null };
+};
+
+/** Element and text nodes by their type, not their realm: a server parser's nodes are not this global's. */
+const isElement = (node: Node | null | undefined): node is HTMLElement => node?.nodeType === 1;
 type Values = Record<string, SerializableContent>;
 type Line = { type?: string; data?: Values; content: JSONContentPart[]; children?: Line[] };
 /** A kind claiming an element; `lines`: a container whose default child takes each text line. */
-type Claim = { type: string; kind: BlockDefinition; data: Values; lines?: string };
+type Claim = { type: string; kind: BlockForms; data: Values; lines?: string };
 /**
  * Where inline content goes: the line being read, and how a void kind's
  * element met inside it (an `<img>`, at any depth of inline markup) ends it
@@ -45,7 +53,7 @@ const sizeOf = (img: HTMLElement, side: 'width' | 'height') => {
  * email's tracking pixel). It is text, its `alt`, never a block.
  */
 const isGlyph = (node: Node): boolean => {
-	if (!(node instanceof HTMLElement) || node.localName !== 'img') return false;
+	if (!isElement(node) || node.localName !== 'img') return false;
 	const alt = node.getAttribute('alt')?.trim() ?? '';
 	if (alt && EMOJI_ALT.test(alt) && /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(alt))
 		return true;
@@ -62,7 +70,7 @@ const GENERIC = /^(div|span)$/;
  * none: an export form written as one (a callout's `<div data-edytor-callout>`)
  * is found by its `parse` hook only.
  */
-export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
+export const tagOf = (type: string, kind: BlockForms, data: Values) => {
 	const { html, element, contentElement } = kind;
 	if (typeof html === 'string') return html;
 	try {
@@ -82,7 +90,8 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
 };
 
 /**
- * External HTML as a flow: the browser parses (inert: no script
+ * External HTML as lines (JSON blocks; a line without a `type` is its
+ * parent's default child): `parser` parses (inert: no script
  * runs, nothing loads), and the tag tables are the records inverted — a
  * catalogue kind's tag per preset (a content-less container takes its
  * default child's tag, one child per text line), a value-less mark's
@@ -94,8 +103,12 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
  * atom, never its text. Unknown
  * elements degrade to text runs; whitespace collapses as HTML renders it. `null` when the HTML carries nothing (`flow.shape`).
  */
-export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow | null => {
-	if (!html || html.length > 8 * 1024 * 1024 || typeof DOMParser === 'undefined') return null;
+export const linesOfHtml = (
+	kinds: ImportKinds,
+	html: string | undefined,
+	parser: HtmlParser | undefined = globalThis.DOMParser
+): JSONBlock[] | null => {
+	if (!html || html.length > 8 * 1024 * 1024 || !parser) return null;
 	const { blocks, marks } = kinds;
 	const atoms = kinds.inlineBlocks ?? new Map();
 	const byTag = new Map<string, Claim>();
@@ -116,7 +129,8 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (isGlyph(element)) return undefined;
 		for (const [type, kind] of blocks) {
 			const data = kind.parse?.(element);
-			if (data) return { type, kind, data };
+			// A kind of lines (a code block) takes its element's text, one child per line.
+			if (data) return { type, kind, data, lines: kind.lines ? kind.defaultChild : undefined };
 		}
 		return byTag.get(element.localName);
 	};
@@ -140,11 +154,10 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 	};
 	// A kind's hook may claim an element of another namespace (an equation's MathML `<math>`).
 	const isBlock = (node: Node): node is HTMLElement =>
-		(node instanceof HTMLElement && BLOCK.test(node.localName)) ||
-		(node instanceof Element && kindOf(node as HTMLElement) !== undefined);
+		isElement(node) && (BLOCK.test(node.localName) || kindOf(node) !== undefined);
 	/** A void kind's element (an image): it shows no text, so a line it is met in ends there. */
 	const isVoid = (node: Node): node is HTMLElement => {
-		const claim = node instanceof Element ? kindOf(node as HTMLElement) : undefined;
+		const claim = isElement(node) ? kindOf(node) : undefined;
 		return claim?.kind.void === true;
 	};
 
@@ -160,14 +173,13 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		else line.content.push(Object.keys(marks).length ? { text: value, marks } : { text: value });
 	};
 	const inline = (node: Node, at: Cursor, marks: Values, pre: boolean) => {
-		if (node.nodeType === Node.TEXT_NODE)
-			return text(at.line(), node.textContent ?? '', marks, pre);
+		if (node.nodeType === 3) return text(at.line(), node.textContent ?? '', marks, pre);
 		if (isGlyph(node))
 			return text(at.line(), (node as HTMLElement).getAttribute('alt') ?? '', marks, pre);
 		if (isVoid(node)) return at.apart(node);
-		const atom = node instanceof Element ? atomOf(node as HTMLElement) : undefined;
+		const atom = isElement(node) ? atomOf(node) : undefined;
 		if (atom) return void at.line().content.push(atom);
-		if (!(node instanceof HTMLElement) || SKIP.test(node.localName)) return;
+		if (!isElement(node) || SKIP.test(node.localName)) return;
 		if (node.localName === 'br') return text(at.line(), '\n', marks, true);
 		const inner = { ...marks, ...marksOf(node) };
 		for (const child of node.childNodes) inline(child, at, inner, pre || node.localName === 'pre');
@@ -283,13 +295,18 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		);
 	};
 
-	const body = new DOMParser().parseFromString(html, 'text/html').body;
+	const body = new parser().parseFromString(html, 'text/html').body;
+	if (!body) return null;
 	const lines = linesOf(body, undefined);
 	const carries = (line: Line): boolean =>
 		line.content.length > 0 ||
 		Boolean(line.children?.some(carries)) ||
 		Boolean(line.type && blocks.get(line.type)?.void);
-	return lines.some(carries)
-		? { lines: lines.map((line) => jsonBlockToSpec(line as JSONBlock, true)) }
-		: null;
+	return lines.some(carries) ? (lines as JSONBlock[]) : null;
+};
+
+/** External HTML as a flow (the paste's): {@link linesOfHtml}, with the browser's parser. */
+export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow | null => {
+	const lines = linesOfHtml(kinds, html);
+	return lines ? { lines: lines.map((line) => jsonBlockToSpec(line, true)) } : null;
 };

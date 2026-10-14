@@ -78,7 +78,7 @@ export type CommentsClientOptions = {
 	/**
 	 * The websocket sync's server URL (the `server` of `<Edytor>` or
 	 * `createWebsocketSync`), whose socket hears the room's changes. Default:
-	 * `server` read as `ws:`/`wss:`.
+	 * every websocket sync of the same room on the page, whatever its URL.
 	 */
 	socket?: string;
 	/** Query parameters sent with each request (a token): an object, or a function read at every request. */
@@ -109,7 +109,7 @@ export const createCommentsClient = (options: CommentsClientOptions): CommentsCl
 	assertRoomId(options.room);
 	const server = options.server.replace(/\/+$/, '');
 	const base = `${server.replace(/^ws/, 'http')}/${encodeURIComponent(options.room)}`;
-	const socket = (options.socket ?? server.replace(/^http/, 'ws')).replace(/\/+$/, '');
+	const socket = options.socket?.replace(/\/+$/, '') ?? null;
 
 	const request = async (method: 'GET' | 'POST', body?: unknown): Promise<unknown> => {
 		const url = new URL(base);

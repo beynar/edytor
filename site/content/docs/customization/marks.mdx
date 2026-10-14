@@ -44,6 +44,10 @@ A mark is formatting on a run of text: bold, a link, a color. Marks live in a pl
       type: "(element: HTMLElement) => value | undefined",
       description: "HTML import: the mark's value when a pasted element carries it. Checked before the bare tag.",
     },
+    markdown: {
+      type: "[open, close] | ((value) => [open, close] | undefined)",
+      description: "Markdown export (toMarkdown): the delimiters around the marked text, ['==', '=='], or a function of the value (a link's ['[', '](href)']). Without one the text is exported unmarked.",
+    },
     void: {
       type: "boolean",
       description: "Render the mark's element with contenteditable=\"false\".",

@@ -10,6 +10,7 @@ The `edytor` package has five code entry points and one stylesheet. Only the roo
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
 | `edytor/crdt/edytor` | The document API and its full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
+| `edytor/export` | `toHTML`, `toMarkdown`, `fromHTML`, `fromMarkdown`, `textToBlocks`, `mdxComponent` and the bundled kinds' forms ([Import and export](/docs/editor/import-export)) | Browser, Node 22+, Workers |
 | `edytor/protocol` | The wire vocabulary: frames, message types, codecs, generation records, the admission gates, the raw provider classes | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
 | `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachRoom` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), `routeDocumentComments` (the [comment threads](/docs/server/comments)), and `closedSocket` | Cloudflare Workers only |
@@ -86,6 +87,16 @@ const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { a
 await provider.whenSynced;
 ```
 
+## `edytor/export`
+
+A document as HTML or Markdown and back, by each kind's own forms, with no Svelte: use it in a server route, a Worker or a script ([Import and export](/docs/editor/import-export)).
+
+```ts title="scripts/export.ts" check
+import { toMarkdown } from 'edytor/export';
+
+console.log(toMarkdown({ children: [{ type: 'heading', content: [{ text: 'Hello' }] }] }));
+```
+
 ## `edytor/protocol`
 
 The wire and coordinator vocabulary, for code that speaks the protocol itself: a server of your own, a relay, a test client, tooling that drives a provider.
@@ -145,6 +156,7 @@ It imports `cloudflare:workers`, so it loads only inside a Worker. It is built o
 
 - Rendering an editor: `edytor`.
 - Reading, converting or editing a document in Node, a SvelteKit server route or a Worker: `edytor/crdt/edytor`.
+- Exporting a document as HTML or Markdown, or importing either, anywhere: `edytor/export`.
 - Speaking the wire protocol yourself, or driving a raw provider: `edytor/protocol`.
 - Handling raw updates, or passing the engine to `bindCrdt`: `edytor/crdt`.
 - Hosting collaboration on Cloudflare: `edytor/cloudflare`.

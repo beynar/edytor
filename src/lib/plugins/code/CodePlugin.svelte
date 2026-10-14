@@ -1,9 +1,10 @@
 <script module lang="ts">
+	import { codeForms } from '$lib/export/forms.js';
 	import './code.css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import { Text } from '$lib/text/text.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
-	import { codeKinds } from '$lib/crdt/semantics.js';
+
 	import { shown } from '$lib/selection/visibility.js';
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
 	import { siblingSlot } from '$lib/session/handles.js';
@@ -230,7 +231,7 @@
 
 				blocks: {
 					code: {
-						...codeKinds.code,
+						...codeForms().code,
 						snippet: code,
 						presets: [
 							{
@@ -244,8 +245,8 @@
 						empty: { content: [], children: [{ type: 'codeLine', content: [{ text: '' }] }] }
 					},
 					codeLine: {
+						...codeForms().codeLine,
 						snippet: codeLine,
-						html: (_, content) => `<pre><code>${content}</code></pre>`,
 						transformText: ({ text, block }) =>
 							tokenizeCode(text.stringContent, lineLanguage(block.id)),
 						// A line holding newlines keeps its first line; each other becomes a code line after it.

@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { mediaForms } from '$lib/export/forms.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import EmptySlot from './EmptySlot.svelte';
@@ -10,9 +11,7 @@
 		EMBED_PROVIDERS,
 		EMBED_SANDBOX,
 		MEDIA_ICONS,
-		claimed,
 		embedSourceOf,
-		escapeHtml,
 		mediaControl,
 		mediaLink,
 		LINK_REL,
@@ -99,24 +98,7 @@
 				),
 				record: {
 					snippet: embed,
-					html: (block, caption) => {
-						const player = embedSourceOf(block.data?.url, allowed);
-						const url = safeWebUrl(block.data?.url);
-						const media = player
-							? `<iframe src="${escapeHtml(player.src)}" title="${escapeHtml(player.provider.name)}" sandbox="${EMBED_SANDBOX}" allowfullscreen></iframe>`
-							: url
-								? `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
-								: '';
-						return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-					},
-					plain: (block, caption) =>
-						[safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
-					// An allowlisted `iframe` (bare, or in a `figure`): its `src` is the link.
-					parse: (el) => {
-						const src = claimed(el, 'iframe')?.getAttribute('src');
-						const url = embedSourceOf(src, allowed) && safeWebUrl(src);
-						return url ? { url } : undefined;
-					}
+					...mediaForms(allowed).embed
 				}
 			})
 		);

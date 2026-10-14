@@ -45,6 +45,7 @@ export type {
 	KindMenuAction,
 	EditorCommand,
 	BlockDefinition,
+	MarkdownContext,
 	MarkDefinition,
 	InlineBlockDefinition,
 	BlockSnippetPayload,

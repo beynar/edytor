@@ -276,16 +276,28 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 	});
 	// A room's comment threads (`watchComments`): the listeners of each room,
-	// by `<serverUrl>/<room>`, and the providers dialing it. A provider asks
-	// the room for them (a subscribe) at every open while a room has a
-	// listener, and hands each message the room sends to every listener.
+	// by `<serverUrl>/<room>` (or by `anyServer(room)`: every provider of that
+	// room on the page), and the providers dialing it. A provider asks the
+	// room for them (a subscribe) at every open while it has a listener, and
+	// hands each message the room sends to every listener.
 	const commentListeners = new Map<string, Set<(message: CommentMessage) => void>>();
 	const providersOf = new Map<string, Set<Provider>>();
+	const anyServer = (roomName: string) => `\0${roomName}`;
 	const subscribeFrame = (on: boolean) =>
 		frame(messageComments, (e) => writeCommentsSubscribe(e, on));
+	const listenersOf = (provider: Provider) => [
+		...(commentListeners.get(provider.bcChannel) ?? []),
+		...(commentListeners.get(anyServer(provider.roomname)) ?? [])
+	];
+	const providersFor = (key: string, roomName: string): Provider[] =>
+		key === anyServer(roomName)
+			? [...providersOf.values()].flatMap((set) =>
+					[...set].filter((provider) => provider.roomname === roomName)
+				)
+			: [...(providersOf.get(key) ?? [])];
 	room.messageHandlers[messageComments] = (_encoder, decoder, provider) => {
 		const message = readCommentsMessage(decoder);
-		for (const listener of [...(commentListeners.get(provider.bcChannel) ?? [])]) {
+		for (const listener of listenersOf(provider)) {
 			try {
 				listener(message);
 			} catch (error) {
@@ -295,27 +307,28 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	};
 	/**
 	 * Hear the comment threads of `room` on `server` (the URL a provider
-	 * dials, `ws:`/`wss:`): every provider of that room subscribes now and
-	 * at each (re)connect, which the room answers with every thread (a
-	 * `snapshot`), then sends each `change`. Answers the unsubscribe; the
-	 * last one leaving tells the room to stop.
+	 * dials, `ws:`/`wss:`; `null`: every provider of that room on the page,
+	 * whatever its server): every such provider subscribes now and at each
+	 * (re)connect, which the room answers with every thread (a `snapshot`),
+	 * then sends each `change`. Answers the unsubscribe; the last listener
+	 * of a provider leaving tells its room to stop.
 	 */
 	const watchComments = (
-		server: string,
+		server: string | null,
 		roomName: string,
 		listener: (message: CommentMessage) => void
 	): (() => void) => {
-		const key = `${server.replace(/\/+$/, '')}/${roomName}`;
+		const key = server === null ? anyServer(roomName) : `${server.replace(/\/+$/, '')}/${roomName}`;
 		const listeners = commentListeners.get(key) ?? new Set();
 		commentListeners.set(key, listeners);
-		const first = listeners.size === 0;
+		const fresh = providersFor(key, roomName).filter((p) => listenersOf(p).length === 0);
 		listeners.add(listener);
-		if (first)
-			for (const provider of providersOf.get(key) ?? []) send(provider, subscribeFrame(true));
+		for (const provider of fresh) send(provider, subscribeFrame(true));
 		return () => {
-			if (!listeners.delete(listener) || listeners.size > 0) return;
-			commentListeners.delete(key);
-			for (const provider of providersOf.get(key) ?? []) send(provider, subscribeFrame(false));
+			if (!listeners.delete(listener)) return;
+			if (listeners.size === 0) commentListeners.delete(key);
+			for (const provider of providersFor(key, roomName))
+				if (listenersOf(provider).length === 0) send(provider, subscribeFrame(false));
 		};
 	};
 
@@ -609,8 +622,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				// The join rule: say hello; the members answer what we lack.
 				for (const buf of room.hello(provider)) sendOn(provider, websocket, buf);
 				// The room's comment threads, while someone listens (`watchComments`).
-				if (commentListeners.get(provider.bcChannel)?.size)
-					sendOn(provider, websocket, subscribeFrame(true));
+				if (listenersOf(provider).length > 0) sendOn(provider, websocket, subscribeFrame(true));
 			};
 			provider.emit('status', [{ status: 'connecting' }]);
 		}

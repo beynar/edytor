@@ -30,6 +30,8 @@ import type {
 } from '../../src/lib/crdt/protocol.js';
 import { E, ORIGIN, RawClient, SelfWebSocket, crdt, para, readFacade } from './client';
 import { setNow, type CommentRoom } from './worker';
+import { createCommentsClient } from '../../src/lib/collaboration/comments/client.js';
+import { providers } from '../../src/lib/crdt/providers/bound.js';
 
 declare global {
 	namespace Cloudflare {
@@ -485,5 +487,104 @@ describe('room.comments.quota', () => {
 		expect(response.status).toBe(413);
 		expect(pulled).toBeLessThan(1024 * 1024);
 		expect((await list(room)).threads).toEqual([]);
+	});
+});
+
+describe('room.comments.route — the documented Worker and the default client', () => {
+	it('`createCommentsClient` with no `socket` hears the room on the page’s sync of `/rooms`', async () => {
+		const room = 'comments-default-socket';
+		const document = E.createDocument({ value: { children: [para('p', 'hi')] } });
+		const sync = new providers.WebsocketProvider(
+			`${ORIGIN.replace('https', 'wss')}/rooms`,
+			room,
+			document.doc,
+			{
+				awareness: document.awareness,
+				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket,
+				disableBc: true,
+				params: { user: 'ada' }
+			}
+		);
+		const client = createCommentsClient({
+			server: `${ORIGIN}/comments`,
+			room,
+			params: { user: 'ada' },
+			fetch: (input, init) => SELF.fetch(input as string, init)
+		});
+		const heard: unknown[] = [];
+		const unsubscribe = client.subscribe!((message) => heard.push(message));
+		await vi.waitFor(() => expect(heard).toEqual([{ type: 'snapshot', seq: 0, threads: [] }]));
+		const sent = await client.send({
+			op: 'add',
+			thread: 'd1',
+			body: 'Is this right?',
+			quote: 'hi',
+			block: 'p'
+		});
+		expect(sent.status).toBe('applied');
+		await vi.waitFor(() =>
+			expect(heard.at(-1)).toEqual({ type: 'change', change: (sent as { change: unknown }).change })
+		);
+		expect((await client.list()).threads.map((t) => t.id)).toEqual(['d1']);
+		unsubscribe();
+		sync.destroy();
+		document.destroy();
+	});
+
+	it('`cors` answers a preflight and adds the headers; an origin not allowed is refused', async () => {
+		const room = 'comments-cors-a';
+		const preflight = await SELF.fetch(url(room, { user: 'ada' }), {
+			method: 'OPTIONS',
+			headers: {
+				Origin: 'https://app.test',
+				'Access-Control-Request-Method': 'POST',
+				'Access-Control-Request-Headers': 'content-type'
+			}
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('https://app.test');
+		expect(preflight.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST');
+		expect(preflight.headers.get('Access-Control-Allow-Headers')).toBe('content-type');
+		expect(preflight.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+		expect(preflight.headers.get('Access-Control-Max-Age')).toBe('600');
+		const posted = await SELF.fetch(url(room, { user: 'ada' }), {
+			method: 'POST',
+			headers: { Origin: 'https://app.test', 'Content-Type': 'application/json' },
+			body: JSON.stringify({ op: 'add', thread: 'c1', body: 'Hi', quote: 'q', block: 'p1' })
+		});
+		expect(posted.status).toBe(200);
+		expect(posted.headers.get('Access-Control-Allow-Origin')).toBe('https://app.test');
+		expect(posted.headers.get('Vary')).toBe('Origin');
+		// A refusal carries them too, so the page reads its status.
+		const denied = await SELF.fetch(url(room, { user: 'denied' }), {
+			headers: { Origin: 'https://app.test' }
+		});
+		expect(denied.status).toBe(403);
+		expect(denied.headers.get('Access-Control-Allow-Origin')).toBe('https://app.test');
+		const other = await SELF.fetch(url(room, { user: 'ada' }), {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://evil.test', 'Access-Control-Request-Method': 'GET' }
+		});
+		expect(other.status).toBe(403);
+		expect(other.headers.get('Access-Control-Allow-Origin')).toBeNull();
+	});
+
+	it('`cors: true` without `allowedOrigins` answers every origin `*`, never credentials', async () => {
+		const room = 'comments-anycors-a';
+		const listed = await SELF.fetch(url(room, { user: 'ada' }), {
+			headers: { Origin: 'https://anywhere.test' }
+		});
+		expect(listed.status).toBe(200);
+		expect(listed.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(listed.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+	});
+
+	it('without `cors`, no headers and `OPTIONS` answers 405', async () => {
+		const room = 'comments-nocors-a';
+		const response = await SELF.fetch(url(room, { user: 'ada' }), {
+			headers: { Origin: 'https://app.test' }
+		});
+		expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+		expect((await SELF.fetch(url(room, { user: 'ada' }), { method: 'OPTIONS' })).status).toBe(405);
 	});
 });

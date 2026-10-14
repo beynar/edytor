@@ -31,6 +31,7 @@ import {
 	createMemoryCommentsClient
 } from '$lib/collaboration/comments/client.js';
 import { createDocument } from '$lib/crdt/index.js';
+import { providers } from '$lib/crdt/providers/bound.js';
 
 const ctx = (thread: CommentThread | null = null, seq = 1) => ({
 	thread,
@@ -287,6 +288,27 @@ describe('createCommentsClient — over HTTP', () => {
 
 	it('refuses a room id no request can carry', () => {
 		expect(() => createCommentsClient({ server: 'https://x', room: '..' })).toThrow(TypeError);
+	});
+
+	it('`subscribe` hears the room on whichever sync of the room the page holds; `socket` names one', () => {
+		const watch = vi.spyOn(providers, 'watchComments').mockReturnValue(() => {});
+		try {
+			const listener = () => {};
+			createCommentsClient({ server: 'https://rooms.example/comments', room: 'd' }).subscribe!(
+				listener
+			);
+			createCommentsClient({
+				server: 'https://rooms.example/comments',
+				socket: 'wss://rooms.example/rooms/',
+				room: 'd'
+			}).subscribe!(listener);
+			expect(watch.mock.calls.map(([server, room]) => [server, room])).toEqual([
+				[null, 'd'],
+				['wss://rooms.example/rooms', 'd']
+			]);
+		} finally {
+			watch.mockRestore();
+		}
 	});
 });
 

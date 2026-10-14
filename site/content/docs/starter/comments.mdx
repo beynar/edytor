@@ -39,14 +39,17 @@ The room keeps the threads and decides who may delete what ([Comments on the ser
 	import { StarterEditor } from '$lib/components/edytor/starter/index.js';
 
 	let { data }: { data: { user: { id: string; name: string } } } = $props();
+	// `params` reach `authorize` (here a development `?user=`; send a token instead).
 	const comments = createCommentsClient({
 		server: 'https://rooms.example.com/comments',
-		room: page.params.id!
+		room: page.params.id!,
+		params: { user: data.user.id }
 	});
 </script>
 
 <StarterEditor
 	server="wss://rooms.example.com/rooms"
+	params={{ user: data.user.id }}
 	room={page.params.id}
 	{comments}
 	people={[{ id: data.user.id, label: data.user.name }]}
@@ -56,4 +59,4 @@ The room keeps the threads and decides who may delete what ([Comments on the ser
 
 ## The cards
 
-The cards are `$lib/components/edytor/chrome/CommentCard.svelte` and `CommentsHeader.svelte`: shadcn `Button` and `Textarea` on your tokens, so they follow `.dark` with the page. Edit them as you like; keep the calls to the payload's controller (`comments.submit`, `comments.reply`, `comments.cancel`…) as they are wired. The sidebar shows beside the page on a wide screen, and under the selection on a narrow one.
+The cards are `$lib/components/edytor/chrome/CommentCard.svelte` and `CommentsHeader.svelte`: shadcn `Button` and `Textarea` on your tokens, so they follow `.dark` with the page. Edit them as you like; keep the calls to the payload's controller (`comments.submit`, `comments.reply`, `comments.cancel`…) as they are wired. The sidebar shows beside the page when the editor ends at least 328 px before the window's right edge (every open thread's card, at its text's height), and only the active thread's card, under its text, otherwise ([the width rule](/docs/plugins/comments#the-sidebar)). With an app sidebar of your own, the starter's centred column often leaves less: narrow `--edytor-starter-max-width` or `--edytor-starter-gutter`.

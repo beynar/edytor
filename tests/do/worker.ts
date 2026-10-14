@@ -30,6 +30,7 @@ import {
 	type KVLike,
 	type R2BucketLike,
 	type AuthorizeDocumentSocket,
+	type RouteDocumentOptions,
 	type CommentChange,
 	type DocumentRoomEnv,
 	type RoomLogEntry,
@@ -642,8 +643,15 @@ const roomOf = (encoded: string): string | null => {
 };
 
 /** `origin-*` rooms accept browser requests from the test origin only (WU-07). */
-const originsOf = (name: string) =>
-	name.startsWith('origin-') ? { allowedOrigins: ['https://edytor-do.test'] } : undefined;
+const originsOf = (name: string): RouteDocumentOptions | undefined =>
+	name.startsWith('origin-')
+		? { allowedOrigins: ['https://edytor-do.test'] }
+		: // `comments-cors-*`: CORS for one app origin, with its cookies; `comments-anycors-*`: every origin.
+			name.startsWith('comments-cors-')
+			? { allowedOrigins: ['https://app.test'], cors: { credentials: true } }
+			: name.startsWith('comments-anycors-')
+				? { cors: true }
+				: undefined;
 
 export const routeRoom = async (request: Request, env: Env): Promise<Response> => {
 	const url = new URL(request.url);

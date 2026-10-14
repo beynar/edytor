@@ -95,6 +95,76 @@ export type RouteDocumentOptions = {
 	 * your page from another site's. Omitted: every origin passes.
 	 */
 	allowedOrigins?: readonly string[] | ((origin: string) => boolean);
+	/**
+	 * Answer a page on another origin (the app on `app.example.com`, the
+	 * room on `rooms.example.com`): `OPTIONS` preflights are answered `204`
+	 * (`GET, POST`, the headers the page asked for), and every HTTP answer
+	 * (comments, history, the probes) carries `Access-Control-Allow-Origin`.
+	 * The origins are `allowedOrigins`: with a list or a predicate, the
+	 * request's `Origin` is echoed (`Vary: Origin`) and `credentials: true`
+	 * lets the page send its cookies (`fetch(…, { credentials: 'include' })`);
+	 * without one, every origin gets `*` and no credentials. A preflight from
+	 * an origin `allowedOrigins` refuses is answered `403`. `maxAge`: how long
+	 * a browser keeps a preflight, in seconds (default 600). A WebSocket dial
+	 * needs none of it. Omitted: no CORS headers, and `OPTIONS` answers `405`.
+	 */
+	cors?: boolean | { credentials?: boolean; maxAge?: number };
+};
+
+/** The CORS headers `options.cors` gives an answer to `request` (none: `null`). */
+const corsHeaders = (
+	request: Request,
+	options: RouteDocumentOptions | undefined
+): Headers | null => {
+	const cors = options?.cors;
+	const origin = request.headers.get('Origin');
+	if (!cors || origin === null || !originAllowed(request, options)) return null;
+	const headers = new Headers();
+	if (options?.allowedOrigins === undefined) {
+		headers.set('Access-Control-Allow-Origin', '*');
+		return headers;
+	}
+	headers.set('Access-Control-Allow-Origin', origin);
+	headers.set('Vary', 'Origin');
+	if (typeof cors === 'object' && cors.credentials === true)
+		headers.set('Access-Control-Allow-Credentials', 'true');
+	return headers;
+};
+
+/**
+ * One HTTP route with `options.cors`: a preflight answered here, every other
+ * answer given its CORS headers (a `101` upgrade passes as it is).
+ */
+const withCors = async (
+	request: Request,
+	options: RouteDocumentOptions | undefined,
+	route: () => Promise<Response>
+): Promise<Response> => {
+	const cors = options?.cors;
+	if (cors && request.method === 'OPTIONS' && request.headers.has('Origin')) {
+		const headers = corsHeaders(request, options);
+		if (headers === null) return new Response('origin not allowed', { status: 403 });
+		headers.set('Access-Control-Allow-Methods', 'GET, POST');
+		headers.set(
+			'Access-Control-Allow-Headers',
+			request.headers.get('Access-Control-Request-Headers') ?? 'Content-Type'
+		);
+		headers.set(
+			'Access-Control-Max-Age',
+			String((typeof cors === 'object' ? cors.maxAge : undefined) ?? 600)
+		);
+		return new Response(null, { status: 204, headers });
+	}
+	const response = await route();
+	const headers = corsHeaders(request, options);
+	if (headers === null || response.status === 101) return response;
+	const merged = new Headers(response.headers);
+	headers.forEach((value, name) => merged.set(name, value));
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers: merged
+	});
 };
 
 /** Is `request`'s `Origin` one `options` allows (no `Origin`, or no list: yes)? */
@@ -195,6 +265,18 @@ export async function routeDocumentHistory(
 	authorize: AuthorizeDocumentSocket,
 	options?: RouteDocumentOptions
 ): Promise<Response> {
+	return withCors(request, options, () =>
+		routeHistory(request, rooms, documentId, authorize, options)
+	);
+}
+
+async function routeHistory(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
+): Promise<Response> {
 	const query = new URL(request.url).searchParams;
 	const op =
 		request.method === 'GET'
@@ -280,6 +362,18 @@ export async function routeDocumentComments(
 	authorize: AuthorizeDocumentSocket,
 	options?: RouteDocumentOptions
 ): Promise<Response> {
+	return withCors(request, options, () =>
+		routeComments(request, rooms, documentId, authorize, options)
+	);
+}
+
+async function routeComments(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
+): Promise<Response> {
 	const op = request.method === 'GET' ? 'list' : request.method === 'POST' ? 'post' : null;
 	if (op === null) return new Response('method not allowed', { status: 405 });
 	const identity = await authorized(request, documentId, authorize, statusOf, options);
@@ -301,6 +395,18 @@ export async function routeDocumentComments(
 }
 
 export async function routeDocumentSocket(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
+): Promise<Response> {
+	return withCors(request, options, () =>
+		routeSocket(request, rooms, documentId, authorize, options)
+	);
+}
+
+async function routeSocket(
 	request: Request,
 	rooms: DocumentNamespace,
 	documentId: string,

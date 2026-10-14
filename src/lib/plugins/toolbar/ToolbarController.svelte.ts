@@ -22,6 +22,7 @@ import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import { identify } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { keysOf } from '../list.svelte.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
 const STOPS = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
@@ -133,18 +134,17 @@ export class ToolbarController {
 	linkField: Attachment<HTMLInputElement> = (node) => {
 		node.id = this.linkFieldId;
 		if (this.takeFieldFocus()) node.focus({ preventScroll: true });
-		const keydown = (event: KeyboardEvent) => {
-			if (event.defaultPrevented || event.isComposing) return;
-			if (event.key === 'Enter') {
-				event.preventDefault();
-				this.applyLink();
-				this.closePanel(true);
-			} else if (event.key === 'Escape') {
-				event.preventDefault();
-				this.closePanel(true);
-			}
-		};
-		return listen(node, 'keydown', keydown);
+		return listen(
+			node,
+			'keydown',
+			keysOf({
+				Enter: () => {
+					this.applyLink();
+					this.closePanel(true);
+				},
+				Escape: () => this.closePanel(true)
+			})
+		);
 	};
 
 	/** Give the keyboard back to the editor (Escape in the bar), over the held selection. */

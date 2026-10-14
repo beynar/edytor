@@ -10,6 +10,7 @@ import { expressionOf, sourceMathml } from './tex.js';
 
 export { TEX, expressionOf, parseEquation, sourceMathml, type EquationData } from './tex.js';
 import { all, listen } from '$lib/utils/listen.js';
+import { keysOf } from '../list.svelte.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -302,14 +303,13 @@ export class EquationEditor {
 	 */
 	field: Attachment<HTMLTextAreaElement | HTMLInputElement> = (node) =>
 		untrack(() => {
-			const keydown = (event: KeyboardEvent) => {
-				if (event.isComposing) return;
-				const enter = event.key === 'Enter' && !(event.shiftKey && this.display);
-				if (!enter && event.key !== 'Escape') return;
-				event.preventDefault();
-				event.stopPropagation();
-				this.close();
-			};
+			const keydown = keysOf(
+				{
+					Enter: (event) => !(event.shiftKey && this.display) && this.close(),
+					Escape: () => this.close()
+				},
+				true
+			);
 			const element: HTMLElement = node;
 			const off = listen(element, 'keydown', keydown);
 			const off2 = listen(element, 'focusout', this.panel.blurred);

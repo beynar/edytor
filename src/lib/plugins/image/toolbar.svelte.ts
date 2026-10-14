@@ -17,6 +17,7 @@ import { imageControls, type ImageControls } from './controls.svelte.js';
 import { identify, keepFocus } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
 import ImageToolbarHost from './ImageToolbarHost.svelte';
+import { keysOf } from '../list.svelte.js';
 
 /** Where a press keeps the alt field open: the toolbar (its Alt button toggles it) and the field's own. */
 const ALT_CHROME =
@@ -127,12 +128,11 @@ export class ImageToolbar {
 		identify(node, this.#edytor.popups.idOf('image-alt'));
 		node.setAttribute('data-edytor-image-alt', '');
 		node.focus({ preventScroll: true });
-		const keydown = (event: KeyboardEvent) => {
-			if (event.isComposing || (event.key !== 'Enter' && event.key !== 'Escape')) return;
-			event.preventDefault();
-			this.closeAlt(true);
-		};
-		return all(listen(node, 'keydown', keydown), listen(node, 'focusout', this.blurred));
+		const close = () => this.closeAlt(true);
+		return all(
+			listen(node, 'keydown', keysOf({ Enter: close, Escape: close })),
+			listen(node, 'focusout', this.blurred)
+		);
 	};
 
 	/** Close the alt field; with `keys`, the editor takes the keys back. */

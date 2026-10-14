@@ -3,6 +3,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { MediaKind } from './media.js';
 import { fileUploads, type FileUpload } from '../uploads.svelte.js';
 import { listen } from '$lib/utils/listen.js';
+import { keysOf } from '../list.svelte.js';
 
 /** Each media kind's icon (the image's too): its menu row, its empty block, its paste offer. */
 export const MEDIA_ICONS: Record<MediaKind | 'image', string> = {
@@ -130,11 +131,6 @@ export class MediaEmptyController {
 
 	/** The link field (`{@attach empty.field}`): Enter embeds its `draft`. */
 	field: Attachment<HTMLInputElement> = (node) => {
-		const keydown = (event: KeyboardEvent) => {
-			if (event.key !== 'Enter' || event.isComposing) return;
-			event.preventDefault();
-			this.embed();
-		};
-		return listen(node, 'keydown', keydown);
+		return listen(node, 'keydown', keysOf({ Enter: () => this.embed() }));
 	};
 }

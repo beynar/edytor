@@ -12,7 +12,7 @@ import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
 import { attribute, type MenuItemPayload } from '../chrome.js';
-import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.js';
+import { ChromeList, holdKeys, keysOf, menuKey, optionAttachment } from '../list.svelte.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
 import { dragPreview } from '../blockHandles/dragPreview.js';
@@ -729,14 +729,18 @@ export class TableChrome extends ChromeList {
 		});
 		const off = all(
 			listen(node, 'click', () => this.toggle(kind)),
-			listen(node, 'keydown', (event: KeyboardEvent) => {
-				// Escape gives the keys back to the editor (closing the menu if open).
-				if (event.key === 'Escape') this.close();
-				else if (event.key === 'ArrowDown' && this.menu?.kind !== kind) this.toggle(kind);
-				else return;
-				event.preventDefault();
-				event.stopPropagation();
-			}),
+			listen(
+				node,
+				'keydown',
+				keysOf(
+					{
+						// Escape gives the keys back to the editor (closing the menu if open).
+						Escape: this.close,
+						ArrowDown: () => this.menu?.kind !== kind && this.toggle(kind)
+					},
+					true
+				)
+			),
 			draggable({
 				element: node,
 				canDrag: () =>

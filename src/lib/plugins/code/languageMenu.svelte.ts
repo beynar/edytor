@@ -3,7 +3,7 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { attribute, type MenuItemPayload } from '../chrome.js';
-import { ChromeList, holdKeys } from '../list.svelte.js';
+import { ChromeList, holdKeys, keysOf } from '../list.svelte.js';
 import { Anchored } from '../anchored.svelte.js';
 import { languageOf, type CodeSettings } from './languages.js';
 import { all, listen } from '$lib/utils/listen.js';
@@ -187,16 +187,15 @@ export class LanguageMenu extends ChromeList {
 		});
 
 	/** The search field's keys (`keys`). */
-	#keydown = (event: KeyboardEvent) => {
-		if (event.isComposing) return;
-		const step = ({ ArrowDown: 1, ArrowUp: -1 } as Record<string, number>)[event.key];
-		if (step) this.move(step);
-		else if (event.key === 'Enter') this.pick();
-		else if (event.key === 'Escape') this.close(this.open?.keys ? 'button' : 'editor');
-		else return;
-		event.preventDefault();
-		event.stopPropagation();
-	};
+	#keydown = keysOf(
+		{
+			ArrowDown: () => this.move(1),
+			ArrowUp: () => this.move(-1),
+			Enter: () => this.pick(),
+			Escape: () => this.close(this.open?.keys ? 'button' : 'editor')
+		},
+		true
+	);
 
 	/**
 	 * The keys back to the editor from a language button (its Escape): the

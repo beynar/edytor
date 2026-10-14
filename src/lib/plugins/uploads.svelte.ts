@@ -6,13 +6,8 @@ import { jsonBlockToSpec } from '$lib/utils/json.js';
 import { id as mint } from '$lib/utils.js';
 import { placeNew } from '$lib/session/moves.js';
 import type { DropAt } from '$lib/session/attempt.js';
-import {
-	claimUploads,
-	viewUploads,
-	type FileDropPort,
-	type ViewUploads
-} from '$lib/session/uploads.js';
-import { fileDragEnd, fileDragOver, fileDropAt } from './fileDrop.js';
+import { claimUploads, viewUploads, type ViewUploads } from '$lib/session/uploads.js';
+import { FileDrag } from './fileDrop.js';
 
 /** What an `upload` may report while it runs. */
 export type UploadReport = {
@@ -96,7 +91,9 @@ const revoke = (upload: FileUpload | undefined) => {
 export class FileUploads implements ViewUploads {
 	#uploads = new SvelteMap<string, FileUpload>();
 
-	constructor(private edytor: Edytor) {}
+	constructor(private edytor: Edytor) {
+		this.drop = new FileDrag(edytor, this);
+	}
 
 	/** The kinds that take files (their records' `upload`), in registration order. */
 	get #kinds(): UploadKind[] {
@@ -113,12 +110,13 @@ export class FileUploads implements ViewUploads {
 	/** The kind that takes `file`, if any. */
 	kindOf = (file: File) => this.#kindOf(file)?.type;
 
+	/** The types of the kinds that take files. */
+	get types() {
+		return this.#kinds.map((kind) => kind.type);
+	}
+
 	/** Files dragged from outside: the drop indicator and the placement (`fileDrop.ts`). */
-	readonly drop: FileDropPort = {
-		over: (event) => fileDragOver(this.edytor, event) !== null,
-		at: (event) => fileDropAt(this.edytor, event),
-		end: () => fileDragEnd(this.edytor)
-	};
+	readonly drop: FileDrag;
 
 	/** The upload of block `id` in this view (reactive), if any. */
 	of = (id: string): FileUpload | undefined => this.#uploads.get(id);
@@ -309,5 +307,14 @@ export const uploadHooks = (
 	if (!edytor || !upload || viewUploads(edytor)) return {};
 	const uploads = new FileUploads(edytor);
 	claimUploads(edytor, uploads);
-	return { onPaste: uploads.paste, onEdytorAttached: () => uploads.destroy };
+	return {
+		onPaste: uploads.paste,
+		onEdytorAttached: ({ node }) => {
+			const detach = uploads.drop.attach(node);
+			return () => {
+				detach();
+				uploads.destroy();
+			};
+		}
+	};
 };

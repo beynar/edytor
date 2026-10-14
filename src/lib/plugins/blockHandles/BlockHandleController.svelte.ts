@@ -13,6 +13,7 @@ import {
 } from '$lib/session/selection.js';
 import {
 	dropTargetForElements,
+	elementScrollers,
 	type ElementDropTargetEventPayloadMap
 } from '$lib/dnd/pragmatic.js';
 import {
@@ -375,7 +376,12 @@ export class BlockHandleController {
 				for (const [node, target] of this.targets) this.#registerDropTarget(node, target);
 				this.#registerDropTarget(element.ownerDocument.body, null);
 				this.scrolling?.();
-				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
+				this.scrolling = root
+					? autoScrollFor(
+							root,
+							elementScrollers((data) => data.owner === this.owner)
+						)
+					: null;
 				this.indicator.begin(element.ownerDocument);
 			},
 			// The moved blocks show selected while they move (a text range becomes their

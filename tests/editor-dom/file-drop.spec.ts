@@ -1,8 +1,8 @@
 /**
  * `drop.files.place` in real browsers (Notion's): files dragged from outside
  * over the view show the block drag's drop indicator where they land (the
- * lower half of a block's own row: a bar under it), a drag leaving the view
- * clears it, and the drop places one block per file there, each of the kind
+ * lower half of a block's own row: a bar under it), a drag moving off the
+ * view or leaving the window clears it, and the drop places one block per file there, each of the kind
  * that takes it, one undo step. A synthetic `DataTransfer` holding `File`s,
  * dispatched as `dragenter`/`dragover`/`drop` at coordinates (no engine
  * drags real files under automation). Expected values come from the
@@ -16,10 +16,14 @@ type Value = { children: Array<{ type: string; data?: Record<string, unknown> }>
 const types = async (page: Page) =>
 	(await readJsonByTestId<Value>(page, 'value')).children.map((block) => block.type);
 
-/** Dispatch `events` with a transfer of a PNG and a PDF at (x, y) on the host. */
-const dragFiles = (page: Page, events: string[], at: { x: number; y: number }) =>
+/**
+ * Dispatch `events` with a transfer of a PNG and a PDF at (x, y) on the host
+ * (on the page around it with `onPage`). A `dragleave` has no related
+ * target: the drag leaves the window.
+ */
+const dragFiles = (page: Page, events: string[], at: { x: number; y: number }, onPage = false) =>
 	page.evaluate(
-		({ events, x, y }) => {
+		({ events, x, y, onPage }) => {
 			const bytes = Uint8Array.from(
 				atob(
 					'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
@@ -29,7 +33,7 @@ const dragFiles = (page: Page, events: string[], at: { x: number; y: number }) =
 			const transfer = new DataTransfer();
 			transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
 			transfer.items.add(new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' }));
-			const editor = document.querySelector('[data-edytor]')!;
+			const editor = onPage ? document.body : document.querySelector('[data-edytor]')!;
 			for (const type of events) {
 				const event = new DragEvent(type, {
 					bubbles: true,
@@ -37,14 +41,14 @@ const dragFiles = (page: Page, events: string[], at: { x: number; y: number }) =
 					dataTransfer: transfer,
 					clientX: x,
 					clientY: y,
-					relatedTarget: type === 'dragleave' ? document.body : null
+					relatedTarget: null
 				});
 				if (event.dataTransfer !== transfer)
 					Object.defineProperty(event, 'dataTransfer', { value: transfer });
 				editor.dispatchEvent(event);
 			}
 		},
-		{ events, ...at }
+		{ events, ...at, onPage }
 	);
 
 /** The lower half of the last block's own row, just inside its text column. */
@@ -83,7 +87,22 @@ test.describe('drop.files.place', () => {
 		issues.assertClean();
 	});
 
-	test('a drag leaving the view clears the indicator', async ({ page }) => {
+	test('a drag moving off the view, to the page around it, clears the indicator', async ({
+		page
+	}) => {
+		await page.goto('/test/dom?scenario=image');
+		await waitForEditorReady(page);
+		const at = await lowerHalfOfLast(page);
+		await dragFiles(page, ['dragenter', 'dragover'], at);
+		await expect(page.locator('[data-edytor-drop-indicator]')).toHaveCount(1);
+		await dragFiles(page, ['dragenter', 'dragover'], at, true);
+		await expect(page.locator('[data-edytor-drop-indicator]')).toHaveCount(0);
+		await expect(page.locator('[data-edytor-block-drop-position]')).toHaveCount(0);
+		await dragFiles(page, ['dragleave'], at, true);
+		await expect.poll(() => types(page)).toEqual(['image', 'paragraph']);
+	});
+
+	test('a drag leaving the window clears the indicator', async ({ page }) => {
 		await page.goto('/test/dom?scenario=image');
 		await waitForEditorReady(page);
 		const at = await lowerHalfOfLast(page);

@@ -19,8 +19,9 @@ import type { DropAt } from '$lib/session/attempt.js';
  * `Files` is intentionally accepted (so the browser never opens a dropped
  * file in place of the page): with the view's uploads (a media plugin given
  * an `upload`), file drops route through the plugin `onPaste` hook with the
- * drop indicator's placement (`ViewUploads.drop`: a block per file the kinds
- * take there; unclaimed files insert nothing); without them a drop carrying
+ * placement the uploads' drop target resolved (`ViewUploads.drop`, Pragmatic's
+ * external adapter: a block per file the kinds take there; unclaimed files
+ * insert nothing); without them a drop carrying
  * files is ignored, its effect `none`.
  */
 const ACCEPTED_FOREIGN_DROP_TYPES = ['Files', 'text/html', 'text/plain', 'text/uri-list'];
@@ -219,21 +220,20 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
 		if (isAcceptedForeignDrop(root, event.dataTransfer)) {
 			event.preventDefault();
 			event.stopPropagation();
-			// Files show where they land (the block drag's indicator); none in a
-			// read-only view or one without uploads, which takes no file drop (the
-			// browser must not open the file).
-			const shown = drop && !ownsEvent(root, event) && drop.over(event);
+			// Where files land shows from the uploads' drop target (Pragmatic's
+			// external adapter); a read-only view or one without uploads takes no
+			// file drop, and the browser must not open the file.
 			if (event.dataTransfer)
 				event.dataTransfer.dropEffect = files && (edytor.readonly || !drop) ? 'none' : 'copy';
-			if (drop && !shown) drop.end();
 		}
 		return;
 	}
 
 	const accepted = isAcceptedForeignDrop(root, event.dataTransfer);
-	// Where the files land: the indicator's placement, re-resolved at the drop point.
-	const at = drop && accepted && !ownsEvent(root, event) ? drop.at(event) : null;
-	drop?.end();
+	// Where the files land: the placement the uploads' drop target resolved at
+	// the drop point (its window listener captures, so it ran first).
+	const placed = drop?.take() ?? null;
+	const at = accepted && !ownsEvent(root, event) ? placed : null;
 	if (accepted && isControlDrop(root, event)) return;
 	event.preventDefault();
 	event.stopPropagation();
@@ -248,16 +248,4 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
 	}
 	// Mid-composition drops are swallowed: the preview owns the write path.
 	if (!edytor.isComposing) return insertFromDrop(edytor, root, event, at);
-};
-
-/**
- * A drag leaving the host (to the page around it, or out of the window):
- * a file drag's indicator goes. Moving between the host's own elements is
- * no leave.
- */
-export const onDragLeave = (edytor: Edytor, event: DragEvent) => {
-	const root = event.currentTarget as Element;
-	const to = event.relatedTarget;
-	if (to instanceof Node && root.contains(to)) return;
-	viewUploads(edytor)?.drop.end();
 };

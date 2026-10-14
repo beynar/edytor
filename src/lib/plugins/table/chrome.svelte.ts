@@ -2,7 +2,7 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import { autoScrollFor } from '$lib/dnd/autoScroll.js';
-import { dropTargetForElements } from '$lib/dnd/pragmatic.js';
+import { dropTargetForElements, elementScrollers } from '$lib/dnd/pragmatic.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
@@ -862,7 +862,7 @@ export class TableChrome extends ChromeList {
 			})
 		);
 		const scroller = table.node?.querySelector<HTMLElement>('[data-edytor-table-scroll]');
-		if (scroller) this.#releases.push(autoScrollFor(scroller, ours));
+		if (scroller) this.#releases.push(autoScrollFor(scroller, elementScrollers(ours)));
 		this.edytor.overlay.invalidate();
 	}
 

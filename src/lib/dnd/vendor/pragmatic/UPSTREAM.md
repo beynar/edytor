@@ -2,9 +2,10 @@
 
 Atlassian's Pragmatic drag and drop, forked inside edytor: only the modules
 edytor reaches, as the packages publish them, so the block handles' and the
-table grips' drags run the library's own logic without depending on its
-packages. `src/lib/dnd/pragmatic.ts` is the one importer; nothing else in
-edytor imports from this directory. Do not edit these files by hand: re-sync
+table grips' drags, and files dragged from outside, run the library's own logic without depending on its
+packages. `src/lib/dnd/pragmatic.ts` (the element adapter) and `src/lib/dnd/external.ts`
+(the external adapter, imported only by the media plugins that take an
+upload) are the importers; nothing else in edytor imports from this directory. Do not edit these files by hand: re-sync
 (below) and record every change here.
 
 ## Pinned source
@@ -34,8 +35,8 @@ against `dist/es2019/<same path>` (or `dist/types/<same path>` for a `.d.ts`).
 
 ## What was kept
 
-The module closure of the three entry points `pragmatic.ts` imports, nothing
-else:
+The module closure of the entry points `pragmatic.ts` and `external.ts`
+import, nothing else:
 
 - core `entry-point/element/adapter` (`draggable`, `dropTargetForElements`,
   `monitorForElements`): the element adapter, the drag lifecycle, drop targets
@@ -43,12 +44,20 @@ else:
   detection;
 - core `entry-point/element/set-custom-native-drag-preview`;
 - auto-scroll `entry-point/element` (`autoScrollForElements`,
-  `autoScrollWindowForElements`, the over-element API and its scheduler).
+  `autoScrollWindowForElements`, the over-element API and its scheduler);
+- core `adapter/drop-target-for-external` (`dropTargetForExternal`: the
+  external adapter, its drag of what enters the window, the window-entering
+  detection, the available types and items) and `adapter/monitor-for-external`
+  (the auto-scroll's monitor), `public-utils/external/contains-files` and
+  `get-files` (`containsFiles`, `getFiles`): files dragged from outside;
+- auto-scroll `entry-point/external` (`autoScrollForExternal`,
+  `autoScrollWindowForExternal`), on the same over-element API.
 
 The `.d.ts` files are the declarations those entry points' types reach (9
-files); a `.js` without one is reached only from other vendored `.js`.
-Everything else the packages publish (the external and text-selection
-adapters, the other utilities, the hitbox package (the block handles split a
+files for the element entries, 8 for the external ones); a `.js` without one is reached only from other vendored `.js`.
+Everything else the packages publish (the text-selection adapter, the
+external adapter's text, HTML and URL getters (edytor reads only files from
+an external drag; text and HTML drops stay the core's `events/onDrop.ts`), the other utilities, the hitbox package (the block handles split a
 row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `dist/esm` builds) is left out.
 
 ## Local changes (the only ones)
@@ -57,7 +66,7 @@ row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `
    (`'./once'` → `'./once.js'`, a directory import its `/index.js`), so the
    packaged `dist/` loads in Node as ES modules too. Every bare specifier
    between the packages (`@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter`,
-   `…/utils/combine`, `…/utils/once`, `…/get-element-from-point-without-honey-pot`,
+   `…/adapter/monitor-for-external`, `…/utils/combine`, `…/utils/once`, `…/get-element-from-point-without-honey-pot`,
    `…/types` in the declarations) and to the two dependencies
    (`bind-event-listener`, `raf-schd`) becomes the relative path of the
    vendored file. This binds the auto-scroll package to the same core as the
@@ -97,7 +106,8 @@ change 3.
   (`scripts/xloc.mjs`, `scripts/bundle-size.mjs`) skip it as vendored code.
 - `package.json#sideEffects` lists the core's directory: upstream declares the
   core with side effects (`count-events-for-safari.js` binds its WebKit
-  listeners at import), the auto-scroll without.
+  listeners at import, `adapter/external-adapter.js` its window `dragenter`
+  and `dragstart` listeners), the auto-scroll without.
 - Nothing runs against the DOM at import (the core guards `typeof window`):
   server rendering imports it as before.
 
@@ -106,12 +116,13 @@ change 3.
 1. Install the new versions of the two packages (and of `bind-event-listener`,
    `raf-schd`) somewhere outside the package's dependencies.
 2. From each package's `module:es2019` entry (`element/adapter`,
-   `element/set-custom-native-drag-preview`, auto-scroll
-   `element`), follow every import; copy each reached `dist/es2019` file and,
+   `element/set-custom-native-drag-preview`, `adapter/drop-target-for-external`,
+   `adapter/monitor-for-external`, `utils/contains-files`, `utils/get-files`,
+   auto-scroll `element` and `external`), follow every import; copy each reached `dist/es2019` file and,
    from each entry's `types` field, each reached `dist/types` declaration to
    the same path here, rewriting specifiers as in change 1.
 3. Redo change 2 from `bind-event-listener`'s `src/`, and change 3; copy
    `raf-schd/dist/raf-schd.esm.js`; copy the license files.
 4. Update the table above, run the drag lanes (the block handle, table, columns,
-   drop reach, auto-scroll, drag preview and press-after-drag specs in
+   drop reach, auto-scroll, drag preview, press-after-drag and file drop specs in
    Chromium, Firefox and WebKit, the jsdom drag rows) and the packed consumer.

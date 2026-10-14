@@ -9,7 +9,10 @@
  * Without a media plugin given an `upload` the view takes no file drop
  * (the media plugins install it): the drop is swallowed, nothing shows.
  *
- * jsdom has no layout: the rows' boxes and the hit test are stubbed.
+ * The drag is Pragmatic's external adapter's: a `dragenter` from outside the
+ * window starts it, the host is its drop target, a `dragleave` out of the
+ * window ends it. jsdom has no layout: the rows' boxes and the hit test are
+ * stubbed.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -22,6 +25,8 @@ import {
 } from '$registry/edytor/chrome/plugins.js';
 
 afterEach(() => {
+	// No drag outlives its row (the adapter allows one at a time).
+	window.dispatchEvent(new Event('dragend'));
 	document.body.innerHTML = '';
 	vi.restoreAllMocks();
 });
@@ -80,8 +85,10 @@ const transfer = (files: File[]) =>
 	({
 		types: ['Files'],
 		files,
-		items: files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => null })),
+		// The adapter reads the files at the drop only (an engine lists none before it).
+		items: files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => f })),
 		getData: () => '',
+		setDragImage: () => {},
 		dropEffect: 'none'
 	}) as unknown as DataTransfer;
 
@@ -129,6 +136,7 @@ describe('drop.files.place', () => {
 		const { edytor, editor } = await mount();
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 45));
 		editor.dispatchEvent(dragEvent('dragover', data, 45));
 		expect(indicator()?.dataset.position).toBe('before');
 		editor.dispatchEvent(dragEvent('drop', data, 45));
@@ -136,23 +144,43 @@ describe('drop.files.place', () => {
 		expect(types(edytor)).toEqual(['paragraph', 'image', 'paragraph']);
 	});
 
-	it('a drag leaving the view clears the indicator', async () => {
+	it('a drag moving off the view, to the page around it, clears the indicator', async () => {
 		const { edytor, editor } = await mount();
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		editor.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).not.toBeNull();
-		const leave = dragEvent('dragleave', data, 30);
-		Object.defineProperty(leave, 'relatedTarget', { value: document.body });
-		editor.dispatchEvent(leave);
+		document.body.dispatchEvent(dragEvent('dragenter', data, 30));
+		document.body.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).toBeNull();
 		expect(editor.querySelector('[data-edytor-block-drop-position]')).toBeNull();
+		// Back over the view: it shows again.
+		editor.dispatchEvent(dragEvent('dragover', data, 30));
+		expect(indicator()?.dataset.position).toBe('after');
+	});
+
+	it('a drag leaving the window clears the indicator and ends the drag', async () => {
+		const { edytor, editor } = await mount();
+		layOut(edytor);
+		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
+		editor.dispatchEvent(dragEvent('dragover', data, 30));
+		expect(indicator()).not.toBeNull();
+		// Out of the window: no element it enters (`relatedTarget` none).
+		editor.dispatchEvent(dragEvent('dragleave', data, 30));
+		expect(indicator()).toBeNull();
+		// A drag coming back in is a new one, shown again.
+		editor.dispatchEvent(dragEvent('dragenter', data, 45));
+		editor.dispatchEvent(dragEvent('dragover', data, 45));
+		expect(indicator()?.dataset.position).toBe('before');
 	});
 
 	it('a read-only view shows no indicator and takes no drop', async () => {
 		const { edytor, editor } = await mount(true);
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		editor.dispatchEvent(dragEvent('dragover', data, 30));
 		expect(indicator()).toBeNull();
 		const drop = dragEvent('drop', data, 30);
@@ -167,6 +195,7 @@ describe('drop.files.place', () => {
 		const { edytor, editor } = await mount(false, false);
 		layOut(edytor);
 		const data = transfer([file('photo.png', 'image/png')]);
+		editor.dispatchEvent(dragEvent('dragenter', data, 30));
 		const over = dragEvent('dragover', data, 30);
 		editor.dispatchEvent(over);
 		expect(over.defaultPrevented).toBe(true);

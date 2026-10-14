@@ -359,15 +359,17 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'<p>a<strong>b</strong><em>i</em><u>u</u><s>s</s><code>k</code>',
 				'<em><strong>y</strong></em>&lt;&amp;&gt;</p>',
 				'<blockquote>q</blockquote>',
-				'<li>one<li>two</li></li>',
-				'<li data-edytor-todo-item="true"><input type="checkbox" checked>done</li>',
+				// Sibling items in their list's element, a nested item in its own (`flow.html` export).
+				'<ul><li>one<ol><li>two</li></ol></li>',
+				'<li data-edytor-todo-item="true"><input type="checkbox" checked>done</li></ul>',
 				'<hr>',
-				'<p></p><pre><code>let x</code></pre>',
+				// A code block is one `pre` holding its lines.
+				'<pre><code>let x</code></pre>',
 				'<ol><li>li</li></ol>',
 				'<p>hi <span data-edytor-inline-block="mention"></span></p>',
 				'<figure><figcaption>cap</figcaption></figure>',
 				'<ul><li>u1</li></ul>',
-				'<li data-edytor-todo-item="true"><input type="checkbox">open</li>'
+				'<ul><li data-edytor-todo-item="true"><input type="checkbox">open</li></ul>'
 			].join(''),
 			plain: [
 				'Title',

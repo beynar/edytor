@@ -1,7 +1,8 @@
 <script module lang="ts">
+	import { mediaForms } from '$lib/export/forms.js';
 	import type { Snippet } from 'svelte';
 	import type { Plugin } from '$lib/plugins.js';
-	import { escapeHtml, fileNameOf, safeMediaSrc, type FileRowPayload } from './media.js';
+	import { type FileRowPayload } from './media.js';
 	import { sourcePlugin } from './SourceBlock.svelte';
 	import type { Uploader } from '../uploads.svelte.js';
 
@@ -33,24 +34,7 @@
 		sourcePlugin(
 			'file',
 			['attachment', 'upload', 'pdf', 'document'],
-			{
-				html: (block, caption) => {
-					const src = safeMediaSrc(block.data?.src);
-					const name = String(block.data?.name || (src && fileNameOf(src)) || '');
-					const link = src ? `<a href="${escapeHtml(src)}">${escapeHtml(name)}</a>` : '';
-					return `<figure data-edytor-file>${link}<figcaption>${caption}</figcaption></figure>`;
-				},
-				plain: (block, caption) =>
-					[safeMediaSrc(block.data?.src), caption].filter(Boolean).join('\n'),
-				// Its own export: a `figure[data-edytor-file]` holding the link.
-				parse: (el) => {
-					if (el.localName !== 'figure' || !el.hasAttribute('data-edytor-file')) return;
-					const anchor = el.querySelector('a[href]');
-					const src = safeMediaSrc(anchor?.getAttribute('href'));
-					const name = anchor?.textContent?.trim().slice(0, 300);
-					return src ? { src, name: name || fileNameOf(src) } : undefined;
-				}
-			},
+			mediaForms().file,
 			{ row: options.row },
 			options.upload
 		);

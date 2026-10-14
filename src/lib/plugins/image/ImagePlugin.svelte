@@ -1,16 +1,16 @@
 <script module lang="ts">
+	import { imageForms } from '$lib/export/forms.js';
 	import './image.css';
-	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import EmptySlot from '../media/EmptySlot.svelte';
 	import ImageChrome from './ImageChrome.svelte';
-	import { imageKinds } from '$lib/crdt/semantics.js';
+
 	import {
 		imageAlignOf,
 		imageAltOf,
 		imageWidthOf,
-		imgData,
 		isImageFile,
 		MAX_INLINE_IMAGE_BYTES,
 		MIN_IMAGE_WIDTH,
@@ -117,7 +117,7 @@
 				},
 				blocks: {
 					image: {
-						...imageKinds.image,
+						...imageForms().image,
 						snippet: image,
 						element: 'figure',
 						// Image files, with an `upload`: an Upload and pasted or dropped files.
@@ -139,26 +139,7 @@
 								keywords: keywordsOf(edytor, 'block.image', ['picture', 'photo', 'img']),
 								group: 'Media'
 							}
-						],
-						html: (block, caption) => {
-							const src = safeImageSrc(block.data?.src);
-							const width = imageWidthOf(block.data);
-							const align = imageAlignOf(block.data);
-							const img = src
-								? `<img src="${escapeHtml(src)}" alt="${escapeHtml(imageAltOf(block.data))}"${width ? ` width="${Math.round(width)}"` : ''}>`
-								: '';
-							const at = align === 'center' ? '' : ` data-align="${align}"`;
-							return `<figure${at}>${img}<figcaption>${caption}</figcaption></figure>`;
-						},
-						// A `figure` holding an `img`, or a bare `img`, with an accepted
-						// source; a pasted inline image over the cap is not imported.
-						parse: (el) => {
-							if (el.localName === 'img') return imgData(el) ?? undefined;
-							const data = el.localName === 'figure' && imgData(el.querySelector('img'));
-							if (!data) return undefined;
-							const align = el.getAttribute('data-align');
-							return align === 'left' || align === 'right' ? { ...data, align } : data;
-						}
+						]
 					}
 				}
 			};

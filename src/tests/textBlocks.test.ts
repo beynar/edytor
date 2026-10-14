@@ -104,6 +104,7 @@ describe('textToBlocks — markdown', () => {
 		expect(textToBlocks('```js\nlet a\n\nb()\n```')).toEqual([
 			{
 				type: 'code',
+				data: { language: 'js' },
 				content: [],
 				children: [
 					{ type: 'codeLine', content: [{ text: 'let a' }] },

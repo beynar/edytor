@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { tocForms } from '$lib/export/forms.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { tocKinds } from '$lib/crdt/semantics.js';
 	import { tocEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
@@ -53,11 +54,8 @@
 								group: 'Advanced blocks'
 							}
 						],
-						html: () => '<nav data-edytor-toc></nav>',
-						plain: () => '',
 						// Its own export: the list is drawn from the document, never carried.
-						parse: (el) =>
-							el.localName === 'nav' && el.hasAttribute('data-edytor-toc') ? {} : undefined
+						...tocForms().toc
 					}
 				}
 			};

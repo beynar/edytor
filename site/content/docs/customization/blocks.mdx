@@ -133,6 +133,10 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       type: "(block, content, children) => string",
       description: "Clipboard plain text. Default: the content, then the children, one per line.",
     },
+    markdown: {
+      type: "(block, content, children, context) => string",
+      description: "Markdown export (toMarkdown): content is the block's text as inline markdown, children its children's markdown; context gives index, indent(text, prefix) and inline(content). Default: the plain form, else the text.",
+    },
     parse: {
       type: "(element: HTMLElement) => data | undefined",
       description: "HTML import: this kind's data when a pasted element is this kind. Checked before tag matching.",
@@ -169,6 +173,10 @@ export const widgetKinds = { widget: { void: true, rendersContent: false } };
 // In the room and headless documents:
 export const semantics = mergeSemantics(defaultSemantics, semanticsOf(widgetKinds));
 ```
+
+## Export and import
+
+A kind's `html`, `plain` and `markdown` forms and its `parse` hook are its export and import: the clipboard, [`toHTML`, `toMarkdown` and `fromHTML`](/docs/editor/import-export) all read them, so a copy and an export of a block agree. Keep them in an object of their own and spread it into the kind record, and the same object serves `edytor/export` on a server ([your own kinds](/docs/editor/import-export#your-own-kinds)), where a record's snippet cannot load.
 
 ## Kinds that render no content
 

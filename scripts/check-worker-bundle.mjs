@@ -33,7 +33,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRIES = [
 	path.join(ROOT, 'src/lib/crdt/index.ts'),
 	path.join(ROOT, 'src/lib/crdt/protocol.ts'),
-	path.join(ROOT, 'src/lib/cloudflare/index.ts')
+	path.join(ROOT, 'src/lib/cloudflare/index.ts'),
+	path.join(ROOT, 'src/lib/export/index.ts')
 ];
 const RUNTIME = ['cloudflare:workers'];
 const LIB = path.join(ROOT, 'src/lib');
@@ -58,6 +59,17 @@ const WORKER_SAFE = [
 	/^utils\/json\.[jt]s$/,
 	/^utils\.[jt]s$/,
 	/^constants\.[jt]s$/
+];
+/**
+ * `edytor/export` (`src/lib/export`) also reads the kinds' pure form
+ * modules beside their plugins: these, and no other view-layer module.
+ */
+const EXPORT_SAFE = [
+	/^export\//,
+	/^utils\/sanitize\.ts$/,
+	/^clipboard\/(serializeClipboardFragment|htmlFlow|textBlocks|types)\.ts$/,
+	/^block\/(contentRange|colors)\.ts$/,
+	/^plugins\/(richtext\/callouts|image\/image|media\/sources|page\/page|equation\/tex)\.ts$/
 ];
 const SVELTE = /(^|\/)(svelte|@sveltejs)(\/|$)|\.svelte(\.[jt]s)?$|(^|\/)\$app\//;
 const VIEW_LAYER =
@@ -120,9 +132,14 @@ const check = async (ENTRY) => {
 					.join('/');
 		groups.set(group, (groups.get(group) ?? 0) + 1);
 		if (SVELTE.test(posix)) problems.push(`svelte module in the build graph: ${posix}`);
+		else if (inRepo && EXPORT_SAFE.some((re) => re.test(rel)) && /export\/index\.ts$/.test(ENTRY));
 		else if (inRepo && VIEW_LAYER.test(rel))
 			problems.push(`view-layer module in the build graph: src/lib/${rel}`);
-		else if (inRepo && !WORKER_SAFE.some((re) => re.test(rel)))
+		else if (
+			inRepo &&
+			!WORKER_SAFE.some((re) => re.test(rel)) &&
+			!/^utils\/sanitize\.ts$/.test(rel)
+		)
 			problems.push(
 				`module outside the Worker-safe set in the build graph: ${path.relative(ROOT, id)}`
 			);

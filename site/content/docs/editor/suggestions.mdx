@@ -97,13 +97,24 @@ export const draft = (edytor: EdytorInstance, prompt: string) => {
 };
 ```
 
-`/api/draft` is your endpoint, which calls the model and streams its text back. For a model that answers in markdown, keep the text received so far and replace the content with its blocks on each chunk, so headings, lists and to-dos take their kinds as they arrive:
+`/api/draft` is your endpoint, which calls the model and streams its text back. For a model that answers in markdown, keep the text received so far and replace the content with its blocks on each chunk, read with `streaming: true`: a line still arriving shows only what the next chunk cannot turn into another kind or mark (no `**bol` or `| A | B` flashing as raw text). Once the stream ends, read the whole text once more without it:
 
-```ts
-let markdown = '';
-// in the loop, instead of append:
-markdown += value;
-suggestion.update(textToBlocks(markdown));
+```ts title="src/lib/streamMarkdown.ts" check
+import { textToBlocks, type Suggestion } from 'edytor';
+
+/** Stream the model's markdown answer into `suggestion`, its kinds and marks as they arrive. */
+export const streamMarkdown = async (suggestion: Suggestion, response: Response) => {
+	const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+	let markdown = '';
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done || !suggestion.live) break;
+		markdown += value;
+		suggestion.update(textToBlocks(markdown, { streaming: true }));
+	}
+	suggestion.update(textToBlocks(markdown));
+	suggestion.done();
+};
 ```
 
 ## Accept and discard
@@ -279,9 +290,12 @@ The full demo (`site/islands/ai-demo.ts` in the repository) streams word by word
 `textToBlocks(text, options?)` turns a string into `JSONBlock[]`. It is pure: use it in a server or a Worker to shape a model's answer before sending it.
 
 - `markdown: false` keeps every character as text: blank lines split paragraphs; a single newline stays in the text.
-- Markdown (the default) reads one line at a time: `#` to `###` headings (deeper ones read as `###`), `-`, `*` or `+` bullets, `1.` numbers, `[ ]` and `[x]` to-dos (also after a bullet), `>` quotes, `---` dividers, fenced code blocks (an unclosed fence keeps its lines, so a stream cut mid-block reads well), and list items nested by indentation (two spaces a level). Consecutive plain lines make one paragraph, joined by a space; a blank line ends it.
-- Inline, `**bold**`, `*italic*` or `_italic_`, `` `code` `` and `[text](url)` links become marks. Marks do not nest.
-- `type` sets the paragraph kind (default `paragraph`). The other kinds and marks are the [rich text](/docs/plugins/rich-text) and [code](/docs/plugins/code) plugins'.
+- Markdown (the default) reads one line at a time: `#` to `###` headings (deeper ones read as `###`), `-`, `*` or `+` bullets, `1.` numbers, `[ ]` and `[x]` to-dos (also after a bullet), list items nested by indentation (under the item whose marker is left of theirs), `>` quotes (consecutive lines one quote), a GitHub alert (`> [!NOTE]`) as a callout, `<details>` and `<summary>` as a toggle, `---` dividers, fenced code blocks with their language in `data.language` (an unclosed fence keeps its lines, so a stream cut mid-block reads well), `$$` equations, a line holding only an image (`![alt](src "caption")`) as an image, and GFM tables as a [table](/docs/plugins/table) whose first row is a header. Consecutive plain lines make one paragraph, joined by a space (a line ending in `\` or two spaces breaks the line); a blank line ends it.
+- Inline, `**bold**`, `*italic*` or `_italic_`, `***both***`, `~~strike~~`, `` `code` ``, `[text](url)` and `<https://…>` links become marks, and they nest: `**[a bold link](url)**`. A link's href goes through the link sanitizer, so a `javascript:` link is its text. A backslash escapes a character.
+- `streaming: true` reads a text still arriving: an unfinished last line is held back while it is only a block marker (`#`, `-`, `1.`, a table row), and from an inline marker it has not closed yet; a table's header row waits for its separator row ([streaming](#content-and-streaming)).
+- `type` sets the paragraph kind (default `paragraph`). The other kinds and marks are the bundled plugins'.
+
+`textToBlocks` is also in [`edytor/export`](/docs/editor/import-export), beside `toMarkdown`, which writes the same markdown back.
 
 ```ts title="src/lib/markdown.ts" check
 import { textToBlocks } from 'edytor';
@@ -301,4 +315,4 @@ textToBlocks('## Plan\n- [ ] Ship it\nSee **notes**');
 - **One view only.** A suggestion lives in the view that made it: another tab or a collaborator cannot review it, and a reload loses it. Keep your own copy if it must survive.
 - **A text-range `replace`** is two writes in one command and one undo step: the range's deletion, then the paste at its caret. Hooks see the deletion's steps only.
 - **The preview** applies no `transformText` (a code block's preview is not highlighted) and renders the kinds this view registers; an unknown kind shows as a plain block.
-- **Marks in `textToBlocks`** do not nest, and the rest of markdown (tables, images, HTML) stays text.
+- **`textToBlocks`** reads the markdown above; other HTML in it stays text, and a table's column alignment (`:---:`) is not kept.

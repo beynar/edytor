@@ -342,4 +342,23 @@ assert.deepEqual(
 	`v13 engine artifacts must not materialize in a packed consumer install: ${offenders}`
 );
 
+// ── edytor/export: plain node imports it (no Svelte), and it converts both ways ──
+{
+	const { toHTML, toMarkdown, fromHTML, textToBlocks } = await import('edytor/export');
+	const { DOMParser } = await import('linkedom');
+	const value = {
+		children: [
+			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Plan' }] },
+			{ type: 'paragraph', content: [{ text: 'bold', marks: { bold: true } }] }
+		]
+	};
+	assert.equal(toHTML(value), '<h2>Plan</h2><p><strong>bold</strong></p>');
+	assert.equal(toMarkdown(value), '## Plan\n\n**bold**\n');
+	assert.deepEqual(textToBlocks(toMarkdown(value)), value.children);
+	assert.deepEqual(
+		fromHTML('<h2>Plan</h2><p><b>bold</b><script>x()</script></p>', { DOMParser }).children,
+		value.children
+	);
+}
+
 console.log('packed-consumer smoke OK — engine + public boundary work at runtime');

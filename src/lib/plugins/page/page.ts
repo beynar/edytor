@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Attachment } from 'svelte/attachments';
-import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { sanitizeLinkHref } from '$lib/utils/sanitize.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The page plugin's options: how your app opens, names, links and creates pages. */

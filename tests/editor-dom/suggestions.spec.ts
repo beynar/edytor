@@ -145,6 +145,51 @@ test.describe('suggestions', () => {
 		expect(await texts(page)).toEqual(['Alpha', 'Second draft!', 'Beta', 'Gamma']);
 	});
 
+	test("a table in the preview lays its cells out as the document's does (`table.*`)", async ({
+		page
+	}) => {
+		await page.goto('/test/dom?scenario=table');
+		await waitForEditorReady(page, { requireRuntime: true });
+		const cell = (column: string) => ({
+			type: 'tableCell',
+			data: { column },
+			content: [{ text: column }]
+		});
+		await inPage(page, (edytor, arg) => edytor.suggestions.add({ after: 'Z' }, arg), [
+			{
+				type: 'table',
+				data: { columns: [{ id: 'x1' }, { id: 'x2' }] },
+				children: [
+					{ type: 'tableRow', children: [cell('x1'), cell('x2')] },
+					{ type: 'tableRow', children: [cell('x1'), cell('x2')] }
+				]
+			}
+		]);
+		/** Each row's cells' boxes, in the table `root` holds. */
+		const rows = (root: string) =>
+			page.locator(`${root} [data-edytor-table-row]`).evaluateAll((rows) =>
+				rows.map((row) =>
+					[...row.querySelectorAll('[data-edytor-table-cell]')].map((cell) => {
+						const box = cell.getBoundingClientRect();
+						return { top: Math.round(box.top), left: Math.round(box.left) };
+					})
+				)
+			);
+		const sideBySide = async (root: string) => {
+			const boxes = await rows(root);
+			expect(boxes).toHaveLength(2);
+			for (const [first, second] of boxes as { top: number; left: number }[][]) {
+				expect(second!.top).toBe(first!.top);
+				expect(second!.left).toBeGreaterThan(first!.left);
+			}
+		};
+		await sideBySide('[data-edytor-suggestion]');
+		await page.locator('[data-edytor-suggestion-bar] [data-edytor-suggestion-accept]').click();
+		await expect(page.locator('[data-edytor-suggestion]')).toHaveCount(0);
+		await expect(page.locator('[data-edytor-type="table"]')).toHaveCount(2);
+		await sideBySide('[data-edytor-type="table"]:not([data-edytor-id="T"])');
+	});
+
 	test('Mod+Enter accepts and Escape discards the latest suggestion', async ({ page }) => {
 		await open(page);
 		await clickText(page, 'b');

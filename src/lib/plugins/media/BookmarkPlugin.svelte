@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { mediaForms } from '$lib/export/forms.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import EmptySlot from './EmptySlot.svelte';
@@ -7,7 +8,6 @@
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import {
 		MEDIA_ICONS,
-		escapeHtml,
 		mediaControl,
 		mediaLink,
 		mediaPlugin,
@@ -136,22 +136,7 @@
 				),
 				record: {
 					snippet: bookmark,
-					html: (block, caption) => {
-						const url = safeWebUrl(block.data?.url);
-						const title = text(block.data?.title, 300) ?? url;
-						const link = url ? `<a href="${escapeHtml(url)}">${escapeHtml(title!)}</a>` : '';
-						return `<figure data-edytor-bookmark>${link}<figcaption>${caption}</figcaption></figure>`;
-					},
-					plain: (block, caption) =>
-						[safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
-					// Its own export: a `figure[data-edytor-bookmark]` holding the link.
-					parse: (el) => {
-						if (el.localName !== 'figure' || !el.hasAttribute('data-edytor-bookmark')) return;
-						const anchor = el.querySelector('a[href]');
-						const url = safeWebUrl(anchor?.getAttribute('href'));
-						const title = text(anchor?.textContent, 300);
-						return url ? { url, ...(title && title !== url ? { title } : {}) } : undefined;
-					}
+					...mediaForms().bookmark
 				}
 			};
 		});

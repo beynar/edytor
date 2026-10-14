@@ -1,16 +1,17 @@
 <script module lang="ts">
+	import { columnsForms } from '$lib/export/forms.js';
 	import './columns.css';
 	import type { BlockSnippetPayload, BlockView, EditorCommand, Plugin } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import { layoutKinds } from '$lib/crdt/semantics.js';
+
 	import { convertToKind, wrapBlocks, wrappable, type KindRow } from '$lib/kinds.js';
 	import {
 		getSelectedBlocksInDocumentOrder,
 		liftLayouts
 	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
-	import { ColumnResize, weightOf } from './resize.svelte.js';
+	import { ColumnResize } from './resize.svelte.js';
 	import { hoverChrome } from '../bands.svelte.js';
 	import { all, listen } from '$lib/utils/listen.js';
 	import { columnsEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
@@ -21,12 +22,6 @@
 		 * width (default `0.1`). View-only: the document stores weights.
 		 */
 		minWidth?: number;
-	};
-
-	/** A weight read back from HTML (`data-width`), when it is one. */
-	const parsedWidth = (element: HTMLElement): Record<string, number> => {
-		const width = Number(element.getAttribute('data-width'));
-		return Number.isFinite(width) && width > 0 ? { width } : {};
 	};
 
 	/**
@@ -174,15 +169,12 @@
 				},
 				blocks: {
 					columns: {
-						...layoutKinds.columns,
+						...columnsForms().columns,
 						snippet: columns,
-						element: { tag: 'div', attributes: { 'data-edytor-columns': '' } },
-						html: (_, __, children) => `<div data-edytor-columns>${children}</div>`,
-						plain: (_, __, children) => children,
-						parse: (element) => (element.hasAttribute('data-edytor-columns') ? {} : undefined)
+						element: { tag: 'div', attributes: { 'data-edytor-columns': '' } }
 					},
 					column: {
-						...layoutKinds.column,
+						...columnsForms().column,
 						snippet: column,
 						// Its weight as shown: a resize drag's preview (this view only), else `data.width`.
 						element: (data, id) => ({
@@ -191,12 +183,7 @@
 								'data-edytor-column': '',
 								style: `flex: ${resize.weight(id, data)} 1 0px`
 							}
-						}),
-						html: (block, _, children) =>
-							`<div data-edytor-column data-width="${weightOf(block.data)}">${children}</div>`,
-						plain: (_, __, children) => children,
-						parse: (element) =>
-							element.hasAttribute('data-edytor-column') ? parsedWidth(element) : undefined
+						})
 					}
 				}
 			};

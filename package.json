@@ -69,6 +69,10 @@
 			"types": "./dist/crdt/index.d.ts",
 			"default": "./dist/crdt/index.js"
 		},
+		"./export": {
+			"types": "./dist/export/index.d.ts",
+			"default": "./dist/export/index.js"
+		},
 		"./protocol": {
 			"types": "./dist/crdt/protocol.d.ts",
 			"default": "./dist/crdt/protocol.js"
@@ -124,6 +128,7 @@
 		"globals": "^17.6.0",
 		"jsdom": "^29.0.1",
 		"katex": "0.18.7",
+		"linkedom": "^0.18.12",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",
 		"publint": "^0.3.18",

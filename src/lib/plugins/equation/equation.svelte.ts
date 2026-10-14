@@ -6,7 +6,9 @@ import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { Anchored } from '../anchored.svelte.js';
-import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+import { expressionOf, sourceMathml } from './tex.js';
+
+export { TEX, expressionOf, parseEquation, sourceMathml, type EquationData } from './tex.js';
 import { all, listen } from '$lib/utils/listen.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
@@ -77,20 +79,8 @@ export type EquationErrorPayload = {
 	label: string;
 };
 
-/** The data of a block equation and of an inline one: its TeX source. */
-export type EquationData = { expression?: string };
-
 /** What drawing an equation gives: KaTeX's markup, its error, or nothing yet (the source shows). */
 export type Drawn = { html: string } | { error: string } | null;
-
-/** The MathML annotation that carries an equation's TeX source. */
-export const TEX = 'application/x-tex';
-
-/** An equation's TeX source: its `expression`, a string. */
-export const expressionOf = (data: unknown): string => {
-	const value = (data as EquationData | undefined)?.expression;
-	return typeof value === 'string' ? value : '';
-};
 
 /** The cap of the drawings each renderer keeps. */
 const CACHE = 256;
@@ -152,11 +142,7 @@ export class EquationRenderer {
 				// TeX KaTeX cannot read: the source as text, below.
 			}
 		}
-		const source = escapeHtml(tex);
-		return (
-			`<span class="katex"><math xmlns="http://www.w3.org/1998/Math/MathML"${display ? ' display="block"' : ''}>` +
-			`<semantics><mrow><mtext>${source}</mtext></mrow><annotation encoding="${TEX}">${source}</annotation></semantics></math></span>`
-		);
+		return sourceMathml(tex, display);
 	};
 
 	private options = (display: boolean, output: 'htmlAndMathml' | 'mathml') => ({
@@ -181,30 +167,6 @@ export class EquationRenderer {
 		);
 	};
 }
-
-/**
- * HTML import: the TeX source an equation's element carries — a `<math>`'s
- * `application/x-tex` annotation (or its `alttext`), alone or in KaTeX's
- * markup (`.katex`, `.katex-display`) — when the element is an equation of
- * the display asked (`display="block"`: a block), else `undefined`.
- */
-export const parseEquation = (element: HTMLElement, display: boolean): EquationData | undefined => {
-	const own = element.localName === 'math';
-	const wrapper =
-		element.classList.contains('katex') ||
-		element.classList.contains('katex-display') ||
-		element.hasAttribute('data-edytor-equation');
-	if (!own && !wrapper) return undefined;
-	const math = own ? element : element.querySelector('math');
-	if (!math) return undefined;
-	const block =
-		math.getAttribute('display') === 'block' || element.classList.contains('katex-display');
-	if (block !== display) return undefined;
-	const tex =
-		math.querySelector(`annotation[encoding="${TEX}"]`)?.textContent ??
-		math.getAttribute('alttext');
-	return tex?.trim() ? { expression: tex.trim() } : undefined;
-};
 
 /** The equation being edited: a block equation, or an inline one (`atom`) in block `block`. */
 export type EquationTarget = { block: string; atom?: string };

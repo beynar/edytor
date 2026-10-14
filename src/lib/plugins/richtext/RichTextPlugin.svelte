@@ -11,28 +11,21 @@
 		openLink,
 		pastedLink,
 		richTextOperations,
-		sanitizeLinkHref,
-		sanitizeCssColorValue,
 		typedLink,
 		type RichTextMark
 	} from './richTextOperations.js';
 	import { marksForInsertion } from '$lib/session/editing/text.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
-	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
+	import { mediaKinds, richTextMarks } from '$lib/crdt/semantics.js';
 	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
 	import RichTextControl from './RichTextControl.svelte';
-	import {
-		DEFAULT_CALLOUT_ICON,
-		calloutHtml,
-		calloutIcons,
-		calloutPickers,
-		iconOf
-	} from './callouts.js';
+	import { DEFAULT_CALLOUT_ICON, calloutIcons, calloutPickers, iconOf } from './callouts.js';
 	import { listen } from '$lib/utils/listen.js';
+	import { headingLevel, richTextForms, richTextMarkForms } from '$lib/export/forms.js';
 	import { onLastLine } from '$lib/session/navigation.js';
 	import { bodyShows } from '$lib/selection/visibility.js';
 	import { openBody } from './body.js';
@@ -62,58 +55,10 @@
 		inputType: string
 	): inputType is keyof typeof nativeFormatMarks => inputType in nativeFormatMarks;
 
-	/** A thematic break's clipboard forms. */
-	const rule = { html: () => '<hr>', plain: () => '---' };
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	/** The kinds drawn as a disclosure: a toggle this view creates opens (`body.open`). */
 	const DISCLOSURES = new Set(['toggle', 'toggle-heading']);
-	/**
-	 * A list's elements without list semantics (`role="none"`): a list's items
-	 * are sibling blocks, never the only children of one `ul` or `ol`, so an
-	 * `li` would be an orphan list item to assistive technology (WCAG 1.3.1);
-	 * the tags stay for styles and the HTML export.
-	 */
-	const unlisted = (tag: 'li' | 'ul' | 'ol') => ({ tag, attributes: { role: 'none' } });
-	/**
-	 * Notion's three heading levels: a missing level is h1, any other (a
-	 * stored `h4`–`h6`, as HTML import reads them) h3.
-	 */
-	const headingLevel = (level: unknown) =>
-		level === 'h1' || level === 'h2' || level === 'h3' ? level : level === undefined ? 'h1' : 'h3';
-	/** An unsafe scheme drops the href (and its target): an inert anchor still carries the text. */
-	const linkAttributes = (mark: { href?: unknown; target?: string }) => {
-		const href = sanitizeLinkHref(mark?.href) ?? undefined;
-		return { href, target: href && mark.target };
-	};
-	/** A hostile color value (a `;` payload would inject declarations) drops the style. */
-	const styled = (property: string) => (value: unknown) => {
-		const safe = sanitizeCssColorValue(value);
-		return { style: safe ? `${property}: ${safe};` : undefined };
-	};
-	/**
-	 * HTML import: a pasted color, sanitized, unless it is the page's
-	 * default (Google Docs writes black text and transparent backgrounds on
-	 * every span: they are no mark, and a black mark is unreadable in dark mode).
-	 */
-	const colorOf = (value: string, none: RegExp) =>
-		none.test(value.replace(/\s+/g, '').toLowerCase())
-			? undefined
-			: (sanitizeCssColorValue(value) ?? undefined);
-	const INHERITED = 'initial|inherit|unset|revert|currentcolor';
-	const NO_COLOR = new RegExp(
-		`^(${INHERITED}|black|windowtext|#000|#000000|rgba?\\(0,0,0(,1)?\\))$`
-	);
-	const NO_HIGHLIGHT = new RegExp(
-		`^(${INHERITED}|transparent|rgba\\(\\d+,\\d+,\\d+,0\\)|white|#fff|#ffffff|rgba?\\(255,255,255(,1)?\\))$`
-	);
-	/** HTML import: a tag alias (unless its own style says otherwise) or a style (Google Docs). */
-	const alias =
-		(tags: RegExp, property: 'fontWeight' | 'fontStyle' | 'textDecoration', value: RegExp) =>
-		(el: HTMLElement) =>
-			(tags.test(el.localName) && !el.style[property]) ||
-			value.test(el.style[property]) ||
-			undefined;
 
 	/**
 	 * The kinds whose empty text names them, by placeholder (a callout's
@@ -220,6 +165,9 @@
 		{ callout: calloutOptions, checkbox, calloutIcon, emptyBody }: RichTextPluginOptions
 	): ReturnType<Plugin> => {
 		const { kinds, marks: words } = labels;
+		/** The kinds' export and import forms: a callout without its own icon exports the view's. */
+		const forms = richTextForms((data) => iconOf(data, edytor));
+		const marks = richTextMarkForms;
 		/** A new callout's icon. */
 		const icon = calloutOptions?.icon ?? DEFAULT_CALLOUT_ICON;
 		/** The block this view is retyping into a disclosure (`body.open`), until it applied. */
@@ -418,65 +366,29 @@
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold: {
-					tag: 'strong',
-					toolbar: { label: words.bold, icon: 'B' },
-					parse: alias(/^b$/, 'fontWeight', /^(bold|[6-9]00)$/)
-				},
-				italic: {
-					tag: 'em',
-					toolbar: { label: words.italic, icon: 'I' },
-					parse: alias(/^i$/, 'fontStyle', /italic/)
-				},
-				underline: {
-					tag: 'u',
-					toolbar: { label: words.underline, icon: 'U' },
-					parse: alias(/^u$/, 'textDecoration', /underline/)
-				},
-				strike: {
-					tag: 's',
-					toolbar: { label: words.strike, icon: 'S' },
-					parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
-				},
-				code: { tag: 'code', toolbar: { label: words.code, icon: '</>' } },
+				bold: { ...marks.bold, toolbar: { label: words.bold, icon: 'B' } },
+				italic: { ...marks.italic, toolbar: { label: words.italic, icon: 'I' } },
+				underline: { ...marks.underline, toolbar: { label: words.underline, icon: 'U' } },
+				strike: { ...marks.strike, toolbar: { label: words.strike, icon: 'S' } },
+				code: { ...marks.code, toolbar: { label: words.code, icon: '</>' } },
 				// Typing at a link's trailing edge extends it only from inside the anchor.
-				link: {
-					tag: 'a',
-					attributes: linkAttributes,
-					...richTextMarks.link,
-					parse: (el) => {
-						const href = el.localName === 'a' && sanitizeLinkHref(el.getAttribute('href'));
-						const target = el.getAttribute('target');
-						return href ? { href, ...(target ? { target } : {}) } : undefined;
-					}
-				},
-				superscript: { tag: 'sup' },
-				subscript: { tag: 'sub' },
-				color: {
-					tag: 'span',
-					attributes: styled('color'),
-					parse: (el) => colorOf(el.style.color, NO_COLOR)
-				},
-				highlight: {
-					tag: 'span',
-					attributes: styled('background-color'),
-					parse: (el) => {
-						const background = el.style.backgroundColor;
-						if (background) return colorOf(background, NO_HIGHLIGHT);
-						return el.localName === 'mark' ? 'yellow' : undefined;
-					}
-				}
+				link: { ...marks.link, ...richTextMarks.link },
+				superscript: marks.superscript,
+				subscript: marks.subscript,
+				color: marks.color,
+				highlight: marks.highlight
 			},
 			blocks: {
 				paragraph: {
+					...forms.paragraph,
 					snippet: paragraph,
 					presets: presets('paragraph', [
 						{ label: kinds.paragraph, icon: 'T', keywords: ['paragraph', 'plain'] }
 					])
 				},
 				heading: {
+					...forms.heading,
 					snippet: textThenChildren,
-					contentElement: (data) => headingLevel(data.level),
 					presets: presets('heading', [
 						{
 							label: kinds.heading1,
@@ -499,18 +411,12 @@
 							data: { level: 'h3' },
 							markdown: ['### ']
 						}
-					]),
-					// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
-					parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
-					html: (block, content, children) => {
-						const tag = headingLevel(block.data?.level);
-						return `<${tag}>${content}</${tag}>${children}`;
-					}
+					])
 				},
 				'bulleted-list-item': {
+					...forms['bulleted-list-item'],
 					continues: true,
 					snippet: listItem,
-					element: unlisted('li'),
 					presets: presets('bulleted-list-item', [
 						{
 							label: kinds.bulletedList,
@@ -518,13 +424,12 @@
 							keywords: ['bullet', 'ul'],
 							markdown: ['- ', '* ', '+ ']
 						}
-					]),
-					html: 'li'
+					])
 				},
 				'numbered-list-item': {
+					...forms['numbered-list-item'],
 					continues: true,
 					snippet: listItem,
-					element: unlisted('li'),
 					presets: presets('numbered-list-item', [
 						{
 							label: kinds.numberedList,
@@ -532,13 +437,10 @@
 							keywords: ['number', 'ol'],
 							markdown: ['1. ', 'a. ', 'i. ']
 						}
-					]),
-					html: 'li',
-					// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
-					parse: (el) =>
-						el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined
+					])
 				},
 				'todo-item': {
+					...forms['todo-item'],
 					continues: true,
 					// The app's control markup, if any, through its own snippet: the default costs no branch.
 					snippet: checkbox ? todoItemOwn : todoItem,
@@ -550,15 +452,10 @@
 							data: { checked: false },
 							markdown: ['[ ] ', '[] ']
 						}
-					]),
-					html: (block, content, children) =>
-						`<li data-edytor-todo-item="true"><input type="checkbox"${block.data?.checked === true ? ' checked' : ''}>${content}${children}</li>`,
-					plain: (block, content, children) =>
-						[`${block.data?.checked === true ? '[x]' : '[ ]'} ${content}`.trim(), children]
-							.filter(Boolean)
-							.join('\n')
+					])
 				},
 				toggle: {
+					...forms.toggle,
 					continues: true,
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
@@ -577,10 +474,10 @@
 				// kept); from a toggle, `#`, `##` or `###` + space; so `> # ` typed on a new
 				// line is a toggle heading 1.
 				'toggle-heading': {
+					...forms['toggle-heading'],
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
-					contentElement: (data) => headingLevel(data.level),
 					presets: presets(
 						'toggle-heading',
 						(['h1', 'h2', 'h3'] as const).map((level, index) => {
@@ -597,22 +494,13 @@
 								}
 							};
 						})
-					),
-					// HTML import: a `details` whose summary holds an h1–h3 (its own export).
-					parse: (el) => {
-						if (el.localName !== 'details') return;
-						const tag = el.querySelector(':scope > summary > :is(h1, h2, h3, h4, h5, h6)');
-						return tag ? { level: headingLevel(tag.localName) } : undefined;
-					},
-					html: (block, content, children) => {
-						const tag = headingLevel(block.data?.level);
-						return `<details><summary><${tag}>${content}</${tag}></summary>${children}</details>`;
-					}
+					)
 				},
 				// Notion's callout: an icon (`data.icon`, the picker's), a title (its own
 				// text) and a content (its children, any blocks), which shows even empty
 				// (`body`): Enter at the end of the title goes into it.
 				callout: {
+					...forms.callout,
 					container: true,
 					body: true,
 					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
@@ -632,47 +520,25 @@
 									}
 								]
 							: [];
-					},
-					// HTML import: its own export, the icon in its attribute.
-					parse: (el) => {
-						const own = el.getAttribute('data-edytor-callout');
-						return own === null ? undefined : { icon: own };
-					},
-					html: (block, content, children) =>
-						calloutHtml(iconOf(block.data, edytor), content, children)
+					}
 				},
 				quote: {
+					...forms.quote,
 					container: true,
 					snippet: textThenChildren,
-					contentElement: 'blockquote',
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
-					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }]),
-					html: 'blockquote'
+					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }])
 				},
 				divider: {
-					...richTextKinds.divider,
-					element: 'hr',
+					...forms.divider,
 					presets: presets('divider', [
 						{ label: kinds.divider, icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
 					]),
-					empty: { content: [], children: [] },
-					...rule
+					empty: { content: [], children: [] }
 				},
-				'ordered-list': {
-					...richTextKinds['ordered-list'],
-					itemKind: 'numbered-list-item',
-					snippet: list,
-					element: unlisted('ol'),
-					html: 'ol'
-				},
-				'unordered-list': {
-					...richTextKinds['unordered-list'],
-					itemKind: 'bulleted-list-item',
-					snippet: list,
-					element: unlisted('ul'),
-					html: 'ul'
-				},
-				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' }
+				'ordered-list': { ...forms['ordered-list'], snippet: list },
+				'unordered-list': { ...forms['unordered-list'], snippet: list },
+				'list-item': { ...forms['list-item'], snippet: listItem }
 			}
 		};
 	};

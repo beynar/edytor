@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { equationForms } from '$lib/export/forms.js';
 	import './equation.css';
 	import type {
 		BlockSnippetPayload,
@@ -8,7 +9,7 @@
 	} from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-	import { equationKinds } from '$lib/crdt/semantics.js';
+
 	import { equationEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
@@ -18,7 +19,6 @@
 		EquationRenderer,
 		equationViews,
 		expressionOf,
-		parseEquation,
 		type EquationData,
 		type EquationErrorPayload,
 		type EquationPlaceholderPayload,
@@ -143,6 +143,8 @@
 		(edytor) => {
 			const labels = labelsOf(edytor, 'equation', equationEnglish);
 			const renderer = new EquationRenderer(katexLoaderOf(options.katex), options.macros);
+			/** The kinds' forms: MathML by KaTeX once it is loaded. */
+			const forms = equationForms(renderer.mathml);
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !equationViews.has(edytor))
 				equationViews.set(edytor, {
@@ -207,7 +209,7 @@
 					],
 					blocks: {
 						equation: {
-							...equationKinds.equation,
+							...forms.blocks.equation,
 							snippet: equation,
 							empty: { content: [], children: [] },
 							presets: [
@@ -224,19 +226,13 @@
 									]),
 									group: 'Advanced blocks'
 								}
-							],
-							html: (block) =>
-								`<div data-edytor-equation>${renderer.mathml(expressionOf(block.data), true)}</div>`,
-							plain: (block) => expressionOf(block.data),
-							parse: (element) => parseEquation(element, true)
+							]
 						}
 					},
 					inlineBlocks: {
 						[INLINE]: {
-							snippet: inlineEquation,
-							plain: (data) => expressionOf(data),
-							html: (data) => renderer.mathml(expressionOf(data), false),
-							parse: (element) => parseEquation(element, false)
+							...forms.inlineBlocks.inlineEquation,
+							snippet: inlineEquation
 						}
 					}
 				},

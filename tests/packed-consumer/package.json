@@ -10,7 +10,8 @@
 		"typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bundler.json"
 	},
 	"dependencies": {
-		"edytor": "file:./edytor.tgz"
+		"edytor": "file:./edytor.tgz",
+		"linkedom": "^0.18.12"
 	},
 	"devDependencies": {
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",

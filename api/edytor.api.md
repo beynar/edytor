@@ -2324,7 +2324,6 @@ export type ImagePluginOptions = {
 // plugins/image/toolbar.svelte.d.ts
 export declare class ImageToolbar {
     #private;
-    constructor(controls: ImageControls);
     get box(): import("./controls.svelte.js").ImageBox | null;
     get readonly(): boolean;
     get editing(): string | null;

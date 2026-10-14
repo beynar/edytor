@@ -67,7 +67,7 @@ export class ImageControls {
 	readonly band: BandDrag<Drag>;
 
 	/** The view's image toolbar, when its plugin is listed. @internal */
-	toolbar: ImageToolbar | undefined;
+	toolbar = $state<ImageToolbar | undefined>();
 
 	constructor(
 		/** @internal */

@@ -11,12 +11,10 @@ import type { Attachment } from 'svelte/attachments';
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { pin } from '$lib/surface/overlay.js';
 import { imageAlignOf, imageAltOf, type ImageAlign } from './image.js';
 import { imageControls, type ImageControls } from './controls.svelte.js';
 import { identify, keepFocus, onPressOutside } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
-import ImageToolbarHost from './ImageToolbarHost.svelte';
 import { keysOf } from '../list.svelte.js';
 
 /** Where a press keeps the alt field open: the toolbar (its Alt button toggles it) and the field's own. */
@@ -30,9 +28,12 @@ const ALT_CHROME =
  * your markup its behavior (`bar`, `altField`).
  */
 export class ImageToolbar {
+	/** @internal */
 	constructor(
 		/** @internal */
-		readonly controls: ImageControls
+		readonly controls: ImageControls,
+		/** The app's markup. @internal */
+		readonly snippet: Snippet<[ImageToolbar]>
 	) {}
 
 	/** The measured image the toolbar is on (`null`: none). */
@@ -154,19 +155,11 @@ export const createImageToolbarPlugin =
 		onEdytorAttached: ({ node }) => {
 			const controls = imageControls.get(edytor);
 			if (!controls || controls.toolbar) return;
-			const bar = (controls.toolbar = new ImageToolbar(controls));
+			const bar = (controls.toolbar = new ImageToolbar(controls, toolbar));
 			return all(
 				// A press outside the alt panel and the toolbar (whose Alt button toggles it)
 				// closes it (WebKit's lone `mousedown` too).
 				onPressOutside(edytor, node.ownerDocument, ALT_CHROME, () => bar.closeAlt()),
-				edytor.overlay.mount(
-					ImageToolbarHost,
-					{ toolbar: bar, snippet: toolbar },
-					'edytor-image-toolbar-host',
-					// With the image chrome: above the block handles and the column bands.
-					7,
-					(host) => () => pin(host)
-				),
 				() => (controls.toolbar = undefined)
 			);
 		}

@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+#### Breaking changes
+
+- **`ImageToolbar` has no public constructor.** The image toolbar plugin builds the one per view and hands it to your `toolbar` snippet; the toolbar renders inside the image chrome, at the image's top right, as before.
+
 #### New
 
 - **The starter editor, a shadcn-svelte registry.** `npx shadcn-svelte@latest add https://edytor.dev/r/starter.json` copies `<StarterEditor />` into your app: `<Edytor>` with every useful bundled plugin, the Notion-style menus, handles, toolbars and panels, comments (with a `comments` client), and the page around the blocks: a cover, an icon, a title and typed page properties (text, number, select, multi-select, a date shown in your locale and picked from a calendar, checkbox, URL, person), all stored in the document's data so they sync in a room and undo like the blocks. Hiding a property keeps its value, under the hidden properties. It is built with shadcn-svelte components and reads your shadcn theme's tokens, so the page, the blocks and every menu follow `.dark`. The files are yours to edit; `<Edytor />` from `edytor` is unchanged. See [Starter editor](/docs/starter).

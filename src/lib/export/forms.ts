@@ -9,7 +9,7 @@
  * reads only its own direction's tables. No Svelte, no DOM state:
  * Worker-safe.
  */
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
 import {
 	sanitizeCssColorValue,
 	sanitizeLinkHref,
@@ -126,6 +126,13 @@ const disclosure = (summary: string, children: string) =>
 /** `children` alone: a container's plain text and Markdown. */
 const children = (_: JSONBlock, __: string, children: string) => children;
 
+/** A `parse` hook claiming the elements `selector` matches, as `data` reads them (none: `{}`). */
+/* @__NO_SIDE_EFFECTS__ */
+const claims = (selector: string, data: (el: HTMLElement) => object | undefined = () => ({})) =>
+	((el: HTMLElement) => (el.matches(selector) ? data(el) : undefined)) as NonNullable<
+		Form['parse']
+	>;
+
 // Each kind's halves: its HTML writing (`…Write`: `html`, `plain`) and its
 // elements and HTML reading (`…Read`: `element`, `contentElement`, `parse`).
 
@@ -135,14 +142,14 @@ export const headingWrite: Form = {
 export const headingRead: Form = {
 	contentElement: levelOf,
 	// h1–h3 come from the presets' tags; h4–h6 read as h3.
-	parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined)
+	parse: claims('h4,h5,h6', () => ({ level: 'h3' }))
 };
 export const itemWrite: Form = { html: 'li' };
 export const itemRead: Form = { element: unlisted('li') };
 export const numberedRead: Form = {
 	element: unlisted('li'),
 	// An `li` is a bulleted item (the first `li` kind) unless its list is ordered.
-	parse: (el) => (el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined)
+	parse: claims('ol>li')
 };
 export const todoWrite: Form = {
 	html: (block, content, children) =>
@@ -160,23 +167,20 @@ export const toggleHeadingRead: Form = {
 	element: 'details',
 	contentElement: levelOf,
 	// A `details` whose summary holds an h1–h6 (its own export).
-	parse: (el) => {
-		const tag =
-			el.localName === 'details' &&
-			el.querySelector(':scope > summary > :is(h1, h2, h3, h4, h5, h6)');
+	parse: claims('details', (el) => {
+		const tag = el.querySelector(':scope > summary > :is(h1, h2, h3, h4, h5, h6)');
 		return tag ? { level: headingLevel(tag.localName) } : undefined;
-	}
+	})
 };
 /** A callout's HTML; `icon` is the one a callout without its own shows. */
 export const calloutWrite = (icon: (data: Data) => string): Form => ({
 	html: (block, content, children) => calloutHtml(icon(block.data), content, children)
 });
+// Its own export, the icon in its attribute.
 export const calloutRead: Form = {
-	// Its own export, the icon in its attribute.
-	parse: (el) => {
-		const icon = el.getAttribute('data-edytor-callout');
-		return icon === null ? undefined : { icon };
-	}
+	parse: claims('[data-edytor-callout]', (el) => ({
+		icon: el.getAttribute('data-edytor-callout')!
+	}))
 };
 export const quoteWrite: Form = { html: 'blockquote' };
 export const quoteRead: Form = { contentElement: 'blockquote' };
@@ -319,19 +323,17 @@ const tableWrite: Form = {
 	html: (block, _, rows) => tableHtml(block.data ?? {}, rows),
 	plain: children
 };
-const tableRead: Form = { parse: (el) => (el.localName === 'table' ? parseTable(el) : undefined) };
+const tableRead: Form = { parse: claims('table', parseTable) };
 const rowWrite: Form = {
 	html: (_, __, cells) => wrap('tr', cells),
 	plain: (_, __, cells) => cells.split('\n').join('\t')
 };
-const rowRead: Form = { parse: (el) => (el.localName === 'tr' ? {} : undefined) };
+const rowRead: Form = { parse: claims('tr') };
 const cellWrite: Form = {
 	html: (_, content) => wrap('td', content),
 	plain: (_, content) => content.replace(/\n/g, ' ')
 };
-const cellRead: Form = {
-	parse: (el) => (/^t[dh]$/.test(el.localName) ? parseCell(el) : undefined)
-};
+const cellRead: Form = { parse: claims('td,th', parseCell) };
 /** The table plugin's forms. */
 export const tableForms = (): Rows => ({
 	table: { ...tableKinds.table, ...tableWrite, ...tableRead },
@@ -382,9 +384,6 @@ const sourcePlain = (source: string | null, caption: string) =>
 	[source, caption].filter(Boolean).join('\n');
 const webPlain = (block: JSONBlock, caption: string) =>
 	sourcePlain(safeWebUrl(block.data?.url), caption);
-/** The link of a media block's own export: a `figure[mark]` holding it. */
-const ownLink = (el: HTMLElement, mark: string) =>
-	el.localName === 'figure' && el.hasAttribute(mark) ? el.querySelector('a[href]') : null;
 
 const embedWrite = (providers: readonly EmbedProvider[]): Form => ({
 	html: (block, caption) => {
@@ -418,14 +417,14 @@ const bookmarkWrite: Form = {
 	},
 	plain: webPlain
 };
+// Its own export: a `figure[data-edytor-bookmark]` holding the link.
 const bookmarkRead: Form = {
-	// Its own export: a `figure[data-edytor-bookmark]` holding the link.
-	parse: (el) => {
-		const link = ownLink(el, 'data-edytor-bookmark');
+	parse: claims('figure[data-edytor-bookmark]', (el) => {
+		const link = el.querySelector('a[href]');
 		const url = safeWebUrl(link?.getAttribute('href'));
 		const title = capped(link?.textContent, 300);
 		return url ? { url, ...(title && title !== url ? { title } : {}) } : undefined;
-	}
+	})
 };
 const fileWrite: Form = {
 	html: (block, caption) => {
@@ -434,14 +433,14 @@ const fileWrite: Form = {
 	},
 	plain: (block, caption) => sourcePlain(safeMediaSrc(block.data?.src), caption)
 };
+// Its own export: a `figure[data-edytor-file]` holding the link.
 const fileRead: Form = {
-	// Its own export: a `figure[data-edytor-file]` holding the link.
-	parse: (el) => {
-		const link = ownLink(el, 'data-edytor-file');
+	parse: claims('figure[data-edytor-file]', (el) => {
+		const link = el.querySelector('a[href]');
 		const src = safeMediaSrc(link?.getAttribute('href'));
 		const name = link?.textContent?.trim().slice(0, 300);
 		return src ? { src, name: name || fileNameOf(src) } : undefined;
-	}
+	})
 };
 /** A `video`'s or an `audio`'s HTML: `<video src="…" controls></video>` in its `figure`. */
 const sourceWrite = (kind: string): Form => ({
@@ -471,13 +470,13 @@ const pageWrite = (options: PagePluginOptions = {}, untitled = 'Untitled'): Form
 	html: (block) => pageHtml(block.data, options, untitled),
 	plain: (block) => pageTitleOf(block.data?.title) ?? untitled
 });
+// Its own export: a `p[data-edytor-page]` naming the page.
 const pageRead: Form = {
-	// Its own export: a `p[data-edytor-page]` naming the page.
-	parse: (el) => {
+	parse: claims('p[data-edytor-page]', (el) => {
 		const pageId = pageIdOf(el.getAttribute('data-edytor-page'));
 		const title = pageTitleOf(el.textContent);
-		return el.localName === 'p' && pageId ? { pageId, ...(title && { title }) } : undefined;
-	}
+		return pageId ? { pageId, ...(title && { title }) } : undefined;
+	})
 };
 /** The page plugin's forms; `untitled` names a page without a title. */
 export const pageForms = (options: PagePluginOptions = {}, untitled = 'Untitled'): Rows => ({
@@ -485,9 +484,7 @@ export const pageForms = (options: PagePluginOptions = {}, untitled = 'Untitled'
 });
 
 const tocWrite: Form = { html: () => '<nav data-edytor-toc></nav>', plain: () => '' };
-const tocRead: Form = {
-	parse: (el) => (el.localName === 'nav' && el.hasAttribute('data-edytor-toc') ? {} : undefined)
-};
+const tocRead: Form = { parse: claims('nav[data-edytor-toc]') };
 /** The table of contents plugin's forms: drawn from the document, never carried. */
 export const tocForms = (): Rows => ({ toc: { ...tocKinds.toc, ...tocWrite, ...tocRead } });
 
@@ -519,21 +516,18 @@ const columnsWrite: Form = {
 	html: (_, __, inner) => `<div data-edytor-columns>${inner}</div>`,
 	plain: children
 };
-const columnsRead: Form = {
-	parse: (el) => (el.hasAttribute('data-edytor-columns') ? {} : undefined)
-};
+const columnsRead: Form = { parse: claims('[data-edytor-columns]') };
 const columnWrite: Form = {
 	html: (block, _, inner) =>
 		`<div data-edytor-column data-width="${weightOf(block.data)}">${inner}</div>`,
 	plain: children
 };
 const columnRead: Form = {
-	parse: (el) => {
-		if (!el.hasAttribute('data-edytor-column')) return undefined;
+	parse: claims('[data-edytor-column]', (el) => {
 		// A weight read back from `data-width`, when it is one.
 		const width = Number(el.getAttribute('data-width'));
-		return Number.isFinite(width) && width > 0 ? { width } : ({} as Record<string, number>);
-	}
+		return Number.isFinite(width) && width > 0 ? { width } : {};
+	})
 };
 /** The columns plugin's forms. */
 export const columnsForms = (): Rows => ({
@@ -605,8 +599,7 @@ export const htmlExtras = (): Rows => ({
 export const parseExtras = (): Rows => ({
 	// A `pre`, its language from its own or its `code`'s class or attribute.
 	code: {
-		parse: (el) => {
-			if (el.localName !== 'pre') return;
+		parse: claims('pre', (el) => {
 			const code = [...el.children].find((child) => child.localName === 'code');
 			const named = [el, code].map(
 				(at) =>
@@ -614,19 +607,17 @@ export const parseExtras = (): Rows => ({
 					/(?:^|\s)(?:language|lang)-([\w#+.-]+)/.exec(at?.getAttribute('class') ?? '')?.[1]
 			);
 			const language = languageOf(named.find(Boolean));
-			return language ? { language } : ({} as Record<string, string>);
-		}
+			return language ? { language } : {};
+		})
 	},
 	// Its own export, and a GitHub task list's item.
 	'todo-item': {
-		parse: (el) => {
-			const box =
-				el.localName === 'li' &&
-				[...el.children].find(
-					(child) => child.localName === 'input' && child.getAttribute('type') === 'checkbox'
-				);
+		parse: claims('li', (el) => {
+			const box = [...el.children].find(
+				(child) => child.localName === 'input' && child.getAttribute('type') === 'checkbox'
+			);
 			return box ? { checked: box.hasAttribute('checked') } : undefined;
-		}
+		})
 	}
 });
 

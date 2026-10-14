@@ -251,7 +251,7 @@ declare const equationForms: (mathml?: MathML) => {
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
             markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
             plain?: (block: JSONBlock, content: string, children: string) => string;
-            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
+            parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
             element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
             contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
         };
@@ -261,7 +261,7 @@ declare const equationForms: (mathml?: MathML) => {
             html?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
             markdown?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
             plain?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
-            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
+            parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
         };
     };
 };

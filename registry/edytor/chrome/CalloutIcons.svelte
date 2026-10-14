@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { words } from './words.svelte.js';
 	import type { CalloutIconPicker } from 'edytor';
@@ -15,6 +16,7 @@
 	aria-label={words.calloutIcons.picker}
 	{@attach picker.keys}
 	{@attach picker.popup}
+	{@attach float(() => picker.anchor, { gap: 4 })}
 >
 	<div class="callout-icons-grid" role="none" style:--callout-icon-columns={picker.columns}>
 		{#each picker.icons as icon, index (index)}

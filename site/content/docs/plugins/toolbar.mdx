@@ -268,7 +268,7 @@ A URL typed in the link panel goes through the same sanitization as every link: 
 
 ## Placement
 
-The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport. Its look is yours: the demo's Notion-style bar is `Toolbar.svelte` (and the card `LinkCard.svelte`) in the repository's [`registry/edytor/chrome`](https://github.com/beynar/edytor/tree/master/registry/edytor/chrome) (the `edytor-chrome` registry item, in your app after `shadcn-svelte add`).
+The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. Your bar places itself by `controller.anchor` (the selection's box): centered above it, below it when there is no room, `computePosition(controller.anchor, bar, { placement: 'top', … })` with Floating UI; the card by `controller.cardAnchor` (the hovered link). Its look is yours: the demo's Notion-style bar is `Toolbar.svelte` (and the card `LinkCard.svelte`) in the repository's [`registry/edytor/chrome`](https://github.com/beynar/edytor/tree/master/registry/edytor/chrome) (the `edytor-chrome` registry item, in your app after `shadcn-svelte add`).
 
 ## Markup
 
@@ -316,4 +316,4 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
 />
 
 
-The example at the top of this page uses `popup` and `keys`. The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (`popup` marks your bar; else your snippet's first element), so a panel that opens below the bar does not push the bar up. See [Menus and handles](/docs/customization/menus) for the other menus.
+The example at the top of this page uses `popup` and `keys`. The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. See [Menus and handles](/docs/customization/menus) for the other menus.

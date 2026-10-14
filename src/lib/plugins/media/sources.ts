@@ -222,6 +222,10 @@ export const fileNameOf = (src: string): string => {
 	}
 };
 
+/** A file block's name: its stored `name`, else its source's last segment (`''` without one). */
+export const fileNameFor = (data: { name?: unknown } | undefined, src: string | null) =>
+	String(data?.name || (src && fileNameOf(src)) || '');
+
 /**
  * The element a media kind's HTML import reads: `element` itself when it
  * is a `tag` (not inside a `figure`, which claims it), or a `figure`'s own

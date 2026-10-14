@@ -10,10 +10,10 @@
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { BlockDefinition, MarkDefinition, InlineBlockDefinition } from '$lib/plugins.js';
 import { sanitizeLinkHref } from '$lib/utils/sanitize.js';
-import { DEFAULT_CALLOUT_ICON } from '$lib/plugins/richtext/callouts.js';
+import { iconOf } from '$lib/plugins/richtext/callouts.js';
 import { imageAltOf, safeImageSrc } from '$lib/plugins/image/image.js';
-import { fileNameOf, safeMediaSrc, safeWebUrl } from '$lib/plugins/media/sources.js';
-import { pageIdOf, pageTitleOf, type PagePluginOptions } from '$lib/plugins/page/page.js';
+import { fileNameFor, safeMediaSrc, safeWebUrl } from '$lib/plugins/media/sources.js';
+import { pageHref, pageIdOf, pageTitleOf, type PagePluginOptions } from '$lib/plugins/page/page.js';
 import { expressionOf } from '$lib/plugins/equation/tex.js';
 import {
 	escapeHtml,
@@ -21,16 +21,11 @@ import {
 	type ExportKinds,
 	type SiblingsHtml
 } from '$lib/clipboard/serializeClipboardFragment.js';
-import { capped, headingLevel } from './forms.js';
+import { capped, headingLevel, languageOf } from './forms.js';
 
 /** A child block's text joined (a code line's): marks and atoms aside. */
 const textOf = (block: JSONBlock) =>
 	(block.content ?? []).map((part) => ('text' in part ? part.text : '')).join('');
-/** A code block's language as stored: a short name, else none. */
-const languageOf = (data: Record<string, unknown> | undefined) =>
-	typeof data?.language === 'string' && /^[\w#+.-]{1,40}$/.test(data.language)
-		? data.language
-		: undefined;
 /** A code block's lines. */
 const linesOf = (block: JSONBlock) => (block.children ?? []).map(textOf).join('\n');
 
@@ -38,7 +33,7 @@ const linesOf = (block: JSONBlock) => (block.children ?? []).map(textOf).join('\
 export const blockExtras = {
 	code: {
 		html: (block) => {
-			const language = languageOf(block.data);
+			const language = languageOf(block.data?.language);
 			const named = language ? escapeHtml(language) : '';
 			return `<pre${named && ` data-language="${named}"`}><code${named && ` class="language-${named}"`}>${escapeHtml(linesOf(block))}</code></pre>`;
 		},
@@ -52,7 +47,7 @@ export const blockExtras = {
 					at?.getAttribute('data-language') ??
 					/(?:^|\s)(?:language|lang)-([\w#+.-]+)/.exec(at?.getAttribute('class') ?? '')?.[1]
 			);
-			const language = languageOf({ language: named.find(Boolean) });
+			const language = languageOf(named.find(Boolean));
 			return language ? { language } : {};
 		}
 	},
@@ -172,7 +167,7 @@ export const blockMarkdown = (options: PagePluginOptions = {}, untitled = 'Untit
 		},
 		// A GitHub alert: `> [!NOTE]`, then the icon and the title, then the content.
 		callout: (block, content, children) => {
-			const icon = typeof block.data?.icon === 'string' ? block.data.icon : DEFAULT_CALLOUT_ICON;
+			const icon = iconOf(block.data);
 			const title = [icon, content].filter(Boolean).join(' ');
 			return quoted(['[!NOTE]', title, ...(children ? ['', children] : [])].join('\n'));
 		},
@@ -185,9 +180,9 @@ export const blockMarkdown = (options: PagePluginOptions = {}, untitled = 'Untit
 		},
 		'unordered-list': children,
 		code: (block) => {
-			const lines = (block.children ?? []).map(textOf).join('\n');
+			const lines = linesOf(block);
 			const fence = fenceFor(lines);
-			return `${fence}${languageOf(block.data) ?? ''}\n${lines}${lines ? '\n' : ''}${fence}`;
+			return `${fence}${languageOf(block.data?.language) ?? ''}\n${lines}${lines ? '\n' : ''}${fence}`;
 		},
 		codeLine: (block) => textOf(block),
 		table: (block, _, __, { inline }) => {
@@ -221,15 +216,13 @@ export const blockMarkdown = (options: PagePluginOptions = {}, untitled = 'Untit
 		},
 		file: (block, caption, children) => {
 			const src = safeMediaSrc(block.data?.src);
-			const name = String(block.data?.name || (src && fileNameOf(src)) || '');
-			return linkLine(name, src, caption, children);
+			return linkLine(fileNameFor(block.data, src), src, caption, children);
 		},
 		video: source,
 		audio: source,
 		page: (block) => {
 			const title = label(pageTitleOf(block.data?.title) ?? untitled);
-			const pageId = pageIdOf(block.data?.pageId);
-			const href = pageId && options.href ? sanitizeLinkHref(options.href(pageId)) : null;
+			const href = pageHref(options, pageIdOf(block.data?.pageId));
 			return href ? `[${title}](${destination(href)})` : title;
 		},
 		toc: () => '',

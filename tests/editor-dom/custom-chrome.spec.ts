@@ -171,12 +171,12 @@ test.describe('custom chrome snippets keep the keyboard and ARIA', () => {
 		const field = page.getByTestId('custom-slash-field');
 		await expect(field).toBeFocused();
 		await expect(plus).toHaveAttribute('aria-expanded', 'true');
-		// The handle's `add(alt, anchor)`: the menu opens under the custom `+`, not the block.
+		// The handle's `add(alt, anchor)`: the menu's anchor is the custom `+`, not the block,
+		// and the markup placed by it opens under it.
 		const at = (await plus.boundingBox())!;
-		await expect
-			.poll(async () => (await page.locator('[data-edytor-slash-menu-host]').boundingBox())?.x)
-			.toBeCloseTo(at.x, 0);
-		const menuTop = (await page.locator('[data-edytor-slash-menu-host]').boundingBox())!.y;
+		const menu = page.getByTestId('custom-slash-menu');
+		await expect.poll(async () => (await menu.boundingBox())?.x).toBeCloseTo(at.x, 0);
+		const menuTop = (await menu.boundingBox())!.y;
 		expect(menuTop).toBeGreaterThanOrEqual(at.y + at.height);
 		const rows = page.getByTestId('custom-slash-row');
 		await expect(field).toHaveAttribute(

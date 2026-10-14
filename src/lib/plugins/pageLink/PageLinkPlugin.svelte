@@ -13,7 +13,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { withRulesAndTriggers } from '../triggers/triggers.js';
+	import { placeAtom, withRulesAndTriggers } from '../triggers/triggers.js';
 	import { pageLinkEnglish, labelsOf } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
@@ -189,12 +189,7 @@
 							label: (page: PageLinkItem) => page.title,
 							key: (page: PageLinkItem) => page.id,
 							menu: options.menu,
-							onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
-								const atom = atomOf(page, options);
-								const written = edytor.insertInline(block.id, from, atom).status === 'applied';
-								if (written) caret(from + 1);
-								return written;
-							}
+							onPick: (page: PageLinkItem, ctx) => placeAtom(ctx, atomOf(page, options))
 						}
 					]
 				}

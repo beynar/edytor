@@ -1,5 +1,4 @@
 import { bind } from '../../bind-event-listener/index.js';
-import { getElementFromPointWithoutHoneypot } from '../honey-pot-fix/get-element-from-point-without-honey-pot.js';
 import { makeHoneyPotFix } from '../honey-pot-fix/make-honey-pot-fix.js';
 import { makeAdapter } from '../make-adapter/make-adapter.js';
 import { combine } from '../public-utils/combine.js';
@@ -34,7 +33,7 @@ const adapter = makeAdapter({
     return combine(honeyPotFix.bindEvents(), bind(document, {
       type: 'dragstart',
       listener(event) {
-        var _entry$dragHandle, _entry$getInitialData, _entry$getInitialData2, _entry$dragHandle2, _entry$getInitialData3, _entry$getInitialData4;
+        var _entry$getInitialData, _entry$getInitialData2, _entry$getInitialData3, _entry$getInitialData4;
         if (!api.canStart(event)) {
           return;
         }
@@ -123,7 +122,8 @@ const adapter = makeAdapter({
         const input = getInput(event);
         const feedback = {
           element: entry.element,
-          dragHandle: (_entry$dragHandle = entry.dragHandle) !== null && _entry$dragHandle !== void 0 ? _entry$dragHandle : null,
+          // edytor: no draggable sets `dragHandle`.
+          dragHandle: null,
           input
         };
 
@@ -132,24 +132,6 @@ const adapter = makeAdapter({
           // cancel drag operation if we cannot drag
           event.preventDefault();
           return;
-        }
-
-        // Check: is there a drag handle and is the user using it?
-        if (entry.dragHandle) {
-          // technically don't need this util, but just being
-          // consistent with how we look up what is under the users
-          // cursor.
-          const over = getElementFromPointWithoutHoneypot({
-            x: input.clientX,
-            y: input.clientY
-          });
-
-          // if we are not dragging from the drag handle (or something inside the drag handle)
-          // then we will cancel the active drag
-          if (!entry.dragHandle.contains(over)) {
-            event.preventDefault();
-            return;
-          }
         }
 
         /**
@@ -215,7 +197,7 @@ const adapter = makeAdapter({
         event.dataTransfer.setData(elementAdapterNativeDataKey, '');
         const payload = {
           element: entry.element,
-          dragHandle: (_entry$dragHandle2 = entry.dragHandle) !== null && _entry$dragHandle2 !== void 0 ? _entry$dragHandle2 : null,
+          dragHandle: null,
           data: (_entry$getInitialData3 = (_entry$getInitialData4 = entry.getInitialData) === null || _entry$getInitialData4 === void 0 ? void 0 : _entry$getInitialData4.call(entry, feedback)) !== null && _entry$getInitialData3 !== void 0 ? _entry$getInitialData3 : {}
         };
         const dragType = {

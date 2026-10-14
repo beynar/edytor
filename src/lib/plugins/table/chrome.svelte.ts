@@ -2,20 +2,15 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import { autoScrollFor } from '$lib/dnd/autoScroll.js';
-import {
-	draggable,
-	dropTargetForElements,
-	setCustomNativeDragPreview
-} from '$lib/dnd/pragmatic.js';
+import { dropTargetForElements, elementScrollers } from '$lib/dnd/pragmatic.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
-import { attribute, type MenuItemPayload } from '../chrome.js';
-import { ChromeList, holdKeys, menuKey, optionAttachment } from '../list.svelte.js';
+import { attribute, virtualAnchor, type MenuItemPayload } from '../chrome.js';
+import { ChromeList, holdKeys, keysOf, menuKey, optionAttachment } from '../list.svelte.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
-import { dragPreview } from '../blockHandles/dragPreview.js';
+import { dragSource, ghost } from '../blockHandles/dragPreview.js';
 import {
 	caretCell,
 	deleteColumn,
@@ -250,11 +245,6 @@ export class TableChrome extends ChromeList {
 		return this.#rows.length;
 	}
 
-	/** The view is readonly (reactive): the chrome shows nothing. */
-	get readonly() {
-		return this.edytor.readonly;
-	}
-
 	/**
 	 * The column resize in progress.
 	 * @internal
@@ -394,21 +384,20 @@ export class TableChrome extends ChromeList {
 	}
 
 	/**
-	 * Where the open menu stands: under its grip.
-	 * @internal
+	 * Where the open menu stands (`ChromeAnchor`): its grip, which your
+	 * `menu` places itself under.
 	 */
-	get menuPlace(): { left: number; top: number } | null {
+	readonly anchor = virtualAnchor(
+		() => this.#gripAnchor()?.getBoundingClientRect(),
+		() => this.#gripAnchor()
+	);
+
+	/** The grip elements in the page, by kind. */
+	#gripNodes: Partial<Record<Kind, HTMLElement>> = {};
+	#gripAnchor = () => {
 		const kind = this.menu?.kind;
-		const at = kind && this.#lines(kind);
-		if (!at) return null;
-		const { layout, index } = at;
-		if (kind === 'row') {
-			const row = layout.rows[index]!;
-			return { left: this.span.left - 9, top: row.top + Math.min(row.height, 28) };
-		}
-		const column = layout.columns[index]!;
-		return { left: column.left + column.width / 2 - 12, top: layout.top + 10 };
-	}
+		return kind ? this.#gripNodes[kind] : undefined;
+	};
 
 	/**
 	 * The drop line of a grip's drag, layer-relative: between two rows
@@ -721,6 +710,7 @@ export class TableChrome extends ChromeList {
 
 	#grip = (node: HTMLElement, kind: Kind) => {
 		node.setAttribute('aria-haspopup', 'menu');
+		this.#gripNodes[kind] = node;
 		$effect(() => {
 			const open = this.menu?.kind === kind;
 			attribute(node, 'aria-expanded', String(open));
@@ -729,38 +719,38 @@ export class TableChrome extends ChromeList {
 		});
 		const off = all(
 			listen(node, 'click', () => this.toggle(kind)),
-			listen(node, 'keydown', (event: KeyboardEvent) => {
-				// Escape gives the keys back to the editor (closing the menu if open).
-				if (event.key === 'Escape') this.close();
-				else if (event.key === 'ArrowDown' && this.menu?.kind !== kind) this.toggle(kind);
-				else return;
-				event.preventDefault();
-				event.stopPropagation();
-			}),
-			draggable({
-				element: node,
+			listen(
+				node,
+				'keydown',
+				keysOf(
+					{
+						// Escape gives the keys back to the editor (closing the menu if open).
+						Escape: this.close,
+						ArrowDown: () => this.menu?.kind !== kind && this.toggle(kind)
+					},
+					true
+				)
+			),
+			dragSource(node, {
 				canDrag: () =>
 					!this.edytor.readonly && this.edytor.dispatcher.permits() && this.#source(kind) !== null,
-				getInitialData: () => ({ [MOVE]: this }),
-				// The editor's own drag: no view takes it as a foreign drop.
-				getInitialDataForExternal: () => {
+				data: () => ({ [MOVE]: this }),
+				id: () => {
 					const source = this.#source(kind);
-					return {
-						[EDYTOR_BLOCK_DRAG_MIME]: (kind === 'row' ? source?.id : source?.table.id) ?? ''
-					};
+					return (kind === 'row' ? source?.id : source?.table.id) ?? '';
 				},
-				onGenerateDragPreview: ({ nativeSetDragImage, location }) =>
-					this.#begin(kind, node, location.current.input, nativeSetDragImage),
-				// The drag library tells the source before the drop target: the drop runs first.
-				onDrop: () =>
-					queueMicrotask(() => {
-						for (const release of this.#releases.splice(0)) release();
-						this.moving = null;
-						this.edytor.overlay.invalidate();
-					})
+				begin: (pointer, setImage) => this.#begin(kind, node, pointer, setImage),
+				end: () => {
+					for (const release of this.#releases.splice(0)) release();
+					this.moving = null;
+					this.edytor.overlay.invalidate();
+				}
 			})
 		);
-		return off;
+		return () => {
+			off();
+			if (this.#gripNodes[kind] === node) delete this.#gripNodes[kind];
+		};
 	};
 
 	/**
@@ -858,14 +848,7 @@ export class TableChrome extends ChromeList {
 		const cells = (
 			kind === 'row' ? grid.rows[index]!.cells : grid.rows.map((r) => r.cells[index])
 		).flatMap((cell) => (cell && this.edytor.idToBlock.get(cell)?.node) || []);
-		if (nativeSetDragImage && cells.length) {
-			const preview = dragPreview(root, cells, pointer, kind === 'row' ? widths : [widths[index]!]);
-			setCustomNativeDragPreview({
-				nativeSetDragImage,
-				getOffset: preview.offset,
-				render: ({ container }) => container.append(preview.element)
-			});
-		}
+		ghost(nativeSetDragImage, root, cells, pointer, kind === 'row' ? widths : [widths[index]!]);
 		const ours = (data: Record<string | symbol, unknown>) => data[MOVE] === this;
 		// The page is the target: the line follows the pointer from the grips, outside the grid.
 		this.#releases.push(
@@ -879,7 +862,7 @@ export class TableChrome extends ChromeList {
 			})
 		);
 		const scroller = table.node?.querySelector<HTMLElement>('[data-edytor-table-scroll]');
-		if (scroller) this.#releases.push(autoScrollFor(scroller, ours));
+		if (scroller) this.#releases.push(autoScrollFor(scroller, elementScrollers(ours)));
 		this.edytor.overlay.invalidate();
 	}
 

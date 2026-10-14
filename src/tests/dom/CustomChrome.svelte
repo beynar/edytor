@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from '$registry/edytor/chrome/float.js';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createSlashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { createBlockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
@@ -209,7 +210,7 @@
 {/snippet}
 
 {#snippet slashMenu(menu: SlashMenuController)}
-	<div class="custom-slash" data-testid="custom-slash-menu">
+	<div class="custom-slash" data-testid="custom-slash-menu" {@attach float(() => menu.anchor)}>
 		{#if menu.addition}
 			<input
 				data-testid="custom-slash-field"

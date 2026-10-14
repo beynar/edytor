@@ -211,3 +211,4 @@ The bar mounts in the editor's [overlay](/docs/customization/styling#the-overlay
 
 `createFindPlugin` takes a `bar` snippet, the bar. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `{@attach find.field}` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `{@attach find.replaceField}` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>. The example at the top of this page uses `field`.
 
+**Placement.** The package places no popup: your markup places itself by `find.anchor` (the editor: its top right), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

@@ -22,6 +22,9 @@ import type {
 	CommentsClient
 } from '$lib/collaboration/comments/client.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { rangeRects } from '$lib/collaboration/remoteSelection.js';
+import { runOf } from '$lib/components/Ranges.svelte';
+import { virtualAnchor } from '../chrome.js';
 
 /** Who a comment's author is, as the sidebar shows them. */
 export type CommentUser = {
@@ -155,6 +158,29 @@ export class CommentsController {
 				thread.runs.length > 0 &&
 				(!thread.resolved || this.showResolved || thread.id === this.active)
 		)
+	);
+
+	/**
+	 * Where the thread being written, else the active one, stands
+	 * (`ChromeAnchor`): the first line of its text, by which a card may
+	 * place itself (the sidebar places its cards in the margin).
+	 */
+	readonly anchor = virtualAnchor(
+		() => {
+			const { edytor } = this;
+			const run = this.draft
+				? this.draftRuns()[0]
+				: this.active
+					? this.anchors.get(this.active)?.[0]
+					: undefined;
+			const [rect] = run
+				? runOf(edytor, run.block, run.offset, run.length).flatMap(({ start, end }) =>
+						rangeRects(edytor, start, end, new DOMRect())
+					)
+				: [];
+			return rect && new DOMRect(rect.left, rect.top, rect.width, rect.height);
+		},
+		() => this.edytor.node
 	);
 
 	/** The view may write: it may start, answer, resolve and delete comments. */

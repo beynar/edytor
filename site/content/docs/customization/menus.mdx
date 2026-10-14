@@ -4,7 +4,7 @@ description: Draw every popup, menu, toolbar, panel and handle with your own typ
 icon: panels-top-left
 ---
 
-Edytor's chrome is headless: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, a table's grips, menus and `+` bars, a code block's header and language list, the callout icon picker, the equation editor, the comment cards, the suggestion bar, the version history, the block handles and the marquee's rectangle are drawn by your snippets. The package ships the behavior: when the UI opens, where it is placed, the keys it claims, the commands it runs, and the keyboard and ARIA your markup takes through a few attachments its controller hands you. It ships no markup for them.
+Edytor's chrome is headless: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, a table's grips, menus and `+` bars, a code block's header and language list, the callout icon picker, the equation editor, the comment cards, the suggestion bar, the version history, the block handles and the marquee's rectangle are drawn by your snippets. The package ships the behavior: when the UI opens, where its anchor is, the keys it claims, the commands it runs, and the keyboard and ARIA your markup takes through a few attachments its controller hands you. It ships no markup for them.
 
 **Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours. The controls inside a block (a to-do's checkbox, a callout's icon, a bookmark's card…) are drawn by the package and take your snippet in their place: see [Controls inside blocks](#controls-inside-blocks).
 
@@ -25,7 +25,7 @@ Every element is customized the same way:
 | `{@attach controller.popup}` | The list (`listbox` or `menu`), or the toolbar | Gives the element its id, and its role and name unless you set them; keeps the focus where it is on a press; publishes the popup to the editor's root (`aria-controls`, `aria-haspopup`, `aria-activedescendant` when the root holds the keyboard) while it is in the page, and withdraws it when it goes |
 | `{@attach controller.keys}` | The element that holds the keyboard: the block menu's or the `+` menu's field (or the `+` menu itself), the toolbar, a table's grip menu, the code language list's search field, the callout icon picker | Takes the menu's keys (arrows, <kbd>Home</kbd>, <kbd>End</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd>, …), focuses the element when it mounts, and makes it name the list and its highlighted row |
 | `{@attach controller.option(index)}` | Each row | Its id, `role`, `aria-selected` (or `aria-checked`), `tabindex="-1"`, and scrolls the keyboard's row into view. A row payload carries it as `option`; its look is yours, from `selected` |
-| `{@attach controller.flyoutMenu}` | The block menu's open flyout | Its id, role, name and placement beside the menu |
+| `{@attach controller.flyoutMenu}` | The block menu's open flyout | Its id, role and name |
 | `{@attach controller.linkField}` | The toolbar's link field | Its id (unique per editor, for a `label`'s `for`), the focus when the panel opens, <kbd>Enter</kbd> applies, <kbd>Escape</kbd> closes |
 | `{@attach toolbar.bar}`, `{@attach toolbar.altField}` | The image toolbar and its alt field | The toolbar's role and name; the alt field's focus, keys, and closing when the focus leaves |
 | `{@attach empty.field}` | An empty block's link field | <kbd>Enter</kbd> embeds the link |
@@ -39,7 +39,7 @@ Every element is customized the same way:
 Two rules hold for every snippet:
 
 - **Keep the selection.** A press on a menu must not move the caret. `popup` cancels the `mousedown` of every press in its element but on a field; on anything else that acts on the text (a `+`, a button outside the list), call `preventDefault` on `mousedown`. The toolbar's host does it for every press but in a field.
-- **Mark the element to place** when it is not your snippet's first element: the block menu measures `[data-edytor-block-menu]`; the toolbar's `popup` marks the bar `data-edytor-toolbar-bar` for you.
+- **Place it yourself, by its `anchor`.** The package places no menu or popup: each controller has an `anchor`, a virtual element read live (`getBoundingClientRect()`, `contextElement`: Floating UI's shape) standing for the caret (the slash and trigger menus; a `+` menu, its `+`), the selection (the toolbar; `cardAnchor`, the hovered link, for the link card), the handle (the block menu), the pasted line, the editor (the find bar), the grip (a table menu), the image (its toolbar), the language button, the callout's icon, the equation, or the commented text. With Floating UI, `autoUpdate(anchor, menu, () => computePosition(anchor, menu, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] }).then(({ x, y }) => Object.assign(menu.style, { left: `${x}px`, top: `${y}px` })))`; with bits-ui, `<Popover.Content customAnchor={controller.anchor}>`. The ready-made menus do it in one attachment, `float` ([Ready-made menus](/docs/customization/ready-made-menus)).
 
 | UI | Option | Receives | Attachments |
 | --- | --- | --- | --- |
@@ -60,7 +60,7 @@ Two rules hold for every snippet:
 | [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })` | `BlockHandleSnippetPayload` | `grip`, `plus` |
 | [Marquee rectangle](#marquee-rectangle) | `createMarqueePlugin({ box })` | `MarqueeBoxPayload` | |
 
-Your markup writes its own words and names its menus, bars and fields (`aria-label`): the controllers carry no words and name none of your elements; the words the package itself shows are the view's `labels` ([Localization](/docs/customization/localization)). Your markup renders in the plugin's host, placed by the plugin; its look is all yours.
+Your markup writes its own words and names its menus, bars and fields (`aria-label`): the controllers carry no words and name none of your elements; the words the package itself shows are the view's `labels` ([Localization](/docs/customization/localization)). Your markup renders in the plugin's host and places itself by its controller's `anchor`; its look is all yours.
 
 A snippet declared at the top level of a component's markup can be used in its `<script>`, so you build the plugins there, as every example below does.
 
@@ -210,7 +210,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 
 ## Toolbar and link card
 
-`toolbar` renders while `controller.isVisible`, above the selection. On the bar, `popup` publishes it to the root (with <kbd>Alt</kbd>+<kbd>F10</kbd> as its shortcut) and marks it for the placement; `keys` makes it one tab stop: <kbd>Alt</kbd>+<kbd>F10</kbd> focuses it, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk its buttons, <kbd>Escape</kbd> gives the focus back to the editor over the same selection. `linkField` is the link panel's field. `card` draws the card shown under a hovered link (without it, no card). See [Toolbar](/docs/plugins/toolbar#markup).
+`toolbar` renders while `controller.isVisible`, above the selection. On the bar, `popup` publishes it to the root (with <kbd>Alt</kbd>+<kbd>F10</kbd> as its shortcut); `keys` makes it one tab stop: <kbd>Alt</kbd>+<kbd>F10</kbd> focuses it, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk its buttons, <kbd>Escape</kbd> gives the focus back to the editor over the same selection. `linkField` is the link panel's field. `card` draws the card shown under a hovered link (without it, no card). See [Toolbar](/docs/plugins/toolbar#markup).
 
 ```svelte title="ToolbarEditor.svelte" check
 <script lang="ts">

@@ -51,7 +51,7 @@ export function makeDropTarget({
     input,
     result = []
   }) {
-    var _args$getData, _args$getData2, _args$getDropEffect, _args$getDropEffect2;
+    var _args$getData, _args$getData2;
     if (target == null) {
       return result;
     }
@@ -104,7 +104,8 @@ export function makeDropTarget({
 
     // calculate our new record
     const data = (_args$getData = (_args$getData2 = args.getData) === null || _args$getData2 === void 0 ? void 0 : _args$getData2.call(args, feedback)) !== null && _args$getData !== void 0 ? _args$getData : {};
-    const dropEffect = (_args$getDropEffect = (_args$getDropEffect2 = args.getDropEffect) === null || _args$getDropEffect2 === void 0 ? void 0 : _args$getDropEffect2.call(args, feedback)) !== null && _args$getDropEffect !== void 0 ? _args$getDropEffect : defaultDropEffect;
+    // edytor: no drop target sets `getDropEffect`.
+    const dropEffect = defaultDropEffect;
     const record = {
       data,
       element: args.element,
@@ -150,7 +151,6 @@ export function makeDropTarget({
       const isCurrent = new Set(payload.location.current.dropTargets.map(record => record.element));
       const visited = new Set();
       for (const record of payload.location.previous.dropTargets) {
-        var _entry$onDropTargetCh;
         visited.add(record.element);
         const entry = registry.get(record.element);
         const isOver = isCurrent.has(record.element);
@@ -158,7 +158,7 @@ export function makeDropTarget({
           ...payload,
           self: record
         };
-        entry === null || entry === void 0 ? void 0 : (_entry$onDropTargetCh = entry.onDropTargetChange) === null || _entry$onDropTargetCh === void 0 ? void 0 : _entry$onDropTargetCh.call(entry, args);
+        // edytor: no drop target sets `onDropTargetChange`.
 
         // if we cannot find the drop target in the current array, then it has been left
         if (!isOver) {
@@ -167,7 +167,7 @@ export function makeDropTarget({
         }
       }
       for (const record of payload.location.current.dropTargets) {
-        var _entry$onDropTargetCh2, _entry$onDragEnter;
+        var _entry$onDragEnter;
         // already published an update to this drop target
         if (visited.has(record.element)) {
           continue;
@@ -178,7 +178,6 @@ export function makeDropTarget({
           self: record
         };
         const entry = registry.get(record.element);
-        entry === null || entry === void 0 ? void 0 : (_entry$onDropTargetCh2 = entry.onDropTargetChange) === null || _entry$onDropTargetCh2 === void 0 ? void 0 : _entry$onDropTargetCh2.call(entry, args);
         entry === null || entry === void 0 ? void 0 : (_entry$onDragEnter = entry.onDragEnter) === null || _entry$onDragEnter === void 0 ? void 0 : _entry$onDragEnter.call(entry, args);
       }
     }

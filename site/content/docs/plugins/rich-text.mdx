@@ -350,3 +350,5 @@ format.insertDividerAtSelection();
 ## Placeholders
 
 `richTextPlaceholder` gives the kinds Notion's placeholders ("Heading 1", "Toggle heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). List it as a plugin's placeholder: `plugins={[() => ({ placeholder: richTextPlaceholder })]}`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).
+
+**Placement.** The package places no popup: your markup places itself by the callout icon picker's `picker.anchor` (the callout's icon), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

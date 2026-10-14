@@ -43,6 +43,7 @@ import type { JSONBlock, JSONText, SerializableContent } from '../utils/json.js'
 import { sanitizeLinkHref } from '../utils/sanitize.js';
 import { safeImageSrc } from '../plugins/image/image.js';
 import { tableBlock } from '../crdt/tables.js';
+import { headingLevel, languageOf } from './forms.js';
 
 /** MDX-lite tags by name, each the kind it reads as: `{ Endpoint: 'endpoint' }`. */
 export type MarkdownComponents = Readonly<Record<string, string>>;
@@ -193,7 +194,7 @@ const details: MarkdownExtension = {
 		const first = body.findIndex((line) => line.trim());
 		const summary = first === -1 ? null : SUMMARY.exec(body[first]!);
 		const level = summary?.[1]?.toLowerCase();
-		const data: Data = level ? { level: level === 'h1' || level === 'h2' ? level : 'h3' } : {};
+		const data: Data = level ? { level: headingLevel(level) } : {};
 		const head: BlockNode[] = summary
 			? [{ type: 'paragraph', children: context.parseInline(summary[2]!) }]
 			: [];
@@ -375,10 +376,6 @@ const inline = (nodes: InlineNode[], cell = false): JSONText[] => {
 	return out;
 };
 
-/** A code block's language as stored: a short name, else none. */
-const languageOf = (name: string | undefined) =>
-	name && /^[\w#+.-]{1,40}$/.test(name) ? name : undefined;
-
 /** The mapping's settings: the paragraph kind and the components by name. */
 type Reading = { type: string; components: MarkdownComponents };
 
@@ -514,26 +511,17 @@ const codeEnd = (text: string, at: number, length: number) => {
 	return -1;
 };
 
-/** The index after a link's `](dest "title")` starting at `at` (`(`); else -1. */
-const destinationEnd = (text: string, at: number) => {
+/**
+ * The `close` closing the `open` that `text` opens at `at` (a link label's
+ * `]`, its destination's `)`), skipping escapes and nested pairs; or -1.
+ */
+const closing = (text: string, at: number, open: string, close: string) => {
 	let depth = 0;
 	for (let i = at + 1; i < text.length; i++) {
 		const c = text[i];
 		if (c === '\\') i++;
-		else if (c === '(') depth++;
-		else if (c === ')' && depth-- === 0) return i + 1;
-	}
-	return -1;
-};
-
-/** The `]` closing the link label opened at `at` (`[`), skipping escapes; or -1. */
-const labelEnd = (text: string, at: number) => {
-	let depth = 0;
-	for (let i = at + 1; i < text.length; i++) {
-		const c = text[i];
-		if (c === '\\') i++;
-		else if (c === '[') depth++;
-		else if (c === ']' && depth-- === 0) return i;
+		else if (c === open) depth++;
+		else if (c === close && depth-- === 0) return i;
 	}
 	return -1;
 };
@@ -557,12 +545,12 @@ const unclosedAt = (line: string) => {
 		}
 		if (c === '[' || (c === '!' && line[i + 1] === '[')) {
 			const at = c === '!' ? i + 1 : i;
-			const end = labelEnd(line, at);
+			const end = closing(line, at, '[', ']');
 			if (end === -1) return open[0]?.at ?? i;
 			if (line[end + 1] === '(') {
-				const to = destinationEnd(line, end + 1);
+				const to = closing(line, end + 1, '(', ')');
 				if (to === -1) return open[0]?.at ?? i;
-				i = to;
+				i = to + 1;
 			} else i = end + 1;
 			continue;
 		}
@@ -587,6 +575,9 @@ const unclosedAt = (line: string) => {
 };
 
 const FENCE = /^(\s*)(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/;
+/** Whether `line` opens a fence, or closes the one open (`fenced`). */
+const fences = (line: string, fenced: boolean) =>
+	FENCE.test(line) || (fenced && /^\s*(`{3,}|~{3,})\s*$/.test(line));
 const TABLE_SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 /**
  * A line that is only a block marker so far: `#`, `-`, `1.`, `>`, a
@@ -601,8 +592,7 @@ const settled = (text: string) => {
 	let partial = lines.pop() ?? '';
 	// Inside an open fence, everything is code: only a fence being typed waits.
 	let fenced = false;
-	for (const line of lines)
-		if (FENCE.test(line) || (fenced && /^\s*(`{3,}|~{3,})\s*$/.test(line))) fenced = !fenced;
+	for (const line of lines) if (fences(line, fenced)) fenced = !fenced;
 	if (fenced) return [...lines, /^\s*[`~]{1,}$/.test(partial) ? '' : partial].join('\n');
 	if (MARKER_ONLY.test(partial) || /^\s*\|/.test(partial)) partial = '';
 	else {
@@ -629,7 +619,7 @@ const hardBreaks = (text: string) => {
 	return text
 		.split(/\r?\n/)
 		.map((line, i, lines) => {
-			if (FENCE.test(line) || (fenced && /^\s*(`{3,}|~{3,})\s*$/.test(line))) fenced = !fenced;
+			if (fences(line, fenced)) fenced = !fenced;
 			return !fenced && /\S {2,}$/.test(line) && lines[i + 1]?.trim()
 				? `${line.trimEnd()}\\`
 				: line;

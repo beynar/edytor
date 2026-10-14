@@ -202,3 +202,5 @@ The block is void like the [image](/docs/plugins/image): it takes no children an
 | `[data-edytor-bookmark-cover]`        | The cover image                         |
 
 The card's look (its border, the cover beside the text, the clamped description, the hover) is the [Notion theme](/docs/customization/styling#notion-theme)'s: without it the card is its unstyled link. The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).
+
+**Placement.** The package places no popup: your markup places itself by the URL paste menu's `controller.anchor` (the pasted line), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

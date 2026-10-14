@@ -3,7 +3,6 @@
 	import './image.css';
 
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import EmptySlot from '../media/EmptySlot.svelte';
 	import ImageChrome from './ImageChrome.svelte';
 
@@ -20,7 +19,7 @@
 		type ImageAlign
 	} from './image.js';
 	import { ImageControls, imageControls } from './controls.svelte.js';
-	import { MEDIA_ICONS, type EmptyView } from '../media/empty.svelte.js';
+	import { MEDIA_ICONS } from '../media/empty.svelte.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { listen } from '$lib/utils/listen.js';
 	import { fileUploads, uploadHooks, type Uploader } from '../uploads.svelte.js';
@@ -40,11 +39,6 @@
 	export type ImageData = { src?: string; alt?: string; width?: number; align?: ImageAlign };
 
 	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
-
-	/** One view's image state: its source rule, the chrome. */
-	type View = EmptyView & { controls: ImageControls };
-	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
-	const views = new WeakMap<Edytor, View>();
 
 	export type ImagePluginOptions = {
 		/**
@@ -67,23 +61,12 @@
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'image', imageEnglish);
 			const uploads = uploadHooks(edytor, upload);
-			const own: View = {
-				controls: new ImageControls(edytor),
-				// An accepted source; an inline image over the cap is never stored.
-				store: (block, value) => {
-					const src = safeImageSrc(value);
-					if (!src) return 'invalid';
-					if (oversizedInlineImage(src)) return 'inline';
-					block.edytor.patchData(block.id, [{ path: ['src'], value: src }]);
-					return null;
-				}
-			};
-			// The records read with no view (`plugin(undefined)`) keep no state.
-			if (edytor && !views.has(edytor)) {
-				views.set(edytor, own);
-				imageControls.set(edytor, own.controls);
-			}
-			const owns = () => views.get(edytor) === own;
+			// The view's image state (its source rule, the chrome): the first image
+			// plugin of a view owns it, as its kind's definition (first wins). The
+			// records read with no view (`plugin(undefined)`) keep no state.
+			const controls = new ImageControls(edytor);
+			if (edytor && !imageControls.has(edytor)) imageControls.set(edytor, controls);
+			const owns = () => imageControls.get(edytor) === controls;
 			return {
 				onPaste: uploads.onPaste,
 				// The chrome: in the overlay, for the image under the pointer.
@@ -91,7 +74,6 @@
 					const release = uploads.onEdytorAttached?.(view);
 					if (!owns()) return release;
 					const { node } = view;
-					const { controls } = own;
 					const over = (event: PointerEvent) => controls.hover(event.target);
 					const leave = (event: PointerEvent) =>
 						!controls.drag && controls.leave(event.relatedTarget);
@@ -153,7 +135,7 @@
 <!-- prettier-ignore -->
 {#snippet image({ block, content }: BlockSnippetPayload<ImageData>)}
 	<!-- A suggestion's preview (no handle) reads only its data. -->
-	{@const view = block.handle ? views.get(block.handle.edytor) : undefined}
+	{@const controls = block.handle ? imageControls.get(block.handle.edytor) : undefined}
 	{@const src = safeImageSrc(block.data.src)}
 	{@const pending = block.handle && !src ? fileUploads(block.handle.edytor)?.of(block.id) : undefined}
 	{#if src}
@@ -163,7 +145,7 @@
 				alt={imageAltOf(block.data)}
 				draggable="false"
 				style:width={px(
-					view ? view.controls.width(block.id, block.data) : imageWidthOf(block.data)
+					controls ? controls.width(block.id, block.data) : imageWidthOf(block.data)
 				)}
 			/>
 		</div>
@@ -177,7 +159,7 @@
 			<EmptySlot
 				block={block.handle}
 				kind="image"
-				viewOf={(edytor) => (edytor ? views.get(edytor) : undefined)}
+				viewOf={(edytor) => (edytor ? imageControls.get(edytor) : undefined)}
 			/>
 		</div>
 	{/if}<!--

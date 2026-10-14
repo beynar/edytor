@@ -19,5 +19,5 @@
 	 * Void: its only text is the caption.
 	 */
 	export const createAudioPlugin = ({ upload }: AudioPluginOptions = {}): Plugin =>
-		sourcePlugin('audio', ['sound', 'music', 'mp3'], undefined, {}, upload);
+		sourcePlugin('audio', ['sound', 'music', 'mp3'], {}, upload);
 </script>

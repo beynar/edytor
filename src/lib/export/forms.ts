@@ -6,6 +6,7 @@
  * and `fromHTML` read these same functions, in a view (its records) and on
  * a server ({@link bundledForms}). No Svelte, no DOM state: Worker-safe.
  */
+import type { JSONBlock } from '$lib/utils/json.js';
 import { sanitizeCssColorValue, sanitizeLinkHref } from '$lib/utils/sanitize.js';
 import {
 	escapeHtml,
@@ -38,6 +39,7 @@ import {
 	EMBED_SANDBOX,
 	claimed,
 	embedSourceOf,
+	fileNameFor,
 	fileNameOf,
 	mediaSourceOf,
 	safeMediaSrc,
@@ -71,6 +73,9 @@ type Data = Record<string, unknown> | undefined;
  */
 export const headingLevel = (level: unknown) =>
 	level === 'h1' || level === 'h2' || level === 'h3' ? level : level === undefined ? 'h1' : 'h3';
+/** A code block's language as stored: a short name, else none. */
+export const languageOf = (name: unknown) =>
+	typeof name === 'string' && /^[\w#+.-]{1,40}$/.test(name) ? name : undefined;
 /** The heading levels the rich text kinds create (their presets' data). */
 export const HEADING_LEVELS = ['h1', 'h2', 'h3'] as const;
 /**
@@ -340,8 +345,7 @@ export const imageForms = () =>
 				const img = src
 					? `<img src="${escapeHtml(src)}" alt="${escapeHtml(imageAltOf(block.data))}"${width ? ` width="${Math.round(width)}"` : ''}>`
 					: '';
-				const at = align === 'center' ? '' : ` data-align="${align}"`;
-				return `<figure${at}>${img}<figcaption>${caption}</figcaption></figure>`;
+				return figure(img, caption, align === 'center' ? '' : ` data-align="${align}"`);
 			},
 			// A `figure` holding an `img`, or a bare `img`, with an accepted
 			// source; a pasted inline image over the cap is not imported.
@@ -359,6 +363,27 @@ export const imageForms = () =>
 export const capped = (value: unknown, max: number) =>
 	typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
 
+/** A media block's HTML: its `figure` (with `mark`), `media` in it, then its caption. */
+const figure = (media: string, caption: string, mark = '') =>
+	`<figure${mark}>${media}<figcaption>${caption}</figcaption></figure>`;
+
+/** A link to `href` reading `text` (escaped), or nothing without `href`. */
+const anchor = (href: string | null | undefined, text: string | null | undefined) =>
+	href ? `<a href="${escapeHtml(href)}">${escapeHtml(text ?? '')}</a>` : '';
+
+/** A media block's plain text: its source (`read` of `data[key]`), then its caption. */
+const sourcePlain =
+	(
+		read: (value: unknown) => string | null | undefined,
+		key: string
+	): ((block: JSONBlock, caption: string) => string) =>
+	(block, caption) =>
+		[read(block.data?.[key]), caption].filter(Boolean).join('\n');
+
+/** The link of a media block's own export: a `figure[mark]` holding it. */
+const ownLink = (el: HTMLElement, mark: string) =>
+	el.localName === 'figure' && el.hasAttribute(mark) ? el.querySelector('a[href]') : undefined;
+
 /** The media plugins' forms; `providers` are the embed players the view allows. */
 export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS) => {
 	/** A `video`'s or an `audio`'s forms. */
@@ -368,8 +393,10 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 			html: (block, caption) => {
 				const src = safeMediaSrc(block.data?.src);
 				// The tag, then its attributes: `<video src="…" controls></video>`.
-				const media = src ? `<${kind}` + ` src="${escapeHtml(src)}" controls></${kind}>` : '';
-				return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
+				return figure(
+					src ? `<${kind}` + ` src="${escapeHtml(src)}" controls></${kind}>` : '',
+					caption
+				);
 			},
 			parse: (el: HTMLElement) => {
 				const src = mediaSourceOf(claimed(el, kind));
@@ -382,14 +409,14 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 			html: (block, caption) => {
 				const player = embedSourceOf(block.data?.url, providers);
 				const url = safeWebUrl(block.data?.url);
-				const media = player
-					? `<iframe src="${escapeHtml(player.src)}" title="${escapeHtml(player.provider.name)}" sandbox="${EMBED_SANDBOX}" allowfullscreen></iframe>`
-					: url
-						? `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
-						: '';
-				return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
+				return figure(
+					player
+						? `<iframe src="${escapeHtml(player.src)}" title="${escapeHtml(player.provider.name)}" sandbox="${EMBED_SANDBOX}" allowfullscreen></iframe>`
+						: anchor(url, url),
+					caption
+				);
 			},
-			plain: (block, caption) => [safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
+			plain: sourcePlain(safeWebUrl, 'url'),
 			// An allowlisted `iframe` (bare, or in a `figure`): its `src` is the link.
 			parse: (el) => {
 				const src = claimed(el, 'iframe')?.getAttribute('src');
@@ -401,17 +428,18 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 			...mediaKinds.bookmark,
 			html: (block, caption) => {
 				const url = safeWebUrl(block.data?.url);
-				const title = capped(block.data?.title, 300) ?? url;
-				const link = url ? `<a href="${escapeHtml(url)}">${escapeHtml(title!)}</a>` : '';
-				return `<figure data-edytor-bookmark>${link}<figcaption>${caption}</figcaption></figure>`;
+				return figure(
+					anchor(url, capped(block.data?.title, 300) ?? url),
+					caption,
+					' data-edytor-bookmark'
+				);
 			},
-			plain: (block, caption) => [safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
+			plain: sourcePlain(safeWebUrl, 'url'),
 			// Its own export: a `figure[data-edytor-bookmark]` holding the link.
 			parse: (el) => {
-				if (el.localName !== 'figure' || !el.hasAttribute('data-edytor-bookmark')) return;
-				const anchor = el.querySelector('a[href]');
-				const url = safeWebUrl(anchor?.getAttribute('href'));
-				const title = capped(anchor?.textContent, 300);
+				const link = ownLink(el, 'data-edytor-bookmark');
+				const url = safeWebUrl(link?.getAttribute('href'));
+				const title = capped(link?.textContent, 300);
 				return url ? { url, ...(title && title !== url ? { title } : {}) } : undefined;
 			}
 		},
@@ -419,18 +447,14 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 			...mediaKinds.file,
 			html: (block, caption) => {
 				const src = safeMediaSrc(block.data?.src);
-				const name = String(block.data?.name || (src && fileNameOf(src)) || '');
-				const link = src ? `<a href="${escapeHtml(src)}">${escapeHtml(name)}</a>` : '';
-				return `<figure data-edytor-file>${link}<figcaption>${caption}</figcaption></figure>`;
+				return figure(anchor(src, fileNameFor(block.data, src)), caption, ' data-edytor-file');
 			},
-			plain: (block, caption) =>
-				[safeMediaSrc(block.data?.src), caption].filter(Boolean).join('\n'),
+			plain: sourcePlain(safeMediaSrc, 'src'),
 			// Its own export: a `figure[data-edytor-file]` holding the link.
 			parse: (el) => {
-				if (el.localName !== 'figure' || !el.hasAttribute('data-edytor-file')) return;
-				const anchor = el.querySelector('a[href]');
-				const src = safeMediaSrc(anchor?.getAttribute('href'));
-				const name = anchor?.textContent?.trim().slice(0, 300);
+				const link = ownLink(el, 'data-edytor-file');
+				const src = safeMediaSrc(link?.getAttribute('href'));
+				const name = link?.textContent?.trim().slice(0, 300);
 				return src ? { src, name: name || fileNameOf(src) } : undefined;
 			}
 		},

@@ -10,7 +10,7 @@ The package draws no menu, toolbar, handle or panel: each is a snippet you pass 
 npx shadcn-svelte@latest add https://edytor.dev/r/edytor-chrome.json
 ```
 
-It needs Tailwind v4 and `npx shadcn-svelte@latest init` first (as the [starter's install](/docs/starter#install)), and writes `$lib/components/edytor/chrome/` (the chrome, its words and `tokens.css`, the Notion theme on your tokens) and the shadcn components it uses (button, input, kbd, separator, avatar, textarea) into `$lib/components/ui/`, and adds `edytor`.
+It needs Tailwind v4 and `npx shadcn-svelte@latest init` first (as the [starter's install](/docs/starter#install)), and writes `$lib/components/edytor/chrome/` (the chrome, its words and `tokens.css`, the Notion theme on your tokens) and the shadcn components it uses (button, input, kbd, separator, avatar, textarea) into `$lib/components/ui/`, and adds `edytor` and `@floating-ui/dom`: each menu places itself by its controller's `anchor` with one attachment, `float` (`float.ts`: Floating UI's `computePosition` and `autoUpdate`, fixed, flipping, 8px inside the viewport).
 
 <PluginDemo plugin="ready-made-menus" />
 

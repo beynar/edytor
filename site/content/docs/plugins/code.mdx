@@ -381,3 +381,5 @@ The Notion theme reads the panel's colors from custom properties an app sets on 
 ```
 
 Without `--edytor-code-background`, the Notion theme's panel is `--notion-code-panel`.
+
+**Placement.** The package places no popup: your markup places itself by the language list's `menu.anchor` (the language button), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

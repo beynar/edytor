@@ -178,6 +178,7 @@ export {
 	type UrlPasteOption,
 	type ImageControls,
 	type ImageBox,
+	type ChromeAnchor,
 	type MenuItemPayload,
 	createFindPlugin,
 	findController,

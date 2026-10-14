@@ -17,33 +17,8 @@ const baseConfig = {
   maxMainAxisHitboxSize: 180
 };
 
-/** What the max scroll should be per second. Using "per second" rather than "per frame"
- * as we want a consistent scroll speed regardless of frame rate.
- *
- *
- * I explored trying to make the max scroll speed dynamic based on particular factors.
- * However, it ended up being difficult to find a _perfect_ formula.
- *
- * Likely the perfect answer would involve:
- * - the size of the scrollable element
- * - the size of the scrollable element relative to the screen size
- * - the size of the drag preview
- * - the size of elements being scrolled in scrollable elements (expensive and difficult to compute)
- */
-const maxPixelScrollPerSecond = {
-  // What the value would be if we were scrolling at 15px per frame at 60fps.
-  // This is the default as it works well for most experiences.
-  // In certain scenarios though it can feel a bit slow.
-  standard: 15 * 60,
-  // What the value would be if we were scrolling at 25px per frame at 60fps.
-  // This is not the default as it feels too fast for a lot of experiences.
-  fast: 25 * 60
+// edytor: no element sets `getConfiguration`: the standard speed only.
+export const internalConfig = {
+  ...baseConfig,
+  maxPixelScrollPerSecond: 15 * 60
 };
-export function getInternalConfig(provided) {
-  var _provided$maxScrollSp;
-  return {
-    ...baseConfig,
-    // only allowing limited control over the config at this stage
-    maxPixelScrollPerSecond: maxPixelScrollPerSecond[(_provided$maxScrollSp = provided === null || provided === void 0 ? void 0 : provided.maxScrollSpeed) !== null && _provided$maxScrollSp !== void 0 ? _provided$maxScrollSp : 'standard']
-  };
-}

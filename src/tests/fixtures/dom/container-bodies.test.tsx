@@ -378,7 +378,7 @@ describe('callout: an icon, a title and a content', () => {
 });
 
 describe('callout.icon: the icon picker', () => {
-	const picker = () => document.querySelector<HTMLElement>('[data-edytor-callout-icons]');
+	const picker = () => document.querySelector<HTMLElement>('[data-edytor-callout-icons-host] > *');
 	const choices = () => [
 		...(picker()?.querySelectorAll<HTMLButtonElement>('[data-edytor-callout-icon-choice]') ?? [])
 	];

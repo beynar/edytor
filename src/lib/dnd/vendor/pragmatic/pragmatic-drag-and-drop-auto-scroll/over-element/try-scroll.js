@@ -1,4 +1,4 @@
-import { getInternalConfig } from '../shared/configuration.js';
+import { internalConfig as config } from '../shared/configuration.js';
 import { markAndGetEngagement } from '../shared/engagement-history.js';
 import { selector } from './data-attributes.js';
 import { getScrollBy } from './get-scroll-by.js';
@@ -16,7 +16,6 @@ function tryScrollElements({
     left: true
   }
 }) {
-  var _container$getConfigu, _container$getAllowed, _container$getAllowed2;
   // we cannot do any more scrolling
   if (!isScrollingAvailable(available)) {
     return available;
@@ -64,14 +63,11 @@ function tryScrollElements({
   // Marking engagement even if no edges are scrollable.
   // We are marking engagement as soon as the element is scrolled over
   const engagement = markAndGetEngagement(element);
-  const config = getInternalConfig((_container$getConfigu = container.getConfiguration) === null || _container$getConfigu === void 0 ? void 0 : _container$getConfigu.call(container, feedback));
-  const allowedAxis = (_container$getAllowed = (_container$getAllowed2 = container.getAllowedAxis) === null || _container$getAllowed2 === void 0 ? void 0 : _container$getAllowed2.call(container, feedback)) !== null && _container$getAllowed !== void 0 ? _container$getAllowed : 'all';
   const scrollBy = getScrollBy({
     element,
     engagement,
     input,
     timeSinceLastFrame,
-    allowedAxis,
     config
   });
 
@@ -111,7 +107,6 @@ function tryScrollWindow({
     element
   };
   for (const entry of entries) {
-    var _entry$getConfigurati, _entry$getAllowedAxis, _entry$getAllowedAxis2;
     // this entry is not allowing scrolling, we need to look for another
     if (entry.canScroll && !entry.canScroll(feedback)) {
       continue;
@@ -120,14 +115,11 @@ function tryScrollWindow({
     // Note: if we had an event for when the user is leaving a tab
     // we _could_ conceptually reset the engagement
     const engagement = markAndGetEngagement(element);
-    const config = getInternalConfig((_entry$getConfigurati = entry.getConfiguration) === null || _entry$getConfigurati === void 0 ? void 0 : _entry$getConfigurati.call(entry, feedback));
-    const allowedAxis = (_entry$getAllowedAxis = (_entry$getAllowedAxis2 = entry.getAllowedAxis) === null || _entry$getAllowedAxis2 === void 0 ? void 0 : _entry$getAllowedAxis2.call(entry, feedback)) !== null && _entry$getAllowedAxis !== void 0 ? _entry$getAllowedAxis : 'all';
     const scrollBy = getScrollBy({
       element,
       engagement,
       input,
       config,
-      allowedAxis,
       getRect: element => DOMRect.fromRect({
         y: 0,
         x: 0,

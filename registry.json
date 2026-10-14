@@ -15,7 +15,7 @@
 			"type": "registry:block",
 			"title": "Edytor chrome",
 			"description": "The ready-made menus, toolbar, handles, panels and cards of every bundled edytor plugin, in shadcn-svelte components and tokens.",
-			"dependencies": ["edytor@^2.0.0"],
+			"dependencies": ["edytor@^2.0.0", "@floating-ui/dom@^1.8.0"],
 			"registryDependencies": ["button", "input", "kbd", "separator", "avatar", "textarea"],
 			"files": [
 				{
@@ -142,6 +142,11 @@
 					"path": "./registry/edytor/chrome/index.ts",
 					"type": "registry:component",
 					"target": "edytor/chrome/index.ts"
+				},
+				{
+					"path": "./registry/edytor/chrome/float.ts",
+					"type": "registry:component",
+					"target": "edytor/chrome/float.ts"
 				},
 				{
 					"path": "./registry/edytor/chrome/keepFocus.ts",

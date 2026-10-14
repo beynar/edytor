@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { Textarea } from '$registry/ui/textarea/index.js';
 	import { words } from './words.svelte.js';
@@ -14,7 +15,15 @@
 	const labels = $derived(words.equation);
 </script>
 
-<div data-edytor-equation-editor role="dialog" aria-label={labels.editor}>
+<div
+	data-edytor-equation-editor
+	role="dialog"
+	aria-label={labels.editor}
+	{@attach float(() => editor.anchor, {
+		placement: editor.display ? 'bottom' : 'bottom-start',
+		gap: 6
+	})}
+>
 	<div data-edytor-equation-editor-row>
 		<Textarea
 			aria-label={labels.editor}

@@ -65,3 +65,7 @@ globalThis.ResizeObserver ??= class {
 	disconnect() {}
 };
 Element.prototype.checkVisibility ??= () => true;
+// The Popover API (every supported engine): the drag library puts its drag
+// preview and its honey pot in the top layer.
+HTMLElement.prototype.showPopover ??= () => {};
+HTMLElement.prototype.hidePopover ??= () => {};

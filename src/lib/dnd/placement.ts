@@ -5,7 +5,7 @@
  * (`Drag`: the blocks it moves, none for files) and the placements the
  * document takes for it (`fits`); the rows are the view's drop targets
  * (`targetOf`). The block handles wire it to the drag library; a file drag
- * reads it from the host's own `dragover` (the media plugins' `plugins/fileDrop.ts`).
+ * reads it from Pragmatic's external adapter (the media plugins' `plugins/fileDrop.ts`).
  */
 import type { Block } from '$lib/block/block.svelte.js';
 import type { BlockMovePosition } from '$lib/session/moves.js';

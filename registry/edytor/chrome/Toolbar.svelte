@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { Input } from '$registry/ui/input/index.js';
 	import { css } from './ui.js';
@@ -18,7 +19,7 @@
 	(`popup`), its roving tab stop and Escape (`keys`) and the link field's
 	keys (`linkField`) are the controller's attachments.
 -->
-<div class="selection-toolbar-frame">
+<div class="selection-toolbar-frame" {@attach float(() => controller.anchor, { placement: 'top' })}>
 	<div
 		class="selection-toolbar"
 		data-testid="selection-toolbar"
@@ -257,7 +258,11 @@
 		text-decoration-thickness: 2px;
 		text-underline-offset: 3px;
 	}
+	/* A panel drops over the text below the bar: the frame is the bar's size, as placed. */
 	.toolbar-panel {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
 		box-sizing: border-box;
 		width: 240px;
 		max-height: 320px;

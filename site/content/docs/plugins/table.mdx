@@ -4,7 +4,7 @@ description: The table plugin adds Notion's simple table, a grid of text cells. 
 icon: table
 ---
 
-`createTablePlugin()` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip: drag it to move the row or column, click it for its menu (insert, move, delete). The grips, their menus and the `+` are your snippets, `createTablePlugin({ grip, menu, add })`: the plugin places them and gives them the drag, the keys and the ARIA, and without them shows none ([Menus and handles](/docs/customization/menus#table-grips-menu-and-)). Drag a column's right edge to resize it, as far as the page leaves room. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
+`createTablePlugin()` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip: drag it to move the row or column, click it for its menu (insert, move, delete). The grips, their menus and the `+` are your snippets, `createTablePlugin({ grip, menu, add })`: the plugin places the grips and the `+` and gives them the drag, the keys and the ARIA (your `menu` places itself under its grip, `chrome.anchor`), and without them shows none ([Menus and handles](/docs/customization/menus#table-grips-menu-and-)). Drag a column's right edge to resize it, as far as the page leaves room. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
 
 The plugin is not a default plugin: list it in `plugins`.
 
@@ -410,3 +410,5 @@ Header flags and widths are data patches: `document.patchData(table, [{ path: ['
 - No merged cells, no cell selection (a mouse drag across cells is a text range), no cell colours, no sorting or formulas: this is Notion's simple table, not a database.
 - Copying part of a table copies the cells' text, not a smaller table.
 - A client of an earlier pre-release shows a stored table as unknown kinds, one cell under the other.
+
+**Placement.** The package places no popup: your markup places itself by the grip menu's `chrome.anchor` (its grip), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

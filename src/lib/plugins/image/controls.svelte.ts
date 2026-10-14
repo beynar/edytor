@@ -2,7 +2,16 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ImageToolbar } from './toolbar.svelte.js';
 import { BandDrag } from '../bands.svelte.js';
 import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
-import { imageAlignOf, imageWidthOf, MIN_IMAGE_WIDTH, type ImageAlign } from './image.js';
+import {
+	imageAlignOf,
+	imageWidthOf,
+	MIN_IMAGE_WIDTH,
+	oversizedInlineImage,
+	safeImageSrc,
+	type ImageAlign
+} from './image.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import type { MediaEmptyFailure } from '../media/empty.svelte.js';
 
 /** The hovered image, layer-relative: the `img` box, and its frame's width (the most it may take). */
 export type ImageBox = {
@@ -58,7 +67,7 @@ export class ImageControls {
 	readonly band: BandDrag<Drag>;
 
 	/** The view's image toolbar, when its plugin is listed. @internal */
-	toolbar: ImageToolbar | undefined;
+	toolbar = $state<ImageToolbar | undefined>();
 
 	constructor(
 		/** @internal */
@@ -66,6 +75,19 @@ export class ImageControls {
 	) {
 		this.band = new BandDrag(edytor);
 	}
+
+	/**
+	 * Store a link or an upload's answer on `block` (an empty image's): an
+	 * accepted source; an inline image over the cap is never stored.
+	 * @internal
+	 */
+	store = (block: Block, value: string): MediaEmptyFailure | null => {
+		const src = safeImageSrc(value);
+		if (!src) return 'invalid';
+		if (oversizedInlineImage(src)) return 'inline';
+		block.edytor.patchData(block.id, [{ path: ['src'], value: src }]);
+		return null;
+	};
 
 	/** The handle being dragged. */
 	get drag() {

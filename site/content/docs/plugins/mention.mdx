@@ -274,3 +274,5 @@ The pick is one undo step, separate from the typing before it: undo gives back `
 The menu's listbox is named "People"; while it is open the editor's root names it and its highlighted row ([Accessibility](/docs/editor/accessibility#menus-and-popups)). Its rows show an avatar (or an initial), the name and the description; replace them with `item`.
 
 To link pages rather than people, see [Page link](/docs/plugins/page-link).
+
+**Placement.** The package places no popup: your markup places itself by `controller.anchor` (the caret), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

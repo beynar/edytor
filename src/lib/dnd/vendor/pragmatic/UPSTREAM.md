@@ -79,7 +79,10 @@ row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `
    `draggable`'s `dragHandle`, a drop target's `getDropEffect` and
    `onDropTargetChange`, a monitor's `canMonitor`, and the native drag
    preview's default `getOffset` (both callers give theirs). Their
-   declarations go too, so a caller passing one does not compile.
+   declarations go too, so a caller passing one does not compile. And no
+   fallback for an engine without the Popover API (every supported engine
+   has it: `util/supports-popover.js` and `util/max-z-index.js` are gone);
+   the jsdom lanes stub `showPopover`.
 
 No other statement of the libraries' own code is changed. A check that a
 re-sync reproduces this: strip every import specifier from each vendored file

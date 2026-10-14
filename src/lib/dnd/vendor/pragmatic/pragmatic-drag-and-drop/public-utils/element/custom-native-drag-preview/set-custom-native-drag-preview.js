@@ -1,8 +1,6 @@
 import { monitorForElements } from '../../../adapter/element-adapter.js';
 import { isSafari } from '../../../util/is-safari.js';
-import { maxZIndex } from '../../../util/max-z-index.js';
 import { popoverResetUserAgentStyles } from '../../../util/popover-reset-styles.js';
-import { supportsPopover } from '../../../util/supports-popover.js';
 
 /** A function to remove the element that has been added to the `container`.
  * @example () => root.unmount()
@@ -44,23 +42,15 @@ export function setCustomNativeDragPreview({
   // Falls back to position:fixed + maxZIndex when the popover API is not available.
   // Note: the popover attribute must be set before the element is in the DOM.
   // `.showPopover()` is called further below after the element is appended to the body.
-  if (supportsPopover()) {
-    container.setAttribute('popover', 'manual');
-  }
+  // edytor: every supported engine has the Popover API (no fallback).
+  container.setAttribute('popover', 'manual');
   Object.assign(container.style, {
     // Ensuring we don't cause reflow when adding the element to the page
     // Using `position:fixed` rather than `position:absolute` so we are
     // positioned on the current viewport.
     // `position:fixed` also creates a new stacking context, so we don't need to do that here
     position: 'fixed',
-    ...(supportsPopover() ?
-    // needs to come first as it has 'inset: unset' which
-    // needs to be overridden by our top / left values
-    popoverResetUserAgentStyles : {
-      // Fallback: using maximum possible z-index so that this element
-      // will always be on top of other positioned content.
-      zIndex: maxZIndex
-    }),
+    ...popoverResetUserAgentStyles,
     // According to `mdn`, the element can be offscreen:
     // https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer/setDragImage#imgelement
     //
@@ -76,9 +66,7 @@ export function setCustomNativeDragPreview({
   document.body.append(container);
 
   // `.showPopover()` must be called after the element is in the DOM.
-  if (supportsPopover()) {
-    container.showPopover();
-  }
+  container.showPopover();
   const unmount = render({
     container
   });

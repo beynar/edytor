@@ -92,22 +92,22 @@ export type MarkdownContext = {
 };
 ```
 
+### MarkdownOptions
+
+```ts
+// export/markdown.d.ts
+export type MarkdownOptions = {
+    markdown?: boolean;
+    type?: string;
+    streaming?: boolean;
+};
+```
+
 ### MathML
 
 ```ts
 // export/forms.d.ts
 export type MathML = (tex: string, display: boolean) => string;
-```
-
-### TextToBlocksOptions
-
-```ts
-// clipboard/textBlocks.d.ts
-export type TextToBlocksOptions = {
-    markdown?: boolean;
-    type?: string;
-    streaming?: boolean;
-};
 ```
 
 ### bundledForms
@@ -120,7 +120,6 @@ declare const bundledForms: {
             html: (_: JSONBlock, __: string, children: string) => string;
             plain: (_: JSONBlock, __: string, children: string) => string;
             parse: (element: HTMLElement) => {} | undefined;
-            markdown: (_: JSONBlock, __: string, children: string) => string;
             layout: true;
             rendersContent: false;
             defaultChild: string;
@@ -129,14 +128,12 @@ declare const bundledForms: {
             html: (block: JSONBlock, _: string, children: string) => string;
             plain: (_: JSONBlock, __: string, children: string) => string;
             parse: (element: HTMLElement) => Record<string, number> | undefined;
-            markdown: (_: JSONBlock, __: string, children: string) => string;
             rendersContent: false;
         };
         equation: {
             html: (block: JSONBlock) => string;
             plain: (block: JSONBlock) => string;
             parse: (element: HTMLElement) => import("../index.js").EquationData | undefined;
-            markdown: (block: JSONBlock) => string;
             void: true;
             rendersContent: false;
         };
@@ -144,7 +141,6 @@ declare const bundledForms: {
             html: () => string;
             plain: () => string;
             parse: (el: HTMLElement) => {} | undefined;
-            markdown: () => string;
             void: true;
             rendersContent: false;
         };
@@ -155,7 +151,6 @@ declare const bundledForms: {
                 title?: string | undefined;
                 pageId: string;
             } | undefined;
-            markdown: (block: JSONBlock) => string;
             void: true;
             rendersContent: false;
         };
@@ -165,7 +160,6 @@ declare const bundledForms: {
             parse: (el: HTMLElement) => {
                 url: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         bookmark: {
@@ -175,7 +169,6 @@ declare const bundledForms: {
                 title?: string | undefined;
                 url: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         file: {
@@ -185,7 +178,6 @@ declare const bundledForms: {
                 src: string;
                 name: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         video: {
@@ -193,14 +185,12 @@ declare const bundledForms: {
             parse: (el: HTMLElement) => {
                 src: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         } | {
             html: (block: JSONBlock, caption: string) => string;
             parse: (el: HTMLElement) => {
                 src: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         audio: {
@@ -208,20 +198,17 @@ declare const bundledForms: {
             parse: (el: HTMLElement) => {
                 src: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         } | {
             html: (block: JSONBlock, caption: string) => string;
             parse: (el: HTMLElement) => {
                 src: string;
             } | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         image: {
             html: (block: JSONBlock, caption: string) => string;
             parse: (el: HTMLElement) => Record<string, string | number> | undefined;
-            markdown: (block: JSONBlock, caption: string, children: string) => string;
             void: true;
         };
         table: {
@@ -234,7 +221,6 @@ declare const bundledForms: {
                     id: string;
                 }[];
             } | undefined;
-            markdown: (block: JSONBlock, _: string, __: string, { inline }: import("../plugins.js").MarkdownContext) => string;
             table: true;
             rendersContent: false;
             defaultChild: string;
@@ -252,14 +238,9 @@ declare const bundledForms: {
             parse: (element: HTMLElement) => {
                 column: string;
             } | undefined;
-            markdown: (_: JSONBlock, content: string) => string;
             island: true;
         };
         code: {
-            html: (block: JSONBlock) => string;
-            plain: (block: JSONBlock) => string;
-            parse: (el: HTMLElement) => Record<string, string> | undefined;
-            markdown: (block: JSONBlock) => string;
             island: true;
             lines: true;
             rendersContent: false;
@@ -267,153 +248,28 @@ declare const bundledForms: {
         };
         codeLine: {
             html: (_: JSONBlock, content: string) => string;
-            markdown: (block: JSONBlock) => string;
         };
-        paragraph: {};
-        heading: {
-            contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-            presets: {
-                data: {
-                    level: "h1" | "h2" | "h3";
-                };
-            }[];
-            parse: (el: HTMLElement) => {
-                level: string;
-            } | undefined;
-            html: (block: JSONBlock, content: string, children: string) => string;
-            markdown: (block: JSONBlock, content: string, children: string) => string;
-        };
-        'bulleted-list-item': {
-            element: {
-                tag: "li" | "ol" | "ul";
-                attributes: {
-                    role: string;
-                };
-            };
-            presets: {}[];
-            html: string;
-            markdown: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
-        };
-        'numbered-list-item': {
-            element: {
-                tag: "li" | "ol" | "ul";
-                attributes: {
-                    role: string;
-                };
-            };
-            presets: {}[];
-            html: string;
-            parse: (el: HTMLElement) => {} | undefined;
-            markdown: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
-        };
-        'todo-item': {
-            presets: {
-                data: {
-                    checked: false;
-                };
-            }[];
-            parse: (el: HTMLElement) => {
-                checked: boolean;
-            } | undefined;
-            html: (block: JSONBlock, content: string, children: string) => string;
-            plain: (block: JSONBlock, content: string, children: string) => string;
-            markdown: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
-        };
-        toggle: {
-            element: string;
-            presets: {}[];
-            html: (_: JSONBlock, content: string, children: string) => string;
-            markdown: (_: JSONBlock, content: string, children: string) => string;
-        };
-        'toggle-heading': {
-            element: string;
-            contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-            presets: {
-                data: {
-                    level: "h1" | "h2" | "h3";
-                };
-            }[];
-            parse: (el: HTMLElement) => {
-                level: string;
-            } | undefined;
-            html: (block: JSONBlock, content: string, children: string) => string;
-            markdown: (block: JSONBlock, content: string, children: string) => string;
-        };
-        callout: {
-            presets: {}[];
-            parse: (el: HTMLElement) => {
-                icon: string;
-            } | undefined;
-            html: (block: JSONBlock, content: string, children: string) => string;
-            markdown: (block: JSONBlock, content: string, children: string) => string;
-        };
-        quote: {
-            contentElement: string;
-            presets: {}[];
-            html: string;
-            markdown: (_: JSONBlock, content: string, children: string) => string;
-        };
-        divider: {
-            element: string;
-            presets: {}[];
-            html: () => string;
-            plain: () => string;
-            markdown: () => string;
-            void: true;
-            rendersContent: false;
-        };
-        'ordered-list': {
-            itemKind: string;
-            element: {
-                tag: "li" | "ol" | "ul";
-                attributes: {
-                    role: string;
-                };
-            };
-            html: string;
-            markdown: (_: JSONBlock, __: string, children: string) => string;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        'unordered-list': {
-            itemKind: string;
-            element: {
-                tag: "li" | "ol" | "ul";
-                attributes: {
-                    role: string;
-                };
-            };
-            html: string;
-            markdown: (_: JSONBlock, __: string, children: string) => string;
-            rendersContent: false;
-            defaultChild: string;
-        };
-        'list-item': {
-            element: {
-                tag: "li" | "ol" | "ul";
-                attributes: {
-                    role: string;
-                };
-            };
-            html: string;
-            markdown: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
-        };
+        paragraph: BlockForms;
+        quote: BlockForms;
+        divider: BlockForms;
+        "ordered-list": BlockForms;
+        "list-item": BlockForms;
+        "unordered-list": BlockForms;
+        toggle: BlockForms;
+        heading: BlockForms;
+        "todo-item": BlockForms;
+        "bulleted-list-item": BlockForms;
+        "numbered-list-item": BlockForms;
+        callout: BlockForms;
+        "toggle-heading": BlockForms;
     };
     marks: {
         bold: {
             tag: string;
-            markdown: [
-                string,
-                string
-            ];
             parse: (el: HTMLElement) => true | undefined;
         };
         italic: {
             tag: string;
-            markdown: [
-                string,
-                string
-            ];
             parse: (el: HTMLElement) => true | undefined;
         };
         underline: {
@@ -422,18 +278,10 @@ declare const bundledForms: {
         };
         strike: {
             tag: string;
-            markdown: [
-                string,
-                string
-            ];
             parse: (el: HTMLElement) => true | undefined;
         };
         code: {
             tag: string;
-            markdown: [
-                string,
-                string
-            ];
         };
         link: {
             tag: string;
@@ -444,16 +292,11 @@ declare const bundledForms: {
                 href: string | undefined;
                 target: string | undefined;
             };
-            markdown: (value: {
-                href?: unknown;
-            }) => readonly [
-                "[",
-                `](${string})`
-            ] | undefined;
             parse: (el: HTMLElement) => {
                 target?: string | undefined;
                 href: string;
             } | undefined;
+            edge: "side-dependent";
         };
         superscript: {
             tag: string;
@@ -481,7 +324,6 @@ declare const bundledForms: {
             plain: (data: any) => string;
             html: (data: any) => string;
             parse: (element: HTMLElement) => import("../index.js").EquationData | undefined;
-            markdown: (data: any) => string;
         };
         mention: {
             plain: (data: any) => string;
@@ -504,18 +346,13 @@ declare const bundledForms: {
 // export/forms.d.ts
 declare const codeForms: () => {
     code: {
-        html: (block: JSONBlock) => string;
-        plain: (block: JSONBlock) => string;
-        parse: (el: HTMLElement) => Record<string, string> | undefined;
-        markdown: (block: JSONBlock) => string;
         island: true;
         lines: true;
         rendersContent: false;
         defaultChild: string;
     };
     codeLine: {
-        html: (_: JSONBlock, content: string) => string;
-        markdown: (block: JSONBlock) => string;
+        html: (_: import("..").JSONBlock, content: string) => string;
     };
 };
 ```
@@ -526,19 +363,17 @@ declare const codeForms: () => {
 // export/forms.d.ts
 declare const columnsForms: () => {
     columns: {
-        html: (_: JSONBlock, __: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
+        html: (_: import("..").JSONBlock, __: string, children: string) => string;
+        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {} | undefined;
-        markdown: (_: JSONBlock, __: string, children: string) => string;
         layout: true;
         rendersContent: false;
         defaultChild: string;
     };
     column: {
-        html: (block: JSONBlock, _: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
+        html: (block: import("..").JSONBlock, _: string, children: string) => string;
+        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => Record<string, number> | undefined;
-        markdown: (_: JSONBlock, __: string, children: string) => string;
         rendersContent: false;
     };
 };
@@ -551,10 +386,9 @@ declare const columnsForms: () => {
 declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
-            html: (block: JSONBlock) => string;
-            plain: (block: JSONBlock) => string;
+            html: (block: import("..").JSONBlock) => string;
+            plain: (block: import("..").JSONBlock) => string;
             parse: (element: HTMLElement) => import("../plugins/equation/tex.js").EquationData | undefined;
-            markdown: (block: JSONBlock) => string;
             void: true;
             rendersContent: false;
         };
@@ -564,7 +398,6 @@ declare const equationForms: (mathml?: MathML) => {
             plain: (data: any) => string;
             html: (data: any) => string;
             parse: (element: HTMLElement) => import("../plugins/equation/tex.js").EquationData | undefined;
-            markdown: (data: any) => string;
         };
     };
 };
@@ -590,9 +423,8 @@ declare const fromHTML: (html: string, options?: ImportOptions) => JSONDoc;
 // export/forms.d.ts
 declare const imageForms: () => {
     image: {
-        html: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => Record<string, string | number> | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
 };
@@ -604,62 +436,55 @@ declare const imageForms: () => {
 // export/forms.d.ts
 declare const mediaForms: (providers?: readonly EmbedProvider[]) => {
     embed: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
+        plain: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             url: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
     bookmark: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
+        plain: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             title?: string | undefined;
             url: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
     file: {
-        html: (block: JSONBlock, caption: string) => string;
-        plain: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
+        plain: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
             name: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
     video: {
-        html: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     } | {
-        html: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
     audio: {
-        html: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     } | {
-        html: (block: JSONBlock, caption: string) => string;
+        html: (block: import("..").JSONBlock, caption: string) => string;
         parse: (el: HTMLElement) => {
             src: string;
         } | undefined;
-        markdown: (block: JSONBlock, caption: string, children: string) => string;
         void: true;
     };
 };
@@ -685,13 +510,12 @@ declare const mentionForms: (kind?: string, char?: string) => {
 // export/forms.d.ts
 declare const pageForms: (options?: PagePluginOptions, untitled?: string) => {
     page: {
-        html: (block: JSONBlock) => string;
-        plain: (block: JSONBlock) => string;
+        html: (block: import("..").JSONBlock) => string;
+        plain: (block: import("..").JSONBlock) => string;
         parse: (el: HTMLElement) => {
             title?: string | undefined;
             pageId: string;
         } | undefined;
-        markdown: (block: JSONBlock) => string;
         void: true;
         rendersContent: false;
     };
@@ -711,20 +535,13 @@ declare const pageLinkForms: () => {
 
 ```ts
 // export/forms.d.ts
-declare const richTextForms: (callout?: (data: Data) => string) => {
-    paragraph: {};
+declare const richTextForms: (callout: (data: Data) => string) => {
     heading: {
         contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-        presets: {
-            data: {
-                level: "h1" | "h2" | "h3";
-            };
-        }[];
         parse: (el: HTMLElement) => {
             level: string;
         } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-        markdown: (block: JSONBlock, content: string, children: string) => string;
+        html: (block: import("..").JSONBlock, content: string, children: string) => string;
     };
     'bulleted-list-item': {
         element: {
@@ -733,75 +550,47 @@ declare const richTextForms: (callout?: (data: Data) => string) => {
                 role: string;
             };
         };
-        presets: {}[];
         html: string;
-        markdown: ((block: JSONBlock, content: string, children: string, context: import("..").MarkdownContext) => string) | undefined;
     };
     'numbered-list-item': {
+        parse: (el: HTMLElement) => {} | undefined;
         element: {
             tag: "li" | "ol" | "ul";
             attributes: {
                 role: string;
             };
         };
-        presets: {}[];
         html: string;
-        parse: (el: HTMLElement) => {} | undefined;
-        markdown: ((block: JSONBlock, content: string, children: string, context: import("..").MarkdownContext) => string) | undefined;
     };
     'todo-item': {
-        presets: {
-            data: {
-                checked: false;
-            };
-        }[];
-        parse: (el: HTMLElement) => {
-            checked: boolean;
-        } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-        plain: (block: JSONBlock, content: string, children: string) => string;
-        markdown: ((block: JSONBlock, content: string, children: string, context: import("..").MarkdownContext) => string) | undefined;
+        html: (block: import("..").JSONBlock, content: string, children: string) => string;
+        plain: (block: import("..").JSONBlock, content: string, children: string) => string;
     };
     toggle: {
         element: string;
-        presets: {}[];
-        html: (_: JSONBlock, content: string, children: string) => string;
-        markdown: (_: JSONBlock, content: string, children: string) => string;
     };
     'toggle-heading': {
         element: string;
         contentElement: (data: Record<string, unknown>) => "h1" | "h2" | "h3";
-        presets: {
-            data: {
-                level: "h1" | "h2" | "h3";
-            };
-        }[];
         parse: (el: HTMLElement) => {
             level: string;
         } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-        markdown: (block: JSONBlock, content: string, children: string) => string;
+        html: (block: import("..").JSONBlock, content: string, children: string) => string;
     };
     callout: {
-        presets: {}[];
+        html: (block: import("..").JSONBlock, content: string, children: string) => string;
         parse: (el: HTMLElement) => {
             icon: string;
         } | undefined;
-        html: (block: JSONBlock, content: string, children: string) => string;
-        markdown: (block: JSONBlock, content: string, children: string) => string;
     };
     quote: {
         contentElement: string;
-        presets: {}[];
         html: string;
-        markdown: (_: JSONBlock, content: string, children: string) => string;
     };
     divider: {
         element: string;
-        presets: {}[];
         html: () => string;
         plain: () => string;
-        markdown: () => string;
         void: true;
         rendersContent: false;
     };
@@ -814,7 +603,6 @@ declare const richTextForms: (callout?: (data: Data) => string) => {
             };
         };
         html: string;
-        markdown: (_: JSONBlock, __: string, children: string) => string;
         rendersContent: false;
         defaultChild: string;
     };
@@ -827,7 +615,6 @@ declare const richTextForms: (callout?: (data: Data) => string) => {
             };
         };
         html: string;
-        markdown: (_: JSONBlock, __: string, children: string) => string;
         rendersContent: false;
         defaultChild: string;
     };
@@ -839,7 +626,6 @@ declare const richTextForms: (callout?: (data: Data) => string) => {
             };
         };
         html: string;
-        markdown: ((block: JSONBlock, content: string, children: string, context: import("..").MarkdownContext) => string) | undefined;
     };
 };
 ```
@@ -851,18 +637,10 @@ declare const richTextForms: (callout?: (data: Data) => string) => {
 declare const richTextMarkForms: {
     bold: {
         tag: string;
-        markdown: [
-            string,
-            string
-        ];
         parse: (el: HTMLElement) => true | undefined;
     };
     italic: {
         tag: string;
-        markdown: [
-            string,
-            string
-        ];
         parse: (el: HTMLElement) => true | undefined;
     };
     underline: {
@@ -871,18 +649,10 @@ declare const richTextMarkForms: {
     };
     strike: {
         tag: string;
-        markdown: [
-            string,
-            string
-        ];
         parse: (el: HTMLElement) => true | undefined;
     };
     code: {
         tag: string;
-        markdown: [
-            string,
-            string
-        ];
     };
     link: {
         tag: string;
@@ -893,16 +663,11 @@ declare const richTextMarkForms: {
             href: string | undefined;
             target: string | undefined;
         };
-        markdown: (value: {
-            href?: unknown;
-        }) => readonly [
-            "[",
-            `](${string})`
-        ] | undefined;
         parse: (el: HTMLElement) => {
             target?: string | undefined;
             href: string;
         } | undefined;
+        edge: "side-dependent";
     };
     superscript: {
         tag: string;
@@ -933,8 +698,8 @@ declare const richTextMarkForms: {
 // export/forms.d.ts
 declare const tableForms: () => {
     table: {
-        html: (block: JSONBlock, _: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
+        html: (block: import("..").JSONBlock, _: string, children: string) => string;
+        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {
             headerColumn?: boolean | undefined;
             headerRow?: boolean | undefined;
@@ -942,25 +707,23 @@ declare const tableForms: () => {
                 id: string;
             }[];
         } | undefined;
-        markdown: (block: JSONBlock, _: string, __: string, { inline }: import("..").MarkdownContext) => string;
         table: true;
         rendersContent: false;
         defaultChild: string;
     };
     tableRow: {
-        html: (_: JSONBlock, __: string, children: string) => string;
-        plain: (_: JSONBlock, __: string, children: string) => string;
+        html: (_: import("..").JSONBlock, __: string, children: string) => string;
+        plain: (_: import("..").JSONBlock, __: string, children: string) => string;
         parse: (element: HTMLElement) => {} | undefined;
         rendersContent: false;
         defaultChild: string;
     };
     tableCell: {
-        html: (_: JSONBlock, content: string) => string;
-        plain: (_: JSONBlock, content: string) => string;
+        html: (_: import("..").JSONBlock, content: string) => string;
+        plain: (_: import("..").JSONBlock, content: string) => string;
         parse: (element: HTMLElement) => {
             column: string;
         } | undefined;
-        markdown: (_: JSONBlock, content: string) => string;
         island: true;
     };
 };
@@ -969,8 +732,8 @@ declare const tableForms: () => {
 ### textToBlocks
 
 ```ts
-// clipboard/textBlocks.d.ts
-declare const textToBlocks: (text: string, { markdown, type, streaming }?: TextToBlocksOptions) => JSONBlock[];
+// export/markdown.d.ts
+declare const textToBlocks: (text: string, { markdown, type, streaming }?: MarkdownOptions) => JSONBlock[];
 ```
 
 ### toHTML
@@ -996,7 +759,6 @@ declare const tocForms: () => {
         html: () => string;
         plain: () => string;
         parse: (el: HTMLElement) => {} | undefined;
-        markdown: () => string;
         void: true;
         rendersContent: false;
     };

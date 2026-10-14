@@ -1,12 +1,11 @@
 /**
  * The bundled kinds' export and import forms as data: each kind's `html`,
- * `plain`, `markdown` and `parse` forms (a mark's `tag`, `attributes`,
- * `markdown` and `parse`), the rows the bundled plugins spread into their
+ * `plain` and `parse` forms (a mark's `tag`, `attributes` and `parse`),
+ * the rows the bundled plugins spread into their
  * kind records. One rule per kind: the clipboard, `toHTML`, `toMarkdown`
  * and `fromHTML` read these same functions, in a view (its records) and on
  * a server ({@link bundledForms}). No Svelte, no DOM state: Worker-safe.
  */
-import type { JSONBlock } from '$lib/utils/json.js';
 import { sanitizeCssColorValue, sanitizeLinkHref } from '$lib/utils/sanitize.js';
 import {
 	escapeHtml,
@@ -22,10 +21,11 @@ import {
 	mediaKinds,
 	pageKinds,
 	richTextKinds,
+	richTextMarks,
 	tableKinds,
 	tocKinds
 } from '$lib/crdt/semantics.js';
-import { DEFAULT_CALLOUT_ICON, calloutHtml } from '$lib/plugins/richtext/callouts.js';
+import { calloutHtml } from '$lib/plugins/richtext/callouts.js';
 import {
 	imageAlignOf,
 	imageAltOf,
@@ -62,19 +62,6 @@ export type KindForms = {
 };
 
 type Data = Record<string, unknown> | undefined;
-
-/** A child block's text joined (a code line's, a cell's): marks and atoms aside. */
-const textOf = (block: JSONBlock) =>
-	(block.content ?? []).map((part) => ('text' in part ? part.text : '')).join('');
-
-/** A markdown link destination: `<…>` when it holds a space or a parenthesis. */
-const destination = (href: string) =>
-	/[\s()<>]/.test(href) ? `<${href.replace(/>/g, '%3E')}>` : href;
-/** Text for a markdown link's label: its brackets and backslashes escaped. */
-const label = (text: string) => text.replace(/[\\[\]]/g, (c) => `\\${c}`);
-
-/** A block's children markdown after its own line(s), a blank line apart. */
-const then = (own: string, children: string) => (children ? `${own}\n\n${children}` : own);
 
 // Rich text ---------------------------------------------------------------
 
@@ -121,33 +108,26 @@ const NO_HIGHLIGHT = new RegExp(
 const alias =
 	(tags: RegExp, property: 'fontWeight' | 'fontStyle' | 'textDecoration', value: RegExp) =>
 	(el: HTMLElement) =>
-		(tags.test(el.localName) && !el.style?.[property]) ||
-		value.test(el.style?.[property] ?? '') ||
-		undefined;
+		(tags.test(el.localName) && !el.style[property]) || value.test(el.style[property]) || undefined;
 
 /** The rich text marks' forms, in their registration order (export wraps the first innermost). */
 export const richTextMarkForms = {
 	bold: {
 		tag: 'strong',
-		markdown: ['**', '**'],
 		parse: alias(/^b$/, 'fontWeight', /^(bold|[6-9]00)$/)
 	},
-	italic: { tag: 'em', markdown: ['*', '*'], parse: alias(/^i$/, 'fontStyle', /italic/) },
+	italic: { tag: 'em', parse: alias(/^i$/, 'fontStyle', /italic/) },
 	underline: { tag: 'u', parse: alias(/^u$/, 'textDecoration', /underline/) },
 	strike: {
 		tag: 's',
-		markdown: ['~~', '~~'],
 		parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
 	},
-	code: { tag: 'code', markdown: ['`', '`'] },
+	code: { tag: 'code' },
+	// Typing at a link's trailing edge extends it only from inside the anchor.
 	link: {
+		...richTextMarks.link,
 		tag: 'a',
 		attributes: linkAttributes,
-		// An unsafe href exports the text alone, as the anchor renders inert.
-		markdown: (value: { href?: unknown }) => {
-			const href = sanitizeLinkHref(value?.href);
-			return href ? (['[', `](${destination(href)})`] as const) : undefined;
-		},
 		parse: (el: HTMLElement) => {
 			const href = el.localName === 'a' && sanitizeLinkHref(el.getAttribute('href'));
 			const target = el.getAttribute('target');
@@ -159,216 +139,122 @@ export const richTextMarkForms = {
 	color: {
 		tag: 'span',
 		attributes: styled('color'),
-		parse: (el: HTMLElement) => colorOf(el.style?.color ?? '', NO_COLOR)
+		parse: (el: HTMLElement) => colorOf(el.style.color ?? '', NO_COLOR)
 	},
 	highlight: {
 		tag: 'span',
 		attributes: styled('background-color'),
 		parse: (el: HTMLElement) => {
-			const background = el.style?.backgroundColor;
+			const background = el.style.backgroundColor;
 			if (background) return colorOf(background, NO_HIGHLIGHT);
 			return el.localName === 'mark' ? 'yellow' : undefined;
 		}
 	}
 } satisfies Record<string, MarkForms>;
 
-/** A quote's lines, each behind `> `. */
-const quoted = (text: string) =>
-	text
-		.split('\n')
-		.map((line) => (line ? `> ${line}` : '>'))
-		.join('\n');
-
-/** A list item's markdown: its marker and text, its children indented under it. */
-const item =
-	(marker: (block: JSONBlock, index: number) => string): BlockForms['markdown'] =>
-	(block, content, children, { index, indent }) => {
-		const own = marker(block, index);
-		return children
-			? `${own}${content}\n${indent(children, ' '.repeat(own.length))}`
-			: own + content;
-	};
+/** A heading's element: its level's tag. */
+const levelElement = (data: Record<string, unknown>) => headingLevel(data.level);
+export const headingForms = {
+	contentElement: levelElement,
+	// HTML import: h1–h3 come from the presets (the plugin's); h4–h6 read as h3.
+	parse: (el: HTMLElement) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
+	html: (block, content, children) => {
+		const tag = headingLevel(block.data?.level);
+		return `<${tag}>${content}</${tag}>${children}`;
+	}
+} satisfies BlockForms;
+export const bulletedForms = { element: unlisted('li'), html: 'li' } satisfies BlockForms;
+export const numberedForms = {
+	...bulletedForms,
+	// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
+	parse: (el: HTMLElement) =>
+		el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined
+} satisfies BlockForms;
+export const todoForms = {
+	html: (block, content, children) =>
+		`<li data-edytor-todo-item="true"><input type="checkbox"${block.data?.checked === true ? ' checked' : ''}>${content}${children}</li>`,
+	plain: (block, content, children) =>
+		[`${block.data?.checked === true ? '[x]' : '[ ]'} ${content}`.trim(), children]
+			.filter(Boolean)
+			.join('\n')
+} satisfies BlockForms;
+export const toggleForms = { element: 'details' } satisfies BlockForms;
+export const toggleHeadingForms = {
+	element: 'details',
+	contentElement: levelElement,
+	// HTML import: a `details` whose summary holds an h1–h3 (its own export).
+	parse: (el: HTMLElement) => {
+		if (el.localName !== 'details') return;
+		const tag = el.querySelector(':scope > summary > :is(h1, h2, h3, h4, h5, h6)');
+		return tag ? { level: headingLevel(tag.localName) } : undefined;
+	},
+	html: (block, content, children) => {
+		const tag = headingLevel(block.data?.level);
+		return `<details><summary><${tag}>${content}</${tag}></summary>${children}</details>`;
+	}
+} satisfies BlockForms;
+export const calloutForms = {
+	// HTML import: its own export, the icon in its attribute.
+	parse: (el: HTMLElement) => {
+		const own = el.getAttribute('data-edytor-callout');
+		return own === null ? undefined : { icon: own };
+	}
+} satisfies BlockForms;
+export const quoteForms = {
+	contentElement: 'blockquote',
+	html: 'blockquote'
+} satisfies BlockForms;
+export const dividerForms = {
+	...richTextKinds.divider,
+	element: 'hr',
+	html: () => '<hr>',
+	plain: () => '---'
+} satisfies BlockForms;
+export const orderedListForms = {
+	...richTextKinds['ordered-list'],
+	itemKind: 'numbered-list-item',
+	element: unlisted('ol'),
+	html: 'ol'
+} satisfies BlockForms;
+export const unorderedListForms = {
+	...richTextKinds['unordered-list'],
+	itemKind: 'bulleted-list-item',
+	element: unlisted('ul'),
+	html: 'ul'
+} satisfies BlockForms;
+export const listItemForms = bulletedForms;
 
 /**
- * The rich text kinds' forms. `callout` is the icon a callout without one
- * of its own shows (the view's default).
+ * The rich text kinds' forms as one table (a server's). `callout` is the icon a
+ * callout without one of its own shows.
  */
-export const richTextForms = (callout: (data: Data) => string = defaultIcon) =>
+export const richTextForms = (callout: (data: Data) => string) =>
 	({
-		paragraph: {},
-		heading: {
-			contentElement: (data: Record<string, unknown>) => headingLevel(data.level),
-			presets: HEADING_LEVELS.map((level) => ({ data: { level } })),
-			// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
-			parse: (el: HTMLElement) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
-			html: (block, content, children) => {
-				const tag = headingLevel(block.data?.level);
-				return `<${tag}>${content}</${tag}>${children}`;
-			},
-			markdown: (block, content, children) =>
-				then(`${'#'.repeat(Number(headingLevel(block.data?.level).slice(1)))} ${content}`, children)
-		},
-		'bulleted-list-item': {
-			element: unlisted('li'),
-			presets: [{}],
-			html: 'li',
-			markdown: item(() => '- ')
-		},
-		'numbered-list-item': {
-			element: unlisted('li'),
-			presets: [{}],
-			html: 'li',
-			// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
-			parse: (el: HTMLElement) =>
-				el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined,
-			markdown: item((_, index) => `${index}. `)
-		},
-		'todo-item': {
-			presets: [{ data: { checked: false } }],
-			// HTML import: its own export, and a GitHub task list's item.
-			parse: (el: HTMLElement) => {
-				if (el.localName !== 'li') return;
-				const box = [...el.children].find(
-					(child) => child.localName === 'input' && child.getAttribute('type') === 'checkbox'
-				);
-				return box ? { checked: box.hasAttribute('checked') } : undefined;
-			},
-			html: (block, content, children) =>
-				`<li data-edytor-todo-item="true"><input type="checkbox"${block.data?.checked === true ? ' checked' : ''}>${content}${children}</li>`,
-			plain: (block, content, children) =>
-				[`${block.data?.checked === true ? '[x]' : '[ ]'} ${content}`.trim(), children]
-					.filter(Boolean)
-					.join('\n'),
-			markdown: item((block) => `- [${block.data?.checked === true ? 'x' : ' '}] `)
-		},
-		toggle: {
-			element: 'details',
-			presets: [{}],
-			html: (_, content, children) => `<details><summary>${content}</summary>${children}</details>`,
-			// A GitHub-style disclosure: markdown readers show it, `textToBlocks` reads it back.
-			markdown: (_, content, children) =>
-				`<details>\n<summary>${content}</summary>\n\n${children ? `${children}\n\n` : ''}</details>`
-		},
-		'toggle-heading': {
-			element: 'details',
-			contentElement: (data: Record<string, unknown>) => headingLevel(data.level),
-			presets: HEADING_LEVELS.map((level) => ({ data: { level } })),
-			// HTML import: a `details` whose summary holds an h1–h3 (its own export).
-			parse: (el: HTMLElement) => {
-				if (el.localName !== 'details') return;
-				const summary = [...el.children].find((child) => child.localName === 'summary');
-				const tag = [...(summary?.children ?? [])].find((child) =>
-					/^h[1-6]$/.test(child.localName)
-				);
-				return tag ? { level: headingLevel(tag.localName) } : undefined;
-			},
-			html: (block, content, children) => {
-				const tag = headingLevel(block.data?.level);
-				return `<details><summary><${tag}>${content}</${tag}></summary>${children}</details>`;
-			},
-			markdown: (block, content, children) => {
-				const tag = headingLevel(block.data?.level);
-				return `<details>\n<summary><${tag}>${content}</${tag}></summary>\n\n${children ? `${children}\n\n` : ''}</details>`;
-			}
-		},
+		heading: headingForms,
+		'bulleted-list-item': bulletedForms,
+		'numbered-list-item': numberedForms,
+		'todo-item': todoForms,
+		toggle: toggleForms,
+		'toggle-heading': toggleHeadingForms,
 		callout: {
-			presets: [{}],
-			// HTML import: its own export, the icon in its attribute.
-			parse: (el: HTMLElement) => {
-				const own = el.getAttribute('data-edytor-callout');
-				return own === null ? undefined : { icon: own };
-			},
-			html: (block, content, children) => calloutHtml(callout(block.data), content, children),
-			// A GitHub alert: `> [!NOTE]`, then the icon and the title, then the content.
-			markdown: (block, content, children) => {
-				const icon = callout(block.data);
-				const title = [icon, content].filter(Boolean).join(' ');
-				return quoted(['[!NOTE]', title, ...(children ? ['', children] : [])].join('\n'));
-			}
+			...calloutForms,
+			html: (block, content, children) => calloutHtml(callout(block.data), content, children)
 		},
-		quote: {
-			contentElement: 'blockquote',
-			presets: [{}],
-			html: 'blockquote',
-			markdown: (_, content, children) => quoted(then(content, children))
-		},
-		divider: {
-			...richTextKinds.divider,
-			element: 'hr',
-			presets: [{}],
-			html: () => '<hr>',
-			plain: () => '---',
-			markdown: () => '---'
-		},
-		'ordered-list': {
-			...richTextKinds['ordered-list'],
-			itemKind: 'numbered-list-item',
-			element: unlisted('ol'),
-			html: 'ol',
-			// Its items are `list-item`s: numbered here.
-			markdown: (_, __, children) => {
-				let n = 0;
-				return children.replace(/^- /gm, () => `${++n}. `);
-			}
-		},
-		'unordered-list': {
-			...richTextKinds['unordered-list'],
-			itemKind: 'bulleted-list-item',
-			element: unlisted('ul'),
-			html: 'ul',
-			markdown: (_, __, children) => children
-		},
-		'list-item': { element: unlisted('li'), html: 'li', markdown: item(() => '- ') }
+		quote: quoteForms,
+		divider: dividerForms,
+		'ordered-list': orderedListForms,
+		'unordered-list': unorderedListForms,
+		'list-item': listItemForms
 	}) satisfies Record<string, BlockForms>;
-
-const defaultIcon = (data: Data) =>
-	typeof data?.icon === 'string' ? data.icon : DEFAULT_CALLOUT_ICON;
 
 // Code --------------------------------------------------------------------
 
-/** A code block's language as stored: a short name, else none. */
-const languageOf = (data: Data) =>
-	typeof data?.language === 'string' && /^[\w#+.-]{1,40}$/.test(data.language)
-		? data.language
-		: undefined;
-
-/** A fence longer than any backtick run of `text`'s line starts (three at least). */
-const fenceFor = (text: string) =>
-	'`'.repeat(Math.max(3, ...[...text.matchAll(/^\s*(`{3,})/gm)].map((m) => m[1]!.length + 1)));
-
-/** The code plugin's forms: a block of `codeLine`s, its language in `data.language`. */
+/** The code plugin's forms: a block of `codeLine`s. */
 export const codeForms = () =>
 	({
-		code: {
-			...codeKinds.code,
-			html: (block) => {
-				const language = languageOf(block.data);
-				const lines = (block.children ?? []).map(textOf).join('\n');
-				const attribute = language ? ` class="language-${escapeHtml(language)}"` : '';
-				return `<pre${language ? ` data-language="${escapeHtml(language)}"` : ''}><code${attribute}>${escapeHtml(lines)}</code></pre>`;
-			},
-			plain: (block) => (block.children ?? []).map(textOf).join('\n'),
-			// HTML import: a `pre`, its language from its own or its `code`'s class or attribute.
-			parse: (el: HTMLElement): Record<string, string> | undefined => {
-				if (el.localName !== 'pre') return;
-				const code = [...el.children].find((child) => child.localName === 'code');
-				const named = [el, code].map(
-					(at) =>
-						at?.getAttribute('data-language') ??
-						/(?:^|\s)(?:language|lang)-([\w#+.-]+)/.exec(at?.getAttribute('class') ?? '')?.[1]
-				);
-				const language = languageOf({ language: named.find(Boolean) });
-				return language ? { language } : {};
-			},
-			markdown: (block) => {
-				const lines = (block.children ?? []).map(textOf).join('\n');
-				const fence = fenceFor(lines);
-				return `${fence}${languageOf(block.data) ?? ''}\n${lines}${lines ? '\n' : ''}${fence}`;
-			}
-		},
+		code: codeKinds.code,
 		codeLine: {
-			html: (_, content) => `<pre><code>${content}</code></pre>`,
-			markdown: (block) => textOf(block)
+			html: (_, content) => `<pre><code>${content}</code></pre>`
 		}
 	}) satisfies Record<string, BlockForms>;
 
@@ -415,23 +301,7 @@ export const parseCell = (cell: HTMLElement) => {
 	return { column: `c${(index >= 0 ? index : 0) + 1}` };
 };
 
-/** A table's rows as cells in its columns' order (`data.columns`), each row padded to them. */
-const gridOf = (table: JSONBlock): JSONBlock[][] => {
-	const columns = Array.isArray(table.data?.columns)
-		? (table.data.columns as { id?: unknown }[])
-				.map((c) => c?.id)
-				.filter((id) => typeof id === 'string')
-		: [];
-	return (table.children ?? []).map((row) => {
-		const cells = row.children ?? [];
-		if (!columns.length) return cells;
-		return columns.map(
-			(id) => cells.find((cell) => cell.data?.column === id) ?? { type: 'tableCell' }
-		);
-	});
-};
-
-/** The table plugin's forms: a GFM table in markdown (its first row the header). */
+/** The table plugin's forms. */
 export const tableForms = () =>
 	({
 		table: {
@@ -439,21 +309,7 @@ export const tableForms = () =>
 			html: (block, _, children) => tableHtml(block.data ?? {}, children),
 			plain: (_, __, children) => children,
 			parse: (element: HTMLElement) =>
-				element.localName === 'table' ? parseTable(element) : undefined,
-			markdown: (block, _, __, { inline }) => {
-				const rows = gridOf(block).map((cells) =>
-					cells.map((cell) => inline(cell.content).replace(/\|/g, '\\|').replace(/\\\n/g, '<br>'))
-				);
-				if (!rows.length) return '';
-				const width = Math.max(1, ...rows.map((row) => row.length));
-				const line = (row: string[]) =>
-					`| ${Array.from({ length: width }, (_, i) => row[i] ?? '').join(' | ')} |`;
-				return [
-					line(rows[0]!),
-					line(Array.from({ length: width }, () => '---')),
-					...rows.slice(1).map(line)
-				].join('\n');
-			}
+				element.localName === 'table' ? parseTable(element) : undefined
 		},
 		tableRow: {
 			...tableKinds.tableRow,
@@ -466,23 +322,13 @@ export const tableForms = () =>
 			html: (_, content) => `<td>${content}</td>`,
 			plain: (_, content) => content.replace(/\n/g, ' '),
 			parse: (element: HTMLElement) =>
-				/^t[dh]$/.test(element.localName) ? parseCell(element) : undefined,
-			markdown: (_, content) => content
+				/^t[dh]$/.test(element.localName) ? parseCell(element) : undefined
 		}
 	}) satisfies Record<string, BlockForms>;
 
 // Images and media --------------------------------------------------------
 
-/** A markdown link line (a bookmark's, a file's), its caption after it. */
-const linkLine = (text: string, href: string | null, caption: string, children: string) =>
-	then(
-		[href ? `[${label(text || href)}](${destination(href)})` : '', caption]
-			.filter(Boolean)
-			.join('\n\n'),
-		children
-	);
-
-/** The image plugin's forms: a `figure` in HTML, `![alt](src "caption")` in markdown. */
+/** The image plugin's forms: a `figure`. */
 export const imageForms = () =>
 	({
 		image: {
@@ -505,18 +351,12 @@ export const imageForms = () =>
 				if (!data) return undefined;
 				const align = el.getAttribute('data-align');
 				return align === 'left' || align === 'right' ? { ...data, align } : data;
-			},
-			markdown: (block, caption, children) => {
-				const src = safeImageSrc(block.data?.src);
-				if (!src) return then(caption, children);
-				const title = caption ? ` "${caption.replace(/"/g, '\\"')}"` : '';
-				return then(`![${label(imageAltOf(block.data))}](${destination(src)}${title})`, children);
 			}
 		}
 	}) satisfies Record<string, BlockForms>;
 
 /** A bookmark's stored text field: trimmed, capped. */
-const capped = (value: unknown, max: number) =>
+export const capped = (value: unknown, max: number) =>
 	typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
 
 /** The media plugins' forms; `providers` are the embed players the view allows. */
@@ -534,10 +374,6 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 			parse: (el: HTMLElement) => {
 				const src = mediaSourceOf(claimed(el, kind));
 				return src ? { src } : undefined;
-			},
-			markdown: (block, caption, children) => {
-				const src = safeMediaSrc(block.data?.src);
-				return linkLine(src ?? '', src, caption, children);
 			}
 		}) satisfies BlockForms;
 	return {
@@ -559,10 +395,6 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 				const src = claimed(el, 'iframe')?.getAttribute('src');
 				const url = embedSourceOf(src, providers) && safeWebUrl(src);
 				return url ? { url } : undefined;
-			},
-			markdown: (block, caption, children) => {
-				const url = safeWebUrl(block.data?.url);
-				return linkLine(url ?? '', url, caption, children);
 			}
 		},
 		bookmark: {
@@ -581,10 +413,6 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 				const url = safeWebUrl(anchor?.getAttribute('href'));
 				const title = capped(anchor?.textContent, 300);
 				return url ? { url, ...(title && title !== url ? { title } : {}) } : undefined;
-			},
-			markdown: (block, caption, children) => {
-				const url = safeWebUrl(block.data?.url);
-				return linkLine(capped(block.data?.title, 300) ?? url ?? '', url, caption, children);
 			}
 		},
 		file: {
@@ -604,11 +432,6 @@ export const mediaForms = (providers: readonly EmbedProvider[] = EMBED_PROVIDERS
 				const src = safeMediaSrc(anchor?.getAttribute('href'));
 				const name = anchor?.textContent?.trim().slice(0, 300);
 				return src ? { src, name: name || fileNameOf(src) } : undefined;
-			},
-			markdown: (block, caption, children) => {
-				const src = safeMediaSrc(block.data?.src);
-				const name = String(block.data?.name || (src && fileNameOf(src)) || '');
-				return linkLine(name, src, caption, children);
 			}
 		},
 		video: source('video'),
@@ -631,12 +454,6 @@ export const pageForms = (options: PagePluginOptions = {}, untitled = 'Untitled'
 				if (el.localName !== 'p' || !pageId) return;
 				const title = pageTitleOf(el.textContent);
 				return { pageId, ...(title && { title }) };
-			},
-			markdown: (block) => {
-				const title = label(pageTitleOf(block.data?.title) ?? untitled);
-				const pageId = pageIdOf(block.data?.pageId);
-				const href = pageId && options.href ? sanitizeLinkHref(options.href(pageId)) : null;
-				return href ? `[${title}](${destination(href)})` : title;
 			}
 		}
 	}) satisfies Record<string, BlockForms>;
@@ -649,31 +466,28 @@ export const tocForms = () =>
 			html: () => '<nav data-edytor-toc></nav>',
 			plain: () => '',
 			parse: (el: HTMLElement) =>
-				el.localName === 'nav' && el.hasAttribute('data-edytor-toc') ? {} : undefined,
-			markdown: () => ''
+				el.localName === 'nav' && el.hasAttribute('data-edytor-toc') ? {} : undefined
 		}
 	}) satisfies Record<string, BlockForms>;
 
 /** MathML for a TeX source: KaTeX's in a view once loaded, else the source in its annotation. */
 export type MathML = (tex: string, display: boolean) => string;
 
-/** The equation plugin's forms: `$$…$$` and `$…$` in markdown. */
+/** The equation plugin's forms. */
 export const equationForms = (mathml: MathML = sourceMathml) => ({
 	blocks: {
 		equation: {
 			...equationKinds.equation,
 			html: (block) => `<div data-edytor-equation>${mathml(expressionOf(block.data), true)}</div>`,
 			plain: (block) => expressionOf(block.data),
-			parse: (element: HTMLElement) => parseEquation(element, true),
-			markdown: (block) => `$$\n${expressionOf(block.data)}\n$$`
+			parse: (element: HTMLElement) => parseEquation(element, true)
 		}
 	} satisfies Record<string, BlockForms>,
 	inlineBlocks: {
 		inlineEquation: {
 			plain: (data) => expressionOf(data),
 			html: (data) => mathml(expressionOf(data), false),
-			parse: (element: HTMLElement) => parseEquation(element, false),
-			markdown: (data) => `$${expressionOf(data)}$`
+			parse: (element: HTMLElement) => parseEquation(element, false)
 		}
 	} satisfies Record<string, AtomForms>
 });
@@ -689,7 +503,7 @@ const parsedWidth = (element: HTMLElement): Record<string, number> => {
 	return Number.isFinite(width) && width > 0 ? { width } : {};
 };
 
-/** The columns plugin's forms: in markdown, the columns' blocks one after another. */
+/** The columns plugin's forms. */
 export const columnsForms = () =>
 	({
 		columns: {
@@ -697,8 +511,7 @@ export const columnsForms = () =>
 			html: (_, __, children) => `<div data-edytor-columns>${children}</div>`,
 			plain: (_, __, children) => children,
 			parse: (element: HTMLElement) =>
-				element.hasAttribute('data-edytor-columns') ? {} : undefined,
-			markdown: (_, __, children) => children
+				element.hasAttribute('data-edytor-columns') ? {} : undefined
 		},
 		column: {
 			...layoutKinds.column,
@@ -706,8 +519,7 @@ export const columnsForms = () =>
 				`<div data-edytor-column data-width="${weightOf(block.data)}">${children}</div>`,
 			plain: (_, __, children) => children,
 			parse: (element: HTMLElement) =>
-				element.hasAttribute('data-edytor-column') ? parsedWidth(element) : undefined,
-			markdown: (_, __, children) => children
+				element.hasAttribute('data-edytor-column') ? parsedWidth(element) : undefined
 		}
 	}) satisfies Record<string, BlockForms>;
 

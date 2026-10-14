@@ -19,11 +19,6 @@ export type HtmlParser = new () => {
 
 /** Element and text nodes by their type, not their realm: a server parser's nodes are not this global's. */
 const isElement = (node: Node | null | undefined): node is HTMLElement => node?.nodeType === 1;
-const XHTML = 'http://www.w3.org/1999/xhtml';
-/** An element of HTML's namespace (a server parser may name none). */
-const isHtml = (node: Node): node is HTMLElement =>
-	isElement(node) && (!node.namespaceURI || node.namespaceURI === XHTML);
-
 type Values = Record<string, SerializableContent>;
 type Line = { type?: string; data?: Values; content: JSONContentPart[]; children?: Line[] };
 /** A kind claiming an element; `lines`: a container whose default child takes each text line. */
@@ -47,7 +42,7 @@ const GLYPH_PX = 32;
 const EMOJI_ALT =
 	/^(?:[\p{Extended_Pictographic}\p{Regional_Indicator}\s]|\u200d|\ufe0f|\u20e3|\p{Emoji_Modifier})+$/u;
 const sizeOf = (img: HTMLElement, side: 'width' | 'height') => {
-	const value = img.getAttribute(side) ?? img.style?.getPropertyValue(side) ?? '';
+	const value = img.getAttribute(side) ?? img.style.getPropertyValue(side);
 	const px = /^\s*(\d+(?:\.\d+)?)\s*(px)?\s*$/.exec(value);
 	return px ? Number(px[1]) : undefined;
 };
@@ -62,8 +57,7 @@ const isGlyph = (node: Node): boolean => {
 	const alt = node.getAttribute('alt')?.trim() ?? '';
 	if (alt && EMOJI_ALT.test(alt) && /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(alt))
 		return true;
-	if (/emoji/i.test(node.getAttribute('class') ?? '') || node.hasAttribute('data-emoji'))
-		return true;
+	if (/emoji/i.test(node.className) || node.hasAttribute('data-emoji')) return true;
 	const sides = [sizeOf(node, 'width'), sizeOf(node, 'height')].filter((n) => n !== undefined);
 	return sides.length > 0 && sides.every((n) => n <= GLYPH_PX);
 };
@@ -136,10 +130,7 @@ export const linesOfHtml = (
 		for (const [type, kind] of blocks) {
 			const data = kind.parse?.(element);
 			// A kind of lines (a code block) takes its element's text, one child per line.
-			if (data)
-				return kind.lines && kind.defaultChild
-					? { type, kind, data, lines: kind.defaultChild }
-					: { type, kind, data };
+			if (data) return { type, kind, data, lines: kind.lines ? kind.defaultChild : undefined };
 		}
 		return byTag.get(element.localName);
 	};
@@ -163,7 +154,7 @@ export const linesOfHtml = (
 	};
 	// A kind's hook may claim an element of another namespace (an equation's MathML `<math>`).
 	const isBlock = (node: Node): node is HTMLElement =>
-		(isHtml(node) && BLOCK.test(node.localName)) || (isElement(node) && kindOf(node) !== undefined);
+		isElement(node) && (BLOCK.test(node.localName) || kindOf(node) !== undefined);
 	/** A void kind's element (an image): it shows no text, so a line it is met in ends there. */
 	const isVoid = (node: Node): node is HTMLElement => {
 		const claim = isElement(node) ? kindOf(node) : undefined;
@@ -188,7 +179,7 @@ export const linesOfHtml = (
 		if (isVoid(node)) return at.apart(node);
 		const atom = isElement(node) ? atomOf(node) : undefined;
 		if (atom) return void at.line().content.push(atom);
-		if (!isHtml(node) || SKIP.test(node.localName)) return;
+		if (!isElement(node) || SKIP.test(node.localName)) return;
 		if (node.localName === 'br') return text(at.line(), '\n', marks, true);
 		const inner = { ...marks, ...marksOf(node) };
 		for (const child of node.childNodes) inline(child, at, inner, pre || node.localName === 'pre');
@@ -304,11 +295,7 @@ export const linesOfHtml = (
 		);
 	};
 
-	// A fragment as a document's body: a server parser (linkedom) reads only whole documents.
-	const source = /<(?:html|body)[\s>]/i.test(html)
-		? html
-		: `<!doctype html><html><head></head><body>${html}</body></html>`;
-	const body = new parser().parseFromString(source, 'text/html').body;
+	const body = new parser().parseFromString(html, 'text/html').body;
 	if (!body) return null;
 	const lines = linesOf(body, undefined);
 	const carries = (line: Line): boolean =>

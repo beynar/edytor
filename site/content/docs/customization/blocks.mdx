@@ -135,7 +135,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     },
     markdown: {
       type: "(block, content, children, context) => string",
-      description: "Markdown export (toMarkdown): content is the block's text as inline markdown, children its children's markdown; context gives index, indent(text, prefix) and inline(content). Default: the plain form, else the text.",
+      description: "Markdown export (toMarkdown): content is the block's text as inline markdown, children its children's markdown; context gives index, indent(text, prefix) and inline(content). Default: the bundled kind's of that name (in edytor/export, not on the bundled records), else the plain form, else the text.",
     },
     parse: {
       type: "(element: HTMLElement) => data | undefined",

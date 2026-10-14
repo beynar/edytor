@@ -6257,7 +6257,7 @@ export type TextRuleContext = {
 `text` as blocks (see the module comment).
 
 ```ts
-declare const textToBlocks: (text: string, { markdown, type, streaming }?: TextToBlocksOptions) => JSONBlock[];
+declare const textToBlocks: (text: string, { markdown, type }?: TextToBlocksOptions) => JSONBlock[];
 ```
 
 ## TextToBlocksOptions
@@ -6266,13 +6266,11 @@ declare const textToBlocks: (text: string, { markdown, type, streaming }?: TextT
 export type TextToBlocksOptions = {
     markdown?: boolean;
     type?: string;
-    streaming?: boolean;
 };
 ```
 
 - `markdown`: Read markdown (default `true`); `false` keeps every character as text.
 - `type`: The kind of a paragraph (default `paragraph`).
-- `streaming`: The text is still arriving (default `false`): hold back an unfinished last line's block marker or unclosed inline marker, and a table header row without its separator yet, so a streamed preview never shows raw markdown that the next chunk turns into a kind or a mark.
 
 ## ThreadComment
 

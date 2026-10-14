@@ -544,8 +544,9 @@ export type BlockDefinition = {
 	 * Markdown form (`toMarkdown`): `content` is the block's text as inline
 	 * markdown (marks by their own `markdown` forms), `children` its children's
 	 * markdown, blocks apart by a blank line (indent them yourself:
-	 * {@link MarkdownContext.indent}). Default: the `plain` form when the kind
-	 * has one, else the content, then the children.
+	 * {@link MarkdownContext.indent}). Default: the bundled kind's of that
+	 * name (`edytor/export` holds them; the bundled records carry none), else
+	 * the `plain` form when the kind has one, else the content, then the children.
 	 */
 	markdown?: (
 		block: JSONBlock,

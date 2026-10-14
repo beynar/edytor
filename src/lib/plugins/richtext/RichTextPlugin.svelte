@@ -17,15 +17,37 @@
 	import { marksForInsertion } from '$lib/session/editing/text.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
-	import { mediaKinds, richTextMarks } from '$lib/crdt/semantics.js';
+	import { mediaKinds } from '$lib/crdt/semantics.js';
 	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
 	import RichTextControl from './RichTextControl.svelte';
-	import { DEFAULT_CALLOUT_ICON, calloutIcons, calloutPickers, iconOf } from './callouts.js';
+	import {
+		DEFAULT_CALLOUT_ICON,
+		calloutHtml,
+		calloutIcons,
+		calloutPickers,
+		iconOf
+	} from './callouts.js';
 	import { listen } from '$lib/utils/listen.js';
-	import { headingLevel, richTextForms, richTextMarkForms } from '$lib/export/forms.js';
+	import {
+		bulletedForms,
+		calloutForms,
+		dividerForms,
+		headingForms,
+		HEADING_LEVELS,
+		headingLevel,
+		listItemForms,
+		numberedForms,
+		orderedListForms,
+		quoteForms,
+		richTextMarkForms,
+		todoForms,
+		toggleForms,
+		toggleHeadingForms,
+		unorderedListForms
+	} from '$lib/export/forms.js';
 	import { onLastLine } from '$lib/session/navigation.js';
 	import { bodyShows } from '$lib/selection/visibility.js';
 	import { openBody } from './body.js';
@@ -51,12 +73,8 @@
 		formatSubscript: 'subscript'
 	} as const;
 
-	const isNativeFormatInputType = (
-		inputType: string
-	): inputType is keyof typeof nativeFormatMarks => inputType in nativeFormatMarks;
-
 	/** A native disclosure: the browser owns `open` (declared view state). */
-	const disclosure = { element: 'details', viewState: ['open'] };
+	const disclosure = { viewState: ['open'] };
 	/** The kinds drawn as a disclosure: a toggle this view creates opens (`body.open`). */
 	const DISCLOSURES = new Set(['toggle', 'toggle-heading']);
 
@@ -165,8 +183,6 @@
 		{ callout: calloutOptions, checkbox, calloutIcon, emptyBody }: RichTextPluginOptions
 	): ReturnType<Plugin> => {
 		const { kinds, marks: words } = labels;
-		/** The kinds' export and import forms: a callout without its own icon exports the view's. */
-		const forms = richTextForms((data) => iconOf(data, edytor));
 		const marks = richTextMarkForms;
 		/** A new callout's icon. */
 		const icon = calloutOptions?.icon ?? DEFAULT_CALLOUT_ICON;
@@ -340,8 +356,8 @@
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;
-				if (isNativeFormatInputType(inputType)) {
-					const mark = nativeFormatMarks[inputType];
+				if (inputType in nativeFormatMarks) {
+					const mark = nativeFormatMarks[inputType as keyof typeof nativeFormatMarks];
 					prevent(() => operations.setMarkAtRange(mark));
 				} else if (inputType === 'formatRemove') {
 					prevent(() => operations.removeAllMarksAtRange());
@@ -366,55 +382,41 @@
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold: { ...marks.bold, toolbar: { label: words.bold, icon: 'B' } },
-				italic: { ...marks.italic, toolbar: { label: words.italic, icon: 'I' } },
-				underline: { ...marks.underline, toolbar: { label: words.underline, icon: 'U' } },
-				strike: { ...marks.strike, toolbar: { label: words.strike, icon: 'S' } },
-				code: { ...marks.code, toolbar: { label: words.code, icon: '</>' } },
-				// Typing at a link's trailing edge extends it only from inside the anchor.
-				link: { ...marks.link, ...richTextMarks.link },
-				superscript: marks.superscript,
-				subscript: marks.subscript,
-				color: marks.color,
-				highlight: marks.highlight
+				...marks,
+				// The toolbar's marks, by their icons.
+				...Object.fromEntries(
+					(['bold', 'italic', 'underline', 'strike', 'code'] as const).map((name, i) => [
+						name,
+						{
+							...marks[name],
+							toolbar: { label: words[name], icon: ['B', 'I', 'U', 'S', '</>'][i]! }
+						}
+					])
+				)
 			},
 			blocks: {
 				paragraph: {
-					...forms.paragraph,
 					snippet: paragraph,
 					presets: presets('paragraph', [
 						{ label: kinds.paragraph, icon: 'T', keywords: ['paragraph', 'plain'] }
 					])
 				},
 				heading: {
-					...forms.heading,
+					...headingForms,
 					snippet: textThenChildren,
-					presets: presets('heading', [
-						{
-							label: kinds.heading1,
-							icon: 'H₁',
-							keywords: ['h1', 'title'],
-							data: { level: 'h1' },
-							markdown: ['# ']
-						},
-						{
-							label: kinds.heading2,
-							icon: 'H₂',
-							keywords: ['h2', 'subtitle'],
-							data: { level: 'h2' },
-							markdown: ['## ']
-						},
-						{
-							label: kinds.heading3,
-							icon: 'H₃',
-							keywords: ['h3'],
-							data: { level: 'h3' },
-							markdown: ['### ']
-						}
-					])
+					presets: presets(
+						'heading',
+						HEADING_LEVELS.map((level, index) => ({
+							label: [kinds.heading1, kinds.heading2, kinds.heading3][index]!,
+							icon: `H${['₁', '₂', '₃'][index]}`,
+							keywords: [level, ...[['title'], ['subtitle'], []][index]!],
+							data: { level },
+							markdown: [`${'#'.repeat(index + 1)} `]
+						}))
+					)
 				},
 				'bulleted-list-item': {
-					...forms['bulleted-list-item'],
+					...bulletedForms,
 					continues: true,
 					snippet: listItem,
 					presets: presets('bulleted-list-item', [
@@ -427,7 +429,7 @@
 					])
 				},
 				'numbered-list-item': {
-					...forms['numbered-list-item'],
+					...numberedForms,
 					continues: true,
 					snippet: listItem,
 					presets: presets('numbered-list-item', [
@@ -440,7 +442,7 @@
 					])
 				},
 				'todo-item': {
-					...forms['todo-item'],
+					...todoForms,
 					continues: true,
 					// The app's control markup, if any, through its own snippet: the default costs no branch.
 					snippet: checkbox ? todoItemOwn : todoItem,
@@ -455,7 +457,7 @@
 					])
 				},
 				toggle: {
-					...forms.toggle,
+					...toggleForms,
 					continues: true,
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
@@ -474,13 +476,13 @@
 				// kept); from a toggle, `#`, `##` or `###` + space; so `> # ` typed on a new
 				// line is a toggle heading 1.
 				'toggle-heading': {
-					...forms['toggle-heading'],
+					...toggleHeadingForms,
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
 					presets: presets(
 						'toggle-heading',
-						(['h1', 'h2', 'h3'] as const).map((level, index) => {
+						HEADING_LEVELS.map((level, index) => {
 							const hashes = '#'.repeat(index + 1);
 							return {
 								label: [kinds.toggleHeading1, kinds.toggleHeading2, kinds.toggleHeading3][index]!,
@@ -500,13 +502,16 @@
 				// text) and a content (its children, any blocks), which shows even empty
 				// (`body`): Enter at the end of the title goes into it.
 				callout: {
-					...forms.callout,
+					...calloutForms,
 					container: true,
 					body: true,
 					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
 					presets: presets('callout', [
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
+					// A callout without its own icon exports the view's.
+					html: (block, content, children) =>
+						calloutHtml(iconOf(block.data, edytor), content, children),
 					// The block menu's Change icon, while the view lists a picker: the keyboard's way to it.
 					menu: (block) => {
 						const picker = calloutPickers.get(edytor);
@@ -523,22 +528,22 @@
 					}
 				},
 				quote: {
-					...forms.quote,
+					...quoteForms,
 					container: true,
 					snippet: textThenChildren,
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
 					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }])
 				},
 				divider: {
-					...forms.divider,
+					...dividerForms,
 					presets: presets('divider', [
 						{ label: kinds.divider, icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
 					]),
 					empty: { content: [], children: [] }
 				},
-				'ordered-list': { ...forms['ordered-list'], snippet: list },
-				'unordered-list': { ...forms['unordered-list'], snippet: list },
-				'list-item': { ...forms['list-item'], snippet: listItem }
+				'ordered-list': { ...orderedListForms, snippet: list },
+				'unordered-list': { ...unorderedListForms, snippet: list },
+				'list-item': { ...listItemForms, snippet: listItem }
 			}
 		};
 	};

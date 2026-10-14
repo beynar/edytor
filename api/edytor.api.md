@@ -4128,7 +4128,6 @@ export type TextRuleContext = {
 export type TextToBlocksOptions = {
     markdown?: boolean;
     type?: string;
-    streaming?: boolean;
 };
 ```
 
@@ -5037,7 +5036,7 @@ declare const tableBlock: (options?: TableBlockOptions) => JSONBlock;
 
 ```ts
 // clipboard/textBlocks.d.ts
-declare const textToBlocks: (text: string, { markdown, type, streaming }?: TextToBlocksOptions) => JSONBlock[];
+declare const textToBlocks: (text: string, { markdown, type }?: TextToBlocksOptions) => JSONBlock[];
 ```
 
 ### turnCommands

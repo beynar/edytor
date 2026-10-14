@@ -11,7 +11,7 @@ icon: file-down
 | `toHTML(doc, options?)` | HTML: each block by its kind's `html` form, a run of list items in its `ul` or `ol`, marks as their elements. |
 | `toMarkdown(doc, options?)` | Markdown (CommonMark with GFM tables, task lists and strikethrough). |
 | `fromHTML(html, options?)` | A `JSONDoc`, read the way a paste reads HTML. Safe: only known kinds and marks survive. |
-| `textToBlocks(text, options?)` | `JSONBlock[]` from markdown or plain text ([details](/docs/editor/suggestions#text-to-blocks)). |
+| `textToBlocks(text, options?)` | `JSONBlock[]` from markdown or plain text: the full reader, with GFM tables, code languages, nested marks and `streaming` ([details](/docs/editor/suggestions#text-to-blocks)). The editor's paste reads with a smaller one. |
 
 `doc` is a `JSONDoc` (`{ children }`, what `onChange` hands you) or a `JSONBlock[]`.
 
@@ -46,6 +46,8 @@ The document's JSON is the lossless format: store `onChange`'s value and give it
 - a code block is one `<pre>` with its language (`<pre data-language="ts"><code class="language-ts">`);
 - a table is a `<table>`, its header row's cells `<th>`; a toggle a `<details>` with its `<summary>`; a callout a `<div data-edytor-callout>` naming its icon; an image a `<figure>` with its caption;
 - marks are their elements: `<strong>`, `<em>`, `<a href>`, `<code>`, `<s>`, a color's `<span style>`; a block's colours are classes (`block-color-red`).
+
+The clipboard writes the same forms, except three that only `edytor/export` holds: a toggle's `<details>` (a copy writes its text, then its body), a code block's one `<pre>` naming its language (a copy writes a `<pre>` per line), and the `<ul>`/`<ol>` around sibling items (a copy writes the `<li>`s). They stay out of the editor's bundle.
 
 Every value is escaped, a link's href and an image's or a media block's source go through the same sanitizers as the editor's render (a `javascript:` link is an `<a>` with no href), and ids and empty data are never written.
 
@@ -134,7 +136,7 @@ export const fieldKinds = {
 };
 ```
 
-The forms are the fields of your [kind record](/docs/customization/blocks#export-and-import), so one object serves the plugin and the server: `html`, `plain` and `markdown` export, `parse` imports. A mark's are `tag`, `attributes`, `markdown` (its delimiters, `['==', '==']`) and `parse`; an atom's `html`, `plain`, `markdown` and `parse`. A kind without a `markdown` form exports its `plain` form, else its text.
+The forms are the fields of your [kind record](/docs/customization/blocks#export-and-import), so one object serves the plugin and the server: `html`, `plain` and `markdown` export, `parse` imports. A mark's are `tag`, `attributes`, `markdown` (its delimiters, `['==', '==']`) and `parse`; an atom's `html`, `plain`, `markdown` and `parse`. The bundled kinds' `markdown` forms, and the three HTML forms above, live in `edytor/export` by kind name, not on the records, so the editor ships none of them: a record's own form wins, a record without one gets the bundled one of its name (in a view too), else its `plain` form, else its text.
 
 `markdown(block, content, children, context)` receives the block, its text as inline markdown, its children's markdown (blocks a blank line apart) and `context`: `index`, its position among same-kind siblings (a numbered item's number), `indent(text, prefix)`, which prefixes every line, and `inline(content)`, which writes any rich text as inline markdown (a table's cells).
 

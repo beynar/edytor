@@ -82,6 +82,7 @@ export const normalizeRole = (role: BlockRole | undefined): NormalizedRole => {
 };
 
 /** Freeze `value` and everything in it: the tables are shared by every document. */
+/* @__NO_SIDE_EFFECTS__ */
 const frozen = <T>(value: T): T => {
 	if (value && typeof value === 'object' && !Object.isFrozen(value)) {
 		Object.freeze(value);
@@ -375,7 +376,7 @@ export const equationSemantics = /* @__PURE__ */ semanticsOf(equationKinds);
  * plugins are not default plugins of `<Edytor>`, but their roles are here so their
  * blocks read the same on every replica.
  */
-export const defaultSemantics = withMarks(
+export const defaultSemantics = /* @__PURE__ */ withMarks(
 	semanticsOf(
 		richTextKinds,
 		codeKinds,
@@ -387,7 +388,7 @@ export const defaultSemantics = withMarks(
 		tableKinds,
 		equationKinds
 	),
-	{ ...richTextMarks, ...commentMarks }
+	/* @__PURE__ */ Object.assign({}, richTextMarks, commentMarks)
 );
 
 /**

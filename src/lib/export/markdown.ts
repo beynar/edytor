@@ -4,35 +4,63 @@
  * document, no DOM; Worker-safe.
  *
  * Plain (`markdown: false`): blank lines split paragraphs; a single newline
- * stays in the text. Markdown (the default, CommonMark and GFM's common
- * set), line by line: `#`–`######` headings (deeper than `###` read as
- * `###`), `-`/`*`/`+` bullets, `1.` numbers, `[ ]`/`[x]` to-dos (also after
- * a bullet), list items nested by indentation (under the item whose marker
- * is left of theirs), `>` quotes (consecutive lines one quote, its first
- * paragraph its text), a GitHub alert (`> [!NOTE]`) a callout (a leading
- * emoji its icon), `<details>`/`<summary>` a toggle, `---` dividers,
- * fenced code (its language in `data.language`; an unclosed fence keeps
- * its lines: a stream cut mid-block), `$$` equations, a line holding only
- * an image (`![alt](src "caption")`) an image, GFM tables (`| a | b |`
- * over `| --- | --- |`) a table whose first row is a header, and
- * paragraphs of consecutive lines joined by a space (a line ending in `\`
- * or two spaces a line break). Inline: `**bold**`, `*italic*` or
- * `_italic_`, `***both***`, `~~strike~~`, `` `code` ``, `[text](url)`
- * and `<https://…>` links (a link's href through the link sanitizer: a
- * `javascript:` URL is text), nested (`**[bold link](url)**`), `\`
- * escapes. The kinds and marks are the bundled plugins'.
+ * stays in the text. Markdown (the default) is parsed by
+ * `@tanstack/markdown` (`parseMarkdown`, its serializable AST) and the AST
+ * mapped to blocks: headings (deeper than `###` read as `###`), bulleted,
+ * numbered and to-do items nested as the list nests, quotes (their first
+ * paragraph their text), fenced code (its language in `data.language`),
+ * GFM tables (a table whose first row is a header), dividers, a paragraph
+ * holding only an image an image, and paragraphs (a soft break a space, a
+ * hard break a newline). Inline: bold, italic, strike, code, links
+ * (`[text](url)`, `<https://…>`; an href through the link sanitizer: a
+ * `javascript:` URL is its text), nested. Raw HTML is never trusted: it
+ * stays text.
+ *
+ * Edytor's own syntax is a TanStack extension each, not a second parser:
+ * a GitHub alert (`> [!NOTE]`) is a callout (a leading emoji its icon),
+ * `<details>`/`<summary>` a toggle, `$$ … $$` an equation, an autolink a
+ * link, and, given `components`, an MDX-lite tag (`<Endpoint id="x" />`)
+ * a block of the kind it names.
  *
  * `streaming: true` reads a text that is still arriving (a model's answer
  * so far): the last line, while it has no newline yet, is held back while
- * it is only a block marker (`#`, `-`, `1.`, a table row), and from an
- * inline marker it has not closed yet (`**bol`); a table's header row
- * waits for its separator row. Each call then shows only what will not
- * change kind or marks when more arrives.
+ * it is only a block marker (`#`, `-`, `1.`, a table row, a tag being
+ * typed), and from an inline marker it has not closed yet (`**bol`); a
+ * table's header row waits for its separator row; then TanStack's streaming
+ * profile drops a trailing empty heading or list item. Each call then
+ * shows only what will not change kind or marks when more arrives.
  */
+import { parseMarkdown } from '@tanstack/markdown/parser';
+import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming';
+import type {
+	BlockNode,
+	BlockParseContext,
+	ComponentNode,
+	InlineNode,
+	MarkdownExtension
+} from '@tanstack/markdown';
 import type { JSONBlock, JSONText, SerializableContent } from '../utils/json.js';
 import { sanitizeLinkHref } from '../utils/sanitize.js';
+import { safeImageSrc } from '../plugins/image/image.js';
 import { tableBlock } from '../crdt/tables.js';
-import { lineKind } from '../clipboard/textBlocks.js';
+
+/** MDX-lite tags by name, each the kind it reads as: `{ Endpoint: 'endpoint' }`. */
+export type MarkdownComponents = Readonly<Record<string, string>>;
+
+/** A tag or line `fromMarkdown` kept as text, with why. */
+export type MarkdownIssue = {
+	/**
+	 * `component`: a tag `components` does not name; `expression`: an
+	 * attribute whose value is not a string, a number, `true` or `false`
+	 * (`{a + b}`, `{...props}`); `unclosed`: a tag without its closing tag;
+	 * `import` / `export`: an MDX import or export line.
+	 */
+	reason: 'component' | 'expression' | 'unclosed' | 'import' | 'export';
+	/** The line kept as text. */
+	source: string;
+	/** The tag's name, for a tag. */
+	name?: string;
+};
 
 export type MarkdownOptions = {
 	/** Read markdown (default `true`); `false` keeps every character as text. */
@@ -46,12 +74,428 @@ export type MarkdownOptions = {
 	 * markdown that the next chunk turns into a kind or a mark.
 	 */
 	streaming?: boolean;
+	/**
+	 * MDX-lite: the tags to read, each as the kind it names
+	 * (`{ Endpoint: 'endpoint', Callout: 'callout' }`). Literal attributes
+	 * (`"text"`, `{1}`, `{true}`) become the block's data; the tag's
+	 * markdown its text (one line) or its text and children (lines).
+	 */
+	components?: MarkdownComponents;
+	/** Told of each tag, expression, import or export kept as text. */
+	onUnknown?: (issue: MarkdownIssue) => void;
 };
 
 type Marks = Record<string, SerializableContent>;
+type Data = Record<string, SerializableContent>;
 
-/** ASCII punctuation: what a backslash escapes. */
-const PUNCT = /[!-/:-@[-`{-~]/;
+/** The data a component node carries, typed (a node's `attributes` are strings). */
+const dataOf = new WeakMap<object, Data>();
+/** The components of Edytor's own syntax: their names cannot be a tag's (`:`). */
+const CALLOUT = 'edytor:callout';
+const TOGGLE = 'edytor:toggle';
+const EQUATION = 'edytor:equation';
+
+const component = (name: string, data: Data, children: BlockNode[]): ComponentNode => {
+	const node: ComponentNode = {
+		type: 'component',
+		name,
+		attributes: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+		children
+	};
+	dataOf.set(node, data);
+	return node;
+};
+
+/** The lines from `from` up to the closing line `close` matches (nesting by `open`), and where it is. */
+const blockUntil = (
+	lines: string[],
+	from: number,
+	close: RegExp,
+	open?: RegExp
+): { body: string[]; end: number } => {
+	let depth = 0;
+	for (let i = from; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (close.test(line)) {
+			if (depth === 0) return { body: lines.slice(from, i), end: i };
+			depth--;
+		} else if (open?.test(line)) depth++;
+	}
+	return { body: lines.slice(from), end: -1 };
+};
+
+/** `<https://…>` and `<mailto:…>` autolinks (the parser keeps them as text). */
+const autolinks: MarkdownExtension = {
+	name: 'edytor-autolinks',
+	inlineParser: {
+		markers: '<',
+		parse(context) {
+			if (context.inLink) return undefined;
+			const auto = /^<((?:https?|mailto):[^\s<>]+)>/i.exec(context.source.slice(context.index));
+			if (!auto) return undefined;
+			return {
+				node: { type: 'link', href: auto[1]!, children: [{ type: 'text', value: auto[1]! }] },
+				length: auto[0].length
+			};
+		}
+	}
+};
+
+const ALERT = /^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i;
+const ICON = /^(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|\p{Emoji_Modifier})*)\s+/u;
+
+/** A GitHub alert as a callout, a leading emoji on its first line its icon. */
+const callouts: MarkdownExtension = {
+	name: 'edytor-callouts',
+	parseBlock(context) {
+		if (!ALERT.test(context.lines[context.index] ?? '')) return undefined;
+		const body: string[] = [];
+		let i = context.index + 1;
+		for (; i < context.lines.length; i++) {
+			const quoted = /^ {0,3}>\s?(.*)$/.exec(context.lines[i]!);
+			if (!quoted) break;
+			body.push(quoted[1]!);
+		}
+		context.consume(i - context.index);
+		const icon = ICON.exec(body[0] ?? '');
+		if (icon) body[0] = body[0]!.slice(icon[0].length);
+		return component(CALLOUT, icon ? { icon: icon[1]! } : {}, context.parseBlocks(body.join('\n')));
+	}
+};
+
+/** A to-do box without its bullet (`[ ] task`) as a to-do item, as the editor's paste reads it. */
+const bareTodos: MarkdownExtension = {
+	name: 'edytor-bare-todos',
+	parseBlock(context) {
+		const todo = /^\[([ xX])\]\s+(.*)$/.exec(context.lines[context.index] ?? '');
+		if (!todo) return undefined;
+		context.consume(1);
+		const children: BlockNode[] = [{ type: 'paragraph', children: context.parseInline(todo[2]!) }];
+		return {
+			type: 'list',
+			ordered: false,
+			items: [{ type: 'listItem', checked: todo[1] !== ' ', children }]
+		};
+	}
+};
+
+const DETAILS = /^\s*<details>\s*$/i;
+const DETAILS_END = /^\s*<\/details>\s*$/i;
+const SUMMARY = /^\s*<summary>(?:<(h[1-6])>)?(.*?)(?:<\/h[1-6]>)?<\/summary>\s*$/i;
+
+/** `<details>` and its `<summary>` as a toggle (a `<summary><h2>` a toggle heading). */
+const details: MarkdownExtension = {
+	name: 'edytor-details',
+	parseBlock(context) {
+		if (!DETAILS.test(context.lines[context.index] ?? '')) return undefined;
+		const { body, end } = blockUntil(context.lines, context.index + 1, DETAILS_END, DETAILS);
+		context.consume((end === -1 ? context.lines.length : end + 1) - context.index);
+		const first = body.findIndex((line) => line.trim());
+		const summary = first === -1 ? null : SUMMARY.exec(body[first]!);
+		const level = summary?.[1]?.toLowerCase();
+		const data: Data = level ? { level: level === 'h1' || level === 'h2' ? level : 'h3' } : {};
+		const head: BlockNode[] = summary
+			? [{ type: 'paragraph', children: context.parseInline(summary[2]!) }]
+			: [];
+		if (summary) body.splice(first, 1);
+		if (summary) data.summary = true;
+		return component(TOGGLE, data, [...head, ...context.parseBlocks(body.join('\n'))]);
+	}
+};
+
+/** `$$` … `$$` lines as an equation (an unclosed one runs to the end: a stream cut mid-block). */
+const equations: MarkdownExtension = {
+	name: 'edytor-equations',
+	parseBlock(context) {
+		if (!/^\s*\$\$\s*$/.test(context.lines[context.index] ?? '')) return undefined;
+		const { body, end } = blockUntil(context.lines, context.index + 1, /^\s*\$\$\s*$/);
+		context.consume((end === -1 ? context.lines.length : end + 1) - context.index);
+		return component(EQUATION, { expression: body.join('\n').trim() }, []);
+	}
+};
+
+/** An MDX-lite opening tag's parts, or why it is text. */
+type Tag =
+	| { name: string; data: Data; selfClosing: boolean; rest: string }
+	| { name: string; issue: 'expression' };
+
+/** The tag opening `line` (`<Name a="x" b={1} c>`), its literal attributes as data. */
+const openingTag = (line: string): Tag | null => {
+	const head = /^\s*<([A-Z][\w.]*)/.exec(line);
+	if (!head) return null;
+	const name = head[1]!;
+	const data: Data = {};
+	let i = head[0].length;
+	for (;;) {
+		const space = /^\s*/.exec(line.slice(i))![0];
+		i += space.length;
+		if (line.startsWith('/>', i))
+			return { name, data, selfClosing: true, rest: line.slice(i + 2).trim() };
+		if (line[i] === '>') return { name, data, selfClosing: false, rest: line.slice(i + 1) };
+		const attr = space || i === head[0].length ? /^[A-Za-z_][\w:-]*/.exec(line.slice(i)) : null;
+		if (!attr) return { name, issue: 'expression' };
+		i += attr[0].length;
+		if (line[i] !== '=') {
+			data[attr[0]] = true;
+			continue;
+		}
+		i++;
+		const quote = line[i];
+		if (quote === '"' || quote === "'") {
+			const close = line.indexOf(quote, i + 1);
+			if (close === -1) return { name, issue: 'expression' };
+			data[attr[0]] = line.slice(i + 1, close);
+			i = close + 1;
+			continue;
+		}
+		const literal = /^\{\s*(true|false|-?\d+(?:\.\d+)?)\s*\}/.exec(line.slice(i));
+		if (!literal) return { name, issue: 'expression' };
+		data[attr[0]] =
+			literal[1] === 'true' ? true : literal[1] === 'false' ? false : Number(literal[1]);
+		i += literal[0].length;
+	}
+};
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * MDX-lite: a tag `components` names as a component node; any other tag,
+ * an expression, an import or an export declines (the parser keeps the
+ * line as text) and is reported.
+ */
+const mdx = (
+	components: MarkdownComponents,
+	report: (issue: MarkdownIssue) => void,
+	streaming: boolean
+): MarkdownExtension => ({
+	name: 'edytor-mdx',
+	parseBlock(context: BlockParseContext) {
+		const line = context.lines[context.index] ?? '';
+		const statement = /^(import|export)\s/.exec(line);
+		if (statement) {
+			report({ reason: statement[1] as 'import' | 'export', source: line });
+			return undefined;
+		}
+		const tag = openingTag(line);
+		if (!tag) return undefined;
+		if (!Object.hasOwn(components, tag.name)) {
+			report({ reason: 'component', name: tag.name, source: line });
+			return undefined;
+		}
+		if ('issue' in tag) {
+			report({ reason: tag.issue, name: tag.name, source: line });
+			return undefined;
+		}
+		const closing = `</${tag.name}>`;
+		if (tag.selfClosing || tag.rest.trimEnd().endsWith(closing)) {
+			if (tag.selfClosing && tag.rest) return undefined;
+			context.consume(1);
+			const text = tag.selfClosing ? '' : tag.rest.trimEnd().slice(0, -closing.length).trim();
+			const children: BlockNode[] = text
+				? [{ type: 'paragraph', children: context.parseInline(text) }]
+				: [];
+			return component(tag.name, tag.data, children);
+		}
+		if (tag.rest.trim()) {
+			report({ reason: 'unclosed', name: tag.name, source: line });
+			return undefined;
+		}
+		const name = escapeRegExp(tag.name);
+		const { body, end } = blockUntil(
+			context.lines,
+			context.index + 1,
+			new RegExp(`^\\s*</${name}>\\s*$`),
+			new RegExp(`^\\s*<${name}(?:\\s[^>]*)?>\\s*$`)
+		);
+		if (end === -1 && !streaming) {
+			report({ reason: 'unclosed', name: tag.name, source: line });
+			return undefined;
+		}
+		context.consume((end === -1 ? context.lines.length : end + 1) - context.index);
+		return component(tag.name, tag.data, context.parseBlocks(body.join('\n')));
+	}
+});
+
+/** Inline nodes as text runs, `marks` on every run (nested marks add up), equal runs merged. */
+const inline = (nodes: InlineNode[], cell = false): JSONText[] => {
+	const out: JSONText[] = [];
+	const push = (value: string, marks: Marks) => {
+		if (!value) return;
+		const last = out.at(-1);
+		if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += value;
+		else out.push(Object.keys(marks).length ? { text: value, marks } : { text: value });
+	};
+	const walk = (nodes: InlineNode[], marks: Marks) => {
+		for (const node of nodes)
+			switch (node.type) {
+				case 'text': {
+					const text = node.value.replace(/\n/g, ' ');
+					push(cell ? text.replace(/<br\s*\/?>/gi, '\n') : text, marks);
+					break;
+				}
+				case 'inlineCode':
+					push(node.value, { ...marks, code: true });
+					break;
+				case 'strong':
+					walk(node.children, { ...marks, bold: true });
+					break;
+				case 'emphasis':
+					walk(node.children, { ...marks, italic: true });
+					break;
+				case 'strike':
+					walk(node.children, { ...marks, strike: true });
+					break;
+				case 'link': {
+					const href = sanitizeLinkHref(node.href);
+					walk(node.children, href ? { ...marks, link: { href } } : marks);
+					break;
+				}
+				case 'image':
+					push(node.alt, marks);
+					break;
+				case 'break':
+					push('\n', marks);
+					break;
+				case 'inlineHtml':
+					push(node.value, marks);
+					break;
+				case 'footnoteReference':
+					push(`[^${node.id}]`, marks);
+					break;
+				case 'inlineComponent':
+					walk(node.children, marks);
+					break;
+			}
+	};
+	walk(nodes, {});
+	const last = out.at(-1);
+	if (last && !last.marks) last.text = last.text.replace(/ +$/, '');
+	if (last && !last.text) out.pop();
+	if (!out.length) out.push({ text: '' });
+	return out;
+};
+
+/** A code block's language as stored: a short name, else none. */
+const languageOf = (name: string | undefined) =>
+	name && /^[\w#+.-]{1,40}$/.test(name) ? name : undefined;
+
+/** The mapping's settings: the paragraph kind and the components by name. */
+type Reading = { type: string; components: MarkdownComponents };
+
+/** A container's blocks as its own text (a leading paragraph's) and its children. */
+const split = (blocks: JSONBlock[], reading: Reading) => {
+	const first = blocks[0]?.type === reading.type ? blocks.shift()! : undefined;
+	return { content: first?.content ?? [], children: blocks };
+};
+const withChildren = (block: JSONBlock, children: JSONBlock[]): JSONBlock =>
+	children.length ? { ...block, children } : block;
+
+/** AST blocks as Edytor blocks. */
+const blocks = (nodes: BlockNode[], reading: Reading): JSONBlock[] =>
+	nodes.flatMap((node) => block(node, reading));
+
+const block = (node: BlockNode, reading: Reading): JSONBlock[] => {
+	switch (node.type) {
+		case 'heading':
+			return [
+				{
+					type: 'heading',
+					data: { level: `h${Math.min(3, node.depth)}` },
+					content: inline(node.children)
+				}
+			];
+		case 'paragraph': {
+			const only = node.children.filter((child) => child.type !== 'text' || child.value.trim());
+			const image = only.length === 1 && only[0]!.type === 'image' ? only[0] : null;
+			// A safe source, or a relative one (a markdown file's own `./cover.png`).
+			const src = image && (safeImageSrc(image.src) ?? (/^[^:]*$/.test(image.src) && image.src));
+			if (image && src)
+				return [
+					{
+						type: 'image',
+						data: { src, ...(image.alt && { alt: image.alt }) },
+						content: image.title ? [{ text: image.title }] : []
+					}
+				];
+			return [{ type: reading.type, content: inline(node.children) }];
+		}
+		case 'code': {
+			const language = languageOf(node.lang);
+			return [
+				{
+					type: 'code',
+					...(language && { data: { language } }),
+					content: [],
+					children: node.value
+						? node.value.split('\n').map((text) => ({ type: 'codeLine', content: [{ text }] }))
+						: []
+				}
+			];
+		}
+		case 'list':
+			return node.items.map((item) => {
+				const { content, children } = split(blocks(item.children, reading), reading);
+				const own: JSONBlock =
+					item.checked !== undefined
+						? { type: 'todo-item', data: { checked: item.checked }, content }
+						: { type: node.ordered ? 'numbered-list-item' : 'bulleted-list-item', content };
+				return withChildren(own, children);
+			});
+		case 'blockquote': {
+			const { content, children } = split(blocks(node.children, reading), reading);
+			return [withChildren({ type: 'quote', content }, children)];
+		}
+		case 'table': {
+			const cells = [node.header, ...node.rows].map((row) =>
+				row.map((cell) => {
+					const runs = inline(cell.children, true);
+					return runs.length === 1 && !runs[0]!.text ? '' : runs;
+				})
+			);
+			return [tableBlock({ cells, headerRow: true })];
+		}
+		case 'thematicBreak':
+			return [{ type: 'divider', content: [] }];
+		case 'html':
+			return [{ type: reading.type, content: [{ text: node.value }] }];
+		case 'footnotes':
+			return node.items.flatMap((item) => {
+				const inner = blocks(item.children, reading);
+				const head = inner[0]?.type === reading.type ? inner.shift()! : null;
+				const label = { text: `[^${item.id}]: ` };
+				return [{ type: reading.type, content: [label, ...(head?.content ?? [])] }, ...inner];
+			});
+		case 'callout':
+			return [withChildren({ type: 'callout', content: [] }, blocks(node.children, reading))];
+		case 'component': {
+			const data = dataOf.get(node) ?? node.attributes;
+			const inner = blocks(node.children, reading);
+			if (node.name === EQUATION) return [{ type: 'equation', data, content: [] }];
+			if (node.name === TOGGLE) {
+				const { summary, ...rest } = data;
+				const head = summary ? inner.shift() : undefined;
+				const level = Object.keys(rest).length ? { data: rest } : {};
+				return [
+					withChildren(
+						{
+							type: rest.level ? 'toggle-heading' : 'toggle',
+							...level,
+							content: head?.content ?? []
+						},
+						inner
+					)
+				];
+			}
+			const type = node.name === CALLOUT ? 'callout' : reading.components[node.name]!;
+			const { content, children } = split(inner, reading);
+			const own: JSONBlock = Object.keys(data).length ? { type, data, content } : { type, content };
+			return [withChildren(own, children)];
+		}
+	}
+};
+
+// ——— Streaming: what of a text still arriving shows now ———
+
 const isSpace = (c: string | undefined) => c === undefined || /\s/.test(c);
 const isWord = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
 
@@ -70,414 +514,28 @@ const codeEnd = (text: string, at: number, length: number) => {
 	return -1;
 };
 
-/** The index after a link's `](dest "title")` starting at `at` (`(`), its href; else null. */
-const destinationAt = (text: string, at: number): { end: number; href: string } | null => {
-	if (text[at] !== '(') return null;
-	let i = at + 1;
-	while (text[i] === ' ') i++;
-	let href: string;
-	if (text[i] === '<') {
-		const close = text.indexOf('>', i);
-		if (close === -1) return null;
-		href = text.slice(i + 1, close);
-		i = close + 1;
-	} else {
-		let depth = 0;
-		const start = i;
-		for (; i < text.length; i++) {
-			const c = text[i]!;
-			if (c === '\\') i++;
-			else if (c === '(') depth++;
-			else if (c === ')' && depth-- === 0) break;
-			else if (/\s/.test(c)) break;
-		}
-		href = text.slice(start, i).replace(/\\(.)/g, '$1');
+/** The index after a link's `](dest "title")` starting at `at` (`(`); else -1. */
+const destinationEnd = (text: string, at: number) => {
+	let depth = 0;
+	for (let i = at + 1; i < text.length; i++) {
+		const c = text[i];
+		if (c === '\\') i++;
+		else if (c === '(') depth++;
+		else if (c === ')' && depth-- === 0) return i + 1;
 	}
-	while (text[i] === ' ') i++;
-	if (text[i] === '"' || text[i] === "'") {
-		const close = text.indexOf(text[i]!, i + 1);
-		if (close === -1) return null;
-		i = close + 1;
-		while (text[i] === ' ') i++;
-	}
-	return text[i] === ')' ? { end: i + 1, href } : null;
+	return -1;
 };
 
-/** The `]` closing the link label opened at `at` (`[`), skipping code spans and escapes; or -1. */
+/** The `]` closing the link label opened at `at` (`[`), skipping escapes; or -1. */
 const labelEnd = (text: string, at: number) => {
 	let depth = 0;
 	for (let i = at + 1; i < text.length; i++) {
 		const c = text[i];
 		if (c === '\\') i++;
-		else if (c === '`') {
-			let n = 0;
-			while (text[i + n] === '`') n++;
-			const end = codeEnd(text, i, n);
-			if (end !== -1) i = end + n - 1;
-		} else if (c === '[') depth++;
+		else if (c === '[') depth++;
 		else if (c === ']' && depth-- === 0) return i;
 	}
 	return -1;
-};
-
-/**
- * The closing delimiter run of the emphasis `char` × `length` opened at
- * `at`: the first run of at least `length` of them after a non-space
- * (an `_` not followed by a letter), skipping code spans, links and
- * escapes. Returns where the closing `length` characters start.
- */
-const emphasisEnd = (text: string, at: number, char: string, length: number) => {
-	for (let i = at + length; i < text.length; i++) {
-		const c = text[i];
-		if (c === '\\') {
-			i++;
-			continue;
-		}
-		if (c === '`') {
-			let n = 0;
-			while (text[i + n] === '`') n++;
-			const end = codeEnd(text, i, n);
-			if (end !== -1) i = end + n - 1;
-			continue;
-		}
-		if (c === '[') {
-			const end = labelEnd(text, i);
-			const link = end !== -1 ? destinationAt(text, end + 1) : null;
-			if (link) i = link.end - 1;
-			continue;
-		}
-		if (c !== char) continue;
-		let j = i;
-		while (text[j] === char) j++;
-		const run = j - i;
-		if (
-			run >= length &&
-			!isSpace(text[i - 1]) &&
-			i > at + length &&
-			!(char === '_' && isWord(text[j]))
-		)
-			return j - length;
-		i = j - 1;
-	}
-	return -1;
-};
-
-/** The marks of an emphasis run: `*` italic, `**` bold, `***` both, `~~` strike. */
-const emphasisMarks = (char: string, length: number): Marks =>
-	char === '~'
-		? { strike: true }
-		: length === 1
-			? { italic: true }
-			: length === 2
-				? { bold: true }
-				: { bold: true, italic: true };
-
-/** Inline markdown as text runs, `marks` on every run (nested marks add up). */
-const inline = (text: string, marks: Marks = {}): JSONText[] => {
-	const out: JSONText[] = [];
-	let plain = '';
-	const push = (value: string, own: Marks) => {
-		if (!value) return;
-		const last = out.at(-1);
-		if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(own)) last.text += value;
-		else out.push(Object.keys(own).length ? { text: value, marks: own } : { text: value });
-	};
-	const flush = () => {
-		push(plain, marks);
-		plain = '';
-	};
-	for (let i = 0; i < text.length; ) {
-		const c = text[i]!;
-		if (c === '\\' && PUNCT.test(text[i + 1] ?? '')) {
-			plain += text[i + 1];
-			i += 2;
-			continue;
-		}
-		if (c === '`') {
-			let n = 0;
-			while (text[i + n] === '`') n++;
-			const end = codeEnd(text, i, n);
-			if (end === -1) {
-				plain += '`'.repeat(n);
-				i += n;
-				continue;
-			}
-			let code = text.slice(i + n, end);
-			if (/^ .*[^ ].* $/.test(code)) code = code.slice(1, -1);
-			flush();
-			push(code, { ...marks, code: true });
-			i = end + n;
-			continue;
-		}
-		if (c === '<') {
-			const auto = /^<((?:https?|mailto):[^\s<>]+)>/i.exec(text.slice(i));
-			const href = auto && sanitizeLinkHref(auto[1]);
-			if (auto && href) {
-				flush();
-				push(auto[1]!, { ...marks, link: { href } });
-				i += auto[0].length;
-				continue;
-			}
-		}
-		if (c === '[' || (c === '!' && text[i + 1] === '[')) {
-			const image = c === '!';
-			const open = image ? i + 1 : i;
-			const end = labelEnd(text, open);
-			const link = end !== -1 ? destinationAt(text, end + 1) : null;
-			if (link) {
-				flush();
-				const label = text.slice(open + 1, end);
-				const href = sanitizeLinkHref(link.href);
-				// An inline image keeps its alt text; an unsafe href keeps the label as text.
-				if (image) out.push(...inline(label, marks));
-				else out.push(...inline(label, href ? { ...marks, link: { href } } : marks));
-				i = link.end;
-				continue;
-			}
-		}
-		if (c === '*' || c === '_' || (c === '~' && text[i + 1] === '~')) {
-			let n = 0;
-			while (text[i + n] === c) n++;
-			const length = c === '~' ? 2 : Math.min(n, 3);
-			const opens = n === length && !isSpace(text[i + n]) && !(c === '_' && isWord(text[i - 1]));
-			const end = opens ? emphasisEnd(text, i, c, length) : -1;
-			if (end !== -1) {
-				flush();
-				for (const part of inline(text.slice(i + length, end), {
-					...marks,
-					...emphasisMarks(c, length)
-				}))
-					push(part.text, part.marks ?? {});
-				i = end + length;
-				continue;
-			}
-			plain += c.repeat(n);
-			i += n;
-			continue;
-		}
-		plain += c;
-		i++;
-	}
-	flush();
-	if (!out.length) out.push({ text: '' });
-	return out;
-};
-
-/** A table row's cells: split on unescaped `|` outside code spans, the outer pipes dropped. */
-const cellsOf = (line: string) => {
-	const cells: string[] = [];
-	let cell = '';
-	const text = line.trim().replace(/^\|/, '');
-	for (let i = 0; i < text.length; i++) {
-		const c = text[i]!;
-		if (c === '\\' && text[i + 1] === '|') {
-			cell += '|';
-			i++;
-		} else if (c === '`') {
-			let n = 0;
-			while (text[i + n] === '`') n++;
-			const end = codeEnd(text, i, n);
-			const to = end === -1 ? i + n : end + n;
-			cell += text.slice(i, to);
-			i = to - 1;
-		} else if (c === '|') {
-			cells.push(cell.trim());
-			cell = '';
-		} else cell += c;
-	}
-	if (cell.trim() || !/\|\s*$/.test(line)) cells.push(cell.trim());
-	return cells;
-};
-const TABLE_ROW = /^\s*\|.*\|?\s*$|^[^|]*\|.*$/;
-const TABLE_SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
-const ALERT = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i;
-const ICON =
-	/^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|\p{Emoji_Modifier})*)\s+/u;
-const FENCE = /^(\s*)(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/;
-const IMAGE_LINE =
-	/^!\[((?:\\.|[^\]\\])*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"((?:\\.|[^"\\])*)")?\s*\)$/;
-
-/** A code block's language as stored: a short name, else none. */
-const languageOf = (name: string | undefined) =>
-	name && /^[\w#+.-]{1,40}$/.test(name) ? name : undefined;
-
-/** Markdown lines as blocks (see the module comment). */
-const parse = (lines: string[], type: string): JSONBlock[] => {
-	const root: JSONBlock[] = [];
-	/** The containers open (`<details>`), their children the current output. */
-	const containers: JSONBlock[] = [];
-	const out = () => containers.at(-1)?.children ?? root;
-	/** The list items open, with their marker's column. */
-	const levels: { block: JSONBlock; indent: number }[] = [];
-	let paragraph: string[] | null = null;
-	const close = () => {
-		if (paragraph) {
-			let text = '';
-			paragraph.forEach((line, index) => {
-				if (index === 0) text = line;
-				else
-					text = /(?:\\| {2,})$/.test(text)
-						? `${text.replace(/(?:\\| +)$/, '')}\n${line}`
-						: `${text} ${line}`;
-			});
-			out().push({ type, content: inline(text.replace(/ +$/, '')) });
-		}
-		paragraph = null;
-	};
-	for (let i = 0; i < lines.length; i++) {
-		const raw = lines[i]!;
-		const line = raw.trim();
-		const fence = FENCE.exec(raw);
-		if (fence) {
-			close();
-			levels.length = 0;
-			const [, space, marks, name] = fence;
-			const children: JSONBlock[] = [];
-			const closing = new RegExp(`^\\s*${marks![0] === '`' ? '`' : '~'}{${marks!.length},}\\s*$`);
-			for (i++; i < lines.length && !closing.test(lines[i]!); i++) {
-				const text = lines[i]!.startsWith(space!)
-					? lines[i]!.slice(space!.length)
-					: lines[i]!.trimStart();
-				children.push({ type: 'codeLine', content: [{ text }] });
-			}
-			const language = languageOf(name);
-			out().push({ type: 'code', ...(language && { data: { language } }), content: [], children });
-			continue;
-		}
-		if (!line) {
-			close();
-			levels.length = 0;
-			continue;
-		}
-		if (/^<details>$/i.test(line)) {
-			close();
-			levels.length = 0;
-			const toggle: JSONBlock = { type: 'toggle', content: [], children: [] };
-			out().push(toggle);
-			containers.push(toggle);
-			continue;
-		}
-		const summary = /^<summary>(?:<(h[1-6])>)?(.*?)(?:<\/h[1-6]>)?<\/summary>$/i.exec(line);
-		if (summary && containers.length) {
-			close();
-			const toggle = containers.at(-1)!;
-			toggle.content = inline(summary[2]!);
-			if (summary[1]) {
-				toggle.type = 'toggle-heading';
-				const level = summary[1].toLowerCase();
-				toggle.data = { level: level === 'h1' || level === 'h2' ? level : 'h3' };
-			}
-			continue;
-		}
-		if (/^<\/details>$/i.test(line) && containers.length) {
-			close();
-			levels.length = 0;
-			const toggle = containers.pop()!;
-			if (!toggle.children!.length) delete toggle.children;
-			continue;
-		}
-		if (line === '$$') {
-			close();
-			levels.length = 0;
-			const source: string[] = [];
-			for (i++; i < lines.length && lines[i]!.trim() !== '$$'; i++) source.push(lines[i]!);
-			out().push({ type: 'equation', data: { expression: source.join('\n').trim() }, content: [] });
-			continue;
-		}
-		if (/^(?:-\s*){3,}$|^(?:\*\s*){3,}$|^(?:_\s*){3,}$/.test(line)) {
-			close();
-			levels.length = 0;
-			out().push({ type: 'divider', content: [] });
-			continue;
-		}
-		const kind = lineKind(line);
-		if (kind?.type === 'heading') {
-			close();
-			levels.length = 0;
-			out().push({ type: 'heading', data: kind.data, content: inline(kind.text) });
-			continue;
-		}
-		if (
-			TABLE_ROW.test(line) &&
-			line.includes('|') &&
-			TABLE_SEPARATOR.test(lines[i + 1] ?? '') &&
-			(lines[i + 1] ?? '').includes('-')
-		) {
-			close();
-			levels.length = 0;
-			const rows = [cellsOf(line)];
-			for (i += 2; i < lines.length && lines[i]!.trim() && lines[i]!.includes('|'); i++)
-				rows.push(cellsOf(lines[i]!));
-			i--;
-			const cells = rows.map((row) =>
-				row.map((cell) => inline(cell.replace(/<br\s*\/?>/gi, '\n')))
-			);
-			out().push(
-				tableBlock({
-					cells: cells.map((row) =>
-						row.map((runs) => (runs.length === 1 && !runs[0]!.text ? '' : runs))
-					),
-					headerRow: true
-				})
-			);
-			continue;
-		}
-		const image = IMAGE_LINE.exec(line);
-		if (image) {
-			close();
-			levels.length = 0;
-			const src = image[2]!.replace(/^<|>$/g, '');
-			const alt = image[1]!.replace(/\\(.)/g, '$1');
-			const caption = image[3]?.replace(/\\(.)/g, '$1');
-			out().push({
-				type: 'image',
-				data: { src, ...(alt && { alt }) },
-				content: caption ? inline(caption) : []
-			});
-			continue;
-		}
-		if (line.startsWith('>')) {
-			close();
-			levels.length = 0;
-			const inner: string[] = [];
-			for (; i < lines.length && lines[i]!.trim().startsWith('>'); i++)
-				inner.push(lines[i]!.trim().replace(/^> ?/, ''));
-			i--;
-			const alert = ALERT.test(inner[0] ?? '');
-			const blocks = parse(alert ? inner.slice(1) : inner, type);
-			const first = blocks[0]?.type === type ? blocks.shift()! : undefined;
-			const block: JSONBlock = { type: alert ? 'callout' : 'quote', content: first?.content ?? [] };
-			if (alert) {
-				const head = block.content![0];
-				const icon = head && 'text' in head ? ICON.exec(head.text) : null;
-				if (icon && head && 'text' in head) {
-					block.data = { icon: icon[1]! };
-					head.text = head.text.slice(icon[0].length);
-					if (!head.text && block.content!.length > 1) block.content!.shift();
-				}
-			}
-			if (blocks.length) block.children = blocks;
-			out().push(block);
-			continue;
-		}
-		const item = kind?.type.endsWith('item') ? kind : null;
-		if (item) {
-			close();
-			const indent = raw.replace(/\t/g, '    ').search(/\S/);
-			while (levels.length && levels.at(-1)!.indent >= indent) levels.pop();
-			const { text, ...rest } = item;
-			const block: JSONBlock = { ...rest, content: inline(text) };
-			const parent = levels.at(-1)?.block;
-			if (parent) (parent.children ??= []).push(block);
-			else out().push(block);
-			levels.push({ block, indent });
-			continue;
-		}
-		levels.length = 0;
-		(paragraph ??= []).push(line);
-	}
-	close();
-	return root;
 };
 
 /** An inline marker the last line opened and has not closed: where it starts, else -1. */
@@ -502,9 +560,9 @@ const unclosedAt = (line: string) => {
 			const end = labelEnd(line, at);
 			if (end === -1) return open[0]?.at ?? i;
 			if (line[end + 1] === '(') {
-				const link = destinationAt(line, end + 1);
-				if (!link) return open[0]?.at ?? i;
-				i = link.end;
+				const to = destinationEnd(line, end + 1);
+				if (to === -1) return open[0]?.at ?? i;
+				i = to;
 			} else i = end + 1;
 			continue;
 		}
@@ -528,9 +586,14 @@ const unclosedAt = (line: string) => {
 	return open[0]?.at ?? -1;
 };
 
-/** A line that is only a block marker so far: `#`, `-`, `1.`, `>`, a fence's backticks, a to-do box. */
+const FENCE = /^(\s*)(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+/**
+ * A line that is only a block marker so far: `#`, `-`, `1.`, `>`, a
+ * fence's backticks, a to-do box, a tag being typed (`<Endpoint id="a`).
+ */
 const MARKER_ONLY =
-	/^\s*(?:#{1,6}|[-*+]|\d+[.)]?|>|`{1,2}|~{1,2}|(?:[-*+]\s+)?\[[ xX]?\]?|<\/?\w*)\s*$/;
+	/^\s*(?:#{1,6}|[-*+]|\d+[.)]?|>|`{1,2}|~{1,2}|\$\$?|(?:[-*+]\s+)?\[[ xX]?\]?|<\/?[A-Za-z]?[^>]*)\s*$/;
 
 /** What of a text still arriving shows now (see `streaming`). */
 const settled = (text: string) => {
@@ -540,7 +603,7 @@ const settled = (text: string) => {
 	let fenced = false;
 	for (const line of lines)
 		if (FENCE.test(line) || (fenced && /^\s*(`{3,}|~{3,})\s*$/.test(line))) fenced = !fenced;
-	if (fenced) return [...lines, /^\s*[`~]{1,}$/.test(partial) ? '' : partial];
+	if (fenced) return [...lines, /^\s*[`~]{1,}$/.test(partial) ? '' : partial].join('\n');
 	if (MARKER_ONLY.test(partial) || /^\s*\|/.test(partial)) partial = '';
 	else {
 		const at = unclosedAt(partial);
@@ -549,23 +612,57 @@ const settled = (text: string) => {
 	// A table's header row waits for its separator row.
 	let end = lines.length;
 	while (end > 0 && lines[end - 1]!.includes('|') && lines[end - 1]!.trim()) end--;
-	const block = lines.slice(end);
-	if (block.length && !block.some((line) => TABLE_SEPARATOR.test(line) && line.includes('-'))) {
+	const rows = lines.slice(end);
+	if (rows.length && !rows.some((line) => TABLE_SEPARATOR.test(line) && line.includes('-'))) {
 		lines.length = end;
 		partial = '';
 	}
-	return [...lines, partial];
+	return [...lines, partial].join('\n');
 };
+
+/**
+ * A line ending in two spaces as one ending in `\\` (both a hard break in
+ * CommonMark; the parser reads only the backslash), outside fenced code.
+ */
+const hardBreaks = (text: string) => {
+	let fenced = false;
+	return text
+		.split(/\r?\n/)
+		.map((line, i, lines) => {
+			if (FENCE.test(line) || (fenced && /^\s*(`{3,}|~{3,})\s*$/.test(line))) fenced = !fenced;
+			return !fenced && /\S {2,}$/.test(line) && lines[i + 1]?.trim()
+				? `${line.trimEnd()}\\`
+				: line;
+		})
+		.join('\n');
+};
+
+const STREAMING = streamingMarkdownExtension();
+const OWN = [autolinks, callouts, details, equations, bareTodos];
 
 /** `text` as blocks (see the module comment). */
 export const textToBlocks = (
 	text: string,
-	{ markdown = true, type = 'paragraph', streaming = false }: MarkdownOptions = {}
+	{
+		markdown = true,
+		type = 'paragraph',
+		streaming = false,
+		components,
+		onUnknown
+	}: MarkdownOptions = {}
 ): JSONBlock[] => {
 	if (!markdown)
 		return text
 			.split(/\r?\n[ \t]*(?:\r?\n[ \t]*)+/)
 			.filter((part) => part.trim())
 			.map((part) => ({ type, content: [{ text: part }] }));
-	return parse(streaming ? settled(text) : text.split(/\r?\n/), type);
+	const extensions = [...OWN];
+	if (components || onUnknown)
+		extensions.unshift(mdx(components ?? {}, onUnknown ?? (() => {}), streaming));
+	if (streaming) extensions.push(STREAMING);
+	const document = parseMarkdown(hardBreaks(streaming ? settled(text) : text), {
+		extensions,
+		headingIds: false
+	});
+	return blocks(document.children, { type, components: components ?? {} });
 };

@@ -11,12 +11,14 @@ icon: file-down
 | `toHTML(doc, options?)` | HTML: each block by its kind's `html` form, a run of list items in its `ul` or `ol`, marks as their elements. |
 | `toMarkdown(doc, options?)` | Markdown (CommonMark with GFM tables, task lists and strikethrough). |
 | `fromHTML(html, options?)` | A `JSONDoc`, read the way a paste reads HTML. Safe: only known kinds and marks survive. |
-| `textToBlocks(text, options?)` | `JSONBlock[]` from markdown or plain text: the full reader, with GFM tables, code languages, nested marks and `streaming` ([details](/docs/editor/suggestions#text-to-blocks)). The editor's paste reads with a smaller one. |
+| `fromMarkdown(source, options?)` | A `JSONDoc` from markdown, MDX-lite tags included ([below](#mdx-lite)). |
+| `textToBlocks(text, options?)` | `JSONBlock[]` from markdown or plain text: the same reading as `fromMarkdown`, with GFM tables, code languages, nested marks and `streaming` ([details](/docs/editor/suggestions#text-to-blocks)). The editor's paste reads with a smaller one. |
+| `mdxComponent(name, data, content?, children?)` | An MDX-lite tag, for a kind's `markdown` form ([below](#mdx-lite)). |
 
 `doc` is a `JSONDoc` (`{ children }`, what `onChange` hands you) or a `JSONBlock[]`.
 
 ```ts title="src/lib/exportPage.ts" check
-import { fromHTML, textToBlocks, toHTML, toMarkdown } from 'edytor/export';
+import { fromHTML, fromMarkdown, toHTML, toMarkdown } from 'edytor/export';
 import type { JSONDoc } from 'edytor';
 
 export const exportPage = (value: JSONDoc) => ({
@@ -28,9 +30,7 @@ export const exportPage = (value: JSONDoc) => ({
 export const importHtml = (html: string): JSONDoc => fromHTML(html);
 
 /** A markdown file as a document. */
-export const importMarkdown = (markdown: string): JSONDoc => ({
-	children: textToBlocks(markdown)
-});
+export const importMarkdown = (markdown: string): JSONDoc => fromMarkdown(markdown);
 ```
 
 ## JSON
@@ -72,7 +72,58 @@ Every value is escaped, a link's href and an image's or a media block's source g
 
 Marks: `**bold**`, `*italic*` (both: `***x***`), `~~strike~~`, `` `code` ``, `[text](href)`; a mark spanning several marks opens once (`**a *b***`, `[**a bold link**](url)`). Underline, colors, superscript and subscript have no markdown: their text is kept. Text that markdown would read as syntax is escaped (`\*`, `\# not a heading`).
 
-`textToBlocks` reads all of it back, so the common set round-trips: `textToBlocks(toMarkdown(value))` gives the same blocks (spaces at a mark's edges move outside it, and table rows a header).
+`fromMarkdown` (and `textToBlocks`) reads all of it back, so the common set round-trips: `fromMarkdown(toMarkdown(value))` gives the same blocks (spaces at a mark's edges move outside it, and table rows a header).
+
+## Import Markdown
+
+`fromMarkdown(source)` parses with [TanStack Markdown](https://github.com/TanStack/markdown) (`@tanstack/markdown`, a dependency only `edytor/export` loads: `<Edytor>` does not ship it) and maps its syntax tree to blocks. Edytor's own syntax, the `> [!NOTE]` callout and its icon, `<details>` toggles, `$$` equations and `<https://…>` autolinks, is read by TanStack extensions over the same parser. It is safe for markdown from a user or a model:
+
+- **Raw HTML is text.** `<img onerror>`, `<script>` or `<b>` inside markdown is kept as the characters it is, never as markup.
+- **Links and images go through the sanitizers.** A `javascript:` link is its text, an image whose source is not `http(s)`, `blob:`, an inline image or a relative path is its alt text.
+- **Reference links** (`[text][ref]` with `[ref]: url` below) are links; **footnotes** are text (`[^1]`, and `[^1]: …` paragraphs at the end).
+
+## MDX-lite
+
+Docs written in MDX use components: `<Endpoint operationId="getPet" />` for an API operation, `<Callout type="warning">` around a note. `fromMarkdown` reads these tags when you name them, each as the kind it stands for, and `toMarkdown` writes them back:
+
+```ts title="src/lib/apiDocs.ts" check
+import { bundledForms, fromMarkdown, mdxComponent, toMarkdown, type BlockForms } from 'edytor/export';
+import type { JSONDoc } from 'edytor';
+
+/** Each tag and the kind it reads as. */
+export const components = { Endpoint: 'endpoint', Callout: 'callout' };
+
+const source = `# Pets
+
+<Endpoint operationId="getPet" method="get" version={2} deprecated={false} />
+
+<Callout type="warning" title="Rate limits">At most **10** calls a second.</Callout>
+`;
+
+export const doc: JSONDoc = fromMarkdown(source, {
+	components,
+	onUnknown: (issue) => console.warn(`kept as text (${issue.reason}): ${issue.source}`)
+});
+// doc.children[1]: { type: 'endpoint', data: { operationId: 'getPet', method: 'get', version: 2, deprecated: false }, content: [] }
+
+export const back = toMarkdown(doc, { components }); // === source
+
+/** Or say it in the kind's own markdown form, for every export of it. */
+export const endpoint: BlockForms = {
+	markdown: (block, content, children) => mdxComponent('Endpoint', block.data, content, children)
+};
+export const kinds = { blocks: { ...bundledForms.blocks, endpoint } };
+```
+
+What is read:
+
+- **A tag `components` names**, starting a line, with a capitalised name: self-closing (`<Endpoint id="a" />`), on one line around inline markdown (`<Callout>Read **this**</Callout>`: the block's text), or on its own lines around markdown (the first paragraph is the block's text, the rest its children, as in a quote). Tags of the same name nest.
+- **Literal attributes**: `name="text"` or `name='text'` (a string), `name={2}` (a number), `name={true}` / `name={false}`, and a bare `name` (`true`). They become `block.data`.
+- **The kind** is the one the map names. Whether it takes children is the document's to settle when you load the value, as for any JSON.
+
+What is not, kept as text and told to `onUnknown(issue)` (`issue.reason`, `issue.name`, `issue.source`): a tag `components` does not name (`component`), an attribute holding an expression or a spread (`{a + b}`, `{...props}`, `expression`), a tag without its closing tag (`unclosed`), and `import` and `export` lines. Inline tags in the middle of a line, JSX expressions as children and `{/* comments */}` are not read: they stay text, unreported.
+
+`toMarkdown(doc, { components })` writes every block of a listed kind as its tag, the first tag naming it: its data as attributes, by `mdxComponent`. A value with no literal (an object, an array, `null`, a string with a newline or with both quote marks) is left out. Without text or children the tag self-closes; with text only, the text sits inside the tag on one line; with children, the tag has its own lines, the text first. That is the form `fromMarkdown` reads back, so `toMarkdown(fromMarkdown(source, { components }), { components })` gives `source` back when it is written that way. A `components` entry for a bundled kind (`Callout: 'callout'`) also writes the `> [!NOTE]` callouts of a document as tags.
 
 ## Import HTML
 
@@ -143,5 +194,5 @@ The forms are the fields of your [kind record](/docs/customization/blocks#export
 ## Limitations
 
 - **HTML and Markdown are not lossless**: block data the forms do not write (a column's width in Markdown, a code block's wrap) is left out. Store JSON.
-- **Markdown in** is the set `textToBlocks` reads; a table's column alignment (`:---:`) is not kept, and other HTML inside markdown stays text.
+- **Markdown in** is the set `fromMarkdown` reads; a table's column alignment (`:---:`) is not kept, HTML inside markdown stays text, two `>` quotes a blank line apart are one quote (the second its child), and a `|` inside a code span in a table cell splits the cell (escape it, `\|`).
 - **Comments** are not exported: a comment's anchor has no form, as it is not copied.

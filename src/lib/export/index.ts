@@ -33,6 +33,8 @@ import {
 	listSiblings,
 	markMarkdown
 } from './exportForms.js';
+import { textToBlocks, type MarkdownComponents, type MarkdownOptions } from './markdown.js';
+import { mdxComponent } from './mdx.js';
 import { DEFAULT_CALLOUT_ICON } from '$lib/plugins/richtext/callouts.js';
 
 /** A callout's icon on a server: its own, else the bundled default. */
@@ -41,7 +43,13 @@ const defaultCalloutIcon = (data: Record<string, unknown> | undefined) =>
 import type { AtomForms, BlockForms, MarkForms } from './forms.js';
 
 export { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
-export { textToBlocks, type MarkdownOptions } from './markdown.js';
+export {
+	textToBlocks,
+	type MarkdownComponents,
+	type MarkdownIssue,
+	type MarkdownOptions
+} from './markdown.js';
+export { mdxComponent } from './mdx.js';
 export {
 	codeForms,
 	columnsForms,
@@ -121,6 +129,13 @@ export type ExportOptions = {
 	 * a shorter list allows only those). Default {@link bundledForms}.
 	 */
 	kinds?: KindForms | ExportKinds;
+	/**
+	 * MDX-lite, for `toMarkdown`: the tags to write, each the kind it stands
+	 * for (`{ Endpoint: 'endpoint' }`), the map `fromMarkdown` reads. A block
+	 * of a listed kind is its tag, its data the attributes (see
+	 * {@link mdxComponent}); its kind's own `markdown` form is not used.
+	 */
+	components?: MarkdownComponents;
 };
 
 /** What {@link fromHTML} reads. */
@@ -169,11 +184,21 @@ const fill = <T extends { markdown?: unknown }>(
 			} as T
 		])
 	);
-const complete = (records: ExportKinds): ExportKinds => ({
-	blocks: fill(records.blocks, BLOCK_MARKDOWN, EXTRAS),
+const complete = (records: ExportKinds, components: MarkdownComponents = {}): ExportKinds => ({
+	blocks: tagged(fill(records.blocks, BLOCK_MARKDOWN, EXTRAS), components),
 	marks: fill(records.marks, MARK_MARKDOWN),
 	inlineBlocks: fill(records.inlineBlocks, ATOM_MARKDOWN)
 });
+
+/** Each kind `components` lists written as its tag (the first tag naming it). */
+const tagged = (blocks: Map<string, BlockForms>, components: MarkdownComponents) => {
+	for (const [tag, type] of Object.entries(components).reverse())
+		blocks.set(type, {
+			...blocks.get(type),
+			markdown: (block, content, children) => mdxComponent(tag, block.data, content, children)
+		});
+	return blocks;
+};
 
 const blocksOf = (doc: JSONDoc | readonly JSONBlock[]) =>
 	(Array.isArray(doc) ? doc : (doc as JSONDoc).children) ?? [];
@@ -208,9 +233,27 @@ export const toMarkdown = (
 	doc: JSONDoc | readonly JSONBlock[],
 	options: ExportOptions = {}
 ): string => {
-	const md = blocksToMarkdown([...blocksOf(doc)], complete(recordsOf(options.kinds)));
+	const md = blocksToMarkdown(
+		[...blocksOf(doc)],
+		complete(recordsOf(options.kinds), options.components)
+	);
 	return md ? `${md}\n` : '';
 };
+
+/**
+ * Markdown as a document: {@link textToBlocks}'s reading, as a `JSONDoc`.
+ * With `components`, MDX-lite tags (`<Endpoint operationId="getPet" />`)
+ * are blocks of the kinds they name; a tag it does not name, an
+ * expression, an import or an export stays text and is told to `onUnknown`.
+ *
+ * ```ts
+ * import { fromMarkdown } from 'edytor/export';
+ * const value = fromMarkdown(source, { components: { Endpoint: 'endpoint' } });
+ * ```
+ */
+export const fromMarkdown = (source: string, options: MarkdownOptions = {}): JSONDoc => ({
+	children: textToBlocks(source, options)
+});
 
 /** A parsed line's type resolved (its parent's default child), its empty data and children dropped. */
 const settle = (

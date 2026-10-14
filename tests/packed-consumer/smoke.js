@@ -344,7 +344,8 @@ assert.deepEqual(
 
 // ── edytor/export: plain node imports it (no Svelte), and it converts both ways ──
 {
-	const { toHTML, toMarkdown, fromHTML, textToBlocks } = await import('edytor/export');
+	const { toHTML, toMarkdown, fromHTML, fromMarkdown, textToBlocks } =
+		await import('edytor/export');
 	const { DOMParser } = await import('linkedom');
 	const value = {
 		children: [
@@ -359,6 +360,13 @@ assert.deepEqual(
 		fromHTML('<h2>Plan</h2><p><b>bold</b><script>x()</script></p>', { DOMParser }).children,
 		value.children
 	);
+	// The markdown parser (`@tanstack/markdown`) resolves from the installed package.
+	const mdx = '<Endpoint operationId="getPet" />\n';
+	const components = { Endpoint: 'endpoint' };
+	assert.deepEqual(fromMarkdown(mdx, { components }).children, [
+		{ type: 'endpoint', data: { operationId: 'getPet' }, content: [] }
+	]);
+	assert.equal(toMarkdown(fromMarkdown(mdx, { components }), { components }), mdx);
 }
 
 console.log('packed-consumer smoke OK — engine + public boundary work at runtime');

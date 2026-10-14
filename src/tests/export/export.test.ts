@@ -5,13 +5,18 @@
  * round trips read a corpus back through the other direction.
  */
 import { describe, expect, test } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DOMParser as LinkedomParser } from 'linkedom';
 import { JSDOM } from 'jsdom';
 import {
 	bundledForms,
 	escapeHtml,
 	fromHTML,
+	fromMarkdown,
+	mdxComponent,
 	textToBlocks,
+	type MarkdownIssue,
 	toHTML,
 	toMarkdown,
 	type BlockForms,
@@ -449,4 +454,141 @@ describe('fromHTML sanitizes', () => {
 			if (own) global.DOMParser = own;
 		}
 	});
+});
+
+describe("textToBlocks — the parser's reading", () => {
+	test('reference links and autolinks are links; a soft break a space, a hard break a newline', () => {
+		expect(textToBlocks('[r][ref] <https://x.dev>\nnext  \nline\n\n[ref]: https://r.dev')).toEqual([
+			p(
+				{ text: 'r', marks: { link: { href: 'https://r.dev' } } },
+				{ text: ' ' },
+				{ text: 'https://x.dev', marks: { link: { href: 'https://x.dev' } } },
+				{ text: ' next\nline' }
+			)
+		]);
+	});
+
+	test('raw HTML is text, never markup; a javascript: image is its alt text', () => {
+		expect(
+			textToBlocks('<img src=x onerror=alert(1)> <b>x</b>\n\n![a](javascript:alert(1))')
+		).toEqual([p({ text: '<img src=x onerror=alert(1)> <b>x</b>' }), p({ text: 'a' })]);
+	});
+
+	test('a GitHub alert is a callout, its leading emoji its icon; <details> a toggle; $$ an equation', () => {
+		expect(
+			textToBlocks(
+				'> [!TIP]\n> 🔥 Hot\n\n<details>\n<summary><h2>More</h2></summary>\n\nbody\n\n</details>\n\n$$\nx^2\n$$'
+			)
+		).toEqual([
+			{ type: 'callout', data: { icon: '🔥' }, content: [{ text: 'Hot' }] },
+			{
+				type: 'toggle-heading',
+				data: { level: 'h2' },
+				content: [{ text: 'More' }],
+				children: [p({ text: 'body' })]
+			},
+			{ type: 'equation', data: { expression: 'x^2' }, content: [] }
+		]);
+	});
+});
+
+describe('MDX-lite', () => {
+	const components = { Endpoint: 'endpoint', Callout: 'callout' };
+
+	test('a tag is a block of the kind it names, its literal attributes its data', () => {
+		expect(
+			fromMarkdown(
+				'<Endpoint operationId="getPet" method=\'get\' version={2} deprecated={false} auth />\n\n<Callout type="warning" title="x">Read **this**</Callout>',
+				{ components }
+			).children
+		).toEqual([
+			{
+				type: 'endpoint',
+				data: { operationId: 'getPet', method: 'get', version: 2, deprecated: false, auth: true },
+				content: []
+			},
+			{
+				type: 'callout',
+				data: { type: 'warning', title: 'x' },
+				content: [{ text: 'Read ' }, { text: 'this', marks: { bold: true } }]
+			}
+		]);
+	});
+
+	test('a tag on its own lines: its first paragraph its text, the rest its children', () => {
+		expect(
+			textToBlocks('<Callout type="note">\nHead\n\n- item\n\n<Endpoint id="a" />\n</Callout>', {
+				components
+			})
+		).toEqual([
+			{
+				type: 'callout',
+				data: { type: 'note' },
+				content: [{ text: 'Head' }],
+				children: [
+					{ type: 'bulleted-list-item', content: [{ text: 'item' }] },
+					{ type: 'endpoint', data: { id: 'a' }, content: [] }
+				]
+			}
+		]);
+	});
+
+	test('an unknown tag, an expression, an import or an unclosed tag stays text and is reported', () => {
+		const issues: MarkdownIssue[] = [];
+		const blocks = textToBlocks(
+			'import X from "x"\n\n<Other a="1" />\n\n<Endpoint id={a + b} />\n\n<Callout>\nopen',
+			{ components, onUnknown: (issue) => issues.push(issue) }
+		);
+		expect(blocks).toEqual([
+			p({ text: 'import X from "x"' }),
+			p({ text: '<Other a="1" />' }),
+			p({ text: '<Endpoint id={a + b} />' }),
+			p({ text: '<Callout> open' })
+		]);
+		expect(issues.map(({ reason, name }) => [reason, name])).toEqual([
+			['import', undefined],
+			['component', 'Other'],
+			['expression', 'Endpoint'],
+			['unclosed', 'Callout']
+		]);
+	});
+
+	test("mdxComponent writes the tag a kind's markdown form stands for", () => {
+		expect(mdxComponent('Endpoint', { id: 'a', n: 1, on: true, skip: { x: 1 } })).toBe(
+			'<Endpoint id="a" n={1} on={true} />'
+		);
+		expect(mdxComponent('Note', { q: 'say "hi"' }, 'text')).toBe(`<Note q='say "hi"'>text</Note>`);
+		expect(mdxComponent('Note', {}, 'head', 'child')).toBe('<Note>\nhead\n\nchild\n</Note>');
+		const endpoint: BlockForms = {
+			markdown: (block, content, children) =>
+				mdxComponent('Endpoint', block.data, content, children)
+		};
+		expect(
+			toMarkdown([{ type: 'endpoint', data: { operationId: 'getPet' }, content: [] }], {
+				kinds: { blocks: { ...bundledForms.blocks, endpoint } }
+			})
+		).toBe('<Endpoint operationId="getPet" />\n');
+	});
+
+	test('round trip: toMarkdown(fromMarkdown(src)) is src', () => {
+		const src =
+			[
+				'# Pets API',
+				'<Endpoint operationId="getPet" method="get" version={2} beta={true} />',
+				'<Callout type="warning" title="x">Read **this** first</Callout>',
+				'<Callout type="note">\nHead\n\n- item\n- other\n\n<Endpoint operationId="listPets" />\n</Callout>',
+				'Plain text after.'
+			].join('\n\n') + '\n';
+		expect(toMarkdown(fromMarkdown(src, { components }), { components })).toBe(src);
+	});
+});
+
+test('only edytor/export imports @tanstack/markdown: the editor ships no markdown parser', () => {
+	const lib = join(import.meta.dirname, '../../lib');
+	const importers = readdirSync(lib, { recursive: true, encoding: 'utf8' })
+		.filter((file) => /\.(ts|js|svelte)$/.test(file) && !file.includes('vendor'))
+		.filter((file) => readFileSync(join(lib, file), 'utf8').includes("'@tanstack/markdown"))
+		.map((file) => file.split('\\').join('/'));
+	expect(importers.every((file) => file.startsWith('export/'))).toBe(true);
+	expect(importers).toContain('export/markdown.ts');
 });

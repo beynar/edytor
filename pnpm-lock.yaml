@@ -14,6 +14,9 @@ importers:
       '@tanstack/highlight':
         specifier: ^0.1.0
         version: 0.1.0
+      '@tanstack/markdown':
+        specifier: 1.0.0
+        version: 1.0.0
       esm-env:
         specifier: ^1.2.2
         version: 1.2.2
@@ -977,6 +980,17 @@ packages:
   '@tanstack/highlight@0.1.0':
     resolution: {integrity: sha512-B/NdJETsgoQ7ludUbflIiYQk74bE6VSgP3kLR99P1OsRX1Gepr3EVg6oVLRZ+duKWs+P4lrhWC4vVJsrRSnV2g==}
     engines: {node: '>=18'}
+
+  '@tanstack/markdown@1.0.0':
+    resolution: {integrity: sha512-zE07RepFMbSQlHdnE82twgiVOKy50rP6a/X9UPOOBt8Z8x9lzaPvGpn2zioCnjXMvNt/IQkW5sSalXQ25C/FKw==}
+    peerDependencies:
+      octane: '>=0.1.12'
+      react: '>=18'
+    peerDependenciesMeta:
+      octane:
+        optional: true
+      react:
+        optional: true
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -2886,6 +2900,8 @@ snapshots:
       vite: 8.0.3(@emnapi/core@1.9.2)(@emnapi/runtime@1.11.3)(jiti@2.6.1)(yaml@2.8.0)
 
   '@tanstack/highlight@0.1.0': {}
+
+  '@tanstack/markdown@1.0.0': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:

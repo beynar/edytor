@@ -10,7 +10,7 @@ The `edytor` package has five code entry points and one stylesheet. Only the roo
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
 | `edytor/crdt/edytor` | The document API and its full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
-| `edytor/export` | `toHTML`, `toMarkdown`, `fromHTML`, `textToBlocks` and the bundled kinds' forms ([Import and export](/docs/editor/import-export)) | Browser, Node 22+, Workers |
+| `edytor/export` | `toHTML`, `toMarkdown`, `fromHTML`, `fromMarkdown`, `textToBlocks`, `mdxComponent` and the bundled kinds' forms ([Import and export](/docs/editor/import-export)) | Browser, Node 22+, Workers |
 | `edytor/protocol` | The wire vocabulary: frames, message types, codecs, generation records, the admission gates, the raw provider classes | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
 | `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachRoom` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), `routeDocumentComments` (the [comment threads](/docs/server/comments)), and `closedSocket` | Cloudflare Workers only |

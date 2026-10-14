@@ -8,6 +8,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
+	cssVar,
 	getOwnRowBottom,
 	isBeside,
 	nestIndent,
@@ -37,10 +38,7 @@ const place = (element: HTMLElement, box: Box, origin: DOMRect) =>
  * unset there without one.
  */
 const themed = (from: HTMLElement, name: string) => {
-	const value = from.ownerDocument.defaultView
-		?.getComputedStyle(from)
-		.getPropertyValue(name)
-		.trim();
+	const value = cssVar(from, name);
 	return (element: HTMLElement) =>
 		value ? element.style.setProperty(name, value) : element.style.removeProperty(name);
 };

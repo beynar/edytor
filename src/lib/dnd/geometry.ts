@@ -62,12 +62,13 @@ export const ownTextRow = (node: HTMLElement) => {
  */
 export const NEST_INDENT = 24;
 export const nestIndent = (node: HTMLElement) => {
-	const value = node.ownerDocument.defaultView
-		?.getComputedStyle(node)
-		.getPropertyValue('--edytor-nest-indent')
-		.trim();
+	const value = cssVar(node, '--edytor-nest-indent');
 	return value?.endsWith('px') ? parseFloat(value) : NEST_INDENT;
 };
+
+/** The theme variable `name` as `node` inherits it, read now (none outside a window). */
+export const cssVar = (node: HTMLElement, name: string) =>
+	node.ownerDocument.defaultView?.getComputedStyle(node).getPropertyValue(name).trim();
 
 /**
  * Whether `y` is over the hint of `node`'s empty body (`body.hint`, a kind's

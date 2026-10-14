@@ -1,15 +1,9 @@
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { ToolbarController } from './ToolbarController.svelte.js';
-import { mountChrome } from '../chrome.js';
+import { keepFocus, mountChrome } from '../chrome.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { all, listen } from '$lib/utils/listen.js';
-
-/** A press in a field of the chrome (an input, a select): it takes focus. */
-const isNativeFieldEvent = (event: Event) =>
-	event
-		.composedPath()
-		.some((target) => target instanceof Element && target.matches('input, textarea, select'));
 
 export type ToolbarOptions = {
 	/**
@@ -126,47 +120,33 @@ export const createToolbarPlugin =
 				edytor.overlay.invalidate();
 			},
 			onEdytorAttached: () => {
-				const offs: (() => void)[] = [];
 				// No press on the chrome takes focus, its background and a custom
 				// snippet's markup included (not only its buttons): the editor keeps
 				// its focus and its selection. A field (the link panel's input) takes
 				// its own. Every press has a `mousedown`, WebKit's lone one too
 				// (`onFocus.ts`), so no `pointerdown` is cancelled.
-				const keep = (event: Event) => {
-					if (!isNativeFieldEvent(event)) event.preventDefault();
-				};
-				/** Mount `snippet` in the overlay while `shown`, its host keeping the focus on a press. */
-				const mount = (
-					snippet: Snippet<[ToolbarController]> | undefined,
-					shown: () => unknown,
-					name: string,
-					zIndex: number,
-					measure: (host: HTMLElement) => (() => void) | void
-				) => {
-					offs.push(mountChrome(edytor, snippet, controller, shown, { name, zIndex, measure }));
-					const host = snippet && edytor.overlay.layer?.querySelector(`[data-${name}]`);
-					offs.push(listen(host, 'mousedown', keep));
-					return host;
-				};
-				mount(
-					options.toolbar,
-					() => controller.isVisible,
-					'edytor-toolbar-host',
-					60,
-					positionToolbar
+				const host = (name: string) => edytor.overlay.layer?.querySelector(`[data-${name}]`);
+				const offs = [
+					mountChrome(edytor, options.toolbar, controller, () => controller.isVisible, {
+						name: 'edytor-toolbar-host',
+						zIndex: 60,
+						measure: positionToolbar
+					}),
+					mountChrome(edytor, options.card, controller, () => controller.card, {
+						name: 'edytor-link-card-host',
+						zIndex: 61,
+						measure: positionCard
+					})
+				];
+				const bar = options.toolbar && host('edytor-toolbar-host');
+				const card = options.card && host('edytor-link-card-host');
+				return all(
+					() => controller.hover(null),
+					edytor.node && card ? trackLinks(edytor.node, card) : () => {},
+					listen(card, 'mousedown', keepFocus),
+					listen(bar, 'mousedown', keepFocus),
+					...offs.reverse()
 				);
-				const card = mount(
-					options.card,
-					() => controller.card,
-					'edytor-link-card-host',
-					61,
-					positionCard
-				);
-				if (edytor.node && card) offs.push(trackLinks(edytor.node, card));
-				offs.push(() => controller.hover(null));
-				return () => {
-					for (const off of offs.reverse()) off();
-				};
 			}
 		};
 	};

@@ -2,20 +2,15 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import { autoScrollFor } from '$lib/dnd/autoScroll.js';
-import {
-	draggable,
-	dropTargetForElements,
-	setCustomNativeDragPreview
-} from '$lib/dnd/pragmatic.js';
+import { dropTargetForElements } from '$lib/dnd/pragmatic.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
 import { attribute, type MenuItemPayload } from '../chrome.js';
 import { ChromeList, holdKeys, keysOf, menuKey, optionAttachment } from '../list.svelte.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
-import { dragPreview } from '../blockHandles/dragPreview.js';
+import { dragSource, ghost } from '../blockHandles/dragPreview.js';
 import {
 	caretCell,
 	deleteColumn,
@@ -741,27 +736,20 @@ export class TableChrome extends ChromeList {
 					true
 				)
 			),
-			draggable({
-				element: node,
+			dragSource(node, {
 				canDrag: () =>
 					!this.edytor.readonly && this.edytor.dispatcher.permits() && this.#source(kind) !== null,
-				getInitialData: () => ({ [MOVE]: this }),
-				// The editor's own drag: no view takes it as a foreign drop.
-				getInitialDataForExternal: () => {
+				data: () => ({ [MOVE]: this }),
+				id: () => {
 					const source = this.#source(kind);
-					return {
-						[EDYTOR_BLOCK_DRAG_MIME]: (kind === 'row' ? source?.id : source?.table.id) ?? ''
-					};
+					return (kind === 'row' ? source?.id : source?.table.id) ?? '';
 				},
-				onGenerateDragPreview: ({ nativeSetDragImage, location }) =>
-					this.#begin(kind, node, location.current.input, nativeSetDragImage),
-				// The drag library tells the source before the drop target: the drop runs first.
-				onDrop: () =>
-					queueMicrotask(() => {
-						for (const release of this.#releases.splice(0)) release();
-						this.moving = null;
-						this.edytor.overlay.invalidate();
-					})
+				begin: (pointer, setImage) => this.#begin(kind, node, pointer, setImage),
+				end: () => {
+					for (const release of this.#releases.splice(0)) release();
+					this.moving = null;
+					this.edytor.overlay.invalidate();
+				}
 			})
 		);
 		return off;
@@ -862,14 +850,7 @@ export class TableChrome extends ChromeList {
 		const cells = (
 			kind === 'row' ? grid.rows[index]!.cells : grid.rows.map((r) => r.cells[index])
 		).flatMap((cell) => (cell && this.edytor.idToBlock.get(cell)?.node) || []);
-		if (nativeSetDragImage && cells.length) {
-			const preview = dragPreview(root, cells, pointer, kind === 'row' ? widths : [widths[index]!]);
-			setCustomNativeDragPreview({
-				nativeSetDragImage,
-				getOffset: preview.offset,
-				render: ({ container }) => container.append(preview.element)
-			});
-		}
+		ghost(nativeSetDragImage, root, cells, pointer, kind === 'row' ? widths : [widths[index]!]);
 		const ours = (data: Record<string | symbol, unknown>) => data[MOVE] === this;
 		// The page is the target: the line follows the pointer from the grips, outside the grid.
 		this.#releases.push(

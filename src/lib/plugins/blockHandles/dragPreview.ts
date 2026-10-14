@@ -1,3 +1,5 @@
+import { draggable, setCustomNativeDragPreview } from '$lib/dnd/pragmatic.js';
+import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 /**
  * Notion's drag ghost: a copy of the dragged blocks, rendered as they look in
  * the editor, scaled down, that follows the pointer (the browser adds its own
@@ -251,4 +253,63 @@ export const dragPreview = (
 		};
 	};
 	return { element, offset };
+};
+
+type Pointer = { clientX: number; clientY: number };
+
+/**
+ * One of the editor's own drags from `element` (a block's handle, a table's
+ * grip): `canDrag` asks whether it may start, `data` is what its targets
+ * read, `id` the block another view sees it carry (no view takes it as a
+ * foreign drop); `begin` runs as it starts (the ghost and the targets),
+ * `start` once it has, and `end` after the drop target's own drop (the drag
+ * library tells the source first).
+ */
+export const dragSource = (
+	element: HTMLElement,
+	{
+		canDrag,
+		data,
+		id,
+		begin,
+		start,
+		end
+	}: {
+		canDrag: () => boolean;
+		data: () => Record<string | symbol, unknown>;
+		id: () => string;
+		begin: (pointer: Pointer, setImage: DataTransfer['setDragImage'] | null) => void;
+		start?: () => void;
+		end: (dropped: boolean) => void;
+	}
+) =>
+	draggable({
+		element,
+		canDrag,
+		getInitialData: data,
+		getInitialDataForExternal: () => ({ [EDYTOR_BLOCK_DRAG_MIME]: id() }),
+		onGenerateDragPreview: ({ nativeSetDragImage, location }) =>
+			begin(location.current.input, nativeSetDragImage),
+		onDragStart: start,
+		onDrop: ({ location }) => queueMicrotask(() => end(location.current.dropTargets.length > 0))
+	});
+
+/**
+ * The drag's ghost (`dragPreview` of `nodes` under `root`), mounted for the
+ * browser's picture of it, when the drag has an image to set.
+ */
+export const ghost = (
+	setImage: DataTransfer['setDragImage'] | null,
+	root: HTMLElement | null | undefined,
+	nodes: HTMLElement[],
+	pointer: Pointer,
+	columns?: number[]
+) => {
+	if (!setImage || !root || !nodes.length) return;
+	const preview = dragPreview(root, nodes, pointer, columns);
+	setCustomNativeDragPreview({
+		nativeSetDragImage: setImage,
+		getOffset: preview.offset,
+		render: ({ container }) => container.append(preview.element)
+	});
 };

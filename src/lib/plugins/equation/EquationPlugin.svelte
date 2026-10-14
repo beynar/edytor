@@ -28,7 +28,7 @@
 		type KatexLoader
 	} from './equation.svelte.js';
 	import { katexLoaderOf } from './katex.js';
-	import { withRulesAndTriggers } from '../triggers/triggers.js';
+	import { placeAtom, withRulesAndTriggers } from '../triggers/triggers.js';
 
 	export type {
 		EquationData,
@@ -101,13 +101,8 @@
 	/** `$$E=mc^2$$` typed in text: an inline equation (Notion). */
 	const dollars: InputRule = {
 		find: /\$\$([^$\n]*[^$\s][^$\n]*)\$\$$/,
-		replace: ([, tex], { edytor, block, from, caret, remove }) =>
-			remove(() => {
-				const atom = { type: INLINE, data: { expression: tex!.trim() } };
-				const written = edytor.insertInline(block.id, from, atom).status === 'applied';
-				if (written) caret(from + 1);
-				return written;
-			})
+		replace: ([, tex], ctx) =>
+			ctx.remove(() => placeAtom(ctx, { type: INLINE, data: { expression: tex!.trim() } }))
 	};
 
 	/** The equation a block selection or an atom selection stands for, if any. */

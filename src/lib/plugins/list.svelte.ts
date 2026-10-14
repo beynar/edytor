@@ -269,6 +269,11 @@ export abstract class ChromeList {
 	/** How many rows the keyboard walks. */
 	protected abstract get count(): number;
 
+	/** The view is readonly (reactive): the list closes. */
+	get readonly(): boolean {
+		return this.edytor.readonly;
+	}
+
 	/** The list's element id (page-unique), for `aria-controls`. */
 	get listId() {
 		return this.edytor.popups.idOf(this.owner);

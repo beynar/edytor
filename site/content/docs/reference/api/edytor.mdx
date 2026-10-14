@@ -883,7 +883,6 @@ export declare class CalloutIconPicker extends ChromeList {
     get block(): Block | undefined;
     get current(): string | undefined;
     protected get count(): number;
-    get readonly(): boolean;
     toggle: (block: Block) => void;
     open: (block: Block) => void;
     close: (keys?: boolean) => void;
@@ -902,7 +901,6 @@ export declare class CalloutIconPicker extends ChromeList {
 - `block`: The callout it is open on (reactive).
 - `current`: The icon that callout shows (`''`: none; reactive).
 - `count`: The keyboard's rows: the icons, then Remove icon.
-- `readonly`: The view is readonly (reactive): the picker closes.
 - `toggle`: Open the picker on `block`, or close it when it is open there.
 - `open`: Open the picker on the callout `block`, its icon the keyboard's row (refused in a view that may not write).
 - `close`: Close the picker; with `keys` (by default), the editor takes the keys back, with its selection.
@@ -4146,7 +4144,6 @@ export declare class LanguageMenu extends ChromeList {
         keys: boolean;
     } | null;
     query: string;
-    get readonly(): boolean;
     get current(): string | null;
     get rows(): readonly LanguageRow[];
     get items(): LanguageMenuItem[];
@@ -4162,7 +4159,6 @@ export declare class LanguageMenu extends ChromeList {
 
 - `open`: The code block whose list is open, and whether the keys opened it (reactive).
 - `query`: The search field's text.
-- `readonly`: The view is readonly (reactive): the list closes.
 - `current`: The open block's language id.
 - `rows`: The rows the query keeps: a language the plugin does not list first (the block's own), then the list.
 - `items`: The rows for your `menu`: each the row shape every menu shares (`run` picks it, `select` highlights it, `option` its attributes), and whether it is the block's language (`current`).
@@ -6017,7 +6013,6 @@ export declare class TableChrome extends ChromeList {
     menu: TableMenu | null;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
     protected get count(): number;
-    get readonly(): boolean;
     toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
@@ -6030,7 +6025,6 @@ export declare class TableChrome extends ChromeList {
 
 - `menu`: What the open grip menu acts on (`null`: none is open).
 - `count`: How many rows the keyboard walks.
-- `readonly`: The view is readonly (reactive): the chrome shows nothing.
 - `toggle`: Open the `kind` grip's menu on the row or column it stands for, its first row that can run the keyboard's, or close it when it is open there (a grip's click).
 - `isOpen`: Whether a menu is open (reactive).
 - `close`: Close the menu; the editor takes the keys back.
@@ -6649,7 +6643,6 @@ export declare class UrlPasteController extends ChromeList {
     } | null;
     constructor(edytor: Edytor);
     protected get count(): number;
-    get readonly(): boolean;
     close: () => void;
     pick: (option?: UrlPasteOption | undefined) => void;
 }

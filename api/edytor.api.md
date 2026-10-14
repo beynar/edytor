@@ -658,7 +658,6 @@ export declare class CalloutIconPicker extends ChromeList {
     get block(): Block | undefined;
     get current(): string | undefined;
     protected get count(): number;
-    get readonly(): boolean;
     toggle: (block: Block) => void;
     open: (block: Block) => void;
     close: (keys?: boolean) => void;
@@ -2642,7 +2641,6 @@ export declare class LanguageMenu extends ChromeList {
         keys: boolean;
     } | null;
     query: string;
-    get readonly(): boolean;
     get current(): string | null;
     get rows(): readonly LanguageRow[];
     get items(): LanguageMenuItem[];
@@ -3963,7 +3961,6 @@ export declare class TableChrome extends ChromeList {
     menu: TableMenu | null;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
     protected get count(): number;
-    get readonly(): boolean;
     toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
@@ -4389,7 +4386,6 @@ export declare class UrlPasteController extends ChromeList {
     } | null;
     constructor(edytor: Edytor);
     protected get count(): number;
-    get readonly(): boolean;
     close: () => void;
     pick: (option?: UrlPasteOption | undefined) => void;
 }
@@ -5546,6 +5542,7 @@ export declare abstract class ChromeList {
     readonly popup: Attachment<HTMLElement>;
     constructor(edytor: Edytor, owner: string, role: 'listbox' | 'menu', open?: (node: HTMLElement) => Omit<Popup, 'id'> | false | null);
     protected abstract get count(): number;
+    get readonly(): boolean;
     get listId(): string;
     rowId: (index: number) => string;
     option(index: number): Attachment<HTMLElement>;
@@ -5577,7 +5574,6 @@ export declare abstract class TextTriggerController extends ChromeList {
     query: string;
     protected picking: boolean;
     constructor(edytor: Edytor, char: string, owner: string);
-    get readonly(): boolean;
     protected popupOf(active: string | undefined): Popup;
     protected abstract admits(block: Block): boolean;
     protected abstract queried(query: string): void;

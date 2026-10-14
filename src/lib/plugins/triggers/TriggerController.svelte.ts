@@ -67,11 +67,6 @@ export abstract class TextTriggerController extends ChromeList {
 		);
 	}
 
-	/** The editor is readonly: the menu closes. */
-	get readonly() {
-		return this.edytor.readonly;
-	}
-
 	/** The record `popup` publishes, `active` the highlighted row's id when it is in the page. */
 	protected popupOf(active: string | undefined): Popup {
 		return { id: this.listId, haspopup: 'listbox', active };

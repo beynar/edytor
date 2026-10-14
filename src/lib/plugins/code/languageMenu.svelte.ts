@@ -63,11 +63,6 @@ export class LanguageMenu extends ChromeList {
 		);
 	}
 
-	/** The view is readonly (reactive): the list closes. */
-	get readonly(): boolean {
-		return this.edytor.readonly;
-	}
-
 	/** The open block's language id. */
 	get current(): string | null {
 		const open = this.open;

@@ -245,11 +245,6 @@ export class TableChrome extends ChromeList {
 		return this.#rows.length;
 	}
 
-	/** The view is readonly (reactive): the chrome shows nothing. */
-	get readonly() {
-		return this.edytor.readonly;
-	}
-
 	/**
 	 * The column resize in progress.
 	 * @internal

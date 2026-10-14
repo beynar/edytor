@@ -127,11 +127,6 @@ export class CalloutIconPicker extends ChromeList {
 		return this.icons.length + 1;
 	}
 
-	/** The view is readonly (reactive): the picker closes. */
-	get readonly() {
-		return this.edytor.readonly;
-	}
-
 	/** Open the picker on `block`, or close it when it is open there. */
 	toggle = (block: Block) => (this.target === block.id ? this.close() : this.open(block));
 

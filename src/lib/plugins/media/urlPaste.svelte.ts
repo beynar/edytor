@@ -55,10 +55,6 @@ export class UrlPasteController extends ChromeList {
 		return this.open?.options.length ?? 0;
 	}
 
-	get readonly() {
-		return this.edytor.readonly;
-	}
-
 	/** A custom menu (a media plugin's `menu`): the first one a plugin making an offer passed. */
 	#menu: Snippet<[UrlPasteController]> | undefined;
 

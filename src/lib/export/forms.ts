@@ -73,6 +73,9 @@ type Data = Record<string, unknown> | undefined;
  */
 export const headingLevel = (level: unknown) =>
 	level === 'h1' || level === 'h2' || level === 'h3' ? level : level === undefined ? 'h1' : 'h3';
+/** A code block's language as stored: a short name, else none. */
+export const languageOf = (name: unknown) =>
+	typeof name === 'string' && /^[\w#+.-]{1,40}$/.test(name) ? name : undefined;
 /** The heading levels the rich text kinds create (their presets' data). */
 export const HEADING_LEVELS = ['h1', 'h2', 'h3'] as const;
 /**

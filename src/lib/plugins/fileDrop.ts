@@ -23,18 +23,14 @@ const kindsOf = (edytor: Edytor, dataTransfer: DataTransfer | null) => {
 	const uploads = viewUploads(edytor);
 	if (!uploads || !dataTransfer) return [];
 	const kinds = new Set<string>();
+	const add = (file: File) => {
+		const kind = uploads.kindOf(file);
+		if (kind) kinds.add(kind);
+	};
 	for (const item of Array.from(dataTransfer.items ?? []))
-		if (item.kind === 'file') {
-			const file = item.getAsFile() ?? new File([], 'file', { type: item.type });
-			const kind = uploads.kindOf(file);
-			if (kind) kinds.add(kind);
-		}
+		if (item.kind === 'file') add(item.getAsFile() ?? new File([], 'file', { type: item.type }));
 	// An engine that lists no item for a file (WebKit before the drop): its files themselves.
-	if (!kinds.size)
-		for (const file of Array.from(dataTransfer.files ?? [])) {
-			const kind = uploads.kindOf(file);
-			if (kind) kinds.add(kind);
-		}
+	if (!kinds.size) Array.from(dataTransfer.files ?? []).forEach(add);
 	return [...kinds];
 };
 

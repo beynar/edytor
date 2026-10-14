@@ -71,9 +71,20 @@ row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `
    type annotations removed (the code, comments and names unchanged). Its
    types are not needed: no vendored declaration names them.
 
-No statement of the libraries' own code is changed. A check that a re-sync
-reproduces this: strip every import specifier from each vendored file and from
-its upstream file, and compare: they are equal.
+3. **Options edytor never passes, removed** (each site marked `// edytor:`):
+   the auto-scroll's `getConfiguration` (its speed is the standard one, a
+   constant `internalConfig`) and `getAllowedAxis` (both axes always:
+   `shared/is-axis-allowed.js` is gone), and its distance dampening always on
+   (`get-scroll-by.js` reads its two axes through one `change`); a
+   `draggable`'s `dragHandle`, a drop target's `getDropEffect` and
+   `onDropTargetChange`, a monitor's `canMonitor`, and the native drag
+   preview's default `getOffset` (both callers give theirs). Their
+   declarations go too, so a caller passing one does not compile.
+
+No other statement of the libraries' own code is changed. A check that a
+re-sync reproduces this: strip every import specifier from each vendored file
+and from its upstream file, and compare: they are equal but for the sites of
+change 3.
 
 ## How edytor builds around it
 
@@ -96,7 +107,7 @@ its upstream file, and compare: they are equal.
    `element`), follow every import; copy each reached `dist/es2019` file and,
    from each entry's `types` field, each reached `dist/types` declaration to
    the same path here, rewriting specifiers as in change 1.
-3. Redo change 2 from `bind-event-listener`'s `src/`; copy
+3. Redo change 2 from `bind-event-listener`'s `src/`, and change 3; copy
    `raf-schd/dist/raf-schd.esm.js`; copy the license files.
 4. Update the table above, run the drag lanes (the block handle, table, columns,
    drop reach, auto-scroll, drag preview and press-after-drag specs in

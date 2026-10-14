@@ -29,7 +29,7 @@ type RenderFn = ({ container, }: {
  * });
  */
 export declare function setCustomNativeDragPreview({ render, nativeSetDragImage, getOffset, }: {
-    getOffset?: GetOffsetFn;
+    getOffset: GetOffsetFn;
     render: RenderFn;
     nativeSetDragImage: ElementEventPayloadMap['onGenerateDragPreview']['nativeSetDragImage'];
 }): void;

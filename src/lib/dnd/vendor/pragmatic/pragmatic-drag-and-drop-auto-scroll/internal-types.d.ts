@@ -37,13 +37,9 @@ export type PublicConfig = Partial<{
 export type ElementAutoScrollArgs<DragType extends AllDragTypes> = {
     element: Element;
     canScroll?: (args: ElementGetFeedbackArgs<DragType>) => boolean;
-    getAllowedAxis?: (args: ElementGetFeedbackArgs<DragType>) => AllowedAxis;
-    getConfiguration?: (args: ElementGetFeedbackArgs<DragType>) => PublicConfig;
 };
 export type WindowAutoScrollArgs<DragType extends AllDragTypes> = {
     canScroll?: (args: WindowGetFeedbackArgs<DragType>) => boolean;
-    getAllowedAxis?: (args: WindowGetFeedbackArgs<DragType>) => AllowedAxis;
-    getConfiguration?: (args: WindowGetFeedbackArgs<DragType>) => PublicConfig;
 };
 export type Side = 'start' | 'end';
 export type Axis = 'vertical' | 'horizontal';

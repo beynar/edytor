@@ -21,8 +21,6 @@ type DraggableArgs = {
      * can have a "draggable" attribute
      */
     element: HTMLElement;
-    /** The part of a draggable `element` that you want to use to control the dragging of the whole `element` */
-    dragHandle?: Element;
     /** Conditionally allow a drag to occur */
     canDrag?: (args: DraggableGetFeedbackArgs) => boolean;
     /** Used to attach data to a drag operation. Called once just before the drag starts */

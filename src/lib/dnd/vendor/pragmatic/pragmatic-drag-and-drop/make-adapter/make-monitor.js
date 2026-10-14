@@ -9,9 +9,8 @@ export function makeMonitor() {
     // Monitor is allowed to monitor events if:
     // 1. It has no `canMonitor` function (default is that a monitor can listen to everything)
     // 2. `canMonitor` returns true
-    if (!monitor.canMonitor || monitor.canMonitor(dragging.canMonitorArgs)) {
-      dragging.active.add(monitor);
-    }
+    // edytor: no monitor sets `canMonitor`.
+    dragging.active.add(monitor);
   }
   function monitorForConsumers(args) {
     // We are giving each `args` a new reference so that you

@@ -10,13 +10,6 @@ import { supportsPopover } from '../../../util/supports-popover.js';
 
 /** A function that will render a preview element into a `container` `HTMLElement` */
 
-/** By default we use the build in values for the native drag preview: {x: 0, y: 0} */
-function defaultOffset() {
-  return {
-    x: 0,
-    y: 0
-  };
-}
 
 /** This function provides the ability to mount an element for it to be used as the native drag preview
  *
@@ -37,7 +30,8 @@ function defaultOffset() {
 export function setCustomNativeDragPreview({
   render,
   nativeSetDragImage,
-  getOffset = defaultOffset
+  // edytor: every caller gives its `getOffset`.
+  getOffset
 }) {
   const container = document.createElement('div');
 

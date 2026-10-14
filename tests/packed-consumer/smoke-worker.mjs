@@ -79,7 +79,8 @@ const EXPORT_SAFE =
 	/\/dist\/(export\/.*|utils\/sanitize\.js|clipboard\/(serializeClipboardFragment|htmlFlow|textBlocks|types)\.js|block\/(contentRange|colors)\.js|plugins\/(richtext\/callouts|image\/image|media\/sources|page\/page|equation\/tex)\.js)$/;
 const breaches = inputs.filter(
 	(path) =>
-		(EXPORT_SAFE.test(path) ? false : VIEW.test(path)) ||
+		// The view-layer paths are edytor's own (a parser's `dist/index.js` is none).
+		(path.includes('node_modules/edytor/') && !EXPORT_SAFE.test(path) && VIEW.test(path)) ||
 		/(^|\/)node_modules\/(svelte|@sveltejs)\//.test(path) ||
 		(path.includes('node_modules/edytor/') && !WORKER_SAFE.test(path) && !EXPORT_SAFE.test(path))
 );

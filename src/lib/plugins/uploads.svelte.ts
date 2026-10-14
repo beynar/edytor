@@ -69,6 +69,11 @@ export type KindUpload = {
 /** A kind that takes files, and its type. */
 type UploadKind = KindUpload & { type: string };
 
+/** An upload's object URL, while it uploads, released. */
+const revoke = (upload: FileUpload | undefined) => {
+	if (upload?.status === 'uploading' && upload.preview) URL.revokeObjectURL(upload.preview);
+};
+
 /**
  * The view's uploads (`media.files`), one per view, claimed by the first
  * media plugin listed with an `upload`: the uploads of pasted, dropped and
@@ -208,8 +213,7 @@ export class FileUploads implements ViewUploads {
 
 	/** Release every preview. */
 	destroy = () => {
-		for (const upload of this.#uploads.values())
-			if (upload.status === 'uploading' && upload.preview) URL.revokeObjectURL(upload.preview);
+		this.#uploads.forEach(revoke);
 		this.#uploads.clear();
 	};
 
@@ -242,7 +246,7 @@ export class FileUploads implements ViewUploads {
 	#settle = (id: string) => {
 		const upload = this.#uploads.get(id);
 		if (upload?.status !== 'uploading') return;
-		if (upload.preview) URL.revokeObjectURL(upload.preview);
+		revoke(upload);
 		this.#uploads.delete(id);
 	};
 
@@ -257,14 +261,13 @@ export class FileUploads implements ViewUploads {
 		if (edytor.destroyed) return;
 		const block = edytor.idToBlock.get(id);
 		const upload = this.#uploads.get(id);
-		const preview = upload?.status === 'uploading' ? upload.preview : null;
 		// Given a source meanwhile (a peer, the link field): nothing to fill.
 		if (block?.isInTree && kind.filled(block.data)) this.#uploads.delete(id);
 		else if (!data) this.#uploads.set(id, { status: 'failed' });
 		// Not shown (undone, deleted): held until it shows again (`fill`).
 		else if (!block?.isInTree) this.#uploads.set(id, { status: 'landed', data });
 		else this.#write(id, data);
-		if (preview) URL.revokeObjectURL(preview);
+		revoke(upload);
 	};
 
 	/** The data's write, outside the history; refused (readonly), it is held for the next show. */

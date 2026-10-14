@@ -441,14 +441,12 @@ export class BlockHandleController {
 			canDrop: ({ source, input }) => {
 				const dragSource = this.#getDragSource(source.data);
 				if (!dragSource) return false;
-				if (!target) return Boolean(this.drop.margin(this.#drag(dragSource), input));
+				const drag = this.#drag(dragSource);
+				if (!target) return Boolean(this.drop.margin(drag, input));
 				if (this.drop.inHandleColumn(input.clientX)) return false;
-				const row = this.drop.rowAt(this.#drag(dragSource), target, node, input);
-				const { before, after } = this.drop.zones(this.#drag(dragSource), row, input);
-				return (
-					[...before, ...after].some(this.#drag(dragSource).fits) ||
-					Boolean(this.drop.beside(this.#drag(dragSource), row, input))
-				);
+				const row = this.drop.rowAt(drag, target, node, input);
+				const { before, after } = this.drop.zones(drag, row, input);
+				return [...before, ...after].some(drag.fits) || Boolean(this.drop.beside(drag, row, input));
 			},
 			// The row at the pointer and the half of its own row (not its subtree's)
 			// the pointer is in: held while the target is sticky (the drag library

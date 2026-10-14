@@ -93,10 +93,18 @@ row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `
    has it: `util/supports-popover.js` and `util/max-z-index.js` are gone);
    the jsdom lanes stub `showPopover`.
 
+4. **An external drag's items show their `kind` and `type` while dragging**
+   (`adapter/external-adapter.js`, marked `// edytor:`): upstream locks
+   `items: []` until the drop; edytor snapshots each `DataTransferItem`'s
+   `kind` and `type` at the `dragenter` (what browsers expose then; the
+   live list empties after the event), with `getAsFile()` answering `null`.
+   The drop's payload is upstream's (the real items). The file drop reads it
+   to show the line only where the dragged files would land.
+
 No other statement of the libraries' own code is changed. A check that a
 re-sync reproduces this: strip every import specifier from each vendored file
 and from its upstream file, and compare: they are equal but for the sites of
-change 3.
+changes 3 and 4.
 
 ## How edytor builds around it
 
@@ -121,7 +129,7 @@ change 3.
    auto-scroll `element` and `external`), follow every import; copy each reached `dist/es2019` file and,
    from each entry's `types` field, each reached `dist/types` declaration to
    the same path here, rewriting specifiers as in change 1.
-3. Redo change 2 from `bind-event-listener`'s `src/`, and change 3; copy
+3. Redo change 2 from `bind-event-listener`'s `src/`, and changes 3 and 4; copy
    `raf-schd/dist/raf-schd.esm.js`; copy the license files.
 4. Update the table above, run the drag lanes (the block handle, table, columns,
    drop reach, auto-scroll, drag preview, press-after-drag and file drop specs in

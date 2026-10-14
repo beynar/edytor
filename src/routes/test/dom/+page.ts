@@ -32,6 +32,8 @@ export const load: PageLoad = ({ url }) => {
 		triggers: url.searchParams.get('triggers') === '1',
 		// `uploads=1` gives the image and file plugins an `upload` (pasted and dropped files), as `scenario=image` does.
 		uploads: url.searchParams.get('uploads') === '1',
+		// `uploads=image`: only the image plugin has an `upload` (no file block takes files).
+		imageUploadsOnly: url.searchParams.get('uploads') === 'image',
 		// `nesting=0` leaves `allowNesting` off (the default of `<Edytor>`); the route nests otherwise.
 		nesting: url.searchParams.get('nesting') !== '0',
 		// `polish=1` lists the block menu, the page and the table of contents plugins.

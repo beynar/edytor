@@ -61,7 +61,18 @@ export const adapter = makeAdapter({
         }
         const locked = {
           types,
-          items: [],
+          // edytor: the items' `kind` and `type` as the browser shows them while
+          // dragging (no data: `getAsFile()` is `null` until the drop), snapshotted
+          // since the live list empties once the event is dispatched.
+          items: Array.from(event.dataTransfer.items ?? [], ({
+            kind,
+            type
+          }) => ({
+            kind,
+            type,
+            getAsFile: () => null,
+            getAsString: () => {}
+          })),
           getStringData: () => null
         };
         api.start({

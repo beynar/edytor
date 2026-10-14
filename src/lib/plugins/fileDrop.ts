@@ -8,9 +8,13 @@
  * whose places are the ones the document takes new blocks of the files'
  * kinds at (`canPlaceNew`). With or without the block handles.
  *
- * The adapter withholds the files until the drop, so while they are dragged
- * their kinds are every kind the view's uploads take (a place shows only
- * where all of them fit); the drop resolves again with the files' own kinds.
+ * While they are dragged the browser shows each file's MIME type, not the
+ * file (the adapter's items carry it, a vendored change, `UPSTREAM.md`): the
+ * kinds are the ones the uploads would place those files as, so the line
+ * shows only where they land; none (a PDF with only an image uploader): no
+ * line, and the drop inserts nothing. Where the engine hides the types (no
+ * item, or an empty type), every kind the uploads take. The drop resolves
+ * again with the files themselves.
  * Its listeners are the window's, capturing, so the drop target's `onDrop`
  * runs before the host's own `drop` listener (`events/onDrop.ts`), which
  * takes the placement (`ViewUploads.drop.take`) and runs the drop's
@@ -46,6 +50,7 @@ export class FileDrag {
 	#scrolling: (() => void) | null = null;
 	#dropped: DropAt | null = null;
 	#begun = false;
+	#kinds: readonly string[] = [];
 
 	constructor(
 		private readonly edytor: Edytor,
@@ -72,15 +77,16 @@ export class FileDrag {
 			element: host,
 			canDrop: ({ source }) =>
 				!this.edytor.readonly && containsFiles({ source }) && this.uploads.types.length > 0,
-			onDragEnter: ({ location }) => {
+			onDragEnter: ({ source, location }) => {
+				this.#kinds = this.#draggedKinds(source.items);
 				this.#dropped = null;
 				this.#scrolling ??= autoScrollFor(
 					host,
 					externalScrollers(() => !this.edytor.readonly)
 				);
-				this.#over(this.uploads.types, location.current.input);
+				this.#over(this.#kinds, location.current.input);
 			},
-			onDrag: ({ location }) => this.#over(this.uploads.types, location.current.input),
+			onDrag: ({ location }) => this.#over(this.#kinds, location.current.input),
 			onDragLeave: () => this.#end(),
 			onDrop: ({ source, location }) => {
 				const kinds = new Set(
@@ -102,6 +108,18 @@ export class FileDrag {
 		const dropped = this.#dropped;
 		this.#dropped = null;
 		return dropped;
+	}
+
+	/** The kinds the dragged files would be, by their types; hidden types: every kind that takes files. */
+	#draggedKinds(items: readonly { kind: string; type: string }[]): readonly string[] {
+		const files = items.filter((item) => item.kind === 'file');
+		if (!files.length || files.some((item) => !item.type)) return this.uploads.types;
+		const kinds = new Set<string>();
+		for (const { type } of files) {
+			const kind = this.uploads.kindOf(new File([], 'file', { type }));
+			if (kind) kinds.add(kind);
+		}
+		return [...kinds];
 	}
 
 	/** The drag of files of `kinds`: no block moves; a place takes them all. */

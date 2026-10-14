@@ -21,9 +21,15 @@ const types = async (page: Page) =>
  * (on the page around it with `onPage`). A `dragleave` has no related
  * target: the drag leaves the window.
  */
-const dragFiles = (page: Page, events: string[], at: { x: number; y: number }, onPage = false) =>
+const dragFiles = (
+	page: Page,
+	events: string[],
+	at: { x: number; y: number },
+	onPage = false,
+	files: Pick[] = ['png', 'pdf']
+) =>
 	page.evaluate(
-		({ events, x, y, onPage }) => {
+		({ events, x, y, onPage, files }) => {
 			const bytes = Uint8Array.from(
 				atob(
 					'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
@@ -31,8 +37,10 @@ const dragFiles = (page: Page, events: string[], at: { x: number; y: number }, o
 				(c) => c.charCodeAt(0)
 			);
 			const transfer = new DataTransfer();
-			transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
-			transfer.items.add(new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' }));
+			if (files.includes('png'))
+				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
+			if (files.includes('pdf'))
+				transfer.items.add(new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' }));
 			const editor = onPage ? document.body : document.querySelector('[data-edytor]')!;
 			for (const type of events) {
 				const event = new DragEvent(type, {
@@ -48,7 +56,7 @@ const dragFiles = (page: Page, events: string[], at: { x: number; y: number }, o
 				editor.dispatchEvent(event);
 			}
 		},
-		{ events, ...at, onPage }
+		{ events, ...at, onPage, files }
 	);
 
 /** The lower half of the last block's own row, just inside its text column. */
@@ -112,5 +120,42 @@ test.describe('drop.files.place', () => {
 		await expect(page.locator('[data-edytor-drop-indicator]')).toHaveCount(0);
 		await expect(page.locator('[data-edytor-block-drop-position]')).toHaveCount(0);
 		await expect.poll(() => types(page)).toEqual(['image', 'paragraph']);
+	});
+
+	test.describe("with only an image uploader, the line reads the dragged files' types", () => {
+		const open = async (page: Page) => {
+			await page.goto('/test/dom?uploads=image');
+			await waitForEditorReady(page);
+			return { before: await types(page), at: await lowerHalfOfLast(page) };
+		};
+		const bar = (page: Page) => page.locator('[data-edytor-drop-indicator]');
+
+		test('a PDF shows no line and inserts nothing', async ({ page }) => {
+			const { before, at } = await open(page);
+			await dragFiles(page, ['dragenter', 'dragover'], at, false, ['pdf']);
+			await page.evaluate(() => new Promise(requestAnimationFrame));
+			await expect(bar(page)).toHaveCount(0);
+			await dragFiles(page, ['drop'], at, false, ['pdf']);
+			await page.evaluate(() => new Promise(requestAnimationFrame));
+			expect(await types(page)).toEqual(before);
+		});
+
+		test('a PNG shows the line and inserts an image there', async ({ page }) => {
+			const { before, at } = await open(page);
+			await dragFiles(page, ['dragenter', 'dragover'], at, false, ['png']);
+			await expect(bar(page)).toHaveAttribute('data-position', 'after');
+			await dragFiles(page, ['drop'], at, false, ['png']);
+			await expect.poll(() => types(page)).toEqual([...before, 'image']);
+		});
+
+		test('mixed files: the line shows where the image fits, and only it lands', async ({
+			page
+		}) => {
+			const { before, at } = await open(page);
+			await dragFiles(page, ['dragenter', 'dragover'], at);
+			await expect(bar(page)).toHaveAttribute('data-position', 'after');
+			await dragFiles(page, ['drop'], at);
+			await expect.poll(() => types(page)).toEqual([...before, 'image']);
+		});
 	});
 });

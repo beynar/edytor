@@ -54,6 +54,22 @@ const mount = (readonly = false, media = true) =>
 		}
 	);
 
+/** A view whose only uploader is the image plugin's (no file block). */
+const mountImageOnly = () =>
+	renderDomEdytor(
+		<root>
+			<paragraph>one</paragraph>
+			<paragraph>two</paragraph>
+		</root>,
+		{
+			plugins: [
+				richTextPlugin,
+				mediaEmptyPlugin,
+				createImagePlugin({ upload: () => new Promise<string>(() => {}) })
+			]
+		}
+	);
+
 const rect = (top: number, height: number) =>
 	({
 		left: 100,
@@ -207,5 +223,49 @@ describe('drop.files.place', () => {
 		// Swallowed: the browser must not open the file in place of the page.
 		expect(drop.defaultPrevented).toBe(true);
 		expect(types(edytor)).toEqual(['paragraph', 'paragraph']);
+	});
+
+	describe("the line reads the dragged files' types", () => {
+		const drag = async (files: File[]) => {
+			const { edytor, editor } = await mountImageOnly();
+			layOut(edytor);
+			const data = transfer(files);
+			editor.dispatchEvent(dragEvent('dragenter', data, 30));
+			editor.dispatchEvent(dragEvent('dragover', data, 30));
+			const shown = indicator()?.dataset.position ?? null;
+			editor.dispatchEvent(dragEvent('drop', data, 30));
+			await flushDomUpdates();
+			return { shown, types: types(edytor) };
+		};
+
+		it('a PDF over a view with only an image uploader shows no line and inserts nothing', async () => {
+			expect(await drag([file('notes.pdf', 'application/pdf')])).toEqual({
+				shown: null,
+				types: ['paragraph', 'paragraph']
+			});
+		});
+
+		it('a PNG over the same view shows the line and inserts an image there', async () => {
+			expect(await drag([file('photo.png', 'image/png')])).toEqual({
+				shown: 'after',
+				types: ['paragraph', 'image', 'paragraph']
+			});
+		});
+
+		it('mixed files: the line shows where the insertable ones fit, and only they land', async () => {
+			expect(
+				await drag([file('notes.pdf', 'application/pdf'), file('photo.png', 'image/png')])
+			).toEqual({ shown: 'after', types: ['paragraph', 'image', 'paragraph'] });
+		});
+
+		it('types the engine hides: the line shows where any uploaded kind fits', async () => {
+			const { edytor, editor } = await mountImageOnly();
+			layOut(edytor);
+			const data = transfer([file('photo.png', 'image/png')]);
+			(data.items as unknown as { type: string }[])[0].type = '';
+			editor.dispatchEvent(dragEvent('dragenter', data, 30));
+			editor.dispatchEvent(dragEvent('dragover', data, 30));
+			expect(indicator()?.dataset.position).toBe('after');
+		});
 	});
 });

@@ -19,7 +19,7 @@ import {
 import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
-import { identify } from '../chrome.js';
+import { identify, virtualAnchor } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { keysOf } from '../list.svelte.js';
@@ -259,6 +259,29 @@ export class ToolbarController {
 	get hoveredHref() {
 		return this.hovered?.getAttribute('href') ?? '';
 	}
+
+	/**
+	 * Where the bar stands (`ChromeAnchor`): the selection's box, which your
+	 * `toolbar` places itself above (below when there is no room).
+	 */
+	readonly anchor = virtualAnchor(
+		() => {
+			const editor = this.edytor.node;
+			const selection = editor?.ownerDocument.getSelection();
+			if (!selection?.rangeCount || !editor?.contains(selection.anchorNode)) return;
+			const range = selection.getRangeAt(0);
+			return typeof range.getBoundingClientRect === 'function'
+				? range.getBoundingClientRect()
+				: undefined;
+		},
+		() => this.edytor.node
+	);
+
+	/** Where the link card stands (`ChromeAnchor`): the hovered link, which your `card` places itself under. */
+	readonly cardAnchor = virtualAnchor(
+		() => this.hovered?.getBoundingClientRect(),
+		() => this.hovered
+	);
 
 	/** Show the card for `anchor`, or hide it (`null`). */
 	hover(anchor: HTMLAnchorElement | null) {

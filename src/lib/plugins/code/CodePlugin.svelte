@@ -115,13 +115,7 @@
 				onEdytorAttached: ({ node }) => {
 					const menu = ownMenu();
 					const snippet = menu?.settings.menu;
-					return (
-						snippet &&
-						menu.panel.mount(node, snippet, menu, {
-							place: () => menu.open && menu.panel.place(4),
-							attributes: () => ({ 'data-edytor-code-language-panel': '' })
-						})
-					);
+					return snippet && menu.panel.mount(node, snippet, menu, () => menu.open !== null);
 				},
 				hotkeys: {
 					// Alt+F10 at a caret in a code line: the keys go to its language button

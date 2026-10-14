@@ -225,3 +225,5 @@ In the empty block, `empty.embed()` (the demo's link field, "Paste the link…")
 | `[data-edytor-media-empty]`           | Where the empty state (your `empty` snippet) renders |
 
 The [Notion theme](/docs/customization/styling#notion-theme) styles the blocks (the plugin keeps only the frame's size: its provider's aspect ratio or height); the empty state's look is your markup's (the demo's `MediaEmpty.svelte`, shared by every media block: [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).
+
+**Placement.** The package places no popup: your markup places itself by the URL paste menu's `controller.anchor` (the pasted line), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

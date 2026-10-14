@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { css } from './ui.js';
 	import { words } from './words.svelte.js';
@@ -45,6 +46,7 @@
 		aria-label={words.table[`${menu.menu?.kind ?? 'row'}Menu`]}
 		{@attach menu.popup}
 		{@attach menu.keys}
+		{@attach float(() => menu.anchor, { gap: 4 })}
 	>
 		{#each menu.items as item (item.item.id)}
 			<Button

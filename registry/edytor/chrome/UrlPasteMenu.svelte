@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { words } from './words.svelte.js';
 	import type { UrlPasteController } from 'edytor';
@@ -20,6 +21,7 @@
 	aria-label={words.urlPaste.menu}
 	tabindex="-1"
 	{@attach controller.popup}
+	{@attach float(() => controller.anchor, { gap: 4 })}
 >
 	{#each controller.open?.options ?? [] as option, index (option.id)}
 		<Button

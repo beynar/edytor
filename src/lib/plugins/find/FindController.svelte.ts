@@ -11,6 +11,7 @@ import { findMatches, type FindMatch } from './search.js';
 import { listen } from '$lib/utils/listen.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { keysOf } from '../list.svelte.js';
+import { virtualAnchor } from '../chrome.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
 export type ReplaceMatches = Commands['replaceMatches'];
@@ -22,6 +23,15 @@ export type ReplaceMatches = Commands['replaceMatches'];
  * dispatcher command; the bar and the highlights render from it.
  */
 export class FindController {
+	/**
+	 * Where the bar stands (`ChromeAnchor`): the editor, whose top right
+	 * your `bar` places itself in.
+	 */
+	readonly anchor = virtualAnchor(
+		() => this.edytor.node?.getBoundingClientRect(),
+		() => this.edytor.node
+	);
+
 	isOpen = $state(false);
 	/** The replacement text. */
 	replacement = $state('');

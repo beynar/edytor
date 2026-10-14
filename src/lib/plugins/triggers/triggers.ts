@@ -19,8 +19,6 @@ import type {
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import { inputRulesHook } from '$lib/session/inputRules.js';
 import { TriggerMenuController, type TextTriggerController } from './TriggerController.svelte.js';
-import { caretRect } from './place.js';
-import { placeNear } from '$lib/surface/overlay.js';
 import { listHotkeys, type HeldList } from '../list.svelte.js';
 import { mountChrome } from '../chrome.js';
 
@@ -96,22 +94,14 @@ export const withRulesAndTriggers = (
 					: undefined,
 			close: () => controller.close()
 		}),
-		// Below the caret (above it when there is no room), kept in the viewport.
+		// Its markup places itself by the controller's `anchor` (the caret).
 		(controller) =>
 			mountChrome(
 				edytor,
 				controller.trigger.menu,
 				controller,
 				() => controller.isOpen,
-				{
-					name: 'edytor-trigger-menu-host',
-					zIndex: 50,
-					measure: (host) => {
-						if (!controller.isOpen) return;
-						const rect = caretRect(edytor);
-						return rect && placeNear(host, rect, [280, 240]);
-					}
-				},
+				{ name: 'edytor-trigger-menu-host', zIndex: 50 },
 				() => controller.close()
 			)
 	);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { words } from './words.svelte.js';
 	import { iconOf } from './icons.js';
 	import { keepFocus } from './keepFocus.js';
@@ -40,6 +41,7 @@
 	tabindex="-1"
 	role="presentation"
 	onmousedown={keepFocus}
+	{@attach float(() => controller.anchor)}
 >
 	{#if controller.addition}
 		<Input

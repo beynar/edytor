@@ -104,6 +104,11 @@ export class CalloutIconPicker extends ChromeList {
 		);
 	}
 
+	/** Where the picker stands: the open callout's icon (`ChromeAnchor`), which your `picker` places itself under. */
+	get anchor() {
+		return this.panel.anchor;
+	}
+
 	/** Whether the picker is open (reactive). */
 	get isOpen() {
 		return this.target !== null;
@@ -144,7 +149,6 @@ export class CalloutIconPicker extends ChromeList {
 		if (this.target === null) return;
 		const before = this.#before;
 		this.target = null;
-		this.panel.box = null;
 		this.#before = null;
 		this.edytor.overlay.invalidate();
 		if (!keys) return;
@@ -250,17 +254,6 @@ export const createCalloutIconsPlugin =
 		return {
 			// With the menus: above the handles and the image chrome.
 			onEdytorAttached: ({ node }) =>
-				menu &&
-				picker.panel.mount(
-					node,
-					menu,
-					picker,
-					{
-						shown: () => picker.isOpen,
-						place: () => picker.isOpen && picker.panel.place(4),
-						attributes: () => ({ 'data-edytor-callout-icons': '' })
-					},
-					70
-				)
+				menu && picker.panel.mount(node, menu, picker, () => picker.isOpen, 70)
 		};
 	};

@@ -219,12 +219,12 @@ export class EquationEditor {
 	}
 
 	/**
-	 * Where the panel stands: under the edited equation (a block one's
-	 * middle, an inline one's start), layer-relative.
-	 * @internal
+	 * Where the panel stands: the edited equation (`ChromeAnchor`; Notion
+	 * centers it under a block equation, `display`, and starts it under an
+	 * inline one).
 	 */
-	get place(): { left: number; top: number } | null {
-		return this.target && this.panel.place(6, this.display);
+	get anchor() {
+		return this.panel.anchor;
 	}
 
 	/** A block equation is edited (a field of several lines). */
@@ -277,7 +277,6 @@ export class EquationEditor {
 		const target = this.target;
 		if (!target) return;
 		this.target = null;
-		this.panel.box = null;
 		this.edytor.overlay.invalidate();
 		const block = this.#block(target);
 		if (!block) return;

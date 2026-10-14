@@ -13,7 +13,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { imageAlignOf, imageAltOf, type ImageAlign } from './image.js';
 import { imageControls, type ImageControls } from './controls.svelte.js';
-import { identify, keepFocus, onPressOutside } from '../chrome.js';
+import { identify, keepFocus, onPressOutside, virtualAnchor } from '../chrome.js';
 import { all, listen } from '$lib/utils/listen.js';
 import { keysOf } from '../list.svelte.js';
 
@@ -35,6 +35,17 @@ export class ImageToolbar {
 		/** The app's markup. @internal */
 		readonly snippet: Snippet<[ImageToolbar]>
 	) {}
+
+	/**
+	 * Where the toolbar stands (`ChromeAnchor`): the image the chrome is
+	 * on, whose top right your `toolbar` places itself in.
+	 */
+	readonly anchor = virtualAnchor(
+		() => this.#image()?.getBoundingClientRect(),
+		() => this.#image()
+	);
+
+	#image = () => this.#block()?.node?.querySelector('[data-edytor-image] img');
 
 	/** The measured image the toolbar is on (`null`: none). */
 	get box() {

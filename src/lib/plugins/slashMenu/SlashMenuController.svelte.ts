@@ -84,6 +84,14 @@ export class SlashMenuController extends TextTriggerController {
 		super(edytor, '/', 'slash-menu');
 	}
 
+	/** A `+`'s menu stands under the `+` (its block while the `+` is gone); a `/` menu at the caret. */
+	protected anchorRect(): DOMRect | undefined {
+		const { addition } = this;
+		const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
+		const box = anchor?.getBoundingClientRect();
+		return box && (box.width || box.height) ? box : super.anchorRect();
+	}
+
 	/** A `+`'s menu names its highlighted row from its own field, and tells the `+` it opened it. */
 	protected popupOf(active: string | undefined): Popup {
 		const { addition } = this;

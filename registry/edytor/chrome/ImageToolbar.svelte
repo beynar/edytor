@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { Input } from '$registry/ui/input/index.js';
 	import { words } from './words.svelte.js';
@@ -26,7 +27,15 @@
 {#if controls.box}
 	{@const box = controls.box}
 	<!-- Its role is the controller's `bar`. -->
-	<div data-image-toolbar aria-label={labels.toolbar} {@attach controls.bar}>
+	<div
+		data-image-toolbar
+		aria-label={labels.toolbar}
+		{@attach controls.bar}
+		{@attach float(() => controls.anchor, {
+			placement: 'top-end',
+			gap: ({ rects }) => ({ mainAxis: -rects.floating.height - 6, crossAxis: 6 })
+		})}
+	>
 		{#each buttons as { align, label, icon } (icon)}
 			<Button
 				variant="ghost"

@@ -14,7 +14,7 @@ export {
 	type CalloutIconsOptions
 } from './richtext/calloutIcons.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
-export type { MenuItemPayload } from './chrome.js';
+export type { ChromeAnchor, MenuItemPayload } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,

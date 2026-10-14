@@ -19,11 +19,37 @@ import {
 } from './blockHandles/BlockHandleController.svelte.js';
 
 /**
+ * Where a chrome surface stands, for the app's markup to place itself
+ * (Floating UI's virtual element: `computePosition(anchor, floating, …)`,
+ * or bits-ui's `customAnchor`): its box read now, in client pixels, on
+ * every call (the caret, the selection, a block, a grip, a button), and
+ * the element whose scrolling ancestors move it. The package places no
+ * popup.
+ */
+export type ChromeAnchor = {
+	getBoundingClientRect: () => DOMRect;
+	readonly contextElement?: Element;
+};
+
+/** A {@link ChromeAnchor} reading `rect` (an empty box while there is none) inside `context`. */
+export const virtualAnchor = (
+	rect: () => DOMRect | null | undefined,
+	context: () => Element | null | undefined
+): ChromeAnchor => ({
+	getBoundingClientRect: () => rect() ?? new DOMRect(),
+	get contextElement() {
+		return context() ?? undefined;
+	}
+});
+
+/**
  * Mount the app's `snippet` for a chrome surface in a fixed host of the
- * overlay (`data-<name>`, placed by `measure`), rendered with `payload`
- * while `shown` holds and closed (`close`) when the view turns readonly.
- * Without a snippet the surface renders nothing (its controller still
- * works): nothing is mounted. Answers the teardown.
+ * overlay (`data-<name>`), rendered with `payload` while `shown` holds and
+ * closed (`close`) when the view turns readonly; the markup places itself
+ * by its controller's `anchor`. `measure` runs on the overlay's frames (a
+ * surface whose anchor left the page closes there). Without a snippet the
+ * surface renders nothing (its controller still works): nothing is
+ * mounted. Answers the teardown.
  */
 export const mountChrome = <T>(
 	edytor: Edytor,
@@ -33,7 +59,7 @@ export const mountChrome = <T>(
 	place: {
 		name: string;
 		zIndex: number;
-		measure: (host: HTMLElement, origin: DOMRect) => (() => void) | void;
+		measure?: (host: HTMLElement, origin: DOMRect) => (() => void) | void;
 	},
 	close?: () => void
 ) =>
@@ -43,7 +69,7 @@ export const mountChrome = <T>(
 				{ edytor, snippet, payload, shown, close },
 				place.name,
 				place.zIndex,
-				place.measure
+				place.measure ?? (() => {})
 			)
 		: () => {};
 

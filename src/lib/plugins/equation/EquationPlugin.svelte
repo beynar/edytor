@@ -156,17 +156,7 @@
 						if (!view || !owns()) return;
 						const { editor } = view;
 						const { panel } = options;
-						return (
-							panel &&
-							editor.panel.mount(node, panel, editor, {
-								place: () => editor.place,
-								center: () => editor.display,
-								attributes: () => ({
-									'data-edytor-equation-panel': '',
-									'data-display': editor.display ? 'block' : 'inline'
-								})
-							})
-						);
+						return panel && editor.panel.mount(node, panel, editor, () => editor.target !== null);
 					},
 					// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
 					onAfterOperation: (change) => {

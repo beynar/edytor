@@ -386,3 +386,5 @@ Every action closes the menu and returns the caret: it replaces the block select
 
 
 To open a different menu without this plugin, listen for `edytor-block-activate` (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)). [Menus and handles](/docs/customization/menus) shows the other snippets.
+
+**Placement.** The package places no popup: your markup places itself by `controller.anchor` (the handle that opened it; its flyout beside the menu), a virtual element read live. With Floating UI, `computePosition(anchor, element, { strategy: 'fixed', middleware: [offset(8), flip(), shift({ padding: 8 })] })` under `autoUpdate`; with bits-ui, `customAnchor={anchor}`. See [Menus and handles](/docs/customization/menus).

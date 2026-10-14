@@ -4,8 +4,8 @@
 	/**
 	 * The image chrome (`ImageControls`), in the overlay: a resize handle on
 	 * each side of the hovered image (Notion's pill, at mid-height), and the
-	 * image toolbar plugin's toolbar (the app's markup) at its top right,
-	 * while no handle drags.
+	 * image toolbar plugin's toolbar (the app's markup, which places itself
+	 * by the toolbar's `anchor`), while no handle drags.
 	 */
 	let { controls }: { controls: ImageControls } = $props();
 
@@ -40,12 +40,7 @@
 			></div>
 		{/each}
 		{#if controls.toolbar && !controls.drag}
-			<div
-				data-edytor-image-toolbar-slot
-				style:left="{box.x + box.width - 6}px"
-				style:top="{box.y + 6}px"
-				data-selecting={controls.selecting ? 'true' : undefined}
-			>
+			<div data-edytor-image-toolbar-slot data-selecting={controls.selecting ? 'true' : undefined}>
 				{@render controls.toolbar.snippet(controls.toolbar)}
 			</div>
 		{/if}
@@ -53,13 +48,6 @@
 </div>
 
 <style>
-	/* The toolbar's place: the image's top right, sized to its markup. */
-	[data-edytor-image-toolbar-slot] {
-		position: absolute;
-		width: max-content;
-		transform: translateX(-100%);
-	}
-
 	[data-edytor-image-resize] {
 		position: absolute;
 		cursor: col-resize;

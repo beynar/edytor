@@ -127,7 +127,12 @@ export class BlockMenuController {
 	 * after). Delete and Turn into act on their `members`, its items too.
 	 */
 	blocks = $state<Block[]>([]);
-	anchor: HTMLElement | null = null;
+	/**
+	 * Where the menu stands: the handle that opened it (a `ChromeAnchor`:
+	 * your `menu` places itself beside it, its flyout beside the menu);
+	 * `null` while closed.
+	 */
+	anchor = $state.raw<HTMLElement | null>(null);
 	query = $state('');
 	/** The keyboard's row. */
 	index = $state(0);

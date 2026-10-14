@@ -17,6 +17,8 @@ import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
 import { ChromeList, inPage } from '../list.svelte.js';
+import { virtualAnchor } from '../chrome.js';
+import { caretRect } from './place.js';
 
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };
@@ -65,6 +67,20 @@ export abstract class TextTriggerController extends ChromeList {
 			'listbox',
 			(node) => this.isOpen && this.popupOf(inPage(node, this.rowId(this.index)))
 		);
+	}
+
+	/**
+	 * Where the menu stands (`ChromeAnchor`): the caret, which your `menu`
+	 * places itself under (above it when there is no room).
+	 */
+	readonly anchor = virtualAnchor(
+		() => this.anchorRect(),
+		() => this.edytor.node
+	);
+
+	/** The anchor's box, read now: the caret's. */
+	protected anchorRect(): DOMRect | undefined {
+		return caretRect(this.edytor);
 	}
 
 	/** The record `popup` publishes, `active` the highlighted row's id when it is in the page. */

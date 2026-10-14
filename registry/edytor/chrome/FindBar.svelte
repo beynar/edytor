@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { float } from './float.js';
 	import { Button } from '$registry/ui/button/index.js';
 	import { Input } from '$registry/ui/input/index.js';
 	import { words } from './words.svelte.js';
@@ -76,7 +77,15 @@
 	{/each}
 {/snippet}
 
-<div data-edytor-find role="search" aria-label={labels.bar}>
+<div
+	data-edytor-find
+	role="search"
+	aria-label={labels.bar}
+	{@attach float(() => find.anchor, {
+		placement: 'top-end',
+		gap: ({ rects }) => -rects.floating.height - 8
+	})}
+>
 	<div data-edytor-find-row>
 		<Input
 			data-edytor-find-query

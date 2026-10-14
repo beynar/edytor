@@ -29,7 +29,6 @@
 	const labels = $derived(labelsOf(chrome.edytor, 'table', tableEnglish));
 	const layout = $derived(chrome.layout);
 	const line = $derived(chrome.line);
-	const menuPlace = $derived(chrome.menuPlace);
 
 	// The view turning readonly mid-drag drops the preview at once.
 	$effect(() => {
@@ -114,8 +113,8 @@
 			{/if}
 		{/each}
 	{/if}
-	{#if menu && chrome.menu && menuPlace}
-		<div data-edytor-table-menu-host style:left={px(menuPlace.left)} style:top={px(menuPlace.top)}>
+	{#if menu && chrome.menu}
+		<div data-edytor-table-menu-host>
 			{@render menu(chrome)}
 		</div>
 	{/if}

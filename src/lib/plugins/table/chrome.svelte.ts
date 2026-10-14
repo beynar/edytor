@@ -6,7 +6,7 @@ import { dropTargetForElements } from '$lib/dnd/pragmatic.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
-import { attribute, type MenuItemPayload } from '../chrome.js';
+import { attribute, virtualAnchor, type MenuItemPayload } from '../chrome.js';
 import { ChromeList, holdKeys, keysOf, menuKey, optionAttachment } from '../list.svelte.js';
 import { BandDrag, bandKey } from '../bands.svelte.js';
 import { all, listen } from '$lib/utils/listen.js';
@@ -384,21 +384,20 @@ export class TableChrome extends ChromeList {
 	}
 
 	/**
-	 * Where the open menu stands: under its grip.
-	 * @internal
+	 * Where the open menu stands (`ChromeAnchor`): its grip, which your
+	 * `menu` places itself under.
 	 */
-	get menuPlace(): { left: number; top: number } | null {
+	readonly anchor = virtualAnchor(
+		() => this.#gripAnchor()?.getBoundingClientRect(),
+		() => this.#gripAnchor()
+	);
+
+	/** The grip elements in the page, by kind. */
+	#gripNodes: Partial<Record<Kind, HTMLElement>> = {};
+	#gripAnchor = () => {
 		const kind = this.menu?.kind;
-		const at = kind && this.#lines(kind);
-		if (!at) return null;
-		const { layout, index } = at;
-		if (kind === 'row') {
-			const row = layout.rows[index]!;
-			return { left: this.span.left - 9, top: row.top + Math.min(row.height, 28) };
-		}
-		const column = layout.columns[index]!;
-		return { left: column.left + column.width / 2 - 12, top: layout.top + 10 };
-	}
+		return kind ? this.#gripNodes[kind] : undefined;
+	};
 
 	/**
 	 * The drop line of a grip's drag, layer-relative: between two rows
@@ -711,6 +710,7 @@ export class TableChrome extends ChromeList {
 
 	#grip = (node: HTMLElement, kind: Kind) => {
 		node.setAttribute('aria-haspopup', 'menu');
+		this.#gripNodes[kind] = node;
 		$effect(() => {
 			const open = this.menu?.kind === kind;
 			attribute(node, 'aria-expanded', String(open));
@@ -747,7 +747,10 @@ export class TableChrome extends ChromeList {
 				}
 			})
 		);
-		return off;
+		return () => {
+			off();
+			if (this.#gripNodes[kind] === node) delete this.#gripNodes[kind];
+		};
 	};
 
 	/**

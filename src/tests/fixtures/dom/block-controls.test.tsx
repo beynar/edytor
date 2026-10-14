@@ -129,7 +129,7 @@ describe("rich text: a callout's icon and an empty body's hint", () => {
 		await press(icon);
 		expect(icon.getAttribute('aria-expanded')).toBe('true');
 		const list = document.getElementById(icon.getAttribute('aria-controls')!)!;
-		expect(list.closest('[data-edytor-callout-icons]')).not.toBeNull();
+		expect(list.closest('[data-edytor-callout-icons-host]')).not.toBeNull();
 		await dispatchDomKeyDown(list, { key: 'ArrowRight' });
 		await dispatchDomKeyDown(list, { key: 'Enter' });
 		const picked = edytor.idToBlock.get('c')!.data.icon;

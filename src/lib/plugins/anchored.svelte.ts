@@ -1,47 +1,43 @@
 /**
- * A panel the overlay draws under an element of the page (the code
- * language list under its button, the equation editor under its
- * equation): the anchor's box, measured on the overlay's frames, and the
- * one rule that closes the panel without moving the keys: its anchor gone,
- * a press or a focus outside the panel and its anchor, the view turning
- * readonly.
+ * A panel the app draws by an element of the page (the code language list
+ * by its button, the callout icon picker by its icon, the equation editor
+ * by its equation): that element as the panel's `anchor`, which the app's
+ * markup places itself by, and the one rule that closes the panel without
+ * moving the keys: its anchor gone, a press or a focus outside the panel
+ * and its anchor, the view turning readonly.
  */
-import type { ComponentProps, Snippet } from 'svelte';
-import AnchoredPanel from './AnchoredPanel.svelte';
+import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { onPress } from '$lib/events/onFocus.js';
-import { layerBox, pin, sameValues, type LayerBox } from '$lib/surface/overlay.js';
+import { mountChrome, virtualAnchor } from './chrome.js';
 
 export class Anchored {
-	/** The anchor's box in the overlay's frame while the panel is open, else `null` (reactive). */
-	box = $state.raw<LayerBox | null>(null);
-
 	constructor(
 		private edytor: Edytor,
 		/** The overlay host's name: its element is `[data-<name>]`. */
 		private name: string,
-		/** The element the panel stands under: `null` when it left the page, `undefined` while closed. */
-		private anchor: () => Element | null | undefined,
+		/** The element the panel stands by: `null` when it left the page, `undefined` while closed. */
+		private element: () => Element | null | undefined,
 		/** Close the panel, the keys where they are. */
 		private dismiss: () => void
 	) {}
 
-	/** Where the panel stands: `gap` under its anchor, from its middle with `center`, layer-relative. */
-	place = (gap: number, center = false) => {
-		const box = this.box;
-		return box && { left: box.x + (center ? box.width / 2 : 0), top: box.y + box.height + gap };
-	};
+	/** Where the panel stands: its element's box, read on every call (`ChromeAnchor`). */
+	readonly anchor = virtualAnchor(
+		() => this.element()?.getBoundingClientRect(),
+		() => this.element()
+	);
 
-	/** `at` is outside the panel's host and its anchor: the panel closes. */
+	/** `at` is outside the panel's host and its element: the panel closes. */
 	#outside = (at: EventTarget | null, host: Element | null | undefined) => {
 		if (!(at instanceof Node)) return;
-		if (!host?.contains(at) && !this.anchor()?.contains(at)) this.dismiss();
+		if (!host?.contains(at) && !this.element()?.contains(at)) this.dismiss();
 	};
 
 	/**
 	 * Focus left a field of the panel (its `focusout`): for somewhere outside
-	 * the panel and its anchor, it closes; with no new focus (the window went
-	 * to the background), it stays.
+	 * the panel and its element, it closes; with no new focus (the window
+	 * went to the background), it stays.
 	 */
 	blurred = (event: FocusEvent) =>
 		this.#outside(
@@ -50,16 +46,17 @@ export class Anchored {
 		);
 
 	/**
-	 * Mount the panel in the overlay at `zIndex` (above the block handles, 5,
-	 * by default): the app's `snippet` with `payload`, placed as `panel` says
-	 * (`AnchoredPanel`), with a press listener (capture) on `node`'s document
-	 * and the readonly rule. Answers the teardown, which closes it.
+	 * Mount the app's `snippet` with `payload` in the overlay at `zIndex`
+	 * (above the block handles, 5, by default) while `shown` holds, with a
+	 * press listener (capture) on `node`'s document, the anchor-gone rule
+	 * (on the overlay's frames) and the readonly rule. Answers the teardown,
+	 * which closes it.
 	 */
 	mount = <T>(
 		node: HTMLElement,
 		snippet: Snippet<[T]>,
 		payload: T,
-		panel: Omit<ComponentProps<typeof AnchoredPanel<T>>, 'snippet' | 'payload'>,
+		shown: () => unknown,
 		zIndex = 7
 	) => {
 		const { edytor } = this;
@@ -67,37 +64,27 @@ export class Anchored {
 			edytor,
 			node.ownerDocument,
 			(event) =>
-				this.anchor() !== undefined &&
+				this.element() !== undefined &&
 				this.#outside(
 					event.target,
 					(event.target as Element | null)?.closest?.(`[data-${this.name}]`)
 				),
 			true
 		);
-		const props = { snippet, payload, ...panel };
-		const unmount = edytor.overlay.mount(
-			AnchoredPanel<T>,
-			props,
-			this.name,
-			zIndex,
-			(host, origin) => {
-				const anchor = this.anchor();
-				const box = layerBox(anchor, origin);
-				return () => {
-					pin(host);
-					if (anchor === null) return this.dismiss();
-					if (!sameValues(box, this.box)) this.box = box;
-				};
-			}
+		const unmount = mountChrome(
+			edytor,
+			snippet,
+			payload,
+			shown,
+			{
+				name: this.name,
+				zIndex,
+				measure: () => (this.element() === null ? this.dismiss : undefined)
+			},
+			this.dismiss
 		);
-		const offLock = $effect.root(() => {
-			$effect(() => {
-				if (edytor.readonly) this.dismiss();
-			});
-		});
 		return () => {
 			offPress();
-			offLock();
 			unmount();
 			this.dismiss();
 		};

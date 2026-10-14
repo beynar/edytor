@@ -2,7 +2,6 @@ import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { ToolbarController } from './ToolbarController.svelte.js';
 import { keepFocus, mountChrome } from '../chrome.js';
-import { placeNear } from '$lib/surface/overlay.js';
 import { all, listen } from '$lib/utils/listen.js';
 
 export type ToolbarOptions = {
@@ -32,30 +31,10 @@ export const createToolbarPlugin =
 	(edytor) => {
 		const controller = new ToolbarController(edytor);
 
-		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after. */
-		const positionToolbar = (host: HTMLElement) => {
-			const editor = edytor.node;
-			if (!editor || !controller.isVisible) return;
-			const selection = editor.ownerDocument.getSelection();
-			if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
-			const range = selection.getRangeAt(0);
-			if (typeof range.getBoundingClientRect !== 'function') return;
-			return placeNear(host, range.getBoundingClientRect(), [460, 40], {
-				above: true,
-				center: true,
-				// The bar, not its open panel: panels drop over the text below it.
-				box: host.querySelector('[data-edytor-toolbar-bar]') ?? host.firstElementChild
-			});
-		};
-
-		/** Just below the hovered link, flush with it (the host's top padding bridges the two). */
-		const positionCard = (host: HTMLElement) => {
+		/** A hovered link that left the page hides its card (measured in the overlay's frame). */
+		const positionCard = () => {
 			const anchor = controller.hovered;
-			if (!anchor || !controller.card) return;
-			if (!anchor.isConnected) return () => controller.hover(null);
-			const rect = anchor.getBoundingClientRect();
-			const [left, top] = [`${Math.max(8, rect.left)}px`, `${rect.bottom}px`];
-			return () => Object.assign(host.style, { left, top, paddingTop: '4px' });
+			if (anchor && controller.card && !anchor.isConnected) return () => controller.hover(null);
 		};
 
 		/**
@@ -129,8 +108,7 @@ export const createToolbarPlugin =
 				const offs = [
 					mountChrome(edytor, options.toolbar, controller, () => controller.isVisible, {
 						name: 'edytor-toolbar-host',
-						zIndex: 60,
-						measure: positionToolbar
+						zIndex: 60
 					}),
 					mountChrome(edytor, options.card, controller, () => controller.card, {
 						name: 'edytor-link-card-host',

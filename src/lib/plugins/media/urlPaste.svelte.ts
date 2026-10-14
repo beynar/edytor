@@ -3,11 +3,10 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
-import { placeNear } from '$lib/surface/overlay.js';
 import { convertToKind, holdsNothing } from '$lib/kinds.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import { mountChrome, onPressOutside } from '../chrome.js';
+import { mountChrome, onPressOutside, virtualAnchor } from '../chrome.js';
 import { ChromeList, inPage, listHotkeys } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
@@ -172,14 +171,21 @@ export class UrlPasteController extends ChromeList {
 		}
 	});
 
-	/** Under the pasted line, kept in the viewport; a gone line closes the menu. @internal */
-	measure = (host: HTMLElement) => {
+	/** A gone line closes the menu (measured in the overlay's frame). @internal */
+	measure = () => {
 		const { open, edytor } = this;
-		if (!open) return;
-		const block = edytor.idToBlock.get(open.block);
-		if (!block?.isInTree) return () => this.close();
-		const rect = (block.firstText?.node ?? block.node)?.getBoundingClientRect();
-		return rect && placeNear(host, rect, [220, 120], { gap: 4 });
+		if (open && !edytor.idToBlock.get(open.block)?.isInTree) return () => this.close();
+	};
+
+	/** Where the menu stands (`ChromeAnchor`): the pasted line, which your `menu` places itself under. */
+	readonly anchor = virtualAnchor(
+		() => this.#line()?.getBoundingClientRect(),
+		() => this.#line()
+	);
+
+	#line = () => {
+		const block = this.open && this.edytor.idToBlock.get(this.open.block);
+		return block ? (block.firstText?.node ?? block.node) : undefined;
 	};
 }
 

@@ -63,6 +63,14 @@ export class LanguageMenu extends ChromeList {
 		);
 	}
 
+	/**
+	 * Where the list stands: the open block's language button
+	 * (`ChromeAnchor`), which your `menu` places itself under.
+	 */
+	get anchor() {
+		return this.panel.anchor;
+	}
+
 	/** The open block's language id. */
 	get current(): string | null {
 		const open = this.open;
@@ -148,7 +156,6 @@ export class LanguageMenu extends ChromeList {
 		const open = this.open;
 		if (!open) return;
 		this.open = null;
-		this.panel.box = null;
 		this.query = '';
 		this.edytor.overlay.invalidate();
 		if (keys === 'button') this.#button(open.block)?.focus({ preventScroll: true });

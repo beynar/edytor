@@ -212,3 +212,31 @@ file; a share of a file is an estimate.
 | Placements (`{p, r}` candidates per block, ranks, read-time cycle resolution) | the engine has no move: a block's parent and place are LWW attrs edytor resolves | ~15 (`placement/display.js` 3.5, `rank.js` 2.7, `resolve.js` 1.2, `source.js` 0.3, `index/placement.js` 6.1, part of `placement/model.js` and `doc/moves.js`) | a native movable tree (a move operation with a total order that skips cycle-making moves, Kleppmann et al.), holding each block's parent and position as engine state |
 | Attrs per data leaf (`d/<pointer>`, array items `~id` with ranks `~id#`/`~id>`, the LCS arrangement) | a node's attr is one LWW value: concurrent edits of one object would clobber each other | ~7 (`data.js` 5.7, `patchData` in `doc/meta.js` ~1.5; `props.js` is the view's proxy and stays) | nested map and list nodes for data with a native list move (the fork's node already is both), so a patch writes engine nodes and the pointer encoding, ranks and arrangement go |
 | Merge claims and streams (text kept in its backing text, claimed by the block it merged into) | the engine cannot move a run of items to another text | ~8 (`index/claims.js` 2.2, `index/streams.js` 2.5, `text/streams.js` 1.3, `index/anchored.js` 2.4) | a native range move between texts, so a merge moves the run and a split moves it back (the hardest of these: concurrent edits inside a moved range) |
+
+## Prototype result (2026-10-15)
+
+It works: fork patch YP20 (`src/lib/crdt/vendor/yjs/UPSTREAM.md`) and the
+edytor commits on branch `engine-delete`. `text/deletes.ts` and
+`text/delete-index.ts` are gone; nothing is copied on undo any more.
+
+- **Size.** Minimal probe 423.8 → 417.0 KB own (470.6 → 463.7 total, gzip
+  162.0 → 159.4), every plugin 653.2 → 646.4 (701.8 → 695.0), `edytor/export`
+  51.0 unchanged: −6.8 KB net (the engine +2.6, the history +0.8 for the
+  release and hold rules, the index +0.4).
+- **Bench** (`bench:crdt`, master and branch on one machine, two runs): a
+  keystroke, a load and an encode unchanged within noise; a backspace 0.15 →
+  0.08 ms (1k blocks); an undo 0.72 → 0.42 ms. A room's state after 1,100
+  text deletes in separate steps: 94,584 → 88,431 bytes (83,826 once the
+  writer's history releases them): a hold record is smaller than the old
+  record, which outweighs the held text.
+- **What the prototype found on the way.** A record that waited for its
+  items lost the room's restore rows (XW-07, YW-10): records now integrate at
+  once and their holds wait (`pendingHolds`). A history's release must not
+  erase the records of a captured peer frame (the room's validation), and a
+  `fresh` delete only counts this writer's inserts. The purge keeps a record
+  whose text the room lacks. An undone atom insert keeps the atom's
+  attributes under its hold (the wide corpus, doc seed 160).
+- **Contract.** `split.range-one-undo`, a pinned divergence of the native
+  contract programs, now holds as written (original identities after undo);
+  F-U4d's outcome no longer depends on client ids; anchors inside deleted
+  text resolve where they were after undo.

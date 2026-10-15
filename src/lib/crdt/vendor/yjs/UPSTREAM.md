@@ -1038,9 +1038,14 @@ records root, the engine object's `ContentAny`.
 
 Measured: vendored execution lines 3,392 → 3,548 (+156); edytor's
 `text/deletes.ts` + `text/delete-index.ts` (699) removed. App bundle
-(`scripts/bundle-size.mjs`): minimal 423.8 → 416.7 KB own (470.6 → 463.5
-total), every plugin 653.2 → 646.2 (701.8 → 694.8), `edytor/export`
-unchanged.
+(`scripts/bundle-size.mjs`): minimal 423.8 → 417.0 KB own (470.6 → 463.7
+total, 162.0 → 159.4 KB gzip), every plugin 653.2 → 646.4 (701.8 → 695.0),
+`edytor/export` unchanged. `bench:crdt` (one machine, two runs each): a
+keystroke, a load and an encode unchanged within noise, a backspace
+(`scale`) 0.15 → 0.08 ms at 1k blocks, an undo (`history5000`) 0.72 →
+0.42 ms. A room's state after 1,100 text deletes in separate steps over
+200 blocks: 94,584 → 88,431 bytes (83,826 once the writer's history
+releases them).
 
 Oracle: `src/tests/crdt/yp20-holds.test.ts` (a hold and its release show the
 same item; two writers in both orders; overlapping records; a peer's insert

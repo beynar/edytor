@@ -720,7 +720,8 @@ export class Dispatcher {
 		try {
 			for (let i = 0; i < this.queue.length; i++) {
 				if (i === 1000) {
-					console.warn('[edytor] normalization is not converging; skipping further passes');
+					if (DEV)
+						console.warn('[edytor] normalization is not converging; skipping further passes');
 					break;
 				}
 				const entry = this.queue[i]!;
@@ -731,7 +732,7 @@ export class Dispatcher {
 				const count = (counts.get(id) ?? 0) + 1;
 				counts.set(id, count);
 				if (count > MAX_PASSES) {
-					if (count === MAX_PASSES + 1)
+					if (DEV && count === MAX_PASSES + 1)
 						console.warn(
 							`edytor: ${normalize} on block "${id}" exceeded ${MAX_PASSES - 1} passes — a plugin normalizer is not converging; skipping further passes`
 						);

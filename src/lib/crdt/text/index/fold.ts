@@ -13,10 +13,12 @@ import {
 	type IdSetLike,
 	type StoreStruct,
 	changedUnder,
+	clientsOf,
 	engineOps,
 	itemOf,
 	queuedTransactions,
 	sequenceLength,
+	structAt,
 	walkIdSet
 } from '../../structs.js';
 import { DEAD, isBoundary } from '../model.js';
@@ -113,27 +115,52 @@ export const indexFold = (
 		for (let k = from - s.id.clock; k < to - s.id.clock; k++) if (isBoundary(arr[k])) return true;
 		return false;
 	};
-	/** The edits the id sets `ins`/`del` (what the fold has not folded yet) hold, per text. */
-	const makeEditIndex = (ins: IdSetLike | undefined, del: IdSetLike | undefined) => {
+	/** The struct holding id `client:clock` (unsplit), `null` when the store holds none. */
+	const structOf = (client: number, clock: number): StoreStruct | null =>
+		structAt(Y, clientsOf(doc).get(client) ?? [], clock);
+	/**
+	 * The edits the id sets `ins`/`del` and the hold log `log` (what the fold
+	 * has not folded yet) hold, per text. A log entry is a unit a hold record
+	 * hid or showed (fork patch YP20: `client, clock, ±len`), in order.
+	 */
+	const makeEditIndex = (
+		ins: IdSetLike | undefined,
+		del: IdSetLike | undefined,
+		log: readonly number[] = []
+	) => {
 		let built: Map<EngineNode, TextEdits> | null | undefined;
 		const build = (): Map<EngineNode, TextEdits> | null => {
 			if (built !== undefined) return built;
 			if (ins === undefined || del === undefined) return (built = null);
 			const out = new Map<EngineNode, TextEdits>();
+			const edit = (s: StoreStruct, from: number, to: number, deleted: boolean): void => {
+				const parent = s.parent as EngineNode;
+				if (s.parentSub !== null || !isNodeLike(parent)) return;
+				let e = out.get(parent);
+				if (e === undefined) out.set(parent, (e = { edits: [], scan: false, opaque: false }));
+				// A format marker moves no unit; its effect reaches past the edit.
+				if (s.countable !== true) return void (e.opaque = true);
+				if (holdsBoundary(s, from, to)) return void (e.scan = true);
+				e.edits.push({ item: s as RowItem, len: to - from, del: deleted });
+			};
 			const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
 				walkIdSet(Y, doc, idSet, (s, from, to) => {
-					const parent = s.parent as EngineNode;
-					if (s.parentSub !== null || !isNodeLike(parent)) return;
-					let e = out.get(parent);
-					if (e === undefined) out.set(parent, (e = { edits: [], scan: false, opaque: false }));
-					// A format marker moves no unit; its effect reaches past the edit.
-					if (s.countable !== true) return void (e.opaque = true);
-					// Written and removed within the fold: nothing moved.
-					if (deleted ? ins.has(s.id.client, from) : s.deleted) return;
-					if (holdsBoundary(s, from, to)) return void (e.scan = true);
-					e.edits.push({ item: s as RowItem, len: to - from, del: deleted });
+					// Written and removed (or held) within the fold: nothing moved.
+					if (!(deleted ? ins.has(s.id.client, from) : s.deleted)) edit(s, from, to, deleted);
 				});
-			built = visit(ins, false) && visit(del, true) ? out : null;
+			// In order, after the inserts and before the deletes (each gap then
+			// holds what an edit takes); a unit written within the fold shows or
+			// not as its insert says.
+			const held = (): boolean => {
+				for (let i = 0; i < log.length; i += 3) {
+					const s = structOf(log[i], log[i + 1]);
+					if (s === null) return false;
+					const n = log[i + 2];
+					if (!ins.has(log[i], log[i + 1])) edit(s, log[i + 1], log[i + 1] + Math.abs(n), n < 0);
+				}
+				return true;
+			};
+			built = visit(ins, false) && held() && visit(del, true) ? out : null;
 			return built;
 		};
 		/** `node`'s edits (`null`: unknown — rescan, every consumer recomputes). */
@@ -451,8 +478,11 @@ export const indexFold = (
 		return touched;
 	};
 
-	/** Each transaction's folded part: copies of its id sets, and their lengths (the watermark). */
-	const cursors = new WeakMap<Tx, { ins: IdSetLike; del: IdSetLike; mark: number }>();
+	/** Each transaction's folded part: copies of its id sets, the hold log's folded length, and the watermark. */
+	const cursors = new WeakMap<
+		Tx,
+		{ ins: IdSetLike; del: IdSetLike; holds: number; mark: number }
+	>();
 	/** The transactions whose commit fold ran. */
 	const committed = new WeakSet<Tx>();
 	const lengthOf = (set: IdSetLike): number => {
@@ -462,6 +492,9 @@ export const indexFold = (
 		});
 		return n;
 	};
+	/** How much a transaction wrote so far: its id sets' lengths and its hold log's. */
+	const watermark = (tr: Tx): number =>
+		lengthOf(tr.insertSet!) + lengthOf(tr.deleteSet!) + (tr.holds?.length ?? 0);
 
 	/**
 	 * Fold the pending part of `tr` — the structs its insert/delete sets
@@ -473,13 +506,15 @@ export const indexFold = (
 		if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;
 		let cursor = cursors.get(tr);
 		if (cursor === undefined)
-			cursors.set(tr, (cursor = { ins: ops.idSet(), del: ops.idSet(), mark: 0 }));
-		const mark = lengthOf(tr.insertSet) + lengthOf(tr.deleteSet);
+			cursors.set(tr, (cursor = { ins: ops.idSet(), del: ops.idSet(), holds: 0, mark: 0 }));
+		const mark = watermark(tr);
 		if (mark === cursor.mark) return false;
 		const ins = ops.diff(tr.insertSet, cursor.ins);
 		const del = ops.diff(tr.deleteSet, cursor.del);
+		const log = (tr.holds ?? []).slice(cursor.holds);
 		ops.insertInto(cursor.ins, ins);
 		ops.insertInto(cursor.del, del);
+		cursor.holds += log.length;
 		cursor.mark = mark;
 		for (const f of frames) f.wrote = true;
 		const changed = new Map<EngineNode, Set<string | null>>();
@@ -492,7 +527,11 @@ export const indexFold = (
 		};
 		walkIdSet(Y, doc, ins, note);
 		walkIdSet(Y, doc, del, note);
-		fold(changed, makeEditIndex(ins, del));
+		for (let i = 0; i < log.length; i += 3) {
+			const s = structOf(log[i], log[i + 1]);
+			if (s !== null) note(s);
+		}
+		fold(changed, makeEditIndex(ins, del, log));
 		return true;
 	};
 	const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;
@@ -514,7 +553,7 @@ export const indexFold = (
 				!committed.has(tr) &&
 				tr.insertSet !== undefined &&
 				tr.deleteSet !== undefined &&
-				lengthOf(tr.insertSet) + lengthOf(tr.deleteSet) !== (cursors.get(tr)?.mark ?? 0)
+				watermark(tr) !== (cursors.get(tr)?.mark ?? 0)
 		);
 
 	/**
@@ -531,9 +570,10 @@ export const indexFold = (
 			ins = ops.diff(ins, cursor.ins);
 			del = ops.diff(del, cursor.del);
 		}
+		const log = (tr.holds ?? []).slice(cursor?.holds ?? 0);
 		cursors.delete(tr);
 		committed.add(tr);
-		fold(tr.changed ?? new Map(), makeEditIndex(ins, del));
+		fold(tr.changed ?? new Map(), makeEditIndex(ins, del, log));
 	};
 
 	return {

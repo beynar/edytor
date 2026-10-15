@@ -245,7 +245,7 @@ export const tryGcDeleteSet = (tr, ds, gcFilter) => {
         if (deleteItem.clock + deleteItem.len <= struct.id.clock) {
           break
         }
-        if (struct.isItem && struct.deleted && !(struct).keep && !isKeptReplaced(/** @type {Item} */ (struct)) && gcFilter(/** @type {Item} */ (struct))) { // YP14
+        if (struct.isItem && struct.removed && !(struct).keep && !isKeptReplaced(/** @type {Item} */ (struct)) && gcFilter(/** @type {Item} */ (struct))) { // YP14, YP20: removed
           /** @type {Item} */ (struct).gc(tr, false)
         }
       }

@@ -286,12 +286,13 @@ describe("XW-07 · a relayer's delete of an author's lost text is kept for the a
 		expect(await storedText(room, 'seed')).toBe('');
 		bobs.destroy();
 		bob.destroy();
-		// Compaction keeps the waiting delete apart from the snapshot.
+		// Bob's delete is his hold record (fork patch YP20): stored in the
+		// snapshot, its hold on the lost '!' waits in the room for '!'.
 		const kinds = await inHooked(room, (r) => {
 			r.compact();
 			return r.records().map((record) => record.kind);
 		});
-		expect(kinds).toEqual(['generation', 'snapshot', 'pending']);
+		expect(kinds).toEqual(['generation', 'snapshot']);
 		await evictDurableObject(hooked(room));
 
 		// Ada returns with her "!", and Carol is there.
@@ -307,7 +308,7 @@ describe("XW-07 · a relayer's delete of an author's lost text is kept for the a
 				ada: ada.facade.blockText('seed')
 			}).toEqual({ stored: '', carol: '', ada: '' })
 		);
-		// The delete applied: compaction stores no waiting record any more (DR-collab-1).
+		// The hold applied: compaction stores no waiting record (DR-collab-1).
 		const compacted = await inHooked(room, (r) => {
 			r.compact();
 			return r.records().map((record) => record.kind);

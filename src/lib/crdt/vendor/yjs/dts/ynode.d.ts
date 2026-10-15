@@ -25,7 +25,7 @@ export class ItemTextListPosition {
     advance(transaction: Transaction, length: number): void;
 }
 export function insertAtGapEndHelper(transaction: Transaction, parent: YNode, index: number, content: import("./structs/Item.js").AbstractContent): void;
-export function deleteText(transaction: Transaction, currPos: ItemTextListPosition, length: number): ItemTextListPosition;
+export function deleteText(transaction: Transaction, currPos: ItemTextListPosition, length: number, held?: Array<number> | null, fresh?: import("./utils/ids.js").IdSet | null): ItemTextListPosition;
 export class ArraySearchMarker {
     /**
      * @param {Item} p
@@ -188,11 +188,25 @@ export class YNode {
     mark(index: number, length: number, mark: string, value: any, startSide: number, endSide: number): void;
     /**
      * Deletes elements starting from an index. A deleted node is left as it is.
+     * YP20: with `into` (the document's records list), the live units are not
+     * removed but held by one record appended to `into` (their writer's delete,
+     * which an undo of the record takes back), except those `fresh` names (the
+     * open undo step's inserts: removed, so that step's undo changes nothing).
      *
      * @param {number} index Index at which to start deleting elements
      * @param {number} length The number of elements to remove. Defaults to 1.
+     * @param {YNode|null} [into]
+     * @param {import('./utils/ids.js').IdSet|null} [fresh]
      */
-    delete(index: number, length?: number): void;
+    delete(index: number, length?: number, into?: YNode | null, fresh?: import("./utils/ids.js").IdSet | null): void;
+    /**
+     * YP20: append to this node (the document's records list) one hold record of
+     * the items `ids` names (`client, clock, len` triples): they read as deleted
+     * while the record is live.
+     *
+     * @param {Array<number>} ids
+     */
+    hold(ids: Array<number>): void;
     /**
      * Executes a provided function on once on every key-value pair.
      *
@@ -220,10 +234,12 @@ export function readContentFormat(decoder: UpdateDecoder): ContentFormat;
 export function readContentAny(decoder: UpdateDecoder): ContentAny;
 export function readContentBinary(decoder: UpdateDecoder): ContentBinary;
 export function readContentDeleted(decoder: UpdateDecoder): ContentDeleted;
+export function readContentHold(decoder: UpdateDecoder): ContentHold;
 /**
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
- * writes none, so an update holding one is malformed.
+ * writes none, so an update holding one is malformed. YP20: 11 is a hold
+ * record.
  *
  * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
@@ -253,3 +269,4 @@ import { ContentFormat } from './structs/Item.js';
 import { ContentAny } from './structs/Item.js';
 import { ContentBinary } from './structs/Item.js';
 import { ContentDeleted } from './structs/Item.js';
+import { ContentHold } from './structs/Item.js';

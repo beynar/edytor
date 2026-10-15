@@ -7,7 +7,7 @@
  * - a deleted block whose text family is all dead and that nothing is
  *   placed under goes whole (its registry entry); any other keeps its node,
  *   its stream's text, data leaves and claims deleted;
- * - text delete mark records past the horizon go; a withdrawn creation
+ * - text hold records past the horizon go, with what they hold; a withdrawn creation
  *   goes; a runner-up placement candidate of an old, accepted winner goes;
  * - a history drops the steps below the horizon: their undo restores
  *   nothing, a newer step still undoes;
@@ -138,6 +138,25 @@ describe('H7: purge what was deleted before the horizon', () => {
 		healthy(room, ada);
 		room.destroy();
 		ada.destroy();
+	});
+
+	it('a delete record whose text the room lacks is kept: it holds the text when the text comes back', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		const bob = open('bob', 3);
+		// Ada's '!' reaches Bob only; Bob deletes it; the room hears Bob alone.
+		const typed = ada.capture(() => ok(ada.ed.insertText('p1', 9, '!')));
+		bob.receiveAll(typed);
+		const deleted = bob.capture(() => ok(bob.ed.deleteText('p1', 9, 1)));
+		room.receiveAll(deleted);
+		const report = purge(room, epoch(room));
+		expect(report.marks).toBe(0);
+		room.receiveAll(typed);
+		expect(room.ed.blockText('p1')).toBe('live text');
+		syncAll([room, ada, bob]);
+		for (const r of [room, ada, bob]) expect(r.ed.blockText('p1')).toBe('live text');
+		healthy(room, ada, bob);
+		for (const r of [room, ada, bob]) r.destroy();
 	});
 
 	it('a deleted parent of a live child keeps its node; the child stays where it shows', () => {
@@ -271,7 +290,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		expect(crdt.doc.horizonOf(room.doc)).toEqual(horizon);
 		const sv = Y.encodeStateVector(room.doc);
 		const report = purge(room, horizon);
-		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, records: 0, candidates: 0 });
+		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, candidates: 0 });
 		// Only the record is written again (one attr); the room never repeats a horizon.
 		expect(Y.decodeStateVector(Y.encodeStateVector(room.doc)).get(room.doc.clientID)).toBe(
 			(Y.decodeStateVector(sv).get(room.doc.clientID) ?? 0) + 1

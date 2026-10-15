@@ -14,7 +14,9 @@
  * - YW-10: a relayer's delete the full waiting-delete cap drops stays
  *   unsaved (the room acknowledges a waiting delete by id only once it
  *   stored it); YW-11: compaction reclaims the waiting deletes of client
- *   ids nobody registered, so the resent delete is stored and saved.
+ *   ids nobody registered, so the resent delete is stored and saved. A
+ *   text delete of lost text is a hold record (fork patch YP20): a struct
+ *   the room stores at once, never a waiting delete the cap drops.
  * - SW8-sync-1: a registry `onLoad` returns later never makes a dialed
  *   owner's id claimable (an unowned row never replaces an owner).
  * - DR-sync-1: waiting deletes restored from the `onSave` mirror are stored
@@ -290,9 +292,12 @@ describe('YW-10 / YW-11 · a delete the waiting cap drops', () => {
 		);
 		eve.close();
 
-		// Offline, Bob deletes Ada's lost "!"; back online, the room drops that delete.
+		// Offline, Bob removes Ada's lost "!" (an engine delete, as a purge or a
+		// removal writes: a text delete holds instead, the row below); back
+		// online, the room drops that delete.
 		const bob = E.attachDocument(b, { actor: { id: 'bob' } });
-		bob.transact(() => bob.facade.deleteText('seed', 'ada: from onLoad'.length, 1));
+		const content = (b.get('blocks').getAttr('seed') as E.YNode).getAttr('content') as E.YNode;
+		b.transact(() => content.delete('ada: from onLoad'.length, 1));
 		const saves: boolean[] = [];
 		bobs.on('saved', ({ saved }) => saves.push(saved));
 		bobs.connect();
@@ -323,6 +328,72 @@ describe('YW-10 / YW-11 · a delete the waiting cap drops', () => {
 		await evictDurableObject(hooked(room));
 
 		// Ada returns with her "!": it arrives deleted.
+		const back = await RawClient.connect(room, a, { user: 'ada', replica: a.clientID });
+		await vi.waitFor(() => expect(back.acks.at(-1)?.get(a.clientID)).toBe(clockOf(a)));
+		await vi.waitFor(async () =>
+			expect({
+				room: (await roomBlock(room)).text,
+				stored: (await storedBlock(room)).text,
+				ada: ada.facade.blockText('seed')
+			}).toEqual({ room: 'ada: from onLoad', stored: 'ada: from onLoad', ada: 'ada: from onLoad' })
+		);
+		back.close();
+		ada.destroy();
+	});
+
+	it("reclaims made-up clients' waiting deletes; a text delete of lost text is a record the cap never drops", async () => {
+		const room = 'hooked-restore-yw10-holds';
+		// Ada's "ada: " is in the room's snapshot; her "!" reaches Bob only.
+		const a = crdt.createDoc();
+		const tabA = await RawClient.connect(room, a, { user: 'ada', replica: a.clientID });
+		await vi.waitFor(() => expect(tabA.synced).toBe(true));
+		const ada = E.attachDocument(a, { actor: { id: 'ada' } });
+		ada.transact(() => ada.facade.insertText('seed', 0, 'ada: '));
+		await vi.waitFor(() => expect(tabA.acks.at(-1)?.get(a.clientID)).toBe(clockOf(a)));
+		const snapshot = await snapshotNow(room);
+		const b = crdt.createDoc();
+		const bobs = new crdt.providers.WebsocketProvider(url, room, b, {
+			params: { user: 'bob' },
+			WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket,
+			disableBc: true
+		});
+		await vi.waitFor(() => expect(bobs.synced).toBe(true));
+		ada.transact(() => ada.facade.insertText('seed', 'ada: from onLoad'.length, '!'));
+		await vi.waitFor(() => expect(blockOf(b).text).toBe('ada: from onLoad!'));
+		bobs.disconnect();
+		tabA.close();
+		await restoreFrom(room, snapshot);
+
+		// Eve fills the cap with deletes of made-up clients' items.
+		const eve = await RawClient.bare(room, { user: 'eve' });
+		eve.send(syncUpdate(deletesOf(4343, MAX_WAITING_DELETES)));
+		await vi.waitFor(async () =>
+			expect(await kinds(room)).toEqual(['generation', 'snapshot', 'pending'])
+		);
+		eve.close();
+
+		// Offline, Bob deletes Ada's lost "!": his hold record (fork patch YP20)
+		// is a struct the room stores, whatever waits; its hold waits for "!".
+		const bob = E.attachDocument(b, { actor: { id: 'bob' } });
+		bob.transact(() => bob.facade.deleteText('seed', 'ada: from onLoad'.length, 1));
+		bobs.connect();
+		await vi.waitFor(() => expect([bobs.saved, bobs.unsaved]).toEqual([true, 0]), {
+			timeout: 5_000
+		});
+		expect(await inHooked(room, (r) => r.refusalCounts['waiting'] ?? 0)).toBe(0);
+
+		// Compaction reclaims what waits for ids nobody registered.
+		expect(
+			await inHooked(room, (r) => {
+				r.compact();
+				return r.records().map((record) => record.kind);
+			})
+		).toEqual(['generation', 'snapshot']);
+		bobs.destroy();
+		bob.destroy();
+		await evictDurableObject(hooked(room));
+
+		// Ada returns with her "!": it arrives held.
 		const back = await RawClient.connect(room, a, { user: 'ada', replica: a.clientID });
 		await vi.waitFor(() => expect(back.acks.at(-1)?.get(a.clientID)).toBe(clockOf(a)));
 		await vi.waitFor(async () =>

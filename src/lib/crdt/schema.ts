@@ -19,18 +19,12 @@ export const ATTRIBUTION_ROOT = 'attribution';
 /** The per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
 export const BLOCK_ATTR_ROOT = 'blockattr';
 /**
- * Per-writer text delete marks (`text/deletes.ts`): one record per text
- * delete, naming the characters it deleted; its writer is the record's
- * engine client. In the history's scope, so an undo removes the undoer's
- * own mark and a redo writes it again.
+ * The text hold records (fork patch YP20): a text delete appends one record
+ * naming the characters it hides; its writer is the record's engine client.
+ * A character shows while no live record holds it. In the history's scope,
+ * so an undo deletes the undoer's own record and a redo writes it again.
  */
 export const TEXT_DELETES_ROOT = 'textdel';
-/**
- * Restoration records (`text/deletes.ts`): which characters an undo's copies
- * restore, one attr per record (keyed by its writer and clock). Outside the
- * history's scope: a record is never removed.
- */
-export const RESTORED_ROOT = 'restored';
 /**
  * The document's own data (`crdt/data.ts`): its leaves, as a block's. In the
  * history's scope.
@@ -97,9 +91,9 @@ export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
-	// 6: one update encoding (the columnar one) on the wire and in storage;
-	// a container or frame of an earlier generation is refused.
-	version: 6,
+	// 7: a text delete is a hold record (fork patch YP20) on the wire and in
+	// storage; a container or frame of an earlier generation is refused.
+	version: 7,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

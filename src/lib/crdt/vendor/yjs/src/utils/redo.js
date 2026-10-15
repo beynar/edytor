@@ -38,7 +38,7 @@ export const redoItem = (transaction, item, redoitems, itemsToDelete, deletedByH
    */
   let right
   // make sure that parent is redone
-  if (parentItem !== null && parentItem.deleted === true) {
+  if (parentItem !== null && parentItem.removed) { // YP20: a held parent is alive
     // try to undo parent if it will be undone anyway
     if (parentItem.redone === null && (!redoitems.has(parentItem) || redoItem(transaction, parentItem, redoitems, itemsToDelete, deletedByHistory) === null)) {
       return null

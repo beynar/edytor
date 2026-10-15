@@ -21,27 +21,6 @@ export class IdRange {
      */
     copyWith(clock: number, len: number): IdRange;
 }
-export class MaybeIdRange {
-    /**
-     * @param {number} clock
-     * @param {number} len
-     * @param {boolean} exists
-     */
-    constructor(clock: number, len: number, exists: boolean);
-    /**
-     * @type {number}
-     */
-    clock: number;
-    /**
-     * @type {number}
-     */
-    len: number;
-    /**
-     * @type {boolean}
-     */
-    exists: boolean;
-}
-export function createMaybeIdRange(clock: number, len: number, exists: boolean): MaybeIdRange;
 export class IdRanges {
     /**
      * @param {Array<IdRange>} ids
@@ -69,19 +48,12 @@ export class IdRanges {
      */
     getIds(): IdRange[];
 }
-/**
- * @implements {traits.EqualityTrait}
- */
-export class IdSet implements traits.EqualityTrait {
+export class IdSet {
     /**
      * @type {Map<number,IdRanges>}
      */
     clients: Map<number, IdRanges>;
     isEmpty(): boolean;
-    /**
-     * @param {(idrange:IdRange, client:number) => void} f
-     */
-    forEach(f: (idrange: IdRange, client: number) => void): void;
     /**
      * @param {ID} id
      * @return {boolean}
@@ -103,37 +75,6 @@ export class IdSet implements traits.EqualityTrait {
      */
     intersects(client: number, clock: number, len: number): boolean;
     /**
-     * Whether the entire range `[clock, clock+len)` of `client` is contained in this set.
-     * Allocation-free (binary search). Because `getIds()` returns maximal, merged ranges, full
-     * coverage of a range implies it lies within a single range.
-     *
-     * @param {number} client
-     * @param {number} clock
-     * @param {number} len
-     * @return {boolean}
-     */
-    covers(client: number, clock: number, len: number): boolean;
-    /**
-     * Total number of ids in `[clock, clock+len)` of `client` contained in this set.
-     * Allocation-free (binary search + linear scan of the overlapping ranges). Equivalent to
-     * `slice(client, clock, len).reduce((s, r) => r.exists ? s + r.len : s, 0)` without allocating.
-     *
-     * @param {number} client
-     * @param {number} clock
-     * @param {number} len
-     * @return {number}
-     */
-    coveredLength(client: number, clock: number, len: number): number;
-    /**
-     * Return slices of ids that exist in this idset.
-     *
-     * @param {number} client
-     * @param {number} clock
-     * @param {number} len
-     * @return {Array<MaybeIdRange>}
-     */
-    slice(client: number, clock: number, len: number): Array<MaybeIdRange>;
-    /**
      * @param {number} client
      * @param {number} clock
      * @param {number} len
@@ -145,10 +86,6 @@ export class IdSet implements traits.EqualityTrait {
      * @param {number} len
      */
     delete(client: number, clock: number, len: number): void;
-    /**
-     * @param {any} other
-     */
-    [traits.EqualityTraitSymbol](other: any): boolean;
 }
 export function _deleteRangeFromIdSet(set: IdSet, client: number, clock: number, len: number): void;
 export function iterateStructsByIdSet(transaction: Transaction, ds: IdSet, f: (arg0: GC | Item) => void): void;
@@ -179,4 +116,3 @@ export type ContentIds = {
     inserts: IdSet;
     deletes: IdSet;
 };
-import * as traits from 'lib0-v14/traits';

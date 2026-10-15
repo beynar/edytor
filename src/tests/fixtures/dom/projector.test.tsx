@@ -476,7 +476,10 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(hook).toEqual([false]);
-		expect(origins).toEqual([edytor.undoManager, edytor.transaction]);
+		expect(origins.slice(0, 2)).toEqual([edytor.undoManager, edytor.transaction]);
+		// The edit drops the redo step: the text the undo held goes for good
+		// (`hist.delete-marks.release`), in a transaction of the history's own.
+		expect(origins.slice(2).map(String)).toEqual(['Symbol(edytor.history.trim)']);
 	});
 });
 

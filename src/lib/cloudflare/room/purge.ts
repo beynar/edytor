@@ -117,15 +117,7 @@ export class RoomPurge {
 		const counters = room.counters.purge;
 		counters.runs++;
 		counters.horizon = horizon.at;
-		for (const key of [
-			'removed',
-			'emptied',
-			'marks',
-			'records',
-			'candidates',
-			'claims',
-			'merged'
-		] as const)
+		for (const key of ['removed', 'emptied', 'marks', 'candidates', 'claims', 'merged'] as const)
 			counters[key] += report[key];
 		room.log({
 			edytor: 'purge',

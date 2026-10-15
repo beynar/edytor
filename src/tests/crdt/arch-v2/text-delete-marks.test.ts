@@ -1,7 +1,8 @@
 /**
- * Per-writer text delete marks (`src/lib/crdt/text/deletes.ts`, fork patch
- * P11) — the delivery-order variants of the contract program
- * `history.concurrent-double-delete` (P1.3 open defect; ledger row).
+ * Per-writer text deletes (fork patch YP20: a text delete is its writer's hold
+ * record, `src/lib/crdt/text/model.ts` `deleteRange`) — the delivery-order
+ * variants of the contract program `history.concurrent-double-delete` (P1.3
+ * open defect; ledger row).
  *
  * The rule the expected values come from (written before the fix, never
  * read off production output):
@@ -13,15 +14,14 @@
  * So one writer's undo never brings back a character another writer's delete
  * still holds, whichever order the updates arrive in, and when every writer
  * undid, exactly one copy returns — the D54 rule of blocks (F-D18) applied to
- * text.
+ * text. Since YP20 nothing is copied: the character itself shows again.
  *
  * Every row runs through the facade on real documents (`replica-harness.ts`):
  * three client-id assignments, an observer fed every update in both orders
- * (each twice), a binary reload of every replica, and quiescence (a replica
- * that must hide or restore a copy after a remote change writes it in a
- * follow-up transaction, like the engine's formatting cleanup). Steps check
- * the text on the replicas that have seen the step; `settle` delivers
- * everything to everyone until nobody writes.
+ * (each twice), a binary reload of every replica, and quiescence (nobody
+ * writes after a remote change since YP20). Steps check the text on the
+ * replicas that have seen the step; `settle` delivers everything to everyone
+ * until nobody writes.
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
@@ -135,7 +135,7 @@ describe('text delete marks — two writers', () => {
 		).forEach((o) => expect(o.ed.blockText('p')).toBe('abc'));
 	});
 
-	it('A’s restoration reaches B while B’s delete is in effect: B hides it, and A shows `ac` once B’s hold reaches it', () => {
+	it('A’s undo reaches B while B’s delete is in effect: B still hides it, and A shows `ac` once B’s delete reaches it', () => {
 		one(
 			converge(ABC, 2, (reps) => {
 				const [a, b] = reps;
@@ -143,10 +143,9 @@ describe('text delete marks — two writers', () => {
 				const dB = b.capture(() => b.ed.deleteText('p', 1, 1));
 				b.receiveAll(a.capture(() => a.undo()));
 				expect(text(b)).toBe('ac');
-				// B's delete alone does not tell A that B still holds `b`: the
-				// hold is B's to enforce, and it arrives with B's next update.
+				// B's delete is B's record: it holds `b` wherever it arrives.
 				a.receiveAll(dB);
-				expect(text(a)).toBe('abc');
+				expect(text(a)).toBe('ac');
 				a.receiveAll(b.log);
 				expect(text(a)).toBe('ac');
 				settle(reps);
@@ -241,6 +240,44 @@ describe('text delete marks — inline atoms', () => {
 				settle(reps);
 				for (const r of reps)
 					expect(atom(r)).toEqual([{ type: 'mention', id: 'm1', data: { name: 'x' } }]);
+			})
+		);
+	});
+});
+
+describe('text delete marks — an undone atom keeps its attributes', () => {
+	const atom = (r: Replica) =>
+		(r.ed.blockJSON('p').content ?? []).filter((c) => c.text === undefined);
+	const M1 = { type: 'mention', id: 'm1', data: { name: 'x' } };
+	it('A inserts an atom, B removes it, A undoes the insert, B undoes → the atom shows with its id, type and data', () => {
+		one(
+			converge(ABC, 2, (reps) => {
+				const [a, b] = reps;
+				a.ed.insertInline('p', 1, M1);
+				settle(reps);
+				b.ed.removeInline('p', 'm1');
+				settle(reps);
+				a.undo();
+				settle(reps);
+				expect(reps.map(atom)).toEqual([[], []]);
+				b.undo();
+				settle(reps);
+				for (const r of reps) expect(atom(r)).toEqual([M1]);
+			})
+		);
+	});
+
+	it('A inserts an atom, undoes and redoes → the same atom, with its attributes', () => {
+		one(
+			converge(ABC, 2, (reps) => {
+				const [a] = reps;
+				a.ed.insertInline('p', 1, M1);
+				a.undo();
+				settle(reps);
+				expect(reps.map(atom)).toEqual([[], []]);
+				a.redo();
+				settle(reps);
+				for (const r of reps) expect(atom(r)).toEqual([M1]);
 			})
 		);
 	});

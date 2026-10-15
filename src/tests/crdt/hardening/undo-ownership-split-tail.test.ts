@@ -192,7 +192,8 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		// The repair attaches once per DOC (doc-level update observer), so a
 		// directly-constructed UndoManager — e.g. the peer harness's
 		// `enableUndo` — produces the same ownership as createUndoManager().
-		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		// Its scope holds the text hold records (a text delete, fork patch YP20).
+		const um = new UndoManager([doc.get('blocks'), doc.get('textdel')], { captureTimeout: 0 });
 		ed.deleteText('tail', 0, 5);
 		um.undo();
 		expect(ed.blockText('b')).toBe('hello ');
@@ -208,13 +209,11 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		ed.deleteText('tail', 0, 5);
 		um.undo();
-		// The anchors bound the TOMBSTONED originals, which sit at the end of
-		// the resurrected run in the item sequence — so they resolve into
-		// 'tail' at its right edge (block identity preserved by the repair;
-		// intra-range offsets collapse to the tombstone gap, pre-existing
-		// anchor semantics for deleted atoms).
-		expect(ed.resolveAnchor(mid)).toEqual({ blockId: 'tail', offset: 5 });
-		expect(ed.resolveAnchor(start)).toEqual({ blockId: 'tail', offset: 5 });
+		// The anchors bound the originals, and the undo shows the originals
+		// again (a hold record goes, fork patch YP20): each resolves where it
+		// was, in 'tail' (block identity preserved by the repair).
+		expect(ed.resolveAnchor(mid)).toEqual({ blockId: 'tail', offset: 2 });
+		expect(ed.resolveAnchor(start)).toEqual({ blockId: 'tail', offset: 0 });
 		expect(ed.resolveAnchor(end)).toEqual({ blockId: 'tail', offset: 5 });
 	});
 

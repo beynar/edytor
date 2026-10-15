@@ -34,7 +34,7 @@ const SYMBOLS = {
 	// used by the Durable Object room (P5): compaction and struct checks
 	mergeUpdates: 1,
 	Skip: 1,
-	// text delete marks (P11)
+	// the document's undo manager (YP18)
 	iterateStructsByIdSet: 1,
 	getItemCleanStart: 1,
 	redoItem: 1,
@@ -42,8 +42,6 @@ const SYMBOLS = {
 	followRedone: 1,
 	isParentOf: 1,
 	mergeIdSets: 1,
-	// a folded delete record (P4)
-	ContentAny: 1,
 	createID: 1
 } satisfies Record<EngineSymbol, 1>;
 

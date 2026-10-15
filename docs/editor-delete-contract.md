@@ -1202,19 +1202,40 @@ cuts nothing, like a typed insertion. Undo and redo are the bare engine
 calls (never inside a transaction, no tracked write after them); the
 issuing view selects the step's recorded `before` (undo) or `after` (redo).
 
-### `hist.delete-marks.fold` — one delete record per step (P4)
+### `hist.undo.restore` — a text delete is its writer's, and an undo takes back only its own
 
-A text delete writes the writer's record (YP11, `text/deletes.ts`). A delete
-made in the step that wrote this replica's last record — the records
-list's tail, written in the same transaction, in the history step still
-capturing, or anywhere when no history records steps on this replica —
-folds into it: the record is deleted and written again, its spans merged,
-while it holds at most 8 spans (`FOLD_SPANS`). A backspace run is one
-record. The record is replaced, never edited, so an undo of the step takes
-back exactly what the step deleted, a writer's undo never restores what
-another writer's record holds, and a redo writes it again
-(`delete-records-fold.test.ts`, `text-delete-marks.test.ts`). The purge
-(H7) drops folded records like any other.
+A text delete is its writer's hold record (fork patch YP20, root
+`textdel`, in the history's scope): the characters it names read as
+deleted while it lives. A character shows iff it is not removed and no
+live record holds it, so a character two writers deleted concurrently
+shows again only once both undid, exactly once, in any delivery order
+(`text-delete-marks.test.ts`, the contract program
+`history.concurrent-double-delete`). An undo deletes the undoer's own
+record: the same characters show where they were, in their order, with
+their identities (nothing is copied: the program `split.range-one-undo`
+holds as written); a redo writes a copy of the record. An undo of typing
+holds the typed text with a record of the undoer, and its redo deletes
+that record. Text another writer typed meanwhile is its own: no record
+of the undoer names it. Text typed and erased inside one open undo step
+is removed, not held, so that step's undo changes nothing and is skipped.
+
+### `hist.delete-marks.fold` — a backspace run is one struct (P4)
+
+The records one writer appends one after the other (a backspace run: each
+keystroke writes only its record) merge into one engine struct, as a
+typed run does; an undo of the step deletes exactly the step's records
+(`delete-records-fold.test.ts`). Typing in between starts a new struct.
+
+### `hist.delete-marks.release` — a dropped step's deletes are for good
+
+When a step leaves its history (the limit, a new edit dropping the redo
+stack, `clear()`, the purge horizon), its undo can never run on this
+replica: what this writer's live records of the step hold is removed and
+the records are deleted, in one transaction of the history's own (origin
+`edytor.history.trim`), and the engine collects the text everywhere. A
+peer's undo of the same delete then shows nothing. A record a captured
+remote frame wrote (the room's validation history) is its writer's and
+stays (`history-limit.test.ts`).
 
 ### `sel.presence.wire` — one presence entry per view
 
@@ -2578,15 +2599,15 @@ arrives, they integrate and are stored with it, and a reload holds them.
 Deletes of items the room lacks stay in their own `pending` record,
 compacted to the ones still waiting (site `server/room#storage`).
 
-### `room.compact.copies` — the room keeps what a replica may copy again (YP11)
+### `room.compact.holds` — held text is stored with its record (YP20)
 
-The room's document applies the text-delete `gcFilter` from its creation
-(`crdt.doc.keepCopies`, before any update applies, on a fresh, restored or
-`onLoad` document): a deleted restoration copy keeps its content, as on an
-editing replica, so the live state, its Step2 and its snapshot hold the
-text a peer's undo may copy again. Before Phase 2 the room's live document
-collected it (its Step2 served the copy deleted) while the merged records
-still held it.
+A text delete is a hold record, so the text it holds is not removed: the
+room's live state, its Step2 and its snapshot carry the text with its
+record, and a replica loading them shows the delete while the writer's
+undo shows the text again (`live-compaction.test.ts`). A record whose text
+the room lacks (a restore from a lagging snapshot) is stored all the same:
+its hold waits in the room's memory until the text arrives, never as a
+waiting delete the cap drops.
 
 ### `room.store.v2` — one update encoding, compressed snapshots
 
@@ -2795,8 +2816,9 @@ that frame's transaction (a history on the room's facade whose tracked
 origin is the frame's socket, released after each frame by P6's rule,
 `history.clear()`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
-restored (text by copy where no other writer's delete mark holds it,
-YP11; its block delete marks removed), its moves and attr writes reverted
+restored (a text delete's record deleted, YP20: the text shows unless
+another writer's record holds it; its block delete marks removed), its
+typed text held by a record of the room, its moves and attr writes reverted
 (`repairAttrs`). Nothing else is between the frame and its inverse, so
 it reverts exactly that frame. The inverse is stored and sent to every
 socket, the sender's included: every replica converges. The frame stays
@@ -2984,8 +3006,8 @@ A client edit concurrent with the restore merges as any concurrent edit
 
 `undoRestore()` writes the history undo of exactly the last restore's
 transaction, as `room.validate.inverse` does: its inserts deleted (blocks
-it created withdrawn, `hist.undo.withdraw`), its deletes restored (text
-by copy where no other writer's mark holds it, YP11; marks it removed
+it created withdrawn, `hist.undo.withdraw`), its deletes restored (its
+text records deleted, YP20; marks it removed
 written again), its attr writes reverted (`repairAttrs`). Edits made since
 the restore are kept: it is an undo, not a restore of the earlier state.
 The step's insert and delete sets are stored (table `restore`) and the
@@ -3132,8 +3154,8 @@ room stored before an epoch's time has a clock below its vector. The
 horizon is the newest epoch at least `purgeAfterDays` old (default: the
 history retention, 30 days without history; `false` turns purging off).
 A deletion's time is the room's storing of the struct that made it: a
-block's oldest live delete (or withdraw) mark, a text delete mark record,
-a placement candidate. Content deleted before the horizon is purged, so
+block's oldest live delete (or withdraw) mark, a text hold record, a
+placement candidate. Content deleted before the horizon is purged, so
 deleted content goes within two days of passing `purgeAfterDays`; epochs
 older than the horizon are dropped.
 
@@ -3154,9 +3176,11 @@ engine collects the content everywhere (`crdt.doc.purge`):
 - any other block deleted before the horizon keeps its node: its own
   stream's text is deleted (per stream, boundaries kept, so the stream
   still delimits and stays hidden), with its data leaves and claims;
-- a text delete mark record older than the horizon is deleted; a
-  restoration record older than it whose copies are all deleted and held
-  by no remaining mark is deleted, and those copies collected;
+- a text hold record older than the horizon is deleted with what it
+  holds (the text removed and collected everywhere; a newer record holding
+  the same text has nothing to show again); a record whose text the room
+  lacks (lost by a restore, coming back with its author) stays, and holds
+  that text when it returns;
 - a block whose winning placement candidate is older than the horizon
   and accepted drops its other candidates (the runner-up);
 - a block merged away before the horizon (`room.purge.merged`, WU-16:
@@ -3187,7 +3211,9 @@ deleted before the horizon are dropped on every replica (the room's
 Step2 carries the deletes, the replica applies them). Residuals: a stale
 split of a block deleted past the horizon rescues no text (ST02a's tail
 is purged), and a stale replica's own undo of a step past the horizon,
-made before it heard the horizon, is an edit like any other.
+made before it heard the horizon, is an edit like any other (an undo of
+a text delete the purge removed shows nothing: its record is gone with
+the text).
 
 ### `hist.purge.horizon` — an undo older than the horizon restores nothing (H7)
 
@@ -3195,9 +3221,9 @@ When a horizon record arrives, every history on the document drops (and
 releases, P6) each undo or redo step whose inserts all lie below its
 vector: an undo of a step the room stored before the horizon restores
 nothing (`dispatcher.last` is `noop` when nothing else is left to undo,
-`applied` for a newer step). A purge transaction never triggers a
-pending YP11 restoration: `react` skips the marks it releases, and drops
-the pending characters no mark holds any more.
+`applied` for a newer step). A dropped step's records are released as
+`hist.delete-marks.release` says (the purge removed what the old ones
+held already).
 
 ## Transport / evidence
 

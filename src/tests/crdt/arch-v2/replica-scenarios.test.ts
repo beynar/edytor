@@ -376,8 +376,9 @@ describe('5x. concurrent double delete of text (contract program history.concurr
 	// Found by the P1.3 contract programs: text deletion had no per-writer
 	// mark (blocks do: D54, F-D18), so each peer's undo integrated its own
 	// copy of the character both deleted. Fixed by per-writer text delete
-	// marks (`text/deletes.ts`, fork patch P11); the delivery-order variants
-	// are rows in `text-delete-marks.test.ts`.
+	// marks (P11), then by hold records in the engine (fork patch YP20: each
+	// writer's delete is its record, an undo deletes it, nothing is copied);
+	// the delivery-order variants are rows in `text-delete-marks.test.ts`.
 	it('A and B delete the same character; both undo → `abc`, never a duplicated character', () => {
 		for (const o of converge([{ id: 'p', text: 'abc' }], 2, ([a, b]) => {
 			a.ed.deleteText('p', 1, 1);

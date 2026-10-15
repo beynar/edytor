@@ -481,11 +481,11 @@ export const createDeleteSetFromStructStore = ss => {
     const dsitems = []
     for (let i = 0; i < structs.length; i++) {
       const struct = structs[i]
-      if (struct.deleted) {
+      if (struct.removed) { // YP20: a held item is not deleted
         const clock = struct.id.clock
         let len = struct.length
         if (i + 1 < structs.length) {
-          for (let next = structs[i + 1]; i + 1 < structs.length && next.deleted; next = structs[++i + 1]) {
+          for (let next = structs[i + 1]; i + 1 < structs.length && next.removed; next = structs[++i + 1]) {
             len += next.length
           }
         }
@@ -589,7 +589,7 @@ export const readAndApplyDeleteSet = (decoder, transaction, store) => {
          */
         let struct = structs[index]
         // split the first item if necessary
-        if (!struct.deleted && struct.id.clock < clock && struct.isItem) {
+        if (!struct.removed && struct.id.clock < clock && struct.isItem) { // YP20: removed, not held
           // increment index, we now want to use the next struct
           structs.splice(++index, 0, /** @type {Item} */ (struct).split(transaction, clock - struct.id.clock))
         }
@@ -597,7 +597,7 @@ export const readAndApplyDeleteSet = (decoder, transaction, store) => {
           // @ts-ignore
           struct = structs[index++]
           if (struct.id.clock < clockEnd) {
-            if (!struct.deleted) {
+            if (!struct.removed) { // YP20
               if (struct.isItem) {
                 if (clockEnd < struct.id.clock + struct.length) {
                   structs.splice(index, 0, /** @type {Item} */ (struct).split(transaction, clockEnd - struct.id.clock))

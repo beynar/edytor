@@ -770,7 +770,8 @@ export interface EngineNode {
     forEachAttr(f: (value: unknown, key: string, node: EngineNode) => void): void;
     attrKeys(): IterableIterator<string>;
     insert(index: number, content: unknown): void;
-    delete(index: number, length?: number): void;
+    delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
+    hold(ids: number[]): void;
 }
 ```
 
@@ -780,6 +781,7 @@ export interface EngineNode {
 // crdt/engine-api.d.ts
 export interface EngineTransaction {
     changed?: Map<unknown, Set<string | null>>;
+    holds?: number[];
 }
 ```
 
@@ -1165,7 +1167,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 6;
+            readonly version: 7;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -1176,7 +1178,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 6;
+        SCHEMA_VERSION: 7;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -1315,7 +1317,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 keep?: boolean;
                 after?: readonly import("./index.js").BlockSpec[];
             } | undefined) => import("./edytor-doc.js").OpResult;
-            placeBeside: (ids: readonly string[], target: string, side: "right" | "left", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
+            placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
             wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => import("./edytor-doc.js").OpResult;
             splitBlock: (id: string, offset: number, newId: string, tail?: import("./placement/model.js").SplitTail | undefined) => import("./edytor-doc.js").OpResult;
             mergeBlocks: (fromId: string, intoId: string) => import("./edytor-doc.js").OpResult;
@@ -1438,7 +1440,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             onChange: (cb: (change: import("./edytor-doc.js").DocChange) => void) => (() => void);
         };
         newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
-        keepCopies: (doc: import("./engine-api.js").EngineDoc) => void;
         purge: (doc: import("./engine-api.js").EngineDoc, facade: {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
@@ -2253,7 +2254,7 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 ```ts
 declare const bindEdytorDoc: (Y: EngineApi) => {
     SCHEMA: {
-        readonly version: 6;
+        readonly version: 7;
         readonly name: "edytor-doc";
         readonly roots: {
             readonly registry: "blocks";
@@ -2264,7 +2265,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             readonly schema: "schema";
         };
     };
-    SCHEMA_VERSION: 6;
+    SCHEMA_VERSION: 7;
     SCHEMA_NAME: "edytor-doc";
     META_KEY: "meta";
     init: (doc: EngineDoc, opts?: {
@@ -2403,7 +2404,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             keep?: boolean;
             after?: readonly import("./index.js").BlockSpec[];
         } | undefined) => OpResult;
-        placeBeside: (ids: readonly string[], target: string, side: "right" | "left", kind?: string | undefined) => OpResult;
+        placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => OpResult;
         wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => OpResult;
         splitBlock: (id: string, offset: number, newId: string, tail?: SplitTail | undefined) => OpResult;
         mergeBlocks: (fromId: string, intoId: string) => OpResult;
@@ -2526,7 +2527,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         onChange: (cb: (change: DocChange) => void) => (() => void);
     };
     newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
-    keepCopies: (doc: EngineDoc) => void;
     purge: (doc: EngineDoc, facade: {
         model: import("./placement/model.js").PlacementModel;
         text: import("./text/model.js").TextEngine;
@@ -2609,7 +2609,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y

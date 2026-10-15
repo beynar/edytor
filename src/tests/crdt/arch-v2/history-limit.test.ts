@@ -63,6 +63,54 @@ describe('P6: the undo history keeps its newest steps', () => {
 		document.destroy();
 	});
 
+	it('a dropped step deletes what its records hold for good: a peer’s undo of the same delete shows nothing (`hist.delete-marks.release`)', () => {
+		const seed = seedUpdate([{ id: 'p', text: 'abc' }]);
+		const docOf = (limit: number) =>
+			loadDocument(seed, { actor: { id: 'ada' }, history: { captureTimeout: 0, limit } });
+		const a = docOf(1);
+		const b = docOf(10);
+		const sync = () => {
+			Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc, Y.encodeStateVector(b.doc)), 'remote');
+			Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc, Y.encodeStateVector(a.doc)), 'remote');
+		};
+		void a.history;
+		void b.history;
+		ok(a.facade.deleteText('p', 1, 1));
+		ok(b.facade.deleteText('p', 1, 1));
+		sync();
+		// A's delete falls off its history: 'b' is removed, every replica collects it.
+		ok(a.facade.insertText('p', 2, '!'));
+		sync();
+		expect([a.facade.blockText('p'), b.facade.blockText('p')]).toEqual(['ac!', 'ac!']);
+		b.history.undo();
+		sync();
+		expect([a.facade.blockText('p'), b.facade.blockText('p')]).toEqual(['ac!', 'ac!']);
+		a.destroy();
+		b.destroy();
+	});
+
+	it('a history that captured a peer’s frame never takes the peer’s records back when it drops the step', () => {
+		const seed = seedUpdate([{ id: 'p', text: 'abc' }]);
+		const room = loadDocument(seed, { actor: { id: 'room' } });
+		const b = loadDocument(seed, { actor: { id: 'bob' }, history: { captureTimeout: 0 } });
+		const frames = room.facade.createUndoManager({
+			captureTimeout: 0,
+			trackedOrigins: new Set(['frame'])
+		});
+		void b.history;
+		ok(b.facade.deleteText('p', 1, 1));
+		Y.applyUpdate(room.doc, Y.encodeStateAsUpdate(b.doc), 'frame');
+		expect(frames.undoStack.length).toBe(1);
+		frames.clear();
+		expect(room.facade.blockText('p')).toBe('ac');
+		b.history.undo();
+		Y.applyUpdate(room.doc, Y.encodeStateAsUpdate(b.doc, Y.encodeStateVector(room.doc)), 'remote');
+		expect(room.facade.blockText('p')).toBe('abc');
+		frames.destroy();
+		room.destroy();
+		b.destroy();
+	});
+
 	it('a kept text delete still comes back (P11)', () => {
 		const document = open(2);
 		const ed = document.facade;

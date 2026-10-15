@@ -46,10 +46,9 @@ import {
 	storeOf,
 	type IdSetOf
 } from '../structs.js';
-import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA } from '../schema.js';
+import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA, TEXT_DELETES_ROOT } from '../schema.js';
 import { DEV } from 'esm-env';
 import { hash32, hash53 } from '../rand.js';
-import { bindDeletes, type Span } from './deletes.js';
 import { fitMarks, writeMarks } from './marks.js';
 import { nodeStart } from './items.js';
 import { readRange } from './ranges.js';
@@ -327,7 +326,6 @@ export type Ownership = {
 	claimsOf?: (b: BlockId) => readonly Claim[];
 };
 
-const D = bindDeletes(Y);
 const ops = engineOps(Y);
 /** Construct a detached v14 node, viewed through the structural interface. */
 export const newNode = (name: string): EngineNode => makeNode(Y, name);
@@ -531,7 +529,14 @@ export const insertIntoText = (
 	fitMarks(doc, text, hit.idx, payload.length, have, marks);
 };
 
-/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed. */
+/**
+ * The per-stream delete: each range lies inside one stream's pieces, so no
+ * boundary is ever removed. The text is held by this writer's record (fork
+ * patch YP20, root `textdel`, in the history's scope): an undo deletes the
+ * record and the text shows again where it was, unless another writer's
+ * record holds it. Text the open undo step inserted is removed instead, so
+ * that step's undo still changes nothing.
+ */
 export const deleteRange = (
 	doc: EngineDoc,
 	blocks: unknown,
@@ -540,14 +545,10 @@ export const deleteRange = (
 	offset: number,
 	length: number
 ): void => {
-	const spans: Span[] = [];
-	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length)) {
-		for (const p of openRangeCursor(r.text).read(r.a, r.b))
-			if (!p.deleted && p.len > 0 && (p.content.str !== undefined || 'type' in p.content))
-				spans.push({ c: p.id.client, k: p.id.clock, n: p.len });
-		r.text.delete(r.a, r.b - r.a);
-	}
-	D.markDeleted(doc, spans);
+	const records = doc.get(TEXT_DELETES_ROOT);
+	const fresh = openInserts(doc);
+	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
+		r.text.delete(r.a, r.b - r.a, records, fresh);
 };
 
 export const formatRangeIn = (
@@ -743,5 +744,27 @@ export const bindText = (_Y: EngineApi) => ({
  * typing and keeps the text every replica shares.
  */
 export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
+
+/**
+ * Each history's open step on a doc (`doc/history.ts` registers them): what
+ * the step still capturing inserted, `null` when none is open.
+ */
+export const openSteps = new WeakMap<EngineDoc, Set<() => IdSetOf | null>>();
+
+/**
+ * What this writer inserted in the open undo steps of `doc` (`null`: none):
+ * a history capturing a peer's frames (the room's validation) opens steps of
+ * that peer's writes, never fresh here.
+ */
+const openInserts = (doc: EngineDoc): IdSetOf | null => {
+	let fresh: IdSetOf | null = null;
+	for (const open of openSteps.get(doc) ?? []) {
+		const ranges = open()?.clients.get(doc.clientID);
+		if (ranges === undefined) continue;
+		fresh ??= ops.idSet();
+		for (const r of ranges.getIds()) fresh.add(doc.clientID, r.clock, r.len);
+	}
+	return fresh;
+};
 
 export type TextEngine = ReturnType<typeof bindText>;

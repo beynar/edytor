@@ -718,7 +718,8 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 };
 
 /**
- * Attach history tracking for `peer` — a registry-scoped UndoManager with
+ * Attach history tracking for `peer` — an UndoManager scoped to the registry
+ * and the text hold records (a text delete is a record, fork patch YP20) with
  * `captureTimeout: 0` (one stack item per op transaction) tracking only the
  * peer's local origin. Idempotent; reload clears `peer.undoManager`, so a
  * post-reload call re-derives it on the new doc.

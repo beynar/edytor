@@ -18,6 +18,11 @@ export class StructStore {
      * @type {null | Uint8Array<ArrayBuffer>}
      */
     this.pendingDs = null
+    /**
+     * YP20: holds whose items have not arrived, `client → [clock, len, delta, …]`.
+     * @type {Map<number, Array<number>>|null}
+     */
+    this.pendingHolds = null
     this.skips = createIdSet()
   }
 

@@ -1,0 +1,242 @@
+# Attributed, reversible text deletes in the fork (YP20) — design
+
+Status: design written before the prototype (2026-10-15, branch `engine-delete`).
+The prototype and its measurements are recorded at the end of this file.
+
+## Why
+
+`crdt/text/deletes.ts` and `crdt/text/delete-index.ts` (10.3 KB minified in
+every app, `node scripts/bundle-size.mjs`: 5.04 + 5.23 KB) exist because the
+engine's delete has two properties edytor's product contract cannot live with:
+
+- **anonymous**: a delete set names ids, not who deleted them, so two writers
+  who deleted one character cannot tell their deletes apart;
+- **irreversible**: a deleted item is deleted forever; an undo brings text back
+  as a COPY (a new item), so edytor tracks copy lineage (root, member, leaf),
+  restoration records (root `restored`, never removed), a pending set per
+  history, a "hold" rule (a copy a peer made while my delete holds the
+  character is deleted by me), a leftmost-wins deduplication of concurrent
+  copies, a `gcFilter` that keeps every deleted copy's content on every replica
+  (`keepCopies`, the room too), and follow-up transactions after remote changes.
+
+The rule the user set: a layer that exists only to patch engine behaviour is
+replaced by an engine change, and the layer goes.
+
+## The data model and the merge rule
+
+A **hold record** is a new content type, `ContentHold` (content ref 11): one
+unit per held id range (`client, clock, len`). A record is an ordinary item
+appended to the document's records list (the root `textdel`, as today); its id
+is its writer's, so a record is a delete that names its writer.
+
+- An item's visibility: `deleted = removed || holds > 0`, where `removed` is
+  the engine's own delete (bit 3, the delete set, unchanged) and `holds` is the
+  number of live records holding it (a per-item counter, local, never encoded).
+- Integrating a record adds 1 to the holds of every item it names (split at the
+  range's edges); deleting the record (an ordinary engine delete of the record
+  item) subtracts 1. An item that goes from 0 to 1 hold, or 1 to 0, and is not
+  removed, changes visibility: its parent's length moves, the parent is in
+  `transaction.changed`, and the change is logged in `transaction.holds`
+  (`[client, clock, ±len, …]`, in order) for edytor's index.
+- An undo of a text delete deletes the undoer's record: the text shows again,
+  in place (same items, same order), unless another live record still holds
+  it. A redo re-creates the record (`redoItem` copies the record, never the
+  text). An undo of typing writes a record holding the typed units.
+- A record integrates at once, even when items it names have not arrived:
+  the part of a range this replica lacks (past its clock, or a Skip) waits in
+  `store.pendingHolds` and takes the hold when an update of that client
+  integrates (`applyPendingHolds` in `readUpdate`). A target that is a GC
+  struct is skipped (it is gone anyway). (The first prototype made the record
+  a pending struct until its items arrived; the room rows XW-07 and YW-10
+  showed why not: a delete of text a restored room lost was then never
+  stored nor acknowledged.)
+
+**Merge rule / convergence.** The state that decides visibility is
+(a) the set of items, (b) the set of removed ids (the delete set: a union),
+(c) the set of records and the set of deleted records (a 2P-set: records are
+immutable once written, a record is deleted at most once, deletion is a union).
+`visible(x) = integrated(x) ∧ x ∉ removed ∧ ¬∃ live record r: x ∈ r` is a
+function of that converged state, so every replica that has the same updates
+shows the same text, whatever the delivery order:
+
+- the counter is the size of that set as integrated so far: +1 on a record's
+  integration, −1 on its deletion (a pending entry when the item is missing,
+  applied when it arrives), and the engine never deletes an item it has not
+  integrated (pending delete sets wait), never integrates one twice (state
+  vectors), and a record that arrives deleted with its content collected
+  (`ContentDeleted`) never counted;
+- splits copy the counter, merges require equal counters (and equal `removed`);
+- a record's targets are immutable (no edit of a record, only its deletion), so
+  "only once both deletes are undone" holds by construction: two live records
+  hold the character; each undo deletes its own.
+
+The contract rows this gives without any edytor logic:
+
+- concurrent double delete, then both undo: holds 2 → 1 → 0, the character
+  shows once, only when both undid, in any delivery order (`hist.undo.restore`);
+- undo and redo restore the same order: the same items come back, nothing is
+  copied (`hist.undo.order`);
+- text another author added is kept: an undo only deletes its own record; a
+  peer's insert inside a held run is a new item with no hold.
+
+**Releasing a dropped step.** A held character keeps its content until no
+undo can show it again. When a step leaves the history (the limit, a new
+edit dropping the redo stack, `clear()`, the horizon), the history removes
+what this writer's live records of the step hold and deletes the records
+(origin `edytor.history.trim`), so storage stays where it was with copies (a
+released step's text was collected then too). Only this writer's records:
+the room's validation history captures clients' frames and must not take
+their records back. Likewise `fresh` (typed and erased inside the open step:
+removed, not held) counts only this writer's own inserts.
+
+**GC, purge, horizon.** A held item is not removed, so the engine never
+collects it (no `gcFilter` for copies: there are none). The purge
+(`crdt/purge.ts`, the room) erases what a record older than the horizon holds
+(an engine delete of each target, then the record's delete): the content is
+collected everywhere, as before. A newer record that still holds an erased item
+has nothing to bring back when undone (the older delete is permanent past the
+horizon — the existing `hist.purge.horizon` rule). A stale replica's undo of a
+record the purge deleted is idempotent (deleting a deleted item): it restores
+nothing, where today it made a copy (a residual that goes).
+
+**Snapshots and restore.** A snapshot encodes a held item as a live item with
+its content, and its record; the receiver recomputes the counters as the
+records integrate. `restoreTo` (`crdt/restore.ts`) writes through the facade's
+text ops, so it writes records like any edit. History versions are snapshots.
+
+**Storage and the room.** `mergeUpdates`/`diffUpdate` slice and re-encode a
+`ContentHold` like any content (`splice`, `write`). The room no longer needs
+`keepCopies`. Schema generation 7 (wire word 14007): rooms, browser stores and
+history versions of generation 6 are refused, never converted (the user's
+rule: no conversion, old data may be dropped).
+
+**v13 boundary tests.** They test that a v13 frame or update never reaches a
+v14 document (the envelope), not the text-delete format: they stay.
+
+## What goes away in edytor
+
+- `src/lib/crdt/text/deletes.ts` (whole: marks, restore, settle, hold, dedupe,
+  react, fold-into-last, history policy) and `src/lib/crdt/text/delete-index.ts`
+  (whole: roots, members, leaves, holders, parts, copies index, record codec).
+- The restoration records root (`RESTORED_ROOT`, `restored`).
+- The history's `marks` rules (`restoreFilter`, `onApply`), the text delete
+  part of `#release`'s comment, `bindDeletes` in `edytor-doc.ts`,
+  `keepCopies` on the public binding and its call in the room
+  (`room/updates.ts`), `appendAfter`, `ContentAny`/`createID` in the engine
+  object if nothing else reads them.
+- The purge's copies and restoration-record part (`purgeText`'s second half,
+  `PurgeReport.records`).
+- Tests of the old mechanics: restoration records, copies, dedup and the
+  follow-up transaction (`text-delete-marks.test.ts` keeps its behaviour rows,
+  which must pass unchanged), `delete-records-fold.test.ts` (folding is the
+  engine's merge of consecutive records now).
+
+## What the engine gains (YP20)
+
+- `ContentHold` (Item.js, ~60 lines): length = ranges, `integrate`/`delete`
+  hold and release, `splice`, `mergeWith`, `copy`, `write`, ref 11, and
+  `readContentHold` in `contentRefs`.
+- `Item`: `holds` field, `removed` getter, `deleted` includes holds; `delete`,
+  `split`, `mergeWith`, `integrate` (parent check), `gc` read `removed`.
+- `transaction.holds` (the ordered visibility log).
+- `store.pendingHolds` and `applyPendingHolds` (in `readUpdate`): a hold whose items have not arrived waits for them.
+- `createDeleteSetFromStructStore`, `readAndApplyDeleteSet`, `tryGcDeleteSet`,
+  `redoItem`, `ContentType#delete`: `removed` where they mean the engine delete.
+- `YNode#delete(index, length, into, fresh)`: with `into` (the records list),
+  the live units are held by one record appended there, except those `fresh`
+  names (inserted by the open undo step: removed, as the engine always did, so
+  a step that typed and erased the same text still changes nothing and is
+  skipped by undo); search markers are moved as for a delete.
+  `YNode#hold(ids)`: append a record holding `ids` (the history's undo of
+  typing).
+
+Edytor keeps: the records root in the history's scope, `deleteRange` passing
+the records list and the open step's inserts, the history's undo of typing
+(hold instead of remove), the index's reading of `transaction.holds`, and the
+purge's erase of old records.
+
+## Size estimate
+
+| Piece | KB min now | after |
+| ----- | ---------- | ----- |
+| `text/deletes.js` | 5.04 | 0 |
+| `text/delete-index.js` | 5.23 | 0 |
+| history marks plumbing, `appendAfter`, engine object entries | ~0.3 | 0 |
+| engine: `ContentHold`, `Item` changes, pending holds, `YNode#delete`/`hold`, log | 0 | ~1.6 |
+| edytor: open-step registry, history hold, index log edits | 0 | ~0.5 |
+
+Net: about −8 KB in the minimal and all probes (the export probe ships no
+CRDT code: unchanged). Above the 3 KB floor.
+
+## Risks
+
+1. **Snapshot size.** Held text keeps its content until the purge (today a
+   deleted character's content is collected once no history step keeps it,
+   except copies). For a document with a lot of deleted text, stored size
+   grows by that text until `purgeAfterDays`. Typing then erasing within one
+   undo step still removes (the `fresh` rule), so typo correction leaves
+   nothing. Measured by `bench:crdt` (encode) below.
+2. **Index edits.** The index moves rows by the transaction's edits; a hold
+   changes visibility without an insert or a delete, so the index must read
+   the engine's ordered log (`transaction.holds`), including mid-transaction
+   folds. A missed entry makes a row stale; the row-length check and the
+   index self-checks (on in every vitest lane) catch it.
+3. **Every reader of `deleted`.** Held items read as deleted everywhere,
+   which is what every visibility reader wants; the few engine paths that mean
+   "removed" (the delete set, GC, an item's delete guard, a parent's liveness
+   at integration, redo's parent) must read `removed`, or a replica that holds
+   an item and one that does not would diverge. Each is listed above; the
+   random corpus, the replica harness and the DST lanes are the check.
+4. **Search markers.** A hold on the local delete path moves markers as a
+   delete does; holds from history replays, remote integration and the purge
+   drop the markers of the texts they change (as today).
+5. **Residual.** A text unit removed with its whole text node (a cascade:
+   `restoreBlocks` overwriting a block's text) while a record holds it is not
+   re-created by a redo of that overwrite; the record's undo then reveals it in
+   the dead node only (unreachable). Today's copy logic had its own residuals
+   here; no editor path does this under a history.
+6. **Public API.** `keepCopies` goes from `bindCrdt(Y).doc`
+   (`edytor/crdt/edytor`, `edytor/protocol`): a breaking change, in the
+   changelog.
+
+## Other layers that exist only to patch engine behaviour (read-only survey)
+
+KB: minified, the minimal probe after YP20 (`scripts/bundle-size.mjs`), per
+file; a share of a file is an estimate.
+
+| Layer | What it patches | KB now | An engine change that would remove it |
+| ----- | --------------- | ------ | -------------------------------------- |
+| Withdraw marks (`wd.<writer>`: `withdrawOnUndo`, the index's shells and `settle`, the purge's shell walk) | an undo of a creation deletes the block node and everything others typed in it | ~1.5 (`placement/model.js` ~0.3, `index/records.js` ~0.3, `index/fold.js` `settle` ~0.8, reads) | YP20's hold record on a map value: an undo of a creation holds the registry entry instead of deleting it; the "shows while it holds another writer's content" read stays a display rule, the marks and their purge go |
+| Keep-replaced incarnations (`crdt/incarnations.ts`, YP14) | a map key written twice concurrently keeps one value and deletes the other's subtree | ~1.8 (`incarnations.js` 0.55, incarnation tracking in `index/records.js` and `fold.js` ~0.9, YP14 ~0.3) | multi-value keys in the engine (an MV-register: concurrent writes of one key are sibling values, read with `getAll(key)`), so edytor reads both creations without derived incarnation ids |
+| Index rebuild paths (row rescans, opaque texts, the global placement resolution fallback) | the engine reports a commit as id sets, without positions | ~2 of `index/fold.js` 6.6, `text/rows.js` 1.9 | an ordered edit log with live indices for every countable change (YP20's `transaction.holds`, extended to inserts and deletes), so a row moves by index and never walks to a boundary or rescans |
+| Placements (`{p, r}` candidates per block, ranks, read-time cycle resolution) | the engine has no move: a block's parent and place are LWW attrs edytor resolves | ~15 (`placement/display.js` 3.5, `rank.js` 2.7, `resolve.js` 1.2, `source.js` 0.3, `index/placement.js` 6.1, part of `placement/model.js` and `doc/moves.js`) | a native movable tree (a move operation with a total order that skips cycle-making moves, Kleppmann et al.), holding each block's parent and position as engine state |
+| Attrs per data leaf (`d/<pointer>`, array items `~id` with ranks `~id#`/`~id>`, the LCS arrangement) | a node's attr is one LWW value: concurrent edits of one object would clobber each other | ~7 (`data.js` 5.7, `patchData` in `doc/meta.js` ~1.5; `props.js` is the view's proxy and stays) | nested map and list nodes for data with a native list move (the fork's node already is both), so a patch writes engine nodes and the pointer encoding, ranks and arrangement go |
+| Merge claims and streams (text kept in its backing text, claimed by the block it merged into) | the engine cannot move a run of items to another text | ~8 (`index/claims.js` 2.2, `index/streams.js` 2.5, `text/streams.js` 1.3, `index/anchored.js` 2.4) | a native range move between texts, so a merge moves the run and a split moves it back (the hardest of these: concurrent edits inside a moved range) |
+
+## Prototype result (2026-10-15)
+
+It works: fork patch YP20 (`src/lib/crdt/vendor/yjs/UPSTREAM.md`) and the
+edytor commits on branch `engine-delete`. `text/deletes.ts` and
+`text/delete-index.ts` are gone; nothing is copied on undo any more.
+
+- **Size.** Minimal probe 423.8 → 417.0 KB own (470.6 → 463.7 total, gzip
+  162.0 → 159.4), every plugin 653.2 → 646.4 (701.8 → 695.0), `edytor/export`
+  51.0 unchanged: −6.8 KB net (the engine +2.6, the history +0.8 for the
+  release and hold rules, the index +0.4).
+- **Bench** (`bench:crdt`, master and branch on one machine, two runs): a
+  keystroke, a load and an encode unchanged within noise; a backspace 0.15 →
+  0.08 ms (1k blocks); an undo 0.72 → 0.42 ms. A room's state after 1,100
+  text deletes in separate steps: 94,584 → 88,431 bytes (83,826 once the
+  writer's history releases them): a hold record is smaller than the old
+  record, which outweighs the held text.
+- **What the prototype found on the way.** A record that waited for its
+  items lost the room's restore rows (XW-07, YW-10): records now integrate at
+  once and their holds wait (`pendingHolds`). A history's release must not
+  erase the records of a captured peer frame (the room's validation), and a
+  `fresh` delete only counts this writer's inserts. The purge keeps a record
+  whose text the room lacks. An undone atom insert keeps the atom's
+  attributes under its hold (the wide corpus, doc seed 160).
+- **Contract.** `split.range-one-undo`, a pinned divergence of the native
+  contract programs, now holds as written (original identities after undo);
+  F-U4d's outcome no longer depends on client ids; anchors inside deleted
+  text resolve where they were after undo.

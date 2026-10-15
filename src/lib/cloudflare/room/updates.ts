@@ -6,7 +6,7 @@
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
 import type { YDoc } from '../../crdt/index.js';
-import { asEngineDoc, keepFromCollection, structAt as storeStructAt } from '../../crdt/structs.js';
+import { keepFromCollection, structAt as storeStructAt } from '../../crdt/structs.js';
 import { ROOM_ORIGIN } from './shared.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
@@ -321,21 +321,19 @@ export const withoutPending = <T>(doc: YDoc, read: () => T): T => {
 
 /**
  * The live document as one update: its healed state — the engine
- * merged what each keystroke wrote and collected deleted content, sparing
- * the text a replica may copy again (`keepCopies`) —, without what
- * waits (`withoutPending`). Memory never runs ahead of storage, so it
- * holds exactly what the stored records hold, collected.
+ * merged what each keystroke wrote and collected deleted content —,
+ * without what waits (`withoutPending`). Memory never runs ahead of
+ * storage, so it holds exactly what the stored records hold, collected.
  */
 export const liveState = (doc: YDoc): Uint8Array =>
 	withoutPending(doc, () => Y.encodeStateAsUpdate(doc));
 
 /**
  * A room document's collection rules, before any update applies: it keeps
- * what an editing replica keeps, and the content the last restore
- * deleted while its undo stands (`keep`, `room.history.undo`).
+ * the content the last restore deleted while its undo stands (`keep`,
+ * `room.history.undo`).
  */
 const prepareRoomDoc = (doc: YDoc, keep: () => Decoded['ds'] | null): void => {
-	crdt.doc.keepCopies(asEngineDoc(doc));
 	keepFromCollection<Item>(
 		doc,
 		(it) => !(keep()?.intersects(it.id.client, it.id.clock, it.length) ?? false)

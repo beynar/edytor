@@ -35,7 +35,7 @@ import {
 	WITHDRAW_PREFIX
 } from './schema.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
-import { attrItems, dropSearchMarkers, engineOps, firstItem } from './structs.js';
+import { attrItems, dropSearchMarkers, engineOps, firstItem, holdsIds } from './structs.js';
 
 /** Engine ids `c:k … c:k+n-1`. */
 type Span = { c: number; k: number; n: number };
@@ -128,12 +128,15 @@ export const bindPurge = (Y: EngineApi) => {
 	 * every hold record `old` names is deleted with what it holds (a real
 	 * delete: the engine collects it everywhere; a newer record holding the
 	 * same text has nothing to show again, the older delete is past the
-	 * horizon).
+	 * horizon). A record whose text the room lacks (lost, coming back with
+	 * its author) is kept: it holds that text when it returns.
 	 */
 	const purgeText = (doc: EngineDoc, old: Old): number => {
 		const tr = (doc as { _transaction?: unknown })._transaction;
 		if (tr == null) throw new Error('purge: outside a transaction');
-		const doomed = holdsOf(doc).filter((h) => old(h.client, h.clock));
+		const doomed = holdsOf(doc).filter(
+			(h) => old(h.client, h.clock) && holdsIds(doc, h.c, h.k, h.n)
+		);
 		const ids = (spans: readonly Span[]) => {
 			const set = ops.idSet();
 			for (const sp of spans) set.add(sp.c, sp.k, sp.n);

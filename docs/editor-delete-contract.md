@@ -3178,7 +3178,9 @@ engine collects the content everywhere (`crdt.doc.purge`):
   still delimits and stays hidden), with its data leaves and claims;
 - a text hold record older than the horizon is deleted with what it
   holds (the text removed and collected everywhere; a newer record holding
-  the same text has nothing to show again);
+  the same text has nothing to show again); a record whose text the room
+  lacks (lost by a restore, coming back with its author) stays, and holds
+  that text when it returns;
 - a block whose winning placement candidate is older than the horizon
   and accepted drops its other candidates (the runner-up);
 - a block merged away before the horizon (`room.purge.merged`, WU-16:

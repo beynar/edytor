@@ -201,4 +201,14 @@ CRDT code: unchanged). Above the 3 KB floor.
 
 ## Other layers that exist only to patch engine behaviour (read-only survey)
 
-See the report at the end of this file.
+KB: minified, the minimal probe after YP20 (`scripts/bundle-size.mjs`), per
+file; a share of a file is an estimate.
+
+| Layer | What it patches | KB now | An engine change that would remove it |
+| ----- | --------------- | ------ | -------------------------------------- |
+| Withdraw marks (`wd.<writer>`: `withdrawOnUndo`, the index's shells and `settle`, the purge's shell walk) | an undo of a creation deletes the block node and everything others typed in it | ~1.5 (`placement/model.js` ~0.3, `index/records.js` ~0.3, `index/fold.js` `settle` ~0.8, reads) | YP20's hold record on a map value: an undo of a creation holds the registry entry instead of deleting it; the "shows while it holds another writer's content" read stays a display rule, the marks and their purge go |
+| Keep-replaced incarnations (`crdt/incarnations.ts`, YP14) | a map key written twice concurrently keeps one value and deletes the other's subtree | ~1.8 (`incarnations.js` 0.55, incarnation tracking in `index/records.js` and `fold.js` ~0.9, YP14 ~0.3) | multi-value keys in the engine (an MV-register: concurrent writes of one key are sibling values, read with `getAll(key)`), so edytor reads both creations without derived incarnation ids |
+| Index rebuild paths (row rescans, opaque texts, the global placement resolution fallback) | the engine reports a commit as id sets, without positions | ~2 of `index/fold.js` 6.6, `text/rows.js` 1.9 | an ordered edit log with live indices for every countable change (YP20's `transaction.holds`, extended to inserts and deletes), so a row moves by index and never walks to a boundary or rescans |
+| Placements (`{p, r}` candidates per block, ranks, read-time cycle resolution) | the engine has no move: a block's parent and place are LWW attrs edytor resolves | ~15 (`placement/display.js` 3.5, `rank.js` 2.7, `resolve.js` 1.2, `source.js` 0.3, `index/placement.js` 6.1, part of `placement/model.js` and `doc/moves.js`) | a native movable tree (a move operation with a total order that skips cycle-making moves, Kleppmann et al.), holding each block's parent and position as engine state |
+| Attrs per data leaf (`d/<pointer>`, array items `~id` with ranks `~id#`/`~id>`, the LCS arrangement) | a node's attr is one LWW value: concurrent edits of one object would clobber each other | ~7 (`data.js` 5.7, `patchData` in `doc/meta.js` ~1.5; `props.js` is the view's proxy and stays) | nested map and list nodes for data with a native list move (the fork's node already is both), so a patch writes engine nodes and the pointer encoding, ranks and arrangement go |
+| Merge claims and streams (text kept in its backing text, claimed by the block it merged into) | the engine cannot move a run of items to another text | ~8 (`index/claims.js` 2.2, `index/streams.js` 2.5, `text/streams.js` 1.3, `index/anchored.js` 2.4) | a native range move between texts, so a merge moves the run and a split moves it back (the hardest of these: concurrent edits inside a moved range) |

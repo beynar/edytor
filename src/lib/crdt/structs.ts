@@ -248,6 +248,19 @@ export type StoreLike = {
 export const storeOf = (doc: EngineDoc | YDoc): StoreLike =>
 	(doc as unknown as { store: StoreLike }).store;
 
+/**
+ * Whether `doc` holds every id `client:clock … clock+len-1` (none past its
+ * clock, none in a gap the engine fills later: vendor `store.skips`).
+ */
+export const holdsIds = (doc: EngineDoc, client: number, clock: number, len: number): boolean => {
+	const store = doc as unknown as {
+		store: StoreLike & { skips: { intersects(c: number, k: number, n: number): boolean } };
+	};
+	return (
+		clock + len <= store.store.getClock(client) && !store.store.skips.intersects(client, clock, len)
+	);
+};
+
 /** The doc's collection settings (vendor `gc`, `gcFilter`), in the caller's view of an item. */
 type Collection<I> = { gc: boolean; gcFilter: (item: I) => boolean };
 

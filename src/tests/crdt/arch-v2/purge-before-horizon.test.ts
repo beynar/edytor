@@ -140,6 +140,25 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ada.destroy();
 	});
 
+	it('a delete record whose text the room lacks is kept: it holds the text when the text comes back', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		const bob = open('bob', 3);
+		// Ada's '!' reaches Bob only; Bob deletes it; the room hears Bob alone.
+		const typed = ada.capture(() => ok(ada.ed.insertText('p1', 9, '!')));
+		bob.receiveAll(typed);
+		const deleted = bob.capture(() => ok(bob.ed.deleteText('p1', 9, 1)));
+		room.receiveAll(deleted);
+		const report = purge(room, epoch(room));
+		expect(report.marks).toBe(0);
+		room.receiveAll(typed);
+		expect(room.ed.blockText('p1')).toBe('live text');
+		syncAll([room, ada, bob]);
+		for (const r of [room, ada, bob]) expect(r.ed.blockText('p1')).toBe('live text');
+		healthy(room, ada, bob);
+		for (const r of [room, ada, bob]) r.destroy();
+	});
+
 	it('a deleted parent of a live child keeps its node; the child stays where it shows', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);

@@ -15,7 +15,7 @@
 import { describe, expect, test } from 'vitest';
 import { renderDomEdytor, flushDomUpdates, canonicalTree } from '../../dom/test.utils.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
-import { handleNativeLineBreakTextValue } from '$lib/events/onInput.js';
+import { lineBreak } from '$lib/surface/observer.svelte.js';
 import { attemptOf } from '$lib/session/attempt.js';
 import { adopt } from '$lib/surface/observer.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -118,7 +118,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 	test('onInput: a native line break runs its intent in the turn', async () => {
 		const { edytor } = await one('hello');
 		const text = edytor.root!.children[0]!.firstText!;
-		void handleNativeLineBreakTextValue(edytor, text, 'hel\nlo');
+		void lineBreak(edytor, text, 'hel\nlo', 3);
 		// A `\n` the browser typed is a soft break (its `insertLineBreak` intent).
 		expect(canonicalTree(edytor).map((block) => block.content)).toEqual([[{ text: 'hel\nlo' }]]);
 		expect(caret(edytor)).toEqual({ text: 'hel\nlo', offset: 4, isCollapsed: true });

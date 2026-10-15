@@ -136,22 +136,7 @@ export type MathML = (tex: string, display: boolean) => string;
 ```ts
 // export/index.d.ts
 declare const bundledForms: {
-    blocks: {
-        equation: {
-            itemKind?: string;
-            island?: boolean;
-            rendersContent: boolean;
-            defaultChild?: string;
-            void: boolean;
-            lines?: boolean;
-            html?: string | ((block: JSONBlock, content: string, children: string) => string);
-            markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
-            plain?: (block: JSONBlock, content: string, children: string) => string;
-            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
-            element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
-            contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
-        };
-    };
+    blocks: Record<keyof ReturnType<typeof bundledRead>["blocks"], BlockForms>;
     marks: {
         bold: {
             tag: string;
@@ -251,7 +236,7 @@ declare const equationForms: (mathml?: MathML) => {
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
             markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
             plain?: (block: JSONBlock, content: string, children: string) => string;
-            parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
             element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
             contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
         };
@@ -261,7 +246,7 @@ declare const equationForms: (mathml?: MathML) => {
             html?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
             markdown?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
             plain?: (data: import("../utils/json.js").JSONInlineBlock["data"]) => string;
-            parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
+            parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
         };
     };
 };
@@ -1471,6 +1456,390 @@ type Form = Omit<BlockForms, 'presets'>;
 
 ```ts
 type Rows = Record<string, Form>;
+```
+
+#### export/forms.d.ts#bundledRead
+
+```ts
+declare const bundledRead: () => {
+    blocks: {
+        paragraph: {};
+        heading: {
+            presets: {
+                data: {
+                    level: "h1" | "h2" | "h3";
+                };
+            }[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'bulleted-list-item': {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'numbered-list-item': {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'todo-item': {
+            presets: {
+                data: {
+                    checked: false;
+                };
+            }[];
+        };
+        toggle: {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'toggle-heading': {
+            presets: {
+                data: {
+                    level: "h1" | "h2" | "h3";
+                };
+            }[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        callout: {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        quote: {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        divider: {
+            presets: {}[];
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'ordered-list': {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild: string;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'unordered-list': {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild: string;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        'list-item': Form;
+        code: {
+            island: true;
+            lines: true;
+            rendersContent: false;
+            defaultChild: string;
+        };
+        codeLine: {};
+        table: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild: string;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            table: true;
+        };
+        tableRow: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild: string;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        tableCell: {
+            itemKind?: string | undefined;
+            island: boolean;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        image: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        embed: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        bookmark: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        file: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        video: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        audio: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent?: boolean | undefined;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        page: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        toc: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        equation: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild?: string | undefined;
+            void: boolean;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+        columns: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild: string;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            layout: true;
+        };
+        column: {
+            itemKind?: string | undefined;
+            island?: boolean | undefined;
+            rendersContent: boolean;
+            defaultChild?: string | undefined;
+            void?: boolean | undefined;
+            lines?: boolean | undefined;
+            html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
+            plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
+            parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
+            element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+        };
+    };
+    marks: Record<string, MarkForms>;
+    inlineBlocks: {
+        mention: AtomForms;
+        inlineEquation: AtomForms;
+    };
+};
 ```
 
 #### kinds.d.ts#KindRow

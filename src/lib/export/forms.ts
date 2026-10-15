@@ -711,7 +711,7 @@ export const bundledRead = () => {
 			equation: { ...equationKinds.equation, ...equationRead },
 			columns: { ...layoutKinds.columns, ...columnsRead },
 			column: { ...layoutKinds.column, ...columnRead }
-		} as Record<string, BlockForms>,
+		} satisfies Record<string, BlockForms>,
 		marks: {
 			bold: { tag: 'strong', parse: boldRead },
 			italic: { tag: 'em', parse: italicRead },

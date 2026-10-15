@@ -35,6 +35,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 - **A table in a suggestion's preview lays out its cells in columns.** Before Accept, its cells were stacked on top of each other.
 - **Live comments with the documented Worker.** `createCommentsClient` without `socket` now hears the room's changes on the websocket sync the page already holds for that room, whatever its route: a comments route on `/comments` beside sockets on `/rooms` needs no `socket` any more (before, the client listened on `/comments` and heard nothing).
 - **The comments docs.** The starter's "With a room" example passes the `user` the documented `authorize` reads, and the comments page states the width rule: the cards show beside the text, without a click, once the editor ends 328 px before the window's right edge.
+- **`edytor/export` is smaller per function.** Each conversion reads only its own direction of the kinds' forms: `toHTML` alone ships about half of what it did, `toMarkdown` and `fromHTML` less too, with the same output. The plugin forms factories (`codeForms()`, `mediaForms()`, …) return records typed as `BlockForms` rows; their fields and values are unchanged.
 
 ### From 1.0.0
 

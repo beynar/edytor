@@ -75,7 +75,7 @@ export type { MarkdownContext } from '$lib/plugins.js';
  * providers, its page links).
  */
 export const bundledForms = /* @__PURE__ */ (() => {
-	const read = bundledRead().blocks;
+	const read: Record<string, BlockForms> = bundledRead().blocks;
 	const rich = { paragraph: {}, ...richTextForms(iconOf) } as Record<string, BlockForms>;
 	// A rich text kind's presets' data, as its plugin lists them: HTML import finds a kind by a
 	// preset's tag (an `h2`, a `blockquote`). A view's records carry their own.
@@ -93,7 +93,7 @@ export const bundledForms = /* @__PURE__ */ (() => {
 			...tocForms(),
 			...equation.blocks,
 			...columnsForms()
-		},
+		} as Record<keyof ReturnType<typeof bundledRead>['blocks'], BlockForms>,
 		marks: richTextMarkForms,
 		inlineBlocks: { mention: mentionForms(), pageLink: pageLinkForms(), ...equation.inlineBlocks }
 	} satisfies Required<KindForms>;

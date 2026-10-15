@@ -144,7 +144,7 @@ export {
 };
 export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
 export { SEED_ORIGIN } from './doc/seed.js';
-export { EdytorDocDisposedError } from './doc/funnel.js';
+export { DocumentDestroyedError } from './doc/funnel.js';
 export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
 export type {
 	AnchorAffinity,

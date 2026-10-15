@@ -672,6 +672,20 @@ safe mid-transaction.
 declare const checkSchema: (doc: EngineDoc) => SchemaProblem | null;
 ```
 
+## ChunkError
+
+A chunk sequence its reader refuses (`createChunkReader`): one
+announcing a frame larger than the reader takes (`total` over `limit`),
+or a part or end with no sequence started (one lost, or never sent).
+
+```ts
+export declare class ChunkError extends Error {
+    readonly total?: number | undefined;
+    readonly limit?: number | undefined;
+    constructor(total?: number | undefined, limit?: number | undefined);
+}
+```
+
 ## chunkFrame
 
 Split `whole` (a complete frame) into frames of at most `maxFrameBytes`:
@@ -680,18 +694,6 @@ receiver applies the reassembled frame only once `end` arrives.
 
 ```ts
 declare const chunkFrame: (whole: Uint8Array, maxFrameBytes?: number) => Uint8Array[];
-```
-
-## ChunkLimitError
-
-A chunk sequence announces a frame larger than its reader takes (`createChunkReader`).
-
-```ts
-export declare class ChunkLimitError extends Error {
-    readonly total: number;
-    readonly limit: number;
-    constructor(total: number, limit: number);
-}
 ```
 
 ## ChunkReader
@@ -837,7 +839,7 @@ The receiving half of `chunkFrame`, one per connection: feed it
 each chunk frame's body (after the message type); it returns the whole
 frame on `end`, `null` before. An out-of-order or oversized sequence
 throws and resets; a sequence announcing more than `maxBytes` throws
-`ChunkLimitError` at its start, before anything is buffered. A
+`ChunkError` at its start, before anything is buffered. A
 sequence is assembled into ONE buffer of its announced size, allocated
 at its start (`buffered`), never into parts copied at its end.
 `admit(total)` is asked at each start, before that allocation: it may

@@ -53,7 +53,7 @@ A server sends `messageSaved` after it has durably stored what a sync message br
 A chunk sequence is a `start` frame (`0`, then the total length), any number of `part` frames (`1`, then a `varUint8Array`), and an `end` frame (`2`). Both directions chunk: the provider sends a frame larger than its `maxFrameBytes` as a sequence (an offline backlog at reconnect), and a server must reassemble it per connection; the edytor room does, and closes a socket with `1011` when a `part` or `end` arrives with no sequence started.
 
 - `chunkFrame(bytes, maxFrameBytes?)` splits one complete frame (it returns the frame itself when it fits).
-- `createChunkReader(maxBytes?, admit?)` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before. A sequence announcing more than `maxBytes` throws `ChunkLimitError` at its `start`. The default limit is `MAX_FRAME_BYTES` (32 MiB).
+- `createChunkReader(maxBytes?, admit?)` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before. A sequence announcing more than `maxBytes` throws `ChunkError` (with `total` and `limit`) at its `start`; a part or end with no start throws it too. The default limit is `MAX_FRAME_BYTES` (32 MiB).
 - The reader assembles a sequence into one buffer of the announced size, allocated at the `start`, and its `buffered` property is that size while the sequence is in flight (0 otherwise).
 - `admit(total)`, asked at each `start` before the allocation, may throw to refuse the sequence or return `false` to skip it (its parts are dropped and its `end` returns `null`). The edytor room uses it to skip a read-only socket's sequences and to bound what all its sockets buffer together.
 
@@ -86,7 +86,7 @@ All from `edytor/protocol`:
 | `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply to a refused write. |
 | `messageReadOnly`, `writeReadOnly(encoder)` | The read-only notice at the join. |
 | `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate` | The awareness codec. |
-| `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES`, `ChunkLimitError` | Chunked frames. |
+| `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES`, `ChunkError` | Chunked frames. |
 | `CLOSE` | The close codes the room and its router send, by name (`refused` `1008`, `fault` `1011`, `invalidDocument` `4400`, `expired` `4401`, `denied` `4403`, `replicaTaken` `4409`, `quota` `4413`; see [admission](/docs/server/room#admission)). |
 | `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |
 | `GENERATION_RECORD`, `GenerationMismatchError` | Tag and check stored containers of this generation. |

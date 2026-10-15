@@ -67,7 +67,7 @@ export {
 	MAX_FRAME_BYTES,
 	chunkFrame,
 	createChunkReader,
-	ChunkLimitError,
+	ChunkError,
 	type ChunkReader,
 	CLOSE
 } from './providers/room.js';

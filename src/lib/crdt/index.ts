@@ -308,4 +308,4 @@ export type {
 // The facade's disposal error and the history's default depth belong
 // to the document; the frame contract, message types and codecs are
 // `edytor/protocol`.
-export { EdytorDocDisposedError, DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';
+export { DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';

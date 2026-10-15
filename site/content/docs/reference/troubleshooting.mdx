@@ -11,14 +11,13 @@ Edytor reports problems three ways: it **throws** when you misuse an API, a **pr
 | Error | Thrown by | Cause and fix |
 | --- | --- | --- |
 | `DocumentNotReadyError` | `document.history` | The document is still `pending`: a provider may still bring content. Wait for [`onReady`](/docs/collaboration/documents#readiness), or call `document.sync()`. |
-| `DocumentDestroyedError` | any document member, `attachSync` | The document was destroyed. A view destroys only the document it created itself. |
+| `DocumentDestroyedError` | any document member or operation, `attachSync` | The document was destroyed. A view destroys only the document it created itself. |
 | `SemanticConflictError` | `createDocument`, a view mounting | Two sources declare different block rules (role, default child, default type) for one kind: two views with different plugins, two plugins in one view, or a headless `semantics` option a view's plugins contradict. Give every view of a document the same plugins. |
 | `UndecodableUpdateError` | `loadDocument` | The bytes are not an update. Your bytes are never modified. |
 | `UnsupportedDocError` | `attachDocument` | Not an edytor document (a v13 `yjs` document, for one). |
 | `SchemaMismatchError` | `loadDocument` | The content claims a schema this build cannot own (a newer build wrote it). |
 | `GenerationMismatchError` | Reported, not thrown, by an IndexedDB store (the provider's `failed`) and by the room (its `failure`) | A store of another schema generation, never converted: re-import it from JSON. For a room, `reset()` drops the stored container and starts again from `onLoad` ([generation cutover](/docs/server/room#generation-cutover)). |
 | `TypeError: room id "…" cannot be dialed` | `WebsocketProvider`, `createWebsocketSync` | The room id is empty, `.`, `..`, over 256 characters, or holds a lone surrogate. A URL collapses a `.` or `..` segment, and cannot encode a lone surrogate, so no dial could reach that room. Pick another id. (`<Edytor server room>` does not throw: it reports the `4400` refusal below.) |
-| `EdytorDocDisposedError` | a document operation | An operation or read ran after its document was destroyed. |
 | `Error: [edytor-doc] stale plan` | `document.apply(plan)` | The plan was prepared before another write. Prepare and apply in the same turn, or `compose` plans prepared at one version. |
 | `Error: No Edytor found` | `useEdytor()` | Called outside a component rendered inside `<Edytor>`. |
 | `Error: EdytorOptions: document cannot be combined…` | `new Edytor(…)`, in development | Pass either `document` or `actor`/`requireHydration`, not both (a production build does not check: the `document` wins). |

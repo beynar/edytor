@@ -156,6 +156,7 @@ import {
 import { profileOf } from './attribution/attribution.js';
 import {
 	docFacade,
+	DocumentDestroyedError,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
 	type BlockRole,
@@ -276,28 +277,13 @@ export type CreateDocumentOptions = DocumentOptions & {
 
 export type LoadDocumentOptions = DocumentOptions;
 
+export { DocumentDestroyedError };
+
 /** Raised when a readiness-gated service is used on a pending document. */
 export class DocumentNotReadyError extends Error {
 	constructor(service: string) {
-		super(
-			`EdytorDocument.${service}: document is not ready — it is still pending ` +
-				`(created without a value, provider hydration may be in flight). ` +
-				`Wait for the sync callback / call document.sync() first.`
-		);
+		super(`${service}: the document is not ready (call document.sync() first)`);
 		this.name = 'DocumentNotReadyError';
-	}
-}
-
-/**
- * Raised when an operation runs against a torn-down document — every
- * attach reference has been released and the facade/history/awareness
- * teardown already ran. Distinct from {@link DocumentNotReadyError}:
- * destroyed is terminal, pending may still resolve.
- */
-export class DocumentDestroyedError extends Error {
-	constructor(service?: string) {
-		super(`EdytorDocument${service ? `.${service}` : ''}: document is destroyed.`);
-		this.name = 'DocumentDestroyedError';
 	}
 }
 

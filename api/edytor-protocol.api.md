@@ -52,14 +52,14 @@ declare const CLOSE: {
 };
 ```
 
-### ChunkLimitError
+### ChunkError
 
 ```ts
 // crdt/providers/room.d.ts
-export declare class ChunkLimitError extends Error {
-    readonly total: number;
-    readonly limit: number;
-    constructor(total: number, limit: number);
+export declare class ChunkError extends Error {
+    readonly total?: number | undefined;
+    readonly limit?: number | undefined;
+    constructor(total?: number | undefined, limit?: number | undefined);
 }
 ```
 

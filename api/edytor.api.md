@@ -1382,7 +1382,7 @@ export type DocumentAttribution = {
 ### DocumentDestroyedError
 
 ```ts
-// crdt/document.d.ts
+// crdt/doc/funnel.d.ts
 export declare class DocumentDestroyedError extends Error {
     constructor(service?: string);
 }

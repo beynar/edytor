@@ -67,7 +67,7 @@ const WIRE = [
 	'writeReadOnly',
 	'chunkFrame',
 	'createChunkReader',
-	'ChunkLimitError',
+	'ChunkError',
 	'applyAwarenessUpdate',
 	'encodeAwarenessUpdate',
 	'readAwarenessEntries',

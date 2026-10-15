@@ -2349,10 +2349,12 @@ export type DocumentAttribution = {
 
 ## DocumentDestroyedError
 
-Raised when an operation runs against a torn-down document — every
-attach reference has been released and the facade/history/awareness
-teardown already ran. Distinct from `DocumentNotReadyError`:
-destroyed is terminal, pending may still resolve.
+Raised when an operation runs against a torn-down document: every attach
+reference released, or its facade disposed (terminal for writes; reads
+stay dead-safe: a stale handle may still be inspected). Distinct from
+`DocumentNotReadyError`: destroyed is terminal, pending may still resolve.
+Kept in this module because a bare `bindEdytorDoc` facade has no document
+layer above it.
 
 ```ts
 export declare class DocumentDestroyedError extends Error {

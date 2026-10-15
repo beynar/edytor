@@ -111,19 +111,24 @@ export const chunkFrame = (whole: Uint8Array, maxFrameBytes = MAX_FRAME_BYTES): 
 	return frames;
 };
 
-/** A chunk sequence announces a frame larger than its reader takes ({@link createChunkReader}). */
-export class ChunkLimitError extends Error {
+/**
+ * A chunk sequence its reader refuses ({@link createChunkReader}): one
+ * announcing a frame larger than the reader takes (`total` over `limit`),
+ * or a part or end with no sequence started (one lost, or never sent).
+ */
+export class ChunkError extends Error {
 	constructor(
-		readonly total: number,
-		readonly limit: number
+		readonly total?: number,
+		readonly limit?: number
 	) {
-		super(`chunked frame of ${total} bytes exceeds ${limit}`);
-		this.name = 'ChunkLimitError';
+		super(
+			limit === undefined
+				? 'chunk without a start'
+				: `chunked frame of ${total} bytes exceeds ${limit}`
+		);
+		this.name = 'ChunkError';
 	}
 }
-
-/** A chunk part or end with no sequence started (one lost, or never sent). */
-export class ChunkSequenceError extends Error {}
 
 /** A chunk reader ({@link createChunkReader}): feed it chunk bodies; `buffered` is what it holds. */
 export type ChunkReader = {
@@ -137,7 +142,7 @@ export type ChunkReader = {
  * each chunk frame's body (after the message type); it returns the whole
  * frame on `end`, `null` before. An out-of-order or oversized sequence
  * throws and resets; a sequence announcing more than `maxBytes` throws
- * {@link ChunkLimitError} at its start, before anything is buffered. A
+ * {@link ChunkError} at its start, before anything is buffered. A
  * sequence is assembled into ONE buffer of its announced size, allocated
  * at its start (`buffered`), never into parts copied at its end.
  * `admit(total)` is asked at each start, before that allocation: it may
@@ -164,13 +169,13 @@ export const createChunkReader = (
 			if (kind === chunkStart) {
 				reset();
 				const announced = decoding.readVarUint(decoder);
-				if (announced > maxBytes) throw new ChunkLimitError(announced, maxBytes);
+				if (announced > maxBytes) throw new ChunkError(announced, maxBytes);
 				whole = admit(announced) ? new Uint8Array(announced) : null;
 				total = announced;
 				open = true;
 				return null;
 			}
-			if (!open) throw new ChunkSequenceError(`chunk ${kind} without a start`);
+			if (!open) throw new ChunkError();
 			if (kind === chunkPart) {
 				const bytes = decoding.readVarUint8Array(decoder);
 				if (received + bytes.length > total) throw new Error('chunked frame longer than announced');

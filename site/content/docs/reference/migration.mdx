@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 2.0.0
+
 #### Breaking changes
 
 - **Menus and popups place themselves.** The package no longer positions the slash, trigger, block and URL paste menus, the toolbar and its link card, the find bar, the table grip menu, the image toolbar, the code language list, the callout icon picker or the equation editor: your snippet places its element by its controller's new `anchor` (a virtual element read live, Floating UI's shape: `computePosition(controller.anchor, element, …)` with `autoUpdate`, or bits-ui's `customAnchor={controller.anchor}`); the toolbar's link card by `cardAnchor`. Their hosts no longer carry `left`/`top`, the language list, the picker and the equation editor lose their placed wrappers (`data-edytor-code-language-panel`, `data-edytor-callout-icons`, `data-edytor-equation-panel`), the table menu's host its place, and the block menu no longer places its flyout. The ready-made menus do it with Floating UI (`@floating-ui/dom`, added to the `edytor-chrome` registry item).

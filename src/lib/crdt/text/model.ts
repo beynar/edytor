@@ -751,10 +751,20 @@ export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
  */
 export const openSteps = new WeakMap<EngineDoc, Set<() => IdSetOf | null>>();
 
-/** What the open undo steps of `doc` inserted (`null`: none is open). */
+/**
+ * What this writer inserted in the open undo steps of `doc` (`null`: none):
+ * a history capturing a peer's frames (the room's validation) opens steps of
+ * that peer's writes, never fresh here.
+ */
 const openInserts = (doc: EngineDoc): IdSetOf | null => {
-	const open = [...(openSteps.get(doc) ?? [])].flatMap((f) => f() ?? []);
-	return open.length < 2 ? (open[0] ?? null) : ops.merge(open);
+	let fresh: IdSetOf | null = null;
+	for (const open of openSteps.get(doc) ?? []) {
+		const ranges = open()?.clients.get(doc.clientID);
+		if (ranges === undefined) continue;
+		fresh ??= ops.idSet();
+		for (const r of ranges.getIds()) fresh.add(doc.clientID, r.clock, r.len);
+	}
+	return fresh;
 };
 
 export type TextEngine = ReturnType<typeof bindText>;

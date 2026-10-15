@@ -42,10 +42,14 @@ is its writer's, so a record is a delete that names its writer.
   in place (same items, same order), unless another live record still holds
   it. A redo re-creates the record (`redoItem` copies the record, never the
   text). An undo of typing writes a record holding the typed units.
-- A record waits until every item it names is integrated (`getMissing` returns
-  the target's client, so the record is a pending struct like any item whose
-  origin is missing), so a record is never applied to a struct it cannot find.
-  A target that is a GC struct is skipped (it is gone anyway).
+- A record integrates at once, even when items it names have not arrived:
+  the part of a range this replica lacks (past its clock, or a Skip) waits in
+  `store.pendingHolds` and takes the hold when an update of that client
+  integrates (`applyPendingHolds` in `readUpdate`). A target that is a GC
+  struct is skipped (it is gone anyway). (The first prototype made the record
+  a pending struct until its items arrived; the room rows XW-07 and YW-10
+  showed why not: a delete of text a restored room lost was then never
+  stored nor acknowledged.)
 
 **Merge rule / convergence.** The state that decides visibility is
 (a) the set of items, (b) the set of removed ids (the delete set: a union),
@@ -56,8 +60,9 @@ function of that converged state, so every replica that has the same updates
 shows the same text, whatever the delivery order:
 
 - the counter is the size of that set as integrated so far: +1 on a record's
-  integration, −1 on its deletion, and the engine never deletes an item it has
-  not integrated (pending delete sets wait), never integrates one twice (state
+  integration, −1 on its deletion (a pending entry when the item is missing,
+  applied when it arrives), and the engine never deletes an item it has not
+  integrated (pending delete sets wait), never integrates one twice (state
   vectors), and a record that arrives deleted with its content collected
   (`ContentDeleted`) never counted;
 - splits copy the counter, merges require equal counters (and equal `removed`);
@@ -73,6 +78,16 @@ The contract rows this gives without any edytor logic:
   copied (`hist.undo.order`);
 - text another author added is kept: an undo only deletes its own record; a
   peer's insert inside a held run is a new item with no hold.
+
+**Releasing a dropped step.** A held character keeps its content until no
+undo can show it again. When a step leaves the history (the limit, a new
+edit dropping the redo stack, `clear()`, the horizon), the history removes
+what this writer's live records of the step hold and deletes the records
+(origin `edytor.history.trim`), so storage stays where it was with copies (a
+released step's text was collected then too). Only this writer's records:
+the room's validation history captures clients' frames and must not take
+their records back. Likewise `fresh` (typed and erased inside the open step:
+removed, not held) counts only this writer's own inserts.
 
 **GC, purge, horizon.** A held item is not removed, so the engine never
 collects it (no `gcFilter` for copies: there are none). The purge
@@ -124,7 +139,7 @@ v14 document (the envelope), not the text-delete format: they stay.
 - `Item`: `holds` field, `removed` getter, `deleted` includes holds; `delete`,
   `split`, `mergeWith`, `integrate` (parent check), `gc` read `removed`.
 - `transaction.holds` (the ordered visibility log).
-- `getMissing`: a record waits for its targets.
+- `store.pendingHolds` and `applyPendingHolds` (in `readUpdate`): a hold whose items have not arrived waits for them.
 - `createDeleteSetFromStructStore`, `readAndApplyDeleteSet`, `tryGcDeleteSet`,
   `redoItem`, `ContentType#delete`: `removed` where they mean the engine delete.
 - `YNode#delete(index, length, into, fresh)`: with `into` (the records list),
@@ -147,7 +162,7 @@ purge's erase of old records.
 | `text/deletes.js` | 5.04 | 0 |
 | `text/delete-index.js` | 5.23 | 0 |
 | history marks plumbing, `appendAfter`, engine object entries | ~0.3 | 0 |
-| engine: `ContentHold`, `Item` changes, `getMissing`, `YNode#delete`/`hold`, log | 0 | ~1.6 |
+| engine: `ContentHold`, `Item` changes, pending holds, `YNode#delete`/`hold`, log | 0 | ~1.6 |
 | edytor: open-step registry, history hold, index log edits | 0 | ~0.5 |
 
 Net: about −8 KB in the minimal and all probes (the export probe ships no

@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager) and YP19 (only what edytor calls)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls) and YP20 (hold records)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -553,8 +553,9 @@ each undo therefore brought it back twice (`abbc`), and the first undo brought
 it back although the other peer's delete still held it (arch-v2 contract
 program `history.concurrent-double-delete`). Edytor fixes this with per-writer
 text delete marks (`src/lib/crdt/text/deletes.ts`, execution ledger row
-"Text double-delete undo"); the engine needs two hooks for it, and nothing
-else changes.
+"Text double-delete undo"; since YP20 the engine's hold records, and that
+module is gone); the engine needs two hooks for it, and nothing else
+changes.
 
 Patch (hunks marked `// YP11` or delimited by `// YP11 begin` / `// YP11 end`):
 
@@ -968,6 +969,90 @@ cleanup's delete-set walk). Ported: `v14-smoke` (marks, the `commit` event,
 probes (planting through `findMarker`), `testStructReferences`,
 `testKeyEncoding`. Upstream suite: 197 → 126 tests.
 
+### YP20 — hold records: an attributed, reversible delete (`src/structs/Item.js`, `src/structs/AbstractStruct.js`, `src/ynode.js`, `src/utils/encoding.js`, `src/utils/ids.js`, `src/utils/StructStore.js`, `src/utils/Transaction.js`, `src/utils/transaction-helpers.js`, `src/utils/redo.js`)
+
+Reason: the engine's delete is anonymous (a delete set names ids, not who
+deleted them) and irreversible (a deleted item is deleted forever; an undo
+re-creates COPIES). Edytor's product rules need a per-writer, reversible
+text delete — a character two writers deleted shows again only once both
+undid, an undo restores the same text in the same order, text another
+author added is kept — so edytor carried a layer over the engine
+(`crdt/text/deletes.ts`, `crdt/text/delete-index.ts`, 10.3 KB minified in
+every app): per-writer delete marks, restoration records, copy lineage
+(root, member, leaf), pending restorations, a hold rule for a peer's
+concurrent restoration, a leftmost-wins dedup of concurrent copies, a
+`gcFilter` keeping every deleted copy's content on every replica (the room
+too), and follow-up transactions after remote changes. The fork now has the
+delete, and the layer is gone. Design: `docs/archive/engine-delete/design.md`.
+Edytor's schema generation 7 is the cutover (no conversion).
+
+Patch (new code delimited by `// YP20 begin` / `// YP20 end`, edits marked `// YP20`):
+
+- **`ContentHold`** (`Item.js`, content ref 11, `readContentHold` in
+  `ynode.js`'s `contentRefs`): one unit per held id range
+  (`client, clock, len`, written as a left id and a length); `copy`,
+  `splice`, `mergeWith` (consecutive records of one writer merge, as a
+  typed run does), `write`. Integrating it holds what it names; deleting it
+  (an ordinary delete of the record item) releases. Records are immutable:
+  the state that decides visibility is the items, the delete set, the
+  records and the deleted records, so replicas converge in any order.
+- **`Item`**: `holds` (local, never encoded: how many live records name
+  the item), `removed` (bit 3, the delete set's fact; `AbstractStruct`
+  answers `deleted` for a GC struct or a Skip), and `deleted` = `removed ||
+  holds > 0`, so every reader of visibility (cursors, positions, the range
+  cursor, lengths, edytor's index) sees a held item as deleted. The paths
+  that mean the engine's delete read `removed`: `Item#delete`'s guard (a
+  held item is removed too, and logs a give-back: the delete set counts it
+  hidden again), `Item#gc`, `Item#split` (the right part copies `holds`),
+  `Item#mergeWith` (equal `removed` and `holds`), `Item#integrate`'s
+  deleted-parent rule (a held atom's attrs integrate), `ContentType#delete`
+  (a held child goes with its node), `createDeleteSetFromStructStore`,
+  `readAndApplyDeleteSet`, `tryGcDeleteSet`, `redoItem`'s parent rule.
+- **Holding** (`holdRange`): the items present take the hold now, split at
+  the range's edges; a range this replica lacks (past its clock, or a Skip)
+  waits in `store.pendingHolds` (`client → [clock, len, delta, …]`), applied
+  by `readUpdate` once an update of that client integrated
+  (`applyPendingHolds`): a record never waits for its items, so a delete of
+  text a room lost is stored and acknowledged at once. A GC struct takes
+  nothing. An item that starts or stops being held (and is not removed)
+  moves its parent's length, drops its search markers, joins
+  `transaction.changed` and is logged in `transaction.holds`
+  (`client, clock, ±len`, in order: the index's edits).
+- **`YNode#delete(index, length, into, fresh)`**: with `into` (the records
+  list) the live units are held by one record appended there instead of
+  removed, except those `fresh` names (the open undo step's inserts:
+  removed, so that step's undo changes nothing); the search markers move as
+  for a delete. **`YNode#hold(ids)`**: append a record holding `ids`.
+
+Plain deletes (every upstream test) are untouched: with no record, `holds`
+is 0 everywhere and every changed path reduces to upstream's.
+
+Edytor side: a text delete passes the records list (`crdt/text/model.ts`
+`deleteRange`); the history's undo deletes the undoer's record, a redo
+copies the record (never the text), an undo of typing holds the typed text,
+a dropped step removes what this writer's records of it hold
+(`hist.delete-marks.release`); the purge removes what a record older than
+the horizon holds; the index folds `transaction.holds`. Removed:
+`bindCrdt(Y).doc.keepCopies`, `PurgeReport.records`, the restoration
+records root, the engine object's `ContentAny`.
+
+Measured: vendored execution lines 3,392 → 3,548 (+156); edytor's
+`text/deletes.ts` + `text/delete-index.ts` (699) removed. App bundle
+(`scripts/bundle-size.mjs`): minimal 423.8 → 416.7 KB own (470.6 → 463.5
+total), every plugin 653.2 → 646.2 (701.8 → 694.8), `edytor/export`
+unchanged.
+
+Oracle: `src/tests/crdt/yp20-holds.test.ts` (a hold and its release show the
+same item; two writers in both orders; overlapping records; a peer's insert
+inside a held run; a record whose items arrive later; merged, diffed and
+reloaded updates; collection; `fresh`; three seeded differentials of held
+deletes, releases and inserts with search markers on and off, byte-identical
+after every step), the edytor rows `arch-v2/text-delete-marks.test.ts`,
+`delete-records-fold.test.ts`, `history-limit.test.ts` and the native
+contract programs (all 12 hold, `split.range-one-undo` included), the random
+corpus (every adapter), the upstream suite unchanged (`encoding.tests.js`
+pins ref 11).
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so
@@ -1019,7 +1104,7 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **120 pass / 6 skipped / 0 failed** since YP19 (196/6
+- `pnpm test:crdt` — **120 pass / 6 skipped / 0 failed** since YP19, unchanged by YP20 (196/6
   since YP16, 216/6 since YP8, 325/6
   before; upstream standard tier; the 6 skips are upstream's own
   `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random

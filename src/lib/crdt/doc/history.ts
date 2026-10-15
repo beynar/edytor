@@ -369,17 +369,24 @@ export class UndoManager {
 					it.keep = false;
 					if (gc && it.deleted && collectable(doc, it)) collectNow(it, tr);
 				});
-			// A dropped step's text deletes can never be undone here: what its
-			// live records hold is deleted for good, as the purge does, and the
-			// engine collects it (`hist.delete-marks.release`).
-			const held = ops.idSet();
+			// A dropped step's text deletes can never be undone here: what this
+			// writer's live records hold is deleted for good, as the purge does,
+			// and the engine collects it (`hist.delete-marks.release`). A record
+			// a captured remote frame wrote (the room's validation) is its
+			// writer's to take back.
+			const own = ops.idSet();
 			for (const step of dropped)
-				ops.iterate(tr, step.inserts, (st) => {
-					const ids = (st as { content?: { ids?: number[] } }).content?.ids;
-					if (st.parent !== records || st.deleted || ids === undefined) return;
-					for (let i = 0; i < ids.length; i += 3) held.add(ids[i], ids[i + 1], ids[i + 2]);
-					ops.remove(tr, st);
+				walkIdSet(Y, doc, step.inserts, (st, from, to) => {
+					if (st.parent === records && !st.deleted && st.id.client === doc.clientID)
+						own.add(st.id.client, from, to - from);
 				});
+			const held = ops.idSet();
+			ops.iterate(tr, own, (st) => {
+				const ids = (st as { content?: { ids?: number[] } }).content?.ids;
+				if (st.deleted || ids === undefined) return;
+				for (let i = 0; i < ids.length; i += 3) held.add(ids[i], ids[i + 1], ids[i + 2]);
+				ops.remove(tr, st);
+			});
 			ops.iterate(tr, held, (it) => {
 				if (it.removed !== false) return;
 				ops.remove(tr, it);

@@ -33,8 +33,10 @@ Both see `hello` after step 2 and `hello world` after step 3, never `hello world
 
 **Edge cases**
 
-- A restoration made before a peer's concurrent delete arrived is hidden as soon as that delete arrives. It becomes part of the peer's delete, and the peer's undo brings it back.
+- An undo shows the very text that was deleted, where it was, never a copy: a caret, a selection or a comment anchored in it is where it was.
+- An undo made before a peer's concurrent delete arrived shows the text until that delete arrives, then the text is hidden again: it is the peer's delete too, and the peer's undo brings it back.
 - Text typed and deleted within one undo step leaves no trace; no undo can bring it back.
+- An undo step that leaves your history (past its [limit](/docs/editor/history#capture-window-and-limit), or dropped by a new edit after an undo) makes its deletes permanent: the deleted text is removed from the document, and another person's undo of the same delete brings nothing back.
 - Deletes are kept for 30 days, then purged by the room ([`purgeAfterDays`](/docs/server/history#the-purge)): after that, an undo of the delete restores nothing, and nobody's delete record is left to hold the text. A [version](/docs/server/history) of the document restores anything within those 30 days.
 
 ## An explicit delete wins over concurrent typing

@@ -12,7 +12,7 @@ export const caretRect = (edytor: Edytor): DOMRect | undefined => {
 	if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
 		const range = selection.getRangeAt(0).cloneRange();
 		range.collapse(false);
-		if (typeof range.getBoundingClientRect === 'function') rect = range.getBoundingClientRect();
+		rect = range.getBoundingClientRect();
 	}
 	if (!rect || (!rect.width && !rect.height)) {
 		rect = edytor.selection.textRange().startText?.node?.getBoundingClientRect();

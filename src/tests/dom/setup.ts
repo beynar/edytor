@@ -65,6 +65,12 @@ globalThis.ResizeObserver ??= class {
 	disconnect() {}
 };
 Element.prototype.checkVisibility ??= () => true;
+// A range's boxes (every supported engine): jsdom lays nothing out, so a range has no box.
+Range.prototype.getBoundingClientRect ??= () =>
+	document.createElement('span').getBoundingClientRect();
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+// An uncaught error's report (every supported engine), which jsdom has not.
+globalThis.reportError ??= (error: unknown) => console.error(error);
 // The Popover API (every supported engine): the drag library puts its drag
 // preview and its honey pot in the top layer.
 HTMLElement.prototype.showPopover ??= () => {};

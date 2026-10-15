@@ -515,7 +515,7 @@ export class Projector {
 
 	#write = (dom: Selection, { anchor, focus }: Points, collapsed: boolean) => {
 		this.#parking = false;
-		if (!collapsed && typeof dom.setBaseAndExtent === 'function') {
+		if (!collapsed) {
 			try {
 				dom.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1]);
 				return;

@@ -84,9 +84,8 @@ const getCaretRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => 
 	const range = (point.node.ownerDocument ?? editor.ownerDocument).createRange();
 	range.setStart(point.node, point.offset);
 	range.collapse(true);
-	const rect =
-		typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
-	if (rect && (rect.width || rect.height)) {
+	const rect = range.getBoundingClientRect();
+	if (rect.width || rect.height) {
 		return toRemoteRect(rect, origin);
 	}
 	return getFallbackRect(point, origin, editor);
@@ -125,8 +124,7 @@ const getSelectionRects = (
 		return [getFallbackRect(start, origin, editor)];
 	}
 
-	const clientRects =
-		typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
+	const clientRects = Array.from(range.getClientRects());
 	const seen = new Set<string>();
 	const rects = clientRects
 		.filter((rect) => rect.width || rect.height)

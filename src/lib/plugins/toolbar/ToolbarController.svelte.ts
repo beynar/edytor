@@ -269,10 +269,7 @@ export class ToolbarController {
 			const editor = this.edytor.node;
 			const selection = editor?.ownerDocument.getSelection();
 			if (!selection?.rangeCount || !editor?.contains(selection.anchorNode)) return;
-			const range = selection.getRangeAt(0);
-			return typeof range.getBoundingClientRect === 'function'
-				? range.getBoundingClientRect()
-				: undefined;
+			return selection.getRangeAt(0).getBoundingClientRect();
 		},
 		() => this.edytor.node
 	);

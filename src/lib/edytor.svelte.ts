@@ -772,11 +772,7 @@ export class Edytor {
 					// A failed async handler (a command's hook or write) surfaces
 					// through the platform's error reporting; the DOM ignores
 					// the listener's promise.
-					void Promise.resolve(result)
-						.finally(clear)
-						.catch((error) =>
-							typeof reportError === 'function' ? reportError(error) : console.error(error)
-						);
+					void Promise.resolve(result).finally(clear).catch(reportError);
 				} else {
 					clear();
 				}

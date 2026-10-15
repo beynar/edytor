@@ -6,7 +6,7 @@
  *   unsubscribed must perform no diff work, and the next subscription
  *   re-baselines lazily.
  * - D14: `document.transact` and every facade mutation throw after
- *   teardown (`DocumentDestroyedError` / `EdytorDocDisposedError`); reads
+ *   teardown (`DocumentDestroyedError` / `DocumentDestroyedError`); reads
  *   stay dead-safe.
  * - D15: while a provider owns the pending window the document is the only
  *   owner of "pending" — `history` refuses (`DocumentNotReadyError`). The
@@ -23,7 +23,6 @@ import {
 	createDocument,
 	DocumentDestroyedError,
 	DocumentNotReadyError,
-	EdytorDocDisposedError,
 	type EdytorSync
 } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
@@ -116,10 +115,10 @@ describe('D14 — post-destroy gates', () => {
 		const document = createDocument({ value: docValue() });
 		const [block] = document.facade.project().children;
 		document.destroy();
-		expect(() => document.facade.insertText(block.id, 0, 'x')).toThrowError(EdytorDocDisposedError);
-		expect(() => document.facade.transact(() => {})).toThrowError(EdytorDocDisposedError);
-		expect(() => document.facade.init()).toThrowError(EdytorDocDisposedError);
-		expect(() => document.facade.createUndoManager()).toThrowError(EdytorDocDisposedError);
+		expect(() => document.facade.insertText(block.id, 0, 'x')).toThrowError(DocumentDestroyedError);
+		expect(() => document.facade.transact(() => {})).toThrowError(DocumentDestroyedError);
+		expect(() => document.facade.init()).toThrowError(DocumentDestroyedError);
+		expect(() => document.facade.createUndoManager()).toThrowError(DocumentDestroyedError);
 	});
 
 	it('facade.dispose() is terminal for writes; reads stay dead-safe', () => {
@@ -127,9 +126,9 @@ describe('D14 — post-destroy gates', () => {
 		const facade = E.create(doc);
 		facade.init();
 		facade.dispose();
-		expect(() => facade.insertText(DEFAULT_SEED_ID, 0, 'x')).toThrowError(EdytorDocDisposedError);
-		expect(() => facade.transact(() => {})).toThrowError(EdytorDocDisposedError);
-		expect(() => facade.createUndoManager()).toThrowError(EdytorDocDisposedError);
+		expect(() => facade.insertText(DEFAULT_SEED_ID, 0, 'x')).toThrowError(DocumentDestroyedError);
+		expect(() => facade.transact(() => {})).toThrowError(DocumentDestroyedError);
+		expect(() => facade.createUndoManager()).toThrowError(DocumentDestroyedError);
 		// Reads are deliberately NOT gated — the borrowed doc outlives the
 		// facade and stale inspection must keep working.
 		expect(facade.isInitialized()).toBe(true);
@@ -143,7 +142,7 @@ describe('D14 — post-destroy gates', () => {
 		document.sync();
 		const [block] = document.facade.project().children;
 		document.destroy();
-		expect(() => document.facade.insertText(block.id, 0, 'x')).toThrowError(EdytorDocDisposedError);
+		expect(() => document.facade.insertText(block.id, 0, 'x')).toThrowError(DocumentDestroyedError);
 		// The borrowed doc itself is untouched by teardown.
 		expect(() => doc.transact(() => {})).not.toThrow();
 		doc.destroy();

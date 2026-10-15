@@ -40,7 +40,7 @@ import Ranges from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
-import { id } from './utils.js';
+import { cleanups, id } from './utils.js';
 import { Y } from '$lib/crdt/engine.js';
 import { markName } from '$lib/crdt/text/marks.js';
 import { callEach } from '$lib/crdt/protocols/observable.js';
@@ -108,12 +108,9 @@ export type EdytorOptions = {
 	 * The assembled document this view renders — shared facade, history,
 	 * awareness and semantics live on it (see `crdt/document.ts`). When
 	 * injected the view borrows it: `destroy()` releases only view-owned
-	 * resources. When absent the view internally owns a document built
-	 * around `doc`/`awareness` (the legacy path — same behavior as before).
+	 * resources. When absent the view owns a fresh one.
 	 */
 	document?: EdytorDocument;
-	doc?: YDoc;
-	awareness?: Awareness;
 	/** The local author of a view-owned document (with `document`, set it there). */
 	actor?: DocumentActor;
 	/** A view-owned document's `requireHydration` (with `document`, set it there). */
@@ -314,11 +311,10 @@ export class Edytor {
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
 	// engine doc, the shared facade (only structural read/write surface),
 	// the default local history and the shared awareness. Injected
-	// documents are borrowed; a view with no `document` option internally
-	// owns one (built around `doc`/`awareness` when those are injected).
+	// documents are borrowed; a view with no `document` option owns a fresh one.
 	document: EdytorDocument;
-	/** @internal `true` when this view created its document — `destroy()` then releases it. */
-	ownsDocument = false;
+	/** `true` when this view created its document — `destroy()` then releases it. */
+	#owned = false;
 	get doc(): YDoc {
 		return this.document.doc;
 	}
@@ -433,8 +429,6 @@ export class Edytor {
 			hotkeys,
 			plugins,
 			document,
-			doc,
-			awareness,
 			actor,
 			requireHydration,
 			presence,
@@ -453,24 +447,15 @@ export class Edytor {
 		if (labels) this.labels = labels;
 		this.allowNesting = allowNesting === true;
 		if (document !== undefined) {
-			if (
-				DEV &&
-				(doc !== undefined ||
-					awareness !== undefined ||
-					actor !== undefined ||
-					requireHydration !== undefined)
-			) {
+			if (DEV && (actor !== undefined || requireHydration !== undefined)) {
 				throw new Error(
-					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor`/`requireHydration` — ' +
-						'the document owns them (compose them via attachDocument first).'
+					'EdytorOptions: `document` cannot be combined with `actor`/`requireHydration`: set them on the document.'
 				);
 			}
 			this.document = document;
 		} else {
-			// Legacy path — the view internally owns a document composed
-			// around the injected (or a fresh) doc/awareness.
-			this.document = attachDocument(doc ?? new Y.Doc(), { awareness, actor, requireHydration });
-			this.ownsDocument = true;
+			this.document = attachDocument(new Y.Doc(), { actor, requireHydration });
+			this.#owned = true;
 		}
 		this.readonly = readonly || false;
 		this.onChange = onChange;
@@ -549,7 +534,7 @@ export class Edytor {
 			// decision; every other view binds on the one readiness event
 			// (`<Edytor>` decides an injected document at mount, once the
 			// providers of its sibling views attached).
-			if (this.ownsDocument && !sync) {
+			if (this.#owned && !sync) {
 				this.sync(value || { children: [] });
 			} else {
 				this.#readinessRelease = whenDocumentReady(this.document, () => {
@@ -568,7 +553,7 @@ export class Edytor {
 			// document-lifetime additive declarations, and an injected
 			// document's are left for the views that legitimately share it.
 			this.document.untrackOrigin(this.transaction);
-			if (this.ownsDocument) {
+			if (this.#owned) {
 				this.document.destroy();
 			}
 			throw error;
@@ -787,11 +772,7 @@ export class Edytor {
 					// A failed async handler (a command's hook or write) surfaces
 					// through the platform's error reporting; the DOM ignores
 					// the listener's promise.
-					void Promise.resolve(result)
-						.finally(clear)
-						.catch((error) =>
-							typeof reportError === 'function' ? reportError(error) : console.error(error)
-						);
+					void Promise.resolve(result).finally(clear).catch(reportError);
 				} else {
 					clear();
 				}
@@ -1035,10 +1016,7 @@ export class Edytor {
 			() => unmount(live),
 			detachOverlay
 		);
-		this.plugins.forEach((plugin) => {
-			const action = plugin.onEdytorAttached?.({ node });
-			if (typeof action === 'function') this.off.push(action);
-		});
+		this.off.push(...cleanups(this.plugins, (plugin) => plugin.onEdytorAttached?.({ node })));
 
 		return {
 			destroy: () => {
@@ -1068,7 +1046,7 @@ export class Edytor {
 	 * discarded.
 	 *
 	 * Releases every listener the editor holds on potentially-SHARED objects
-	 * — an injected doc/awareness outlives a single editor, so an
+	 * — an injected document outlives a single editor, so an
 	 * undestroyed mount leaks a facade `update` listener and the undo
 	 * manager's doc observers forever.
 	 *
@@ -1118,7 +1096,7 @@ export class Edytor {
 		// awareness, doc) belong to the document — released exactly once,
 		// and only when THIS view created it. A borrowed document keeps
 		// serving its sibling views and headless consumers.
-		if (this.ownsDocument) {
+		if (this.#owned) {
 			this.document.destroy();
 		}
 	};

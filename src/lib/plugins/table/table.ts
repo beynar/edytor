@@ -121,7 +121,7 @@ export const insertRow = (table: Block, index: number, caret = false): Block | n
 		ops.insertTableRow(edytor.facade, table.id, p.index)
 	);
 	const row = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
-	if (row && caret) edytor.dispatcher.caret(row.children[0]?.firstText, 0);
+	if (row && caret) edytor.dispatcher.caretIn(row.children[0]?.firstText, 0);
 	return row;
 };
 
@@ -147,7 +147,7 @@ export const insertColumn = (table: Block, index: number, width?: number, caret?
 	if (grid) {
 		const at = Math.max(0, Math.min(Math.trunc(index) || 0, grid.columns.length - 1));
 		const text = cellAt(table, grid, caret!, at)?.firstText;
-		if (text) table.edytor.dispatcher.caret(text, 0);
+		if (text) table.edytor.dispatcher.caretIn(text, 0);
 	}
 	return applied;
 };
@@ -184,7 +184,7 @@ export const fillCell = (table: Block, row: string, column: string | number): Bl
 		ops.fillTableCell(edytor.facade, p.row, p.column)
 	);
 	const cell = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
-	if (cell) edytor.dispatcher.caret(cell.firstText, 0);
+	if (cell) edytor.dispatcher.caretIn(cell.firstText, 0);
 	return cell;
 };
 

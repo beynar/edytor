@@ -1,3 +1,4 @@
+import { cleanups } from '$lib/utils.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { type JSONText } from '$lib/utils/json.js';
 import type { Block } from '../block/block.svelte.js';
@@ -115,22 +116,11 @@ export class Text {
 	attach = (node: HTMLElement) => {
 		this.node = node;
 		this.edytor.nodeToText.set(node, this);
+		// Registered, it takes the attribute table's attributes (`surface/attributes.ts`).
 		const release = this.edytor.surface.register(node, 'text', this.parent.id);
-		node.setAttribute('data-edytor-id', `${this.id}`);
-		node.setAttribute('data-edytor-text', `true`);
-
-		const pluginDestroy = this.edytor.plugins.flatMap((plugin) => {
-			const action = plugin.onTextAttached?.({ node, text: this });
-			return typeof action === 'function' ? [action] : [];
-		});
-		let insideVoid = false;
-		for (let block: Block | undefined = this.parent; block && !insideVoid; block = block.parent)
-			insideVoid = !!block.definition.void;
-
-		if (insideVoid) {
-			node.setAttribute('contenteditable', 'true');
-			node.style.outline = 'none';
-		}
+		const pluginDestroy = cleanups(this.edytor.plugins, (plugin) =>
+			plugin.onTextAttached?.({ node, text: this })
+		);
 
 		// A display that waited for a mounted destination runs in the next pass.
 		this.edytor.projector?.mounted(this);

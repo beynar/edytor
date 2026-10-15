@@ -46,7 +46,7 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 	const offset = text.length;
 	edytor.removeInline(parent.id, selected.id);
 	if (value) edytor.insertText(parent.id, text.segStart + offset, value);
-	edytor.dispatcher.caret(text, offset + value.length);
+	edytor.dispatcher.caretIn(text, offset + value.length);
 	return true;
 };
 

@@ -303,7 +303,7 @@ export class BlockHandleController {
 						if (target && column)
 							edytor.move({ blocks: [target], target: block, position: 'right' });
 						// The caret is the model's: the projector shows it once the block mounts.
-						if (target?.firstText) dispatcher.caret(target.firstText, 0);
+						if (target?.firstText) dispatcher.caretIn(target.firstText, 0);
 						if (!target || !then) return;
 						const [added, before] = [facade.version, dispatcher.last];
 						const result = then();
@@ -352,7 +352,7 @@ export class BlockHandleController {
 		const grip = this.edytor.idToBlock.get(after.ids[0]!);
 		const text = grip && shownText(grip, 'first');
 		// A block with no text (a divider): no selection, as before the grip.
-		if (text) this.edytor.dispatcher.caret(text, 0);
+		if (text) this.edytor.dispatcher.caretIn(text, 0);
 		else selection.select(noSelection);
 	}
 

@@ -74,7 +74,6 @@ import { flowOps } from './flow.js';
 import type { JSONBlock, JSONDoc } from '../utils/json.js';
 import {
 	assertSchema,
-	assertUsableDoc,
 	checkSchema,
 	isInitialized,
 	META_KEY,
@@ -132,7 +131,6 @@ import type {
 export { SCHEMA };
 export {
 	assertSchema,
-	assertUsableDoc,
 	checkSchema,
 	isInitialized,
 	META_KEY,
@@ -142,9 +140,9 @@ export {
 	SchemaMismatchError,
 	schemaVersion
 };
-export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
+export type { SchemaProblem } from './doc/gate.js';
 export { SEED_ORIGIN } from './doc/seed.js';
-export { EdytorDocDisposedError } from './doc/funnel.js';
+export { DocumentDestroyedError } from './doc/funnel.js';
 export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
 export type {
 	AnchorAffinity,
@@ -192,9 +190,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 
 	return (doc: EngineDoc, config: EdytorDocConfig = {}) => {
 		keepingReplaced(doc);
-		// Document-boundary check — foreign (v13-engine) and legacy-schema docs
-		// fail fast here rather than inside the runs view (see assertUsableDoc).
-		assertUsableDoc(doc);
 		setMarkEdges(doc, config.markEdge ?? (() => undefined));
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';

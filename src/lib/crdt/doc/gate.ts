@@ -25,7 +25,7 @@
  * ```
  */
 import type { EngineDoc } from '../engine-api.js';
-import { isNodeLike, SCHEMA } from '../schema.js';
+import { SCHEMA } from '../schema.js';
 
 export const SCHEMA_VERSION = SCHEMA.version;
 export const SCHEMA_NAME = SCHEMA.name;
@@ -113,13 +113,7 @@ export class SchemaMismatchError extends Error {
 		public readonly problem: SchemaProblem
 	) {
 		super(
-			problem.kind === 'unversioned'
-				? `Document "${docName}" carries replicated registry state but no meta.v schema version — refusing to treat it as initialized.`
-				: problem.kind === 'unsupported'
-					? `Document "${docName}" claims unsupported schema version ${problem.version} (this build speaks ${SCHEMA_VERSION}).`
-					: problem.schema === undefined
-						? `Document "${docName}" carries meta.v=${problem.version} but no meta.schema manifest name — refusing it as an "${SCHEMA_NAME}" document.`
-						: `Document "${docName}" claims foreign schema "${String(problem.schema)}" (this build speaks "${SCHEMA_NAME}").`
+			`${docName}: ${problem.kind} schema version ${problem.version} "${String(problem.schema)}" (this build speaks ${SCHEMA_VERSION} "${SCHEMA_NAME}")`
 		);
 		this.name = 'SchemaMismatchError';
 	}
@@ -133,38 +127,4 @@ export class SchemaMismatchError extends Error {
 export const assertSchema = (doc: EngineDoc, docName = 'doc'): void => {
 	const problem = checkSchema(doc);
 	if (problem !== null) throw new SchemaMismatchError(docName, problem);
-};
-
-/**
- * Error raised by {@link assertUsableDoc} — the doc cannot host a v14 facade:
- * a foreign engine object (a v13 `yjs` Doc — a different CRDT implementation
- * entirely).
- */
-export class UnsupportedDocError extends Error {
-	constructor(public readonly kind: 'foreign') {
-		super(
-			'Document is not a v14 engine doc — the `blocks` registry is not a ' +
-				'unified Y.Node. Use `crdt.createDoc()` (or `new Y.Doc()` from `edytor/crdt`).'
-		);
-		this.name = 'UnsupportedDocError';
-	}
-}
-
-/**
- * Document-boundary guard run by {@link EdytorDocBinding.create} before the
- * runs view attaches. The facade only speaks the v14 unified-node surface —
- * without this gate a foreign doc dies obscurely inside `buildView`
- * (`registry.forEachAttr is not a function`); it fails fast with an
- * actionable error instead.
- */
-export const assertUsableDoc = (doc: EngineDoc): void => {
-	let registry: unknown;
-	try {
-		registry = typeof doc?.get === 'function' ? doc.get(SCHEMA.roots.registry) : undefined;
-	} catch {
-		registry = undefined;
-	}
-	if (!isNodeLike(registry) || typeof registry.forEachAttr !== 'function') {
-		throw new UnsupportedDocError('foreign');
-	}
 };

@@ -19,7 +19,8 @@ import { mentionPlugin } from './atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
-import type { Awareness, OpResult, YDoc } from '$lib/crdt/index.js';
+import { Y } from '$lib/crdt/engine.js';
+import { attachDocument, type Awareness, type OpResult, type YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
 import { selectionState } from './selection.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
@@ -398,10 +399,13 @@ export const createTestEdytor = (
 		plugins: options.plugins ?? defaultPlugins,
 		readonly: options.readonly,
 		allowNesting: options.allowNesting,
-		doc: options.doc,
-		awareness: options.awareness,
+		document:
+			options.doc || options.awareness
+				? attachDocument(options.doc ?? new Y.Doc(), { awareness: options.awareness })
+				: undefined,
 		sync: options.sync
 	});
+	if ((options.doc || options.awareness) && !options.sync) edytor.document.sync(value);
 
 	if (start) {
 		const { path: startPath, offset: startOffset } = start;

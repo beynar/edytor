@@ -10,7 +10,14 @@ import { mentionPlugin } from '../atMention.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Text as ModelText } from '$lib/text/text.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
+import { Y } from '$lib/crdt/engine.js';
+import {
+	attachDocument,
+	type Awareness,
+	type DocChange,
+	type EdytorDocument,
+	type YDoc
+} from '$lib/crdt/index.js';
 import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 import type { RenderedNode } from '../jsx/types.js';
 import {
@@ -344,6 +351,14 @@ export const setNativeSelection = async (
 	await flushDomUpdates();
 };
 
+/** The document a `doc`/`awareness` fixture composes, decided with `value` unless a sync owns it. */
+const owned = (options: RenderDomEdytorOptions, value: JSONDoc) => {
+	if (!options.doc && !options.awareness) return undefined;
+	const document = attachDocument(options.doc ?? new Y.Doc(), { awareness: options.awareness });
+	if (!options.sync) document.sync(value);
+	return document;
+};
+
 export const renderDomEdytor = async (
 	jsx: RenderedNode,
 	options: RenderDomEdytorOptions = {}
@@ -374,9 +389,7 @@ export const renderDomEdytor = async (
 			autocapitalize: options.autocapitalize,
 			inputmode: options.inputmode,
 			enterkeyhint: options.enterkeyhint,
-			doc: options.doc,
-			awareness: options.awareness,
-			document: options.document,
+			document: options.document ?? owned(options, value),
 			sync: options.sync,
 			presence: options.presence,
 			onChange: options.onChange,

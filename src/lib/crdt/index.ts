@@ -215,7 +215,7 @@ export {
 // (`assertAdmission`, `inspectAdmission`, …) are diagnostics vocabulary:
 // `edytor/protocol`.
 
-export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from './admission.js';
+export { SchemaMismatchError, UndecodableUpdateError } from './admission.js';
 
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //
@@ -308,4 +308,4 @@ export type {
 // The facade's disposal error and the history's default depth belong
 // to the document; the frame contract, message types and codecs are
 // `edytor/protocol`.
-export { EdytorDocDisposedError, DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';
+export { DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';

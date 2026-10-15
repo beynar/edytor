@@ -719,7 +719,7 @@ describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s p
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
 		selection.selectText(get(view, 'a').firstText!, 0, slot('d'), 0);
 		expect(at()).toEqual(['a', 0, 'i1', 0]);
-		dispatcher.caret(slot('d'), 0);
+		dispatcher.caretIn(slot('d'), 0);
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
 		await flushDomUpdates();
 		await type(view.editor, 'Z');

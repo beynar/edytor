@@ -3,6 +3,7 @@
  * Notion parity: the shortcuts, markdown and menus the demos rely on.
  * Expected states are hand-authored from Notion's behavior.
  */
+import { hidden } from '$lib/selection/visibility.js';
 import { describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
@@ -1836,7 +1837,7 @@ describe('a relative move never hides the moved block (YW-13)', () => {
 		expect(moved.map((block) => block.id)).toEqual(['x']);
 		expect(edytor.idToBlock.get('x')!.parent?.id).toBe('t');
 		expect(isOpen(edytor, 't')).toBe(true);
-		expect(edytor.selection.hidden(edytor.idToBlock.get('x')!)).toBe(false);
+		expect(hidden(edytor.idToBlock.get('x')!)).toBe(false);
 	});
 
 	it('edytor.moveBlocks inside a closed toggle as a target opens it', async () => {

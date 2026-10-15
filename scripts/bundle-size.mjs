@@ -1,14 +1,16 @@
 // The JavaScript an app ships with edytor, measured as a consumer builds it:
 // three probe apps (`<Edytor />` with its default plugins, every plugin, and
-// `edytor/export` alone)
-// compiled by Vite + vite-plugin-svelte against the packaged `dist/`, each
-// byte of the output attributed to its source file through the source map.
+// `edytor/export` alone) compiled by Vite + vite-plugin-svelte, and the
+// export's functions one by one (`export-tohtml`, …, plain JS entries with
+// no Svelte plugin), against the packaged `dist/`, each byte of the output
+// attributed to its source file through the source map.
 //
 //   node scripts/bundle-size.mjs              # both apps, top 25 sources
 //   node scripts/bundle-size.mjs --top 60     # more rows
 //   node scripts/bundle-size.mjs --by dir     # grouped by directory
 //   node scripts/bundle-size.mjs --json out.json
 //   node scripts/bundle-size.mjs --no-package # reuse the current dist/
+//   node scripts/bundle-size.mjs --only export-tohtml,export-all
 //
 // The numbers are minified bytes (Vite's default esbuild minify), gzip -9
 // and brotli -11 of every emitted .js file, entry and lazy chunks apart.
@@ -77,6 +79,23 @@ const APPS = {
 </script>
 {out.length}`
 };
+/**
+ * `edytor/export` one function at a time, as plain JS entries (no Svelte
+ * plugin: the export needs no Svelte, so each number is exactly its own).
+ */
+const PROBES = {
+	'export-tohtml': "import { toHTML } from 'edytor/export';\nconsole.log(toHTML([]));\n",
+	'export-tomarkdown':
+		"import { toMarkdown } from 'edytor/export';\nconsole.log(toMarkdown([]));\n",
+	'export-fromhtml':
+		"import { fromHTML } from 'edytor/export';\nconsole.log(fromHTML('<p>x</p>'));\n",
+	'export-frommarkdown':
+		"import { fromMarkdown } from 'edytor/export';\nconsole.log(fromMarkdown('# x', { components: { X: 'x' } }));\n",
+	'export-all':
+		"import { fromHTML, fromMarkdown, textToBlocks, toHTML, toMarkdown } from 'edytor/export';\nconsole.log(fromHTML, fromMarkdown, textToBlocks, toHTML, toMarkdown);\n"
+};
+/** `--only a,b`: those probes alone. */
+const ONLY = option('--only')?.split(',');
 
 if (!flag('--no-package')) execSync('pnpm package', { cwd: root, stdio: 'ignore' });
 
@@ -113,13 +132,19 @@ const groupOf = (name) => {
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 const report = {};
 
-for (const [app, svelteSource] of Object.entries(APPS)) {
+const ENTRIES = [
+	...Object.entries(APPS).map(([app, source]) => [app, source, true]),
+	...Object.entries(PROBES).map(([app, source]) => [app, source, false])
+].filter(([app]) => !ONLY || ONLY.includes(app));
+for (const [app, source, isSvelte] of ENTRIES) {
 	const dir = join(work, app);
 	mkdirSync(dir, { recursive: true });
-	writeFileSync(join(dir, 'App.svelte'), svelteSource);
+	if (isSvelte) writeFileSync(join(dir, 'App.svelte'), source);
 	writeFileSync(
 		join(dir, 'main.js'),
-		"import { mount } from 'svelte';\nimport App from './App.svelte';\nmount(App, { target: document.body });\n"
+		isSvelte
+			? "import { mount } from 'svelte';\nimport App from './App.svelte';\nmount(App, { target: document.body });\n"
+			: source
 	);
 	writeFileSync(
 		join(dir, 'index.html'),
@@ -129,7 +154,7 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 		root: dir,
 		logLevel: 'error',
 		configFile: false,
-		plugins: [svelte()],
+		plugins: isSvelte ? [svelte()] : [],
 		resolve: {
 			dedupe: ['svelte'],
 			alias: {
@@ -200,8 +225,12 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 	}
 	report[app] = { totals, groups };
 
+	// Of it, the dependencies' (TanStack's parser, …): the rest is edytor's source.
+	totals.deps = Object.entries(sources)
+		.filter(([name]) => !name.startsWith('svelte/') && !name.startsWith('edytor/'))
+		.reduce((sum, [, bytes]) => sum + bytes, 0);
 	console.log(
-		`\n${app}: edytor's own ${kb(totals.own)} min (without the Svelte runtime ${kb(totals.svelte)}, which a Svelte app ships anyway); total ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored (${loc.files} files)`
+		`\n${app}: edytor's own ${kb(totals.own)} min (without the Svelte runtime ${kb(totals.svelte)}, which a Svelte app ships anyway); total ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; of edytor's own, ${kb(totals.own - totals.deps)} edytor source + ${kb(totals.deps)} dependencies; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored (${loc.files} files)`
 	);
 	for (const [group, bytes] of Object.entries(groups)
 		.sort((a, b) => b[1] - a[1])

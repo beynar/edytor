@@ -59,8 +59,6 @@ Most props are read once, when the component is created. Changing them later has
 | `inputmode` | `'none' \| 'text' \| 'decimal' \| 'numeric' \| 'tel' \| 'search' \| 'email' \| 'url'` | unset | Yes | Virtual keyboard hint. Omitted from the DOM when unset. |
 | `enterkeyhint` | `'enter' \| 'done' \| 'go' \| 'next' \| 'previous' \| 'search' \| 'send'` | unset | Yes | Label of the virtual keyboard's action key. Omitted when unset. |
 | `translate` | `'yes' \| 'no'` | `'no'` | Yes | The root's `translate` attribute. `'no'` keeps page translators from rewriting the editable text. |
-| `doc` | `YDoc` | | | Advanced: build the view's own document around an existing engine document. Cannot be combined with `document`. |
-| `awareness` | `Awareness` | | | Advanced: the presence instance for the view's own document. Cannot be combined with `document`. |
 | `presence` | `{ share?: 'caret' \| 'block' \| 'none'; throttle?: number }` | `{ share: 'caret', throttle: 50 }` | | What this view shares of its selection with peers, and the least ms between two writes. Follows changes. See [Sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale). |
 
 `value` is the initial content, not a binding: `bind:value` fails type-checking. Read changes with `onChange` or `edytor.value`.
@@ -69,7 +67,7 @@ Most props are read once, when the component is created. Changing them later has
 
 - **Only `value`**: the view creates its own document, seeds it, and destroys it on unmount.
 - **`room`, `server` or `sync`**: the view creates its own document and attaches the provider (`sync` overrides `room`/`server`). Stored or remote content wins; `value` seeds the document only when the provider has nothing, after it answered or timed out. Never pass a changing snapshot (`onChange` output) as `value` beside a room: a late seed of it can replace the room's edits. Pass a fixed template or nothing; see [deterministic seeds](/docs/collaboration/documents#deterministic-seeds).
-- **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts, unless a server refused it (`document.syncRefusal`): then an empty document stays waiting, and one that already holds content is shown. Passing `document` together with `doc`, `awareness` or `actor` throws.
+- **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts, unless a server refused it (`document.syncRefusal`): then an empty document stays waiting, and one that already holds content is shown. Passing `document` together with `actor` or `requireHydration` throws in development: set them on the document.
 
 A readonly view connects the same way: with `room`, `server` or `sync` it is a live viewer of its room (see [Readonly mode](/docs/editor/readonly#a-live-viewer)).
 

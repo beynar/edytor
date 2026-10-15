@@ -11,7 +11,7 @@
  */
 import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
-import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../../crdt/providers/room.js';
+import { ChunkError, CLOSE } from '../../crdt/providers/room.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Attachment } from '../DocumentRoom.js';
 import { MAX_WAITING_DELETES, noTimers } from './shared.js';
@@ -208,9 +208,9 @@ export class Admission {
 			whole = read(decoder);
 		} catch (error) {
 			this.#chunkReaders.delete(ws);
-			if (error instanceof ChunkLimitError) {
+			if (error instanceof ChunkError && error.limit !== undefined) {
 				return this.#overQuota(ws, attachment.user, 'frame', {
-					bytes: error.total,
+					bytes: error.total!,
 					limit: error.limit
 				});
 			}
@@ -227,7 +227,7 @@ export class Admission {
 				room.presence.depart(ws);
 				return room.close(ws, CLOSE.fault, 'room busy');
 			}
-			if (error instanceof ChunkSequenceError) {
+			if (error instanceof ChunkError) {
 				room.note({ reason: 'internal', detail: `chunks: ${error.message}` });
 				room.presence.depart(ws);
 				return room.close(ws, CLOSE.fault, 'chunk sequence lost');

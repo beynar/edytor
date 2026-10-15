@@ -64,7 +64,7 @@ export const inputRulesHook = (
 		/** The typed text lands as typed, the caret after it. */
 		const typeAsIs = () => {
 			edytor.insertText(...payload);
-			dispatcher.caret(text, yStart + value.length);
+			dispatcher.caretIn(text, yStart + value.length);
 		};
 
 		/**

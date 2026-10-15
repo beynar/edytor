@@ -17,7 +17,6 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import * as Y13 from 'yjs';
 import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as decoding from 'lib0-v14/decoding';
 import * as idb from 'lib0-v14/indexeddb';
@@ -28,7 +27,6 @@ import {
 	loadDocument,
 	SchemaMismatchError,
 	UndecodableUpdateError,
-	UnsupportedDocError,
 	type EngineDoc
 } from '../../../lib/crdt/index.js';
 import { assertAdmission, inspectAdmission, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
@@ -130,13 +128,6 @@ describe('assertAdmission / inspectAdmission', () => {
 		if (!foreign.admitted) {
 			expect((foreign.error as SchemaMismatchError).problem.kind).toBe('foreign');
 		}
-
-		const v13 = inspectAdmission(engineDoc(new Y13.Doc() as unknown as YDoc));
-		expect(v13.admitted).toBe(false);
-		if (!v13.admitted) {
-			expect(v13.error).toBeInstanceOf(UnsupportedDocError);
-			expect((v13.error as UnsupportedDocError).kind).toBe('foreign');
-		}
 	});
 
 	it('is write-free — refused docs stay byte-identical', () => {
@@ -225,17 +216,6 @@ describe('attachDocument admission', () => {
 		expect(encoded(doc)).toEqual(before);
 		expect(updates).toBe(0);
 		doc.destroy();
-	});
-
-	it('refuses a real v13 yjs Doc as foreign — its data is untouched', () => {
-		const v13 = new Y13.Doc();
-		v13.getMap('content').set('k', 'v');
-		expect(() => attachDocument(v13 as unknown as YDoc)).toThrowError(UnsupportedDocError);
-		// The foreign doc's CONTENT is intact. (Its own engine's `get`
-		// materializes an empty root type during the gate's shape read —
-		// engine-level noise, not a write to user data.)
-		expect(v13.getMap('content').get('k')).toBe('v');
-		v13.destroy();
 	});
 
 	it('heals: stamping the version record makes the doc attachable', () => {

@@ -64,7 +64,7 @@
  * - `createDocument` — the fresh doc is trivially admitted;
  * - `loadDocument` — the payload is decoded+integrated onto a SCRATCH
  *   doc first (`admitUpdate`) and the gate runs on the merged result; a
- *   refusal ({@link UndecodableUpdateError}, {@link UnsupportedDocError},
+ *   refusal ({@link UndecodableUpdateError},
  *   {@link SchemaMismatchError}) leaves nothing composed and never
  *   touches the caller's bytes;
  * - `attachDocument` — the borrowed doc is gated BEFORE any composition
@@ -156,6 +156,7 @@ import {
 import { profileOf } from './attribution/attribution.js';
 import {
 	docFacade,
+	DocumentDestroyedError,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
 	type BlockRole,
@@ -276,28 +277,13 @@ export type CreateDocumentOptions = DocumentOptions & {
 
 export type LoadDocumentOptions = DocumentOptions;
 
+export { DocumentDestroyedError };
+
 /** Raised when a readiness-gated service is used on a pending document. */
 export class DocumentNotReadyError extends Error {
 	constructor(service: string) {
-		super(
-			`EdytorDocument.${service}: document is not ready — it is still pending ` +
-				`(created without a value, provider hydration may be in flight). ` +
-				`Wait for the sync callback / call document.sync() first.`
-		);
+		super(`${service}: the document is not ready (call document.sync() first)`);
 		this.name = 'DocumentNotReadyError';
-	}
-}
-
-/**
- * Raised when an operation runs against a torn-down document — every
- * attach reference has been released and the facade/history/awareness
- * teardown already ran. Distinct from {@link DocumentNotReadyError}:
- * destroyed is terminal, pending may still resolve.
- */
-export class DocumentDestroyedError extends Error {
-	constructor(service?: string) {
-		super(`EdytorDocument${service ? `.${service}` : ''}: document is destroyed.`);
-		this.name = 'DocumentDestroyedError';
 	}
 }
 
@@ -1310,9 +1296,8 @@ export const bindDocument = (Y: EngineApi) => {
 		 * borrowed doc. Content state stays `pending` — the caller (view or
 		 * provider path) drives `sync()`.
 		 *
-		 * Admission runs BEFORE any composition touches the doc: a
-		 * foreign engine object refuses with {@link UnsupportedDocError}, an
-		 * unversioned/unsupported/foreign schema claim with
+		 * Admission runs BEFORE any composition touches the doc: an
+		 * unversioned/unsupported/foreign schema claim refuses with
 		 * {@link SchemaMismatchError} — the borrowed doc is left
 		 * byte-identical (the gate reads are write-free) and can be
 		 * attached once its state heals (e.g. a remote update supplies the

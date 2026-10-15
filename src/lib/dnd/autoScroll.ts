@@ -16,9 +16,6 @@ export type Scrollers = {
  * mid-drag); the answer releases it.
  */
 export const autoScrollFor = (root: HTMLElement, scrollers: Scrollers): (() => void) => {
-	// The scroller hit-tests with `elementsFromPoint` every frame (jsdom has none),
-	// so it is created only where that exists.
-	if (typeof root.ownerDocument.elementsFromPoint !== 'function') return () => {};
 	const releases = [scrollers.window()];
 	const { body, documentElement, defaultView } = root.ownerDocument;
 	// The window is the document's scroller: stop below it.

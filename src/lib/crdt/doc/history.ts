@@ -35,7 +35,7 @@ import {
 	type StoreStruct
 } from '../structs.js';
 import { isInitialized } from './gate.js';
-import { EdytorDocDisposedError, type WriteFunnel } from './funnel.js';
+import { DocumentDestroyedError, type WriteFunnel } from './funnel.js';
 import type { DocBase } from './reads.js';
 import { registryOf, withdrawOnUndo } from '../placement/model.js';
 
@@ -428,7 +428,7 @@ export const docHistory = (c: HistoryContext) => {
 	 */
 	const createUndoManager = (options: HistoryOptions = {}): UndoManager => {
 		if (disposed()) {
-			throw new EdytorDocDisposedError('createUndoManager');
+			throw new DocumentDestroyedError('createUndoManager');
 		}
 		write(() => {
 			if (!isInitialized(doc)) init(doc);

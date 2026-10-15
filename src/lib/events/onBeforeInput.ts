@@ -28,7 +28,7 @@ import {
 } from './nativeInteractiveControl.js';
 import { runBeforeInputCommand } from './beforeInputCommands.js';
 import { deleteInText } from './beforeInputDeleteCommands.js';
-import { readDomText } from './onInput.js';
+import { readDomText } from '$lib/surface/observer.svelte.js';
 
 /** The Android no-op-Backspace and model-owned drift deadlines (named, counted browser rules). */
 const NATIVE_INPUT_REPAIR_WINDOW_MS = 150;

@@ -283,7 +283,7 @@ export const convertToKind = (
 		let line = kind.children?.length ? at?.children[0] : at;
 		while (line && !line.rendersContent && !line.definition.void && line.children[0])
 			line = line.children[0];
-		edytor.dispatcher.caret(line?.firstText, 0);
+		edytor.dispatcher.caretIn(line?.firstText, 0);
 	}
 	return true;
 };

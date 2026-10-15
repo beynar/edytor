@@ -9,6 +9,7 @@
  * anchors): it survives selection changes and edits elsewhere, and is dropped
  * when its block dies. The layer owns the list; the surface renders it.
  */
+import { DEV } from 'esm-env';
 import type { BlockId, DocAnchor, OpResult } from '../crdt/index.js';
 import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
@@ -404,13 +405,13 @@ export class Suggestions {
 				resolved = { replace: { anchor: value.anchor, focus: value.focus } };
 			else {
 				const block = value.kind === 'atom' ? value.blockId : projection.start?.block;
-				resolved = block ? { after: block } : fail('no selection to replace');
+				resolved = block ? { after: block } : fail(DEV ? 'no selection to replace' : '');
 			}
 		} else resolved = at as ResolvedAt;
-		if (!this.#alive(resolved)) fail('the position names no shown block');
+		if (!this.#alive(resolved)) fail(DEV ? 'the position names no shown block' : '');
 		if ('inside' in resolved) {
 			const probe = edytor.facade.prepare.insertBlocks({ parent: resolved.inside, index: 0 }, []);
-			if (!('writes' in probe)) fail(`block "${resolved.inside}" holds no children`);
+			if (!('writes' in probe)) fail(DEV ? `block "${resolved.inside}" holds no children` : '');
 		}
 		return resolved;
 	};

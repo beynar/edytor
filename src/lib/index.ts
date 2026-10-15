@@ -260,7 +260,6 @@ export {
 	DocumentDestroyedError,
 	SchemaMismatchError,
 	UndecodableUpdateError,
-	UnsupportedDocError,
 	SyncRefusedError,
 	type CreateDocumentOptions,
 	type LoadDocumentOptions,

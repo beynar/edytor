@@ -190,7 +190,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		}
 		if (dispatcher.plan('insertDivider', {}, prepare, block).status !== 'applied') return null;
 		const text = caret ? edytor.idToBlock.get(caret)?.firstText : startText;
-		dispatcher.caret(text, caret ? 0 : yStart);
+		dispatcher.caretIn(text, caret ? 0 : yStart);
 		return block;
 	},
 	removeAllMarksAtRange: () => {

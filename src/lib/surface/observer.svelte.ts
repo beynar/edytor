@@ -41,11 +41,9 @@ import { diffText } from '../utils/diffText.js';
 import { jsonEquals } from '../utils/json.js';
 import { activeMarks, marksForInsertion } from '../session/editing/text.js';
 import { INTENTS } from '../session/attempt.js';
-import {
-	getCollapsedDomTextSelection,
-	handleNativeLineBreakTextValue,
-	readDomText
-} from '../events/onInput.js';
+import { runOccurrence } from '../events/onBeforeInput.js';
+import { getDomSelectionSnapshot } from '../selection/domSelection.js';
+import { domOffsetIn } from '../selection/selection.utils.js';
 import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
 import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
 import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
@@ -96,19 +94,75 @@ const textOf = (cell: Cell) =>
 const isAnchor = (node: Node) =>
 	node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE && !node.nodeValue);
 
-/** Non-empty text nodes under `node`. */
-const leaves = (node: Node) => {
-	const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
-	let count = 0;
-	while (walker.nextNode()) if ((walker.currentNode as globalThis.Text).data) count++;
-	return count;
-};
-
-const firstLeaf = (node: Node) => {
+/** The `nth` non-empty text node under `node`. */
+const textLeaf = (node: Node, nth = 0) => {
 	const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
 	while (walker.nextNode())
-		if ((walker.currentNode as globalThis.Text).data) return walker.currentNode as globalThis.Text;
+		if ((walker.currentNode as globalThis.Text).data && nth-- === 0)
+			return walker.currentNode as globalThis.Text;
 	return null;
+};
+const ZERO_WIDTH_SPACE = '\u200B';
+
+/**
+ * What the browser shows for `text`: its element's text nodes in order (WebKit's
+ * converted-space wrappers read as plain spaces), the empty filler and the
+ * trailing-newline marker stripped.
+ */
+export const readDomText = (text: Text) => {
+	let value = '';
+	const node = text.node;
+	if (node) {
+		const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
+		while (walker.nextNode()) {
+			const leaf = walker.currentNode as globalThis.Text;
+			value += leaf.parentElement?.closest('span.Apple-converted-space')
+				? leaf.data.replaceAll('\u00A0', ' ')
+				: leaf.data;
+		}
+	}
+
+	// An empty text's filler shares its node with what the browser typed, on either side.
+	if (text.isEmpty) return value.replaceAll(ZERO_WIDTH_SPACE, '');
+
+	if (text.endsWithNewline && value.endsWith(ZERO_WIDTH_SPACE)) {
+		value = value.slice(0, -ZERO_WIDTH_SPACE.length);
+	}
+
+	return value;
+};
+
+export const getCollapsedDomTextSelection = (edytor: Edytor) => {
+	const selection = getDomSelectionSnapshot(edytor.node);
+	if (!selection?.anchorNode || !selection.isCollapsed) {
+		return null;
+	}
+
+	if (!edytor.node?.contains(selection.anchorNode)) {
+		return null;
+	}
+
+	const text = edytor.selection.getTextOfNode(selection.anchorNode);
+	if (!text?.node) {
+		return null;
+	}
+
+	// No model rule here: the DOM caret is read BEFORE the reconcile writes
+	// the model, so a native insertion legitimately sits past `text.length`
+	// (`selectText` clamps the final write).
+	return { text, offset: domOffsetIn(text, selection.anchorNode, selection.anchorOffset) };
+};
+
+/** A native line break (a diff inserting only newlines at `at`) runs as the key's occurrence. */
+export const lineBreak = async (edytor: Edytor, text: Text, value: string, at: number) => {
+	if (!text.isInDocument) return;
+	const inputType =
+		edytor.attempts.confirm()?.inputType === 'insertLineBreak' || value.includes('\n')
+			? 'insertLineBreak'
+			: 'insertParagraph';
+	text.refreshFromModel();
+	edytor.selection.selectText(text, at);
+	await runOccurrence(edytor, { inputType, cancelable: false });
 };
 
 const settle = (promises: Promise<unknown>[]) => Promise.all(promises).then(() => undefined);
@@ -194,9 +248,15 @@ export class SurfaceObserver {
 		};
 	};
 
-	/** Register an element the core rendered (an attachment); returns its release. */
+	/**
+	 * Register an element the core rendered (an attachment); returns its
+	 * release. A text element takes the table's attributes now (its id, its
+	 * editing host inside a void).
+	 */
 	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
-		this.#registry.set(node, { kind, block, name, owned });
+		const entry = { kind, block, name, owned };
+		this.#registry.set(node, entry);
+		if (kind === 'text') heal(node as HTMLElement, ownedOf(this.edytor, node, entry)!);
 		if (kind === 'block') this.#blocks.set(block, node);
 		else if (kind !== 'anchor' && kind !== 'preview') {
 			const set = this.#contents.get(block) ?? new Set();
@@ -587,7 +647,7 @@ export class SurfaceObserver {
 			for (const [i, delta] of shown.entries()) {
 				const node = nodes[i];
 				const leaf =
-					node?.nodeType === Node.TEXT_NODE ? (node as globalThis.Text) : node && firstLeaf(node);
+					node?.nodeType === Node.TEXT_NODE ? (node as globalThis.Text) : node && textLeaf(node);
 				if (!leaf) return false;
 				if (leaf.data !== delta.text) writes.push([leaf, delta.text]);
 			}
@@ -623,7 +683,7 @@ export class SurfaceObserver {
 			const at = replaced ? replaced.caret : caret?.text === text ? caret.offset : undefined;
 			const line = diffText(text.stringContent, dom);
 			if (line && !line.remove && /^[\r\n]+$/.test(line.insert)) {
-				work.push(handleNativeLineBreakTextValue(edytor, text, dom));
+				work.push(lineBreak(edytor, text, dom, line.at));
 				continue;
 			}
 			work.push(adopt(edytor, text, dom, at));
@@ -705,7 +765,7 @@ export class SurfaceObserver {
 					.filter(Boolean);
 				if (marks.join() !== chain.join()) return 'mark-chain';
 				// The snippet's markup is its own, but the delta renders one text node.
-				if (leaves(node) !== 1) return 'mark-text';
+				if (!textLeaf(node) || textLeaf(node, 1)) return 'mark-text';
 			}
 		}
 		return null;

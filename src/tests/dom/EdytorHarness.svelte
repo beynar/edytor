@@ -3,7 +3,7 @@
 	import type { Plugin } from '$lib/plugins.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-	import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
+	import type { DocChange, EdytorDocument } from '$lib/crdt/index.js';
 	import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 	import { blockHandlesPlugin, handlePlugins } from '$registry/edytor/chrome/plugins.js';
 
@@ -21,8 +21,6 @@
 		inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
 		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 		document?: EdytorDocument;
-		doc?: YDoc;
-		awareness?: Awareness;
 		sync?: EdytorSync;
 		presence?: PresenceOptions;
 		onChange?: (value: JSONDoc) => void;
@@ -57,8 +55,6 @@
 		inputmode,
 		enterkeyhint,
 		document: edytorDocument,
-		doc,
-		awareness,
 		sync,
 		presence,
 		onChange,
@@ -101,8 +97,6 @@
 	{inputmode}
 	{enterkeyhint}
 	document={edytorDocument}
-	{doc}
-	{awareness}
 	{sync}
 	{presence}
 	{onChange}

@@ -26,9 +26,7 @@ export const caretBox = (text: Text, offset: number, after: boolean): DOMRect | 
 		const [endNode, end] = domPointOf(element, from + 1);
 		range.setStart(startNode, start);
 		range.setEnd(endNode, end);
-		// No layout engine (a server, jsdom) lays nothing out: no box.
-		const list = typeof range.getClientRects === 'function' ? range.getClientRects() : null;
-		return [...(list ?? [])].find((r) => r.width > 0 || r.height > 0) ?? null;
+		return [...range.getClientRects()].find((r) => r.width > 0 || r.height > 0) ?? null;
 	};
 	const next = box(offset);
 	const previous = box(offset - 1);

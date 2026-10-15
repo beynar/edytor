@@ -25,16 +25,17 @@ import type { DocBase, DocReads } from './reads.js';
 import { claimInto, deleteRange, formatRangeIn, insertIntoText } from '../text/model.js';
 
 /**
- * Raised when a mutating facade op runs after `dispose()` — disposal is
- * terminal for writes (reads stay dead-safe: a stale handle may still be
- * inspected while its document outlives the facade). The facade-level
- * counterpart of `DocumentDestroyedError` — kept in this module because a
- * bare `bindEdytorDoc` facade has no document layer above it.
+ * Raised when an operation runs against a torn-down document: every attach
+ * reference released, or its facade disposed (terminal for writes; reads
+ * stay dead-safe: a stale handle may still be inspected). Distinct from
+ * `DocumentNotReadyError`: destroyed is terminal, pending may still resolve.
+ * Kept in this module because a bare `bindEdytorDoc` facade has no document
+ * layer above it.
  */
-export class EdytorDocDisposedError extends Error {
+export class DocumentDestroyedError extends Error {
 	constructor(service?: string) {
-		super(`EdytorDoc${service ? `.${service}` : ''}: facade is disposed.`);
-		this.name = 'EdytorDocDisposedError';
+		super(`${service ?? 'document'}: the document is destroyed`);
+		this.name = 'DocumentDestroyedError';
 	}
 }
 
@@ -58,7 +59,7 @@ export const writeFunnel = (c: FunnelContext) => {
 	/** Mutation boundary — every facade write funnels through `write`. */
 	const write = <R>(fn: () => R): R => {
 		if (disposed) {
-			throw new EdytorDocDisposedError();
+			throw new DocumentDestroyedError();
 		}
 		config.assertWritable?.();
 		return fn();

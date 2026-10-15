@@ -151,7 +151,7 @@
 			prevent(() => {
 				edytor.dispatcher.run('insertFromPaste', () => {
 					edytor.insertText(text.parent.id, text.segStart + yStart, item);
-					edytor.dispatcher.caret(text, yStart + item.length);
+					edytor.dispatcher.caretIn(text, yStart + item.length);
 				});
 				if (edytor.dispatcher.last?.status === 'applied')
 					swapPasted(edytor, start, item, page, options);

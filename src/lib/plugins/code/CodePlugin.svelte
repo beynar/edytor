@@ -174,7 +174,7 @@
 								edytor.idToBlock.get(
 									edytor.insertBlocks(siblingSlot(line), [{ type: 'codeLine' }]).ids[0] ?? ''
 								);
-							return prevent(() => edytor.dispatcher.caret(next()?.firstText, 0));
+							return prevent(() => edytor.dispatcher.caretIn(next()?.firstText, 0));
 						}
 						prevent(() => runIntent(edytor, 'insertParagraph'));
 					}
@@ -189,7 +189,10 @@
 						prevent(() => {
 							const before = caretBeside(block, 'blockBefore', new Set([block]));
 							edytor.deleteBlock(block.id);
-							edytor.dispatcher.caret(before?.text ?? code.firstEditableText, before?.offset ?? 0);
+							edytor.dispatcher.caretIn(
+								before?.text ?? code.firstEditableText,
+								before?.offset ?? 0
+							);
 						});
 					}
 					// Backspace in an empty block right after a code block removes it; the
@@ -202,7 +205,7 @@
 						prevent(() => {
 							edytor.deleteBlock(block.id);
 							const text = previous.lastText;
-							edytor.dispatcher.caret(text, text?.length ?? 0);
+							edytor.dispatcher.caretIn(text, text?.length ?? 0);
 						});
 					}
 					if (block.type !== 'codeLine') return;
@@ -213,7 +216,7 @@
 						const [at, line] = [offset - startText.segStart, startText.stringContent];
 						// A closer typed before the same character steps over it.
 						if (CLOSERS.has(value) && line[at] === value) {
-							prevent(() => edytor.dispatcher.caret(startText, at + 1));
+							prevent(() => edytor.dispatcher.caretIn(startText, at + 1));
 						}
 						// Quotes pair only at a word boundary: the apostrophe in `don't` stays single.
 						const inWord = QUOTES.has(value) && /\w/.test((line[at - 1] ?? '') + (line[at] ?? ''));

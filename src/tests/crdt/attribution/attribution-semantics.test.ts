@@ -765,7 +765,7 @@ describe('admission gates', () => {
 		// unversioned: registry content, no meta.v
 		const rogue = new Y.Doc();
 		rogue.get('blocks').setAttr('r', new Y.Node('block'));
-		expect(() => loadDocument(Y.encodeStateAsUpdate(rogue))).toThrow(/no meta\.v/);
+		expect(() => loadDocument(Y.encodeStateAsUpdate(rogue))).toThrow(/unversioned schema/);
 
 		// attachDocument refuses the same states on a live doc.
 		expect(() => attachDocument(v99, { actor: bob })).toThrow(SchemaMismatchError);

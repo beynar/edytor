@@ -78,7 +78,6 @@ const WIRE = [
 	'writeVarUint8Array',
 	'assertAdmission',
 	'assertSchema',
-	'assertUsableDoc',
 	'checkSchema',
 	'inspectAdmission',
 	'isInitialized',

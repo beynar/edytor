@@ -64,7 +64,7 @@
  * - `createDocument` — the fresh doc is trivially admitted;
  * - `loadDocument` — the payload is decoded+integrated onto a SCRATCH
  *   doc first (`admitUpdate`) and the gate runs on the merged result; a
- *   refusal ({@link UndecodableUpdateError}, {@link UnsupportedDocError},
+ *   refusal ({@link UndecodableUpdateError},
  *   {@link SchemaMismatchError}) leaves nothing composed and never
  *   touches the caller's bytes;
  * - `attachDocument` — the borrowed doc is gated BEFORE any composition
@@ -1296,9 +1296,8 @@ export const bindDocument = (Y: EngineApi) => {
 		 * borrowed doc. Content state stays `pending` — the caller (view or
 		 * provider path) drives `sync()`.
 		 *
-		 * Admission runs BEFORE any composition touches the doc: a
-		 * foreign engine object refuses with {@link UnsupportedDocError}, an
-		 * unversioned/unsupported/foreign schema claim with
+		 * Admission runs BEFORE any composition touches the doc: an
+		 * unversioned/unsupported/foreign schema claim refuses with
 		 * {@link SchemaMismatchError} — the borrowed doc is left
 		 * byte-identical (the gate reads are write-free) and can be
 		 * attached once its state heals (e.g. a remote update supplies the

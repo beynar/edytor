@@ -124,7 +124,6 @@ export { writeVarUint8Array, type Encoder } from 'lib0-v14/encoding';
 export {
 	assertAdmission,
 	assertSchema,
-	assertUsableDoc,
 	checkSchema,
 	inspectAdmission,
 	isInitialized,
@@ -132,7 +131,6 @@ export {
 	schemaVersion,
 	SchemaMismatchError,
 	UndecodableUpdateError,
-	UnsupportedDocError,
 	type AdmissionResult,
 	type AdmissionVerdict,
 	type SchemaProblem

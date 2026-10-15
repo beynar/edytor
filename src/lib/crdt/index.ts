@@ -215,7 +215,7 @@ export {
 // (`assertAdmission`, `inspectAdmission`, …) are diagnostics vocabulary:
 // `edytor/protocol`.
 
-export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from './admission.js';
+export { SchemaMismatchError, UndecodableUpdateError } from './admission.js';
 
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //

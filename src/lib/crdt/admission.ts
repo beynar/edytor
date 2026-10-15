@@ -4,14 +4,12 @@
  * Every way content enters an {@link EdytorDocument} crosses the same
  * gate here, in the same order, with the same refusal semantics:
  *
- *   1. **`assertUsableDoc`** — is this a v14 engine doc at all
- *      ({@link UnsupportedDocError} `'foreign'`)?
- *   2. **`assertSchema`** — does the committed schema manifest allow
+ *   1. **`assertSchema`** — does the committed schema manifest allow
  *      this build to own the doc ({@link SchemaMismatchError}:
  *      `'unversioned'` content with no version stamp, `'unsupported'`
  *      version this build cannot speak, `'foreign'` manifest naming
  *      another schema)?
- *   3. **Verdict** — `'fresh'` (registry empty — seeding is legal) or
+ *   2. **Verdict** — `'fresh'` (registry empty — seeding is legal) or
  *      `'initialized'` (supported schema content present — assert and
  *      adopt, never seed).
  *
@@ -61,13 +59,11 @@
  */
 import {
 	assertSchema,
-	assertUsableDoc,
 	checkSchema,
 	isInitialized,
 	registryEmpty,
 	schemaVersion,
-	SchemaMismatchError,
-	UnsupportedDocError
+	SchemaMismatchError
 } from './edytor-doc.js';
 import type { SchemaProblem } from './edytor-doc.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
@@ -77,13 +73,11 @@ import { keepingReplaced } from './incarnations.js';
 // ── shared gate vocabulary (one doorway for document + transport layers) ──
 export {
 	assertSchema,
-	assertUsableDoc,
 	checkSchema,
 	isInitialized,
 	registryEmpty,
 	schemaVersion,
-	SchemaMismatchError,
-	UnsupportedDocError
+	SchemaMismatchError
 };
 export type { SchemaProblem };
 
@@ -104,7 +98,7 @@ export type AdmissionVerdict = 'fresh' | 'initialized';
  */
 export type AdmissionResult =
 	| { admitted: true; verdict: AdmissionVerdict }
-	| { admitted: false; error: UnsupportedDocError | SchemaMismatchError };
+	| { admitted: false; error: SchemaMismatchError };
 
 /**
  * Raised when a candidate update cannot even be decoded or integrated —
@@ -129,9 +123,6 @@ export class UndecodableUpdateError extends Error {
  * The document-level admission gate — runs the ordered checks and throws
  * the typed refusal:
  *
- * - {@link UnsupportedDocError} `'foreign'` — not a v14 engine doc
- *   (foreign roots/engines may still attach *content* later; this is
- *   about doc shape);
  * - {@link SchemaMismatchError} `'unversioned' | 'unsupported' |
  *   'foreign'` — a schema claim this build cannot own.
  *
@@ -141,7 +132,6 @@ export class UndecodableUpdateError extends Error {
  * readiness decision.
  */
 export const assertAdmission = (doc: EngineDoc, docName = 'document'): AdmissionVerdict => {
-	assertUsableDoc(doc);
 	assertSchema(doc, docName);
 	return isInitialized(doc) ? 'initialized' : 'fresh';
 };
@@ -155,7 +145,7 @@ export const inspectAdmission = (doc: EngineDoc, docName = 'document'): Admissio
 	try {
 		return { admitted: true, verdict: assertAdmission(doc, docName) };
 	} catch (error) {
-		if (error instanceof UnsupportedDocError || error instanceof SchemaMismatchError) {
+		if (error instanceof SchemaMismatchError) {
 			return { admitted: false, error };
 		}
 		throw error;

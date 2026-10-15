@@ -245,6 +245,44 @@ describe('text delete marks — inline atoms', () => {
 	});
 });
 
+describe('text delete marks — an undone atom keeps its attributes', () => {
+	const atom = (r: Replica) =>
+		(r.ed.blockJSON('p').content ?? []).filter((c) => c.text === undefined);
+	const M1 = { type: 'mention', id: 'm1', data: { name: 'x' } };
+	it('A inserts an atom, B removes it, A undoes the insert, B undoes → the atom shows with its id, type and data', () => {
+		one(
+			converge(ABC, 2, (reps) => {
+				const [a, b] = reps;
+				a.ed.insertInline('p', 1, M1);
+				settle(reps);
+				b.ed.removeInline('p', 'm1');
+				settle(reps);
+				a.undo();
+				settle(reps);
+				expect(reps.map(atom)).toEqual([[], []]);
+				b.undo();
+				settle(reps);
+				for (const r of reps) expect(atom(r)).toEqual([M1]);
+			})
+		);
+	});
+
+	it('A inserts an atom, undoes and redoes → the same atom, with its attributes', () => {
+		one(
+			converge(ABC, 2, (reps) => {
+				const [a] = reps;
+				a.ed.insertInline('p', 1, M1);
+				a.undo();
+				settle(reps);
+				expect(reps.map(atom)).toEqual([[], []]);
+				a.redo();
+				settle(reps);
+				for (const r of reps) expect(atom(r)).toEqual([M1]);
+			})
+		);
+	});
+});
+
 describe('text delete marks — redo and repeated undo', () => {
 	it('redo puts the writer’s delete back in effect, whoever restored the character', () => {
 		one(

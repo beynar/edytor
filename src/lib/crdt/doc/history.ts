@@ -304,6 +304,14 @@ export class UndoManager {
 				ops.iterate(tr, step.inserts, (struct) => {
 					if (!ops.isItem(struct)) return;
 					const item = ops.latest(tr, struct);
+					// An atom the step inserted is held whole: its attrs stay with it.
+					const atom = (item.parent as EngineNode | undefined)?._item;
+					if (
+						atom?.id &&
+						isUnit(atom as StoreStruct) &&
+						step.inserts.has(atom.id.client, atom.id.clock)
+					)
+						return;
 					if (!item.deleted && this.#inScope(item)) remove.push(item);
 				});
 				ops.iterate(tr, step.deletes, (struct) => {

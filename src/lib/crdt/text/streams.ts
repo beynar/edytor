@@ -1,13 +1,22 @@
 /**
- * The stream table, pure: a backing text's boundaries, each block's
- * delimiting boundary, a text's streams, and a block's display as pieces
- * of streams (its stream, then each effective claim's display).
+ * The stream table, pure: a backing text's boundaries and claim items, each
+ * block's delimiting boundary, a text's streams, and a block's display as
+ * pieces of streams (its stream, then each claim's display).
  */
 import type { EngineNode } from '../engine-api.js';
-import { isBoundary, nodeStart } from './items.js';
-import type { BlockId, Bound, Ownership, Seg, Stream, TextBlockRec, TextRow } from './model.js';
+import { isBoundary, isClaimItem, nodeStart } from './items.js';
+import type {
+	BlockId,
+	Bound,
+	Claim,
+	Ownership,
+	Seg,
+	Stream,
+	TextBlockRec,
+	TextRow
+} from './model.js';
 
-/** Scan `text` (live space) for its boundary items. */
+/** Scan `text` (live space) for its boundary and claim items. */
 export const scanText = (home: BlockId, text: EngineNode): TextRow => {
 	const bounds: Bound[] = [];
 	let at = 0;
@@ -17,8 +26,10 @@ export const scanText = (home: BlockId, text: EngineNode): TextRow => {
 		if (arr !== undefined) {
 			for (let j = 0; j < it.length; j++) {
 				const v = arr[j];
-				if (isBoundary(v))
-					bounds.push({ s: v.s, n: v.n, at: at + j, key: `${it.id.client}:${it.id.clock + j}` });
+				const [c, k] = [it.id.client, it.id.clock + j];
+				if (isBoundary(v)) bounds.push({ s: v.s, n: v.n, at: at + j, key: `${c}:${k}` });
+				else if (isClaimItem(v))
+					bounds.push({ m: v.m, stamp: { c, k }, at: at + j, key: `${c}:${k}` });
 			}
 		}
 		at += it.length;
@@ -40,7 +51,7 @@ export const delimiters = (
 	const out = new Map<BlockId, string>();
 	for (const row of rows) {
 		for (const b of row.bounds) {
-			if (blocks.get(b.s)?.n !== b.n) continue;
+			if (b.m !== undefined || blocks.get(b.s)?.n !== b.n) continue;
 			const cur = out.get(b.s);
 			if (cur === undefined || byId(b.key, cur) < 0) out.set(b.s, b.key);
 		}
@@ -51,8 +62,8 @@ export const delimiters = (
 /**
  * The streams of one text, in text order: the home's head (unless delimited
  * elsewhere), then one per delimiting boundary — one sweep over the
- * boundaries (each non-delimiting one is an inert boundary of the stream it
- * sits in).
+ * boundaries (each non-delimiting one, and each claim item, is an inert unit
+ * of the stream it sits in).
  */
 export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): Stream[] => {
 	const out: Stream[] = [];
@@ -63,7 +74,7 @@ export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): St
 		if (block !== null) out.push({ block, home: row.home, text: row.text, start, end, inert });
 	};
 	for (const b of row.bounds) {
-		if (delim.get(b.s) !== b.key) {
+		if (b.m !== undefined || delim.get(b.s) !== b.key) {
 			inert.push(b.at);
 			continue;
 		}
@@ -74,7 +85,15 @@ export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): St
 	return out;
 };
 
-/** A stream's content pieces: the range minus its inert boundaries (at least one piece). */
+/** The claims of stream `s` of `row`: its claim items, in text order. */
+export const claimsIn = (row: TextRow, s: Stream): Claim[] => {
+	const out: Claim[] = [];
+	for (const b of row.bounds)
+		if (b.m !== undefined && b.at >= s.start && b.at < s.end) out.push({ m: b.m, stamp: b.stamp });
+	return out;
+};
+
+/** A stream's content pieces: the range minus its inert units (at least one piece). */
 export const pieces = (s: Stream): [number, number][] => {
 	const out: [number, number][] = [];
 	let a = s.start;
@@ -86,8 +105,7 @@ export const pieces = (s: Stream): [number, number][] => {
 };
 
 /**
- * `display(b)`: `b`'s stream, then each effective claim's display, in claim
- * order. `track(x, home)` reports every walked block and the home of its
+ * `display(b)`: `b`'s stream, then each claim's display, in claim order. `track(x, home)` reports every walked block and the home of its
  * stream (the index's dependency capture). `null` when `b` is hidden, unless
  * `hidden` asks for the pieces a hidden block would show (an anchor minted in
  * a merged-away or deleted block binds its items all the same).

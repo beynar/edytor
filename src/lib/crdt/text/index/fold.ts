@@ -21,7 +21,7 @@ import {
 	structAt,
 	walkIdSet
 } from '../../structs.js';
-import { DEAD, isBoundary } from '../model.js';
+import { DEAD, isRowMark } from '../model.js';
 import {
 	type LiveRow,
 	type RowItem,
@@ -32,7 +32,6 @@ import {
 	shiftGap
 } from '../rows.js';
 import type { ContentRun } from '../runs.js';
-import type { IndexAnchored } from './anchored.js';
 import type { IndexCache } from './cache.js';
 import type { IndexClaims } from './claims.js';
 import type { IndexPlacement } from './placement.js';
@@ -57,7 +56,6 @@ export const indexFold = (
 	ix: IndexState &
 		IndexClaims &
 		IndexStreams &
-		IndexAnchored &
 		IndexLayout &
 		IndexPlacement &
 		IndexRecords &
@@ -72,8 +70,6 @@ export const indexFold = (
 		textConsumers,
 		ownerSeeds,
 		rows,
-		retargets,
-		unresolved,
 		reclaim,
 		placementSeeds,
 		stateSeeds,
@@ -91,7 +87,7 @@ export const indexFold = (
 		scanRow,
 		refreshDelims,
 		placeHome,
-		applyRetargets,
+		applyReclaims,
 		noteKind,
 		argParent,
 		noteCands,
@@ -112,7 +108,7 @@ export const indexFold = (
 	const holdsBoundary = (s: StoreStruct, from: number, to: number): boolean => {
 		const arr = s.content?.arr;
 		if (arr === undefined) return false;
-		for (let k = from - s.id.clock; k < to - s.id.clock; k++) if (isBoundary(arr[k])) return true;
+		for (let k = from - s.id.clock; k < to - s.id.clock; k++) if (isRowMark(arr[k])) return true;
 		return false;
 	};
 	/** The struct holding id `client:clock` (unsplit), `null` when the store holds none. */
@@ -457,8 +453,7 @@ export const indexFold = (
 			derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
 		}
 		foldTexts(ctx);
-		for (const h of unresolved) retargets.add(h);
-		if (retargets.size > 0 || reclaim.size > 0) applyRetargets(ctx);
+		if (reclaim.size > 0) applyReclaims(ctx);
 		if (shells.size > 0)
 			settle(ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)], ctx);
 		for (const b of ctx.invalidated) dirty.add(b);

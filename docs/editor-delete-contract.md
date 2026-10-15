@@ -732,35 +732,27 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     (`merge.claim.anchor`, below): Backspace joins "world" into "hello" ‖
     Enter after "he" → "he", "lloworld", every serial order's result (it
     read "heworld", "llo").
-- `merge.claim.anchor` (H9's second half, 0.1.0-next.26): a merge claim
-  is anchored to the end of its holder's stream as its writer saw it:
-  `a`, the last unit of that stream (its opening boundary when it is
-  empty; no anchor at the start of an empty own text), and `r`, the item
-  right after it (the next stream's boundary, `null` at the text's end),
-  written in the claim's payload (`{ m, a, r }`, `claimInto`; a split
-  re-inserts the claims it moves with theirs). Its EFFECTIVE claimer is the
-  block of the segment just before `r` (the text's last segment when `r`
-  is `null`) in the row of the holder's stream, when that is the holder's
-  segment or a later one; else the holder. So a split the writer did not
-  see, anywhere in the region between `a` and `r`, moves the claim to the
-  piece that ends that region, as both serial orders do: Backspace joins
-  "world" into "hello" ‖ Enter after "he" → "he", "lloworld"; ‖ Enter at
-  the end → "hello", "world"; ‖ at the start → "", "helloworld"; typing
-  never moves it (only a row's cuts do). The index keeps each record's
-  list (`listClaims`) and its effective claims (`claims`: its own that
-  stay, then those other holders' anchors move to it, by stamp); the claim
-  graph, the display, a split's moved claims (deleted from the list that
-  stores them) and the owners read the effective ones, the purge and a
-  restore delete from the stored lists. Targets are re-decided after each
-  fold's texts, for the holders whose record changed and those anchored in
-  a re-placed row (`applyRetargets` in `text/runs.ts`, checked against a
-  rebuild by `indexChecks`). A claim without an anchor (written before
-  0.1.0-next.26, or an implicit one, `id.same.concurrent`) stays with its
-  holder. A client of 0.1.0-next.25 reads an anchored claim as a plain one
-  (its holder's), so until every client upgrades the two releases can
-  disagree on which block shows a merged text after such a race (each
-  converges with its own release). Pins: `text/merge-claim-anchor.test.ts`
-  (48 client-id pairs), `dr-crdt-order.test.ts` (the matrix excuses no
+- `merge.claim.anchor` (H9's second half, 0.1.0-next.26; schema
+  generation 8): a merge claim is an item `{ m }` in a backing text, written
+  at the end of the gap at the end of its holder's stream (`claimInto`,
+  fork patch YP7's `insertAtGapEnd`), and a block's claims are the claim
+  items of its stream (after its implicit ones, `id.same.concurrent`). Among
+  the items of one origin a claim item sorts after content and boundaries
+  (fork patch YP21), so a split the claim's writer did not see, anywhere in
+  the holder's stream, leaves the claim in the piece that ends that stream,
+  as both serial orders do: Backspace joins "world" into "hello" ‖ Enter
+  after "he" → "he", "lloworld"; ‖ Enter at the end → "hello", "world"; ‖ at
+  the start → "", "helloworld"; text a peer types at the end of the holder
+  stays before the claim ("hello!world"); typing never moves it (only a
+  boundary does). A split the writer saw writes the claims that follow its
+  point again at the end of the new block's stream and deletes their items.
+  The index's rows track claim items as bounds that never delimit (no read
+  shows them): a claim item written or removed rescans its text and the
+  claims of that row's blocks are re-read (`applyReclaims` in
+  `text/index/streams.ts`, checked against a fresh scan by `indexChecks`).
+  The purge and a restore delete claim items by id. Pins:
+  `text/merge-claim-anchor.test.ts` (48 client-id pairs),
+  `yp21-claims.test.ts`, `dr-crdt-order.test.ts` (the matrix excuses no
   merge any more).
 - `order.split.text` (D-18, H9, 0.1.0-next.25): blocks whose streams lie
   in one backing text and that stand where they were made (their winning
@@ -1268,10 +1260,9 @@ An undo removes only the undoing writer's own contributions. Undoing a step
 that created a block (insert, paste, Enter at a line's end, a split's new
 block) never deletes the block node: the history's `withdraw` hook (fork
 patch YP12, `placement/model.ts` `withdrawOnUndo`) keeps the node, its
-placement and its content and claims nodes, and writes the undoer's
-withdraw mark `wd.<writer>`; what the step wrote inside the content and
-claims nodes (the undoer's text, atoms, boundaries, claims) is deleted as
-before. A withdrawn block without a delete mark is visible while it holds
+placement and its content node, and writes the undoer's
+withdraw mark `wd.<writer>`; what the step wrote inside the content node
+(the undoer's text, atoms, boundaries, claim items) is deleted as before. A withdrawn block without a delete mark is visible while it holds
 content — a live unit in its stream, or a child that is not deleted — and
 hidden otherwise; the index settles it after every fold, as a least
 fixpoint over the withdrawn blocks, so every replica agrees whatever the

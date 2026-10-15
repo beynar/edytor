@@ -11,7 +11,7 @@
  *        ├ id / type / data / n            payload attrs (n: incarnation nonce)
  *        ├ del.<writer>                     per-writer delete marks (any live mark = deleted)
  *        ├ content → node('content')       BACKING text of a block created fresh
- *        ├ claims → node('claims')         ordered merge claims `{m}`
+ *        │                                  (its streams' boundaries `{s, n}`, claim items `{m}`)
  *        └ at → node('at')                 placement candidate map
  *             └ "<seq>.<clientId>" → { p: parentId|null, r: rank }
  * ```
@@ -43,8 +43,8 @@
  *
  * Content ownership (`text/model.ts`): a block displays its stream —
  * delimited by boundary items in a backing text — then the displays of the
- * blocks it claims. A split inserts one boundary; a merge appends one claim;
- * no text is ever copied.
+ * blocks it claims. A split inserts one boundary; a merge one claim item at
+ * the end of the stream; no text is ever copied.
  *
  * The engine is the vendored one, read through `engine.js` (structural
  * types, `engine-api.ts`): this file never imports vendor `.js` (which
@@ -67,8 +67,6 @@ import {
 	DEL_PREFIX,
 	hasDeleteMark,
 	ID,
-	CLAIMS,
-	CLAIMS_NODE,
 	INLINE_NODE,
 	isNodeLike,
 	NONCE,
@@ -83,10 +81,10 @@ import { writeRunMarks } from '../text/marks.js';
 import {
 	blockTextOf,
 	DEAD,
+	deleteClaims,
 	newNode,
 	ownText as ownTextOf,
 	splitAt,
-	type MergeClaim,
 	type Ownership,
 	type TextBlockRec
 } from '../text/model.js';
@@ -312,10 +310,10 @@ export const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(do
 /**
  * The history's creation rule (`doc/history.ts`, `hist.undo.withdraw`): an
  * undo never deletes a block the undone step created. Its node and
- * structure (attrs, placement candidates, the content and claims nodes)
- * stay and the undoer's withdraw mark is written on it; what the step wrote
- * inside the content and claims nodes (the undoer's own text, atoms,
- * boundaries, claims) is deleted as usual. The index shows a withdrawn
+ * structure (attrs, placement candidates, the content node) stay and the
+ * undoer's withdraw mark is written on it; what the step wrote inside the
+ * content node (the undoer's own text, atoms, boundaries, claims) is
+ * deleted as usual. The index shows a withdrawn
  * block while it holds another writer's content.
  */
 export const withdrawOnUndo =
@@ -338,7 +336,7 @@ export const withdrawOnUndo =
 			node.setAttr(WITHDRAW_PREFIX + doc.clientID, true);
 			return true;
 		}
-		return below === item || (below.parentSub !== CONTENT && below.parentSub !== CLAIMS);
+		return below === item || below.parentSub !== CONTENT;
 	};
 
 // ── placement write ──────────────────────────────────────────────────
@@ -457,11 +455,11 @@ export const ranksAt = (
 };
 
 /**
- * One registry entry: the block node with its `claims` list (holding
- * `claims`), its own backing text holding `items` (none for a split-born
- * block: its stream lives in the text it was split from), and the atomic
- * first placement candidate `{p, r}` stamped `1.clientID`. Pre-integration
- * writes materialize when the node integrates (the registry write comes last).
+ * One registry entry: the block node with its own backing text holding
+ * `items` (none for a split-born block: its stream lives in the text it was
+ * split from), and the atomic first placement candidate `{p, r}` stamped
+ * `1.clientID`. Pre-integration writes materialize when the node integrates
+ * (the registry write comes last).
  */
 const createBlock = (
 	doc: EngineDoc,
@@ -469,7 +467,6 @@ const createBlock = (
 	type: unknown,
 	data: unknown,
 	place: PlacementValue,
-	claims: MergeClaim[],
 	items: readonly ContentItem[] | null,
 	n: number = nonceOf(doc)
 ): void => {
@@ -480,9 +477,6 @@ const createBlock = (
 	writeLeaves(node, dataLeaves(data));
 	const content = items === null ? null : textOf(items);
 	if (content !== null) node.setAttr(CONTENT, content);
-	const list = newNode(CLAIMS_NODE);
-	node.setAttr(CLAIMS, list);
-	if (claims.length > 0) list.insert(0, claims);
 	const at = newNode(AT_NODE);
 	node.setAttr(AT, at);
 	at.setAttr(`1.${doc.clientID}`, place);
@@ -523,8 +517,8 @@ const markText = (doc: EngineDoc, content: EngineNode, items: readonly ContentIt
  * restores into an empty doc): make `specs` the whole visible document
  * under their own ids, in ONE transaction. An existing id keeps its
  * registry entry: every delete mark is cleared and its type, data,
- * placement and content are rewritten in place — a fresh own text holding
- * the spec's content and an empty claims list; a block whose stream still
+ * placement and content are rewritten in place — its claims deleted, a
+ * fresh own text holding the spec's content; a block whose stream still
  * starts at a live boundary gets a new nonce, so that boundary goes inert
  * and the own text is its stream. An absent id is created. Every other
  * block gets this writer's delete mark. Ranks are derived from the tree
@@ -533,7 +527,7 @@ const markText = (doc: EngineDoc, content: EngineNode, items: readonly ContentIt
  */
 export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 	doc.transact(() => {
-		const { own } = view(doc);
+		const { blocks, own } = view(doc);
 		const keep = new Set<BlockId>();
 		const restore = (list: BlockSpec[], parent: BlockId | null): void => {
 			let rank: string | undefined;
@@ -546,8 +540,10 @@ export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 					node.setAttr(NONCE, nonceOf(doc));
 					node.setAttr(AT, newNode(AT_NODE));
 					registryOf(doc).setAttr(sp.id, node);
-				} else if (own.streamOf(sp.id)?.home !== sp.id && own.streamOf(sp.id) !== undefined) {
-					node.setAttr(NONCE, nonceOf(doc));
+				} else {
+					deleteClaims(doc, blocks.get(sp.id)?.claims ?? []);
+					if (own.streamOf(sp.id)?.home !== sp.id && own.streamOf(sp.id) !== undefined)
+						node.setAttr(NONCE, nonceOf(doc));
 				}
 				for (const key of [...node.attrKeys()]) {
 					if (key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX)) node.deleteAttr(key);
@@ -557,7 +553,6 @@ export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 				const text = textOf(sp.content ?? []);
 				node.setAttr(CONTENT, text);
 				markText(doc, text, sp.content ?? []);
-				node.setAttr(CLAIMS, newNode(CLAIMS_NODE));
 				rank = rankBetween(rank, undefined, 0, () => 0);
 				writePlacement(doc, node, parent, rank);
 				restore(sp.children ?? [], sp.id);
@@ -582,7 +577,7 @@ export const materializeSpec = (
 	parent: BlockId | null,
 	rank: string
 ): void => {
-	createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, [], sp.content ?? []);
+	createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, sp.content ?? []);
 	let left: string | undefined;
 	for (const child of sp.children ?? []) {
 		const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
@@ -637,7 +632,7 @@ export const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec):
 /**
  * Split `id` at content `offset` into the new block `newId` placed at
  * `place`: one boundary item for `newId` at the end of the gap at `offset`
- * (fork patch YP7) and the merge claims that follow it re-inserted on the new block —
+ * (fork patch YP7) and the merge claims that follow it written again in the new block's stream —
  * no text is copied, so an offline edit to the tail keeps landing on the
  * same items and displays in the new block after convergence. `tail` is
  * the new block's type/data, decided once by the plan. Children are a
@@ -653,9 +648,9 @@ export const writeSplit = (
 ): void => {
 	const { blocks, own } = view(doc);
 	const n = nonceOf(doc);
-	const claims = splitAt(blocks, own, id, offset, newId, n);
+	splitAt(doc, blocks, own, id, offset, newId, n);
 	const data = tail.data === undefined ? undefined : cloneJson(tail.data);
-	createBlock(doc, newId, tail.type, data, place, claims, null, n);
+	createBlock(doc, newId, tail.type, data, place, null, n);
 };
 
 /**

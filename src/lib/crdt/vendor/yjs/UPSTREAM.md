@@ -1058,6 +1058,54 @@ contract programs (all 12 hold, `split.range-one-undo` included), the random
 corpus (every adapter), the upstream suite unchanged (`encoding.tests.js`
 pins ref 11).
 
+### YP21 — claim items sort after content and are never collected (`src/utils/marks.js`, `src/structs/Item.js`)
+
+Reason: a merge is a claim, "the display of this block continues with that
+block's". Edytor stored it in a `claims` list on the holder's node, so the
+claim had no place in the holder's text: a split its writer did not see could
+not tell which piece keeps it, and edytor carried a layer that anchored each
+claim to the end of its holder's stream as its writer saw it and moved it to
+the piece that ends that region after every fold (`crdt/text/index/anchored.ts`
+and the claim anchoring in `text/model.ts`, 2.4 KB minified, plus a `claims`
+node per block, 13 B stored). A claim is now one countable unit `{ m }` in the
+holder's backing text, at the end of the gap at the end of its stream (YP7's
+`insertAtGapEnd`), and YATA decides which piece of a concurrent split holds it.
+For that to give the serial outcome the engine only needs one sort rule:
+
+- `markClass` (YP13's integration class) answers `3` for a claim item: a
+  sequence item (`parentSub === null`) whose content's first value is an
+  object with a string `m`. Among the items of one origin, left-side mark
+  items, then content (boundaries included), then right-side mark items, then
+  claim items. So a boundary a concurrent split writes at the claim's origin
+  goes before it (the claim follows the split's last piece), and so does text
+  a concurrent writer types there (it stays in the holder, before the claimed
+  text); a writer who saw the claim writes before it anyway (its insert's
+  right origin is the claim).
+- `Item#gc` keeps the content of every item whose class is not `1` (paired
+  mark items, YP13, and claim items): the class orders concurrent inserts on
+  every replica, collected or not. The check was YP13's paired-mark test; it
+  is now `markClass(this) === 1`, the same answer for every format item.
+
+Plain items (every upstream test) are untouched: a sequence of strings,
+nodes or JSON values without an `m` key, and every map value, read class `1`.
+
+Edytor side: schema generation 8 (no conversion). A merge writes the claim
+item (`claimInto`; a streamless block gets its own text first); a block's
+claims are its implicit ones (`id.same.concurrent`), then the claim items of
+its stream, which the index's rows track as they track boundaries (a claim
+item is a row bound that never delimits, so no read shows it); a split writes
+the claims that follow its point again at the end of the new block's stream
+and deletes their items. Removed: the `claims` node, `MergeClaim.a`/`r`,
+`Claim.seqIndex`/`holder`, `TextBlockRec.claimsNode`/`listClaims`,
+`readClaims`, the index's anchored part.
+
+Oracle: `src/tests/crdt/text/merge-claim-anchor.test.ts` (48 client-id pairs,
+both delivery orders, duplicate delivery, a reload: the serial outcomes),
+`src/tests/crdt/yp21-claims.test.ts` (the sort rule against content,
+boundaries and marks on every pair of client ids, collection), the index
+self-checks (each record's claims equal a fresh scan's), the random corpus,
+the upstream suite unchanged.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

@@ -116,17 +116,7 @@ export const indexState = (doc: EngineDoc) => {
 		/** Each row's text → its home (rows are keyed by home). */
 		homeOfText: new WeakMap<object, BlockId>(),
 
-		// ── anchored merge claims (`anchored.ts`)
-		/** Each holder's list claims' effective claimers, by list index (absent: all its own). */
-		attachOf: new Map<BlockId, BlockId[]>(),
-		/** An effective claimer → the holders whose claims moved to it. */
-		foreignOf: new Map<BlockId, Set<BlockId>>(),
-		/** A row's home → the holders with an anchored claim in its text. */
-		anchoredIn: new Map<BlockId, Set<BlockId>>(),
-		/** Holders whose targets the next pass re-decides, and blocks whose claims it re-reads. */
-		retargets: new Set<BlockId>(),
-		/** Holders with an anchored claim and no stream yet: any re-placed row may resolve them. */
-		unresolved: new Set<BlockId>(),
+		/** Blocks whose claims (implicit, then their stream's claim items) the next pass re-reads. */
 		reclaim: new Set<BlockId>(),
 
 		// ── roles

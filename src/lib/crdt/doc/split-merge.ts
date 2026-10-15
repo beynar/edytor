@@ -68,7 +68,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		const born = ref(newId);
 		const pos = positionOf(id);
 		const rec = view().blocks.get(id);
-		if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
+		if (pos === null || isVoid(id) || !rendersContent(id) || rec === undefined) return REFUSED;
 		// A table's cell holds its lines as line breaks: it never splits (`table.split`).
 		if (isCellKind(blockTypeOf(id))) return REFUSED;
 		if (isIncarnationId(born) || blockNodeOf(doc, born) !== null) return REFUSED;

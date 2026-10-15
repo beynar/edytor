@@ -1,9 +1,10 @@
 /**
  * The maintained form of one backing text's boundary table — the
- * index's row: the text's live boundary items in text order and the live
- * units between them, held in a Fenwick tree so an edit that writes or
+ * index's row: the text's live boundary and claim items in text order and
+ * the live units between them, held in a Fenwick tree so an edit that writes or
  * removes no boundary moves every later boundary in O(log B) instead of a
- * rescan.
+ * rescan. (A claim item is a bound like a boundary that never delimits: below,
+ * "boundary" names both.)
  *
  * `h[j]` is the units before boundary `j` since the one before it, plus
  * boundary `j` itself (`h[B]`: the units after the last boundary), so the
@@ -21,12 +22,19 @@
  * segment `k > 0` is the stream of the block its opening cut names.
  */
 import type { EngineNode } from '../engine-api.js';
-import { isBoundary, type BlockId, type Bound, type Stream, type TextRow } from './model.js';
+import {
+	isRowMark,
+	type BlockId,
+	type Bound,
+	type Claim,
+	type Stream,
+	type TextRow
+} from './model.js';
 
 export type LiveRow = {
 	home: BlockId;
 	text: EngineNode;
-	/** The live boundaries in text order (`at` is NOT maintained: read {@link boundAt}). */
+	/** The live boundaries and claim items in text order (`at` is NOT maintained: read {@link boundAt}). */
 	bounds: readonly Bound[];
 	/** Fenwick tree over `h` (1-based, size `bounds.length + 1`). */
 	tree: Float64Array;
@@ -129,7 +137,7 @@ const boundIn = (row: LiveRow, it: RowItem, first: boolean): number => {
 	if (arr === undefined) return -1;
 	for (let n = 0; n < it.length; n++) {
 		const k = first ? n : it.length - 1 - n;
-		if (!isBoundary(arr[k])) continue;
+		if (!isRowMark(arr[k])) continue;
 		return row.keyIndex.get(`${it.id.client}:${it.id.clock + k}`) ?? -2;
 	}
 	return -1;
@@ -203,7 +211,18 @@ export const segmentOfCut = (row: LiveRow, cut: string | null): number => {
 
 /** The block of segment `k` (`null`: nobody's). */
 export const headOf = (row: LiveRow, k: number): BlockId | null =>
-	k === 0 ? row.head : row.bounds[row.cuts[k - 1]].s;
+	k === 0 ? row.head : row.bounds[row.cuts[k - 1]].s!;
+
+/** The claims of segment `k`: its claim items, in text order. */
+export const segmentClaims = (row: LiveRow, k: number): Claim[] => {
+	const out: Claim[] = [];
+	const hi = k < row.cuts.length ? row.cuts[k] : row.bounds.length;
+	for (let j = k === 0 ? 0 : row.cuts[k - 1] + 1; j < hi; j++) {
+		const b = row.bounds[j];
+		if (b.m !== undefined) out.push({ m: b.m, stamp: b.stamp });
+	}
+	return out;
+};
 
 /** Segment `k` as a {@link Stream} of `block`. */
 export const streamOfSegment = (row: LiveRow, k: number, block: BlockId): Stream => {
@@ -225,7 +244,7 @@ export const placeRow = (row: LiveRow, delim: ReadonlyMap<BlockId, string>): voi
 	const cuts: number[] = [];
 	for (let j = 0; j < row.bounds.length; j++) {
 		const b = row.bounds[j];
-		if (delim.get(b.s) === b.key) cuts.push(j);
+		if (b.m === undefined && delim.get(b.s) === b.key) cuts.push(j);
 	}
 	row.cuts = cuts;
 	row.head = delim.has(row.home) ? null : row.home;

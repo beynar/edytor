@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { createPeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import * as S_ from '../harness/streams.js';
-import { isBoundary } from '../../../lib/crdt/text/model.js';
+import { isRowMark } from '../../../lib/crdt/text/model.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertAllStructurallyValid, assertConverged } from '../harness/assert/convergence.js';
 import { bool, int, mulberry32, pick } from '../harness/rng.js';
@@ -649,7 +649,7 @@ const checkRenderOnce = (doc, ctx) => {
 		for (let it = t._start; it !== null && at < i1; it = it.right) {
 			if (it.deleted || !it.countable) continue;
 			for (let j = 0; j < it.length; j++) {
-				if (at + j < i0 || at + j >= i1 || isBoundary(it.content.arr?.[j])) continue;
+				if (at + j < i0 || at + j >= i1 || isRowMark(it.content.arr?.[j])) continue;
 				out.push(`${it.id.client}:${it.id.clock + j}`);
 			}
 			at += it.length;

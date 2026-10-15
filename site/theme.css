@@ -66,7 +66,21 @@
   --color-ring: var(--ring);
 }
 
-/* Inside a demo, the names Blume shares with shadcn are shadcn's. */
+/*
+ * Inside a demo, the names Blume shares with shadcn are shadcn's. Blume's
+ * utilities read its own variables directly (`hover:bg-accent` is
+ * `var(--blume-accent)`, its blue), so those are pointed at shadcn's too:
+ * in the editor, the starter's page and the menus it portals.
+ */
+:is(.edytor-notion, [data-edytor-starter], [data-bits-floating-content-wrapper]) {
+  --blume-background: var(--background);
+  --blume-foreground: var(--foreground);
+  --blume-muted: var(--muted);
+  --blume-muted-foreground: var(--muted-foreground);
+  --blume-accent: var(--accent);
+  --blume-accent-foreground: var(--accent-foreground);
+  --blume-border: var(--border);
+}
 .edytor-notion {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

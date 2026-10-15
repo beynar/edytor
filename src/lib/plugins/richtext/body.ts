@@ -13,7 +13,7 @@ export const openBody = (block: Block): Block | undefined => {
 		const added = () =>
 			edytor.insertBlocks({ parent: block.id, index: 0 }, [{ type: edytor.defaultChild(block) }]);
 		const child = block.children[0] ?? edytor.idToBlock.get(added().ids[0] ?? '');
-		edytor.dispatcher.caret(child?.firstText, 0);
+		edytor.dispatcher.caretIn(child?.firstText, 0);
 		return child ?? undefined;
 	});
 };

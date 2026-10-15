@@ -94,7 +94,7 @@ export class UrlPasteController extends ChromeList {
 				: {};
 			edytor.dispatcher.run('insertFromPaste', () => {
 				edytor.insertText(block.id, text.segStart, url, marks);
-				edytor.dispatcher.caret(edytor.idToBlock.get(block.id)?.firstText, url.length);
+				edytor.dispatcher.caretIn(edytor.idToBlock.get(block.id)?.firstText, url.length);
 			});
 			if (edytor.dispatcher.last?.status !== 'applied') return;
 			this.open = { block: block.id, url, options };

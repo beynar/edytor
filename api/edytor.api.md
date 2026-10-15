@@ -1306,10 +1306,7 @@ export declare class Dispatcher {
         out: T | undefined;
         taken: boolean;
     };
-    caret: {
-        (text: Text | null | undefined, offset: number, ops?: () => OpResult): OpResult | undefined;
-        (caret: Caret | DocPosition | null | undefined, ops?: () => OpResult): OpResult | undefined;
-    };
+    caret: (caret: Caret | DocPosition | null | undefined, ops?: () => OpResult) => OpResult | undefined;
     private policy;
     private decide;
     private settle;
@@ -1841,7 +1838,7 @@ export declare class EdytorSelection {
     setCaret: (caret: Caret | null | undefined) => void;
     get pending(): PendingMarks | undefined;
     stage: (pending: Marks | undefined) => void;
-    textValue: (startText: Text, yStart: number, endText?: Text, yEnd?: number, isReversed?: boolean, startAffinity?: "left" | "right", mint?: (text: Text, offset: number, affinity?: "left" | "right") => TextAnchor | null) => SelectionValue;
+    textValue: (startText: Text, yStart: number, endText?: Text, yEnd?: number, isReversed?: boolean, startAffinity?: "left" | "right") => SelectionValue;
     get dragging(): boolean;
     clearInlineBlockSelection: () => void;
     selectInlineBlock: (inlineBlock: InlineBlock, from?: AtomSide) => void;
@@ -1851,11 +1848,6 @@ export declare class EdytorSelection {
         offset: number;
     } | null;
     displayable: (id: string) => boolean;
-    hidden: (block: Block, removed?: ReadonlySet<Block>) => boolean;
-    shown: (block: Block, step: "blockBefore" | "blockAfter", { sealed, removed }?: {
-        sealed?: boolean;
-        removed?: ReadonlySet<Block>;
-    }) => Block | null;
     rtl: (text: Text) => boolean;
 }
 ```

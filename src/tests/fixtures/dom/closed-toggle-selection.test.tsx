@@ -5,6 +5,7 @@
  * (XW-13), and a readonly view's `clear()`. Expected states are
  * hand-authored from Notion's behavior.
  */
+import { hidden } from '$lib/selection/visibility.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
@@ -277,7 +278,7 @@ describe('the sweep: a handle move into a closed toggle (SW7-selection-2)', () =
 			]
 		]);
 		const x = edytor.idToBlock.get('x')!;
-		expect(edytor.selection.hidden(x)).toBe(false);
+		expect(hidden(x)).toBe(false);
 		expect([...edytor.selection.selectedBlocks].map((block) => block.id)).toEqual(['x']);
 	});
 });

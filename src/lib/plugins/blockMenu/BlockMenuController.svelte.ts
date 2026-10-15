@@ -564,7 +564,7 @@ export class BlockMenuController {
 	 */
 	private caret(block: Block | null | undefined) {
 		const text = block && shownText(block, 'first');
-		if (text || !block?.isInTree) this.edytor.dispatcher.caret(text, 0);
+		if (text || !block?.isInTree) this.edytor.dispatcher.caretIn(text, 0);
 		else this.edytor.selection.select(blockSelection([block.id]));
 		this.focus();
 	}

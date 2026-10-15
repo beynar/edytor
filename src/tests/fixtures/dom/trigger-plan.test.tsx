@@ -29,7 +29,7 @@ const emojiPlugin: Plugin = (edytor) => ({
 			const at = text.segStart + start;
 			const trigger: Prepared = document.prepare.deleteText(block.id, at, match[0].length);
 			dispatcher.lead(trigger, () => edytor.insertText(block.id, at, emoji));
-			if (dispatcher.last?.status === 'applied') dispatcher.caret(text, start + emoji.length);
+			if (dispatcher.last?.status === 'applied') dispatcher.caretIn(text, start + emoji.length);
 		});
 	}
 });

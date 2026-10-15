@@ -369,7 +369,7 @@ export const toTrailingParagraph = (edytor: Edytor): boolean => {
 	const { ids } = edytor.insertBlocks(siblingSlot(last), [{ type: kind }]);
 	const text = edytor.idToBlock.get(ids[0] ?? '')?.firstText;
 	if (!text) return false;
-	edytor.dispatcher.caret(text, 0);
+	edytor.dispatcher.caretIn(text, 0);
 	return true;
 };
 

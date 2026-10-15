@@ -481,9 +481,9 @@ export class EdytorSelection {
 		endText: Text = startText,
 		yEnd: number = yStart,
 		isReversed = false,
-		startAffinity?: 'left' | 'right',
-		mint = this.createTextAnchor
+		startAffinity?: 'left' | 'right'
 	): SelectionValue => {
+		const mint = this.createTextAnchor;
 		const collapsed = startText === endText && yStart === yEnd;
 		const start = mint(startText, yStart, startAffinity ?? (collapsed ? 'left' : 'right'));
 		if (!start) return noSelection;
@@ -516,12 +516,7 @@ export class EdytorSelection {
 			at(startText, yStart),
 			endText,
 			at(endText, yEnd),
-			isReversed,
-			undefined,
-			(text, offset, side) =>
-				text.parent.isRoot
-					? null
-					: this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, side)
+			isReversed
 		);
 		const target = project(value, this.edytor.facade).start
 			? value
@@ -787,16 +782,16 @@ export class EdytorSelection {
 	 * facade maps to the owning backing text — content routed from other
 	 * blocks' backing texts (merges/splits) anchors correctly.
 	 *
-	 * `null` while the text isn't bound to a live block (mirrors the
-	 * baseline where a non-integrated Y.Text couldn't produce an absolute
-	 * position).
+	 * Minted from the text's block record, live or not (the atoms of a text
+	 * that died to a merge live on in the block that claimed them); `null`
+	 * for the root's own text.
 	 */
 	createTextAnchor = (
 		text: Text,
 		offset: number,
 		affinity: 'left' | 'right' = 'left'
 	): TextAnchor | null => {
-		if (text.parent.isRoot || !text.isInDocument) return null;
+		if (text.parent.isRoot) return null;
 		return this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, affinity);
 	};
 
@@ -829,10 +824,6 @@ export class EdytorSelection {
 			?.content.find((part): part is Text => part instanceof Text && part.node != null)?.node;
 		return !!node && !node.closest(visibility.HIDDEN);
 	};
-
-	/** The view's visibility rule (`selection/visibility.ts`), for extensions: hidden by view state, and the shown neighbour. */
-	hidden = visibility.hidden;
-	shown = visibility.shown;
 
 	/** The text's computed direction (a Surface fact): arrow and word keys are visual. */
 	rtl = (text: Text) => !!text.node?.isConnected && getComputedStyle(text.node).direction === 'rtl';

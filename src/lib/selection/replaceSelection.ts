@@ -392,7 +392,7 @@ export const deleteSelectedBlocks = (
 				...beside(blocks[0], 'blockBefore', blocks),
 				...beside(blocks.at(-1)!, 'blockAfter', blocks)
 			];
-	const deleted = edytor.dispatcher.caret(at?.text, at?.offset ?? 0, () =>
+	const deleted = edytor.dispatcher.caretIn(at?.text, at?.offset ?? 0, () =>
 		edytor.deleteBlocks(blocks.map((block) => block.id))
 	);
 	if (deleted?.status !== 'applied') return null;
@@ -405,7 +405,7 @@ export const deleteSelectedBlocks = (
 	const virtual = edytor.facade.virtual();
 	const text = virtual ? edytor.idToBlock.get(virtual)?.firstText : undefined;
 	const survivor = besides.find((block) => block.isInTree);
-	if (text) edytor.dispatcher.caret(text, 0);
+	if (text) edytor.dispatcher.caretIn(text, 0);
 	else if (survivor) edytor.selection.select(blockSelection([survivor.id]));
 	return text ?? null;
 };

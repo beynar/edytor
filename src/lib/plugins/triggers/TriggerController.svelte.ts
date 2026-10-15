@@ -192,7 +192,7 @@ export abstract class TextTriggerController extends ChromeList {
 				edytor.deleteText(block.id, from, to - from);
 			const kept = run.out === false || (run.taken && dispatcher.last?.status === 'refused');
 			const out = await run.out;
-			if (owns(text, held)) dispatcher.caret(text, kept ? end : triggerStart);
+			if (owns(text, held)) dispatcher.caretIn(text, kept ? end : triggerStart);
 			return out;
 		} finally {
 			this.picking = false;

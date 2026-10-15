@@ -650,35 +650,26 @@ export class Dispatcher {
 	}
 
 	/**
-	 * A command's result caret: selected once and recorded on the result;
-	 * the projector displays it after the flush. With `ops`, the
-	 * caret is declared before the command's operations run — minted while its
-	 * text is live, so it survives them — and written only when they applied;
-	 * meanwhile the seam repair leaves this view's endpoints to it. Takes a
-	 * text segment and an offset in it, or a `{ block, offset }` caret in
-	 * block offsets (an inline atom counting 1).
+	 * A command's result caret, `{ block, offset }` in block offsets (an
+	 * inline atom counting 1): selected once and recorded on the result;
+	 * the projector displays it after the flush. With `ops`, the caret is
+	 * declared before the command's operations run — minted while its text
+	 * is live, so it survives them — and written only when they applied;
+	 * meanwhile the seam repair leaves this view's endpoints to it.
 	 */
-	caret: {
-		(text: Text | null | undefined, offset: number, ops?: () => OpResult): OpResult | undefined;
-		(caret: Caret | DocPosition | null | undefined, ops?: () => OpResult): OpResult | undefined;
-	} = (
-		target: Text | Caret | DocPosition | null | undefined,
-		...rest: [number, (() => OpResult)?] | [(() => OpResult)?]
-	): OpResult | undefined => {
-		// The form is the arguments', not the target's: a nullish caret still runs its `ops`.
-		if (typeof rest[0] === 'number') {
-			return this.#caret(target as Text | null | undefined, rest[0], rest[1]);
-		}
-		const ops = rest[0] as (() => OpResult) | undefined;
-		const caret = target as Caret | DocPosition | null | undefined;
-		// `{ block, offset }`: block offsets (a handle or an id), mapped to the text segment that shows the offset.
+	caret = (caret: Caret | DocPosition | null | undefined, ops?: () => OpResult) => {
 		const block =
 			typeof caret?.block === 'string' ? this.edytor.idToBlock.get(caret.block) : caret?.block;
 		const at = block?.textAtOffset(Math.max(0, caret!.offset));
-		return this.#caret(at?.text, at?.offset ?? 0, ops);
+		return this.caretIn(at?.text, at?.offset ?? 0, ops);
 	};
 
-	#caret = (text: Text | null | undefined, offset: number, ops?: () => OpResult) => {
+	/** @internal `caret` at an offset inside a text segment. */
+	caretIn = (
+		text: Text | null | undefined,
+		offset: number,
+		ops?: () => OpResult
+	): OpResult | undefined => {
 		const selection = this.edytor.selection;
 		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
 		const value = text ? selection.textValue(text, at) : null;

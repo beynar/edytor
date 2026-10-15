@@ -282,7 +282,7 @@
 					const end = yStart + href.length;
 					edytor.dispatcher.run('insertFromPaste', () => {
 						edytor.insertText(text.parent.id, text.segStart + yStart, href);
-						edytor.dispatcher.caret(text, end);
+						edytor.dispatcher.caretIn(text, end);
 					});
 					if (text.stringContent.slice(yStart, end) === href)
 						operations.linkText(text, yStart, end, href);
@@ -325,7 +325,7 @@
 					} finally {
 						autolinking = false;
 					}
-					edytor.dispatcher.caret(text, yStart + 1);
+					edytor.dispatcher.caretIn(text, yStart + 1);
 					operations.linkText(text, found.start, end, found.href);
 				});
 			},

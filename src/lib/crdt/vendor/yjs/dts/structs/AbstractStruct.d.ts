@@ -11,6 +11,13 @@ export class AbstractStruct {
      */
     get deleted(): boolean;
     /**
+     * Whether the engine deleted this struct (YP20: an item can be hidden without
+     * being removed; a GC struct is removed, a Skip is not).
+     *
+     * @type {boolean}
+     */
+    get removed(): boolean;
+    /**
      * Merge this struct with the item to the right.
      * This method is already assuming that `this.id.clock + this.length === this.id.clock`.
      * Also this method does *not* remove right from StructStore!

@@ -9,8 +9,8 @@
  * The horizon is a state vector: an item whose clock is below it was
  * stored by the room before the horizon's time (`room.purge.timing`). A
  * deletion's time is the struct that made it: a block's oldest live delete
- * mark (a withdrawn block: its withdraw mark, and the marks of what it last
- * held), a text delete mark record, a placement candidate.
+ * mark (a withdrawn block: its withdraw mark, and the records of what it last
+ * held), a text hold record, a placement candidate.
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
 import {
@@ -31,12 +31,14 @@ import {
 	isNodeLike,
 	REC_PREFIX,
 	REGISTRY_KEY,
+	TEXT_DELETES_ROOT,
 	WITHDRAW_PREFIX
 } from './schema.js';
-import { bindDeletes, type Span } from './text/deletes.js';
-import { deleteIndex, type Copy, type Rec, type Unit as TextUnit } from './text/delete-index.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
-import { attrItems, firstItem } from './structs.js';
+import { attrItems, dropSearchMarkers, engineOps, firstItem } from './structs.js';
+
+/** Engine ids `c:k … c:k+n-1`. */
+type Span = { c: number; k: number; n: number };
 
 /** The horizon: the time and encoded state vector of the room's epoch (`room.purge.timing`). */
 export type Horizon = { at: number; sv: Uint8Array };
@@ -47,10 +49,8 @@ export type PurgeReport = {
 	removed: number;
 	/** Deleted blocks kept (they delimit a live text, or a block is placed under them) whose stream, data and claims were deleted. */
 	emptied: number;
-	/** Text delete mark records deleted. */
+	/** Text hold records deleted (what they held deleted with them). */
 	marks: number;
-	/** Restoration records deleted (their copies collected). */
-	records: number;
 	/** Placement candidates dropped (runner-ups of an old, accepted winner). */
 	candidates: number;
 	/** Claims naming a removed block, deleted from the blocks that hold them. */
@@ -67,9 +67,12 @@ type Item = {
 	id: { client: number; clock: number };
 	length: number;
 	deleted: boolean;
+	removed?: boolean;
 	countable?: boolean;
+	parent?: unknown;
 	right: Item | null;
-	content: { arr?: unknown[] };
+	content: { arr?: unknown[]; ids?: number[] };
+	delete(tr: unknown): void;
 };
 
 const mapOf = (node: EngineNode): Map<string, Item> => attrItems<Item>(node);
@@ -85,68 +88,66 @@ export const readHorizon = (doc: EngineDoc): Horizon | null => {
 };
 
 export const bindPurge = (Y: EngineApi) => {
-	const D = bindDeletes(Y);
-	const { rootSpans, holders, dropMarks, recordsIn, copiesOf, liveRoots, forget, collect } =
-		deleteIndex(Y);
+	const ops = engineOps(Y);
 	type Old = (client: number, clock: number) => boolean;
+	/** One live hold record (fork patch YP20): its id and the range it holds. */
+	type Hold = { client: number; clock: number } & Span;
 
-	/**
-	 * Whether every live mark holding a character of `spans` was written
-	 * where `old` says (a withdrawn block's content was deleted
-	 * before the horizon). Characters no mark holds count as old.
-	 */
-	const heldBefore = (doc: EngineDoc, spans: readonly Span[], old: Old): boolean => {
-		const s = D.state(doc);
-		return spans
-			.flatMap((sp) => rootSpans(s, sp))
-			.every((r) => holders(s, r).every((mark) => old(mark.client, mark.clock)));
+	/** The live hold records of `doc`, one per held range. */
+	const holdsOf = (doc: EngineDoc): Hold[] => {
+		const out: Hold[] = [];
+		for (let it = firstItem<Item>(doc.get(TEXT_DELETES_ROOT)); it; it = it.right) {
+			const ids = it.content.ids;
+			if (it.deleted || ids === undefined) continue;
+			for (let j = 0; j < ids.length; j += 3)
+				out.push({
+					client: it.id.client,
+					clock: it.id.clock + j / 3,
+					c: ids[j],
+					k: ids[j + 1],
+					n: ids[j + 2]
+				});
+		}
+		return out;
 	};
 
 	/**
-	 * The text's part (`room.purge.what`), inside the purge
-	 * transaction: delete every text delete mark record `old` names, and
-	 * every restoration record `old` names whose copies are all deleted
-	 * and that no remaining mark holds; its copies are forgotten (the
-	 * `gcFilter` no longer keeps them) and collected. Writes no mark.
+	 * Whether every live record holding an item of `spans` was written where
+	 * `old` says (a withdrawn block's content was deleted before the
+	 * horizon). Items no record holds count as old.
 	 */
-	const purgeText = (doc: EngineDoc, old: Old): { marks: number; records: number } => {
-		const s = D.state(doc);
-		const tr = s.doc._transaction;
-		if (tr === null) throw new Error('purge: outside a transaction');
-		const spans: Span[] = [];
-		const dropped: Rec[] = [];
-		for (let it = firstItem<TextUnit>(s.marks); it; it = it.right as TextUnit)
-			if (!it.deleted)
-				for (let j = 0; j < it.length; j++) {
-					const r = { client: it.id.client, clock: it.id.clock + j };
-					if (!old(r.client, r.clock)) continue;
-					dropped.push(r);
-					const last = spans[spans.length - 1];
-					if (last !== undefined && last.c === r.client && last.k + last.n === r.clock) last.n++;
-					else spans.push({ c: r.client, k: r.clock, n: 1 });
-				}
-		dropMarks(s, dropped);
-		const marks = dropped.length;
-		D.remove(tr, spans);
-		const doomed: { key: string; copies: Copy[] }[] = [];
-		attrItems<TextUnit>(s.restored).forEach((it, key) => {
-			if (it.deleted || !old(it.id.client, it.id.clock)) return;
-			const [record, bytes] = recordsIn(it, null)[0] ?? [];
-			if (bytes === undefined) return;
-			const copies = copiesOf(record, bytes);
-			const dead = copies.every(
-				(e) =>
-					liveRoots(s, { c: e.c, k: e.k, n: e.n, rk: e.k }).length === 0 &&
-					holders(s, { c: e.rc, k: e.rk, n: e.n }).length === 0
-			);
-			if (dead) doomed.push({ key, copies });
+	const heldBefore = (holds: readonly Hold[], spans: readonly Span[], old: Old): boolean =>
+		holds.every(
+			(h) =>
+				old(h.client, h.clock) ||
+				!spans.some((sp) => sp.c === h.c && sp.k < h.k + h.n && h.k < sp.k + sp.n)
+		);
+
+	/**
+	 * The text's part (`room.purge.what`), inside the purge transaction:
+	 * every hold record `old` names is deleted with what it holds (a real
+	 * delete: the engine collects it everywhere; a newer record holding the
+	 * same text has nothing to show again, the older delete is past the
+	 * horizon).
+	 */
+	const purgeText = (doc: EngineDoc, old: Old): number => {
+		const tr = (doc as { _transaction?: unknown })._transaction;
+		if (tr == null) throw new Error('purge: outside a transaction');
+		const doomed = holdsOf(doc).filter((h) => old(h.client, h.clock));
+		const ids = (spans: readonly Span[]) => {
+			const set = ops.idSet();
+			for (const sp of spans) set.add(sp.c, sp.k, sp.n);
+			return set;
+		};
+		ops.iterate<Item>(tr, ids(doomed), (it) => {
+			if (it.removed !== false) return;
+			it.delete(tr);
+			dropSearchMarkers(it.parent);
 		});
-		for (const { key, copies } of doomed) {
-			s.restored.deleteAttr(key);
-			forget(s, copies);
-			collect(s, tr, copies);
-		}
-		return { marks, records: doomed.length };
+		ops.iterate<Item>(tr, ids(doomed.map((h) => ({ c: h.client, k: h.clock, n: 1 }))), (it) =>
+			it.delete(tr)
+		);
+		return doomed.length;
 	};
 
 	/**
@@ -163,7 +164,6 @@ export const bindPurge = (Y: EngineApi) => {
 			removed: 0,
 			emptied: 0,
 			marks: 0,
-			records: 0,
 			candidates: 0,
 			claims: 0,
 			merged: 0
@@ -220,12 +220,13 @@ export const bindPurge = (Y: EngineApi) => {
 			for (const c of rec.cands) if (typeof c.p === 'string') add(children, c.p, id);
 		const winnerOld = (rec: BlockRec) =>
 			oldItem(mapOf(rec.node.getAttr(AT) as EngineNode)?.get(rec.cands[0]?.key));
+		const holds = shells.length > 0 ? holdsOf(doc) : [];
 		for (let grew = true; grew; ) {
 			grew = false;
 			for (const id of shells) {
 				if (dead.has(id)) continue;
 				const s = own.streamOf(id);
-				if (s !== undefined && !heldBefore(doc, regionSpans(s), old)) continue;
+				if (s !== undefined && !heldBefore(holds, regionSpans(s), old)) continue;
 				const left = (children.get(id) ?? []).every((child) => {
 					const rec = blocks.get(child)!;
 					return rec.cands[0]?.p === id ? dead.has(child) : winnerOld(rec);
@@ -361,10 +362,8 @@ export const bindPurge = (Y: EngineApi) => {
 			for (const c of rec.cands.slice(1)) at.deleteAttr(c.key);
 			report.candidates += rec.cands.length - 1;
 		}
-		// Text delete marks and restoration records past the horizon.
-		const text = purgeText(doc, old);
-		report.marks = text.marks;
-		report.records = text.records;
+		// Text hold records past the horizon, with what they hold.
+		report.marks = purgeText(doc, old);
 		// The horizon record, last.
 		doc.get(HORIZON_ROOT).setAttr(HORIZON_ATTR, { at: horizon.at, sv: horizon.sv });
 		return report;

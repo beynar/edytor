@@ -37,16 +37,13 @@ export const Y = {
 	createIdSet: V.createIdSet,
 	diffIdSet: V.diffIdSet,
 	insertIntoIdSet: V.insertIntoIdSet,
-	// text delete marks (`text/deletes.ts`, fork patch YP11)
+	// the document's undo manager (`doc/history.ts`, fork patch YP18)
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,
 	redoItem: V.redoItem,
-	// the document's undo manager (`doc/history.ts`, fork patch YP18)
 	keepItem: V.keepItem,
 	followRedone: V.followRedone,
 	isParentOf: V.isParentOf,
 	mergeIdSets: V.mergeIdSets,
-	// a folded delete record appended after the one it replaces
-	ContentAny: V.ContentAny,
 	createID: V.createID
 };

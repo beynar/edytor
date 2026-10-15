@@ -29,7 +29,7 @@ import { UpdateEncoder } from './UpdateEncoder.js'
 import { LazyStructReader, LazyStructWriter, writeStructToLazyStructWriter, finishLazyStructWriting } from './updates.js'
 import { readBlockSet, writeBlockSet } from './BlockSet.js'
 import { Skip } from '../structs/Skip.js'
-import { Item } from '../structs/Item.js'
+import { Item, applyPendingHolds } from '../structs/Item.js' // YP20: applyPendingHolds
 import { GC } from '../structs/GC.js'
 import { Doc } from './Doc.js'
 import { transact } from './Transaction.js'
@@ -287,6 +287,7 @@ export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new
     // start = performance.now()
     // console.log('time to merge: ', performance.now() - start) // @todo remove
     // start = performance.now()
+    const arrived = Array.from(ss.clients.keys()) // YP20: a hold of this update may wait for another of its clients
     const restStructs = integrateStructs(transaction, store, ss)
     const pending = store.pendingStructs
     if (pending) {
@@ -312,6 +313,7 @@ export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new
     }
     // console.log('time to integrate: ', performance.now() - start) // @todo remove
     // start = performance.now()
+    if (store.pendingHolds !== null) applyPendingHolds(transaction, arrived) // YP20: the holds that waited for what just arrived
     const dsRest = readAndApplyDeleteSet(structDecoder, transaction, store)
     if (store.pendingDs) {
       // @todo we could make a lower-bound state-vector check as we do above

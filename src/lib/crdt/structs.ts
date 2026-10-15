@@ -39,6 +39,10 @@ export type StoreStruct = {
 	countable?: boolean;
 	keep?: boolean;
 	redone?: { client: number; clock: number } | null;
+	/** Live hold records naming the item (fork patch YP20): a held item reads as deleted. */
+	holds?: number;
+	/** Whether the engine deleted it (`deleted` also covers a held item). */
+	removed?: boolean;
 };
 
 /**
@@ -165,13 +169,6 @@ export const dropSearchMarkers = (node: unknown): void => {
 	if (markers) markers.length = 0;
 };
 
-/** The clock `client`'s next struct gets in `doc`. */
-export const nextClock = (doc: EngineDoc, client: number): number => {
-	const structs = clientsOf(doc).get(client);
-	const last = structs?.[structs.length - 1];
-	return last === undefined ? 0 : last.id.clock + last.length;
-};
-
 /**
  * Whether `doc` holds updates it cannot integrate yet (vendor-internal
  * `store.pendingStructs`/`pendingDs`): an out-of-order delivery can apply
@@ -284,16 +281,6 @@ export const collectNow = (item: object, tr: unknown): void =>
 	(item as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
 
 /**
- * Listen to `doc`'s transaction events (vendor `beforeTransaction`,
- * `afterTransaction`), with the caller's view of a transaction.
- */
-export const onTransaction = <T>(
-	doc: EngineDoc | YDoc,
-	event: 'beforeTransaction' | 'afterTransaction',
-	f: (tr: T) => void
-): void => (doc as unknown as { on(e: string, f: (tr: T) => void): void }).on(event, f);
-
-/**
  * Whether a transaction changed one of `nodes` or a node under one: its
  * `changed` types and their ancestors (what a deep observer of `nodes`
  * would have heard; the engine has none, fork patch YP19).
@@ -349,9 +336,6 @@ export const engineOps = (Y: EngineApi) => {
 		/** Each struct `ids` covers, split at its edges, inside `tr`. */
 		iterate: <I = StoreStruct>(tr: unknown, ids: IdSetLike, f: (item: I) => void): void =>
 			Y.iterateStructsByIdSet(tr as Tr, ids as unknown as V, f as unknown as (s: unknown) => void),
-		/** The item starting at `client:clock`, split there, inside `tr`. */
-		cleanStart: <I = StoreStruct>(tr: unknown, client: number, clock: number): I =>
-			Y.getItemCleanStart(tr as Tr, Y.createID(client, clock)) as unknown as I,
 		/**
 		 * Re-create deleted `item` (`redoItem`, fork patch YP18): its copy, or
 		 * `null` when it cannot come back. `items` are re-created with it (a
@@ -399,31 +383,6 @@ export const engineOps = (Y: EngineApi) => {
 			(doc as unknown as Events).on(event, f),
 		off: (doc: EngineDoc, event: string, f: (...args: never[]) => void): void =>
 			(doc as unknown as Events).off(event, f),
-		/**
-		 * Integrate a new item holding `content` right after `left` (its
-		 * origin: `left`'s last id) in `parent`, written by `client` at
-		 * `clock`, inside `tr`.
-		 */
-		appendAfter: (
-			tr: unknown,
-			left: StoreStruct,
-			parent: EngineNode,
-			client: number,
-			clock: number,
-			content: unknown[]
-		): void => {
-			const item = new Y.Item(
-				Y.createID(client, clock),
-				left as unknown as Item,
-				(left as unknown as Item).lastId,
-				null,
-				null,
-				asYNode(parent),
-				null,
-				new Y.ContentAny(content)
-			);
-			item.integrate(tr as Tr, 0);
-		},
 		/** Whether `item` is a node value a concurrent write replaced and its doc keeps. */
 		isKeptReplaced: (item: unknown): boolean => Y.isKeptReplaced(item as Item)
 	};

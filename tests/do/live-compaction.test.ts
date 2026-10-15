@@ -1,7 +1,7 @@
 /**
  * Phase 2, P2 — compaction stores the room's healed live state, never a
  * merge of the records (`docs/archive/research/crdt-fix-plan-2026-10.md`). Rows
- * `room.compact.live`, `room.compact.waiting` and `room.compact.copies` of
+ * `room.compact.live`, `room.compact.waiting` and `room.compact.holds` of
  * `docs/editor-delete-contract.md`:
  *
  * - the snapshot is the live document's state without what waits (the
@@ -9,9 +9,10 @@
  *   live state: same state vector, delete set, encoding and JSON;
  * - structs waiting for a dependency at compaction are stored when it
  *   arrives, and a reload holds them;
- * - the room's document keeps the text a replica may copy again (P11's
- *   `gcFilter`): a deleted restoration copy keeps its content in the
- *   snapshot, as on an editing replica.
+ * - the room's document keeps held text (a text delete is its writer's hold
+ *   record, fork patch YP20): its content is in the snapshot with its record,
+ *   so a replica loading it shows the delete and the writer's undo shows the
+ *   text again.
  */
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
@@ -151,16 +152,14 @@ describe('P2 · compaction stores the live state', () => {
 		a.destroy();
 	});
 
-	it("the room keeps a deleted restoration copy's text, as an editing replica does (P11)", async () => {
-		const room = 'p2-copies';
+	it('the room keeps held text with its record: a reload shows the delete, the undo the text (YP20)', async () => {
+		const room = 'p2-holds';
 		const a = author('', 'ada');
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
 		await vi.waitFor(() => expect(client.synced).toBe(true));
 		a.transact(() => a.facade.insertText('p', 0, 'hello'));
 		a.transact(() => a.facade.deleteText('p', 0, 5));
-		a.history.undo(); // restores 'hello' by copying it (P11)
-		expect(a.facade.blockText('p')).toBe('hello');
-		a.transact(() => a.facade.deleteText('p', 0, 5)); // deletes the copy
+		expect(a.facade.blockText('p')).toBe('');
 		await vi.waitFor(async () =>
 			expect(await inRoom(room, (r) => Y.encodeStateVector(r.doc!))).toEqual(
 				Y.encodeStateVector(a.doc)
@@ -180,15 +179,16 @@ describe('P2 · compaction stores the live state', () => {
 					)
 					.map((s) => `${s.id.client}:${s.id.clock}+${s.length}`)
 			);
-		// What a replica keeps (P11's gcFilter), and what plain collection keeps.
-		const kept = crdt.createDoc();
-		crdt.doc.keepCopies(kept as never);
-		Y.applyUpdate(kept, Y.encodeStateAsUpdate(a.doc));
-		const plain = crdt.createDoc();
-		Y.applyUpdate(plain, Y.encodeStateAsUpdate(a.doc));
-		const expected = characters(Y.encodeStateAsUpdate(kept));
-		expect(expected.size).toBeGreaterThan(characters(Y.encodeStateAsUpdate(plain)).size);
-		expect(characters(snapshot)).toEqual(expected);
+		expect(characters(snapshot)).toEqual(characters(Y.encodeStateAsUpdate(a.doc)));
+		expect(characters(snapshot).size).toBeGreaterThan(0);
+		const reloaded = crdt.createDoc();
+		Y.applyUpdate(reloaded, snapshot);
+		expect(readFacade(reloaded, (f) => f.blockText('p'))).toBe('');
+		a.history.undo();
+		expect(a.facade.blockText('p')).toBe('hello');
+		await vi.waitFor(async () =>
+			expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe('hello')
+		);
 		client.close();
 		a.destroy();
 	});

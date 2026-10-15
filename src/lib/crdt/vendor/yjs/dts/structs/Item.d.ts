@@ -68,6 +68,13 @@ export class Item extends AbstractStruct {
      */
     info: number;
     /**
+     * YP20: how many live hold records (`ContentHold`) name this item. A
+     * held item reads as deleted; the count is local, never encoded (each
+     * replica counts the records it integrated).
+     * @type {number}
+     */
+    holds: number;
+    /**
      * This is used to mark the item as an indexed fast-search marker
      *
      * @type {boolean}
@@ -110,7 +117,7 @@ export class Item extends AbstractStruct {
      * @return {Item}
      */
     split(transaction: Transaction | null, diff: number): Item;
-    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11;
     /**
      * @type {true}
      */
@@ -172,9 +179,9 @@ export class AbstractContent {
      */
     write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
-     * @return {1|2|3|4|5|6|7|8|9}
+     * @return {1|2|3|4|5|6|7|8|9|11}
      */
-    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11;
 }
 export class ContentAny {
     /**
@@ -346,6 +353,70 @@ export class ContentDeleted {
      * @return {1}
      */
     getRef(): 1;
+}
+export function applyPendingHolds(tr: Transaction, clients: Array<number>): void;
+/**
+ * A hold record: one unit per held id range (`client, clock, len`). While the
+ * record is live, the items it names read as deleted; deleting the record
+ * shows them again (an undo), unless another live record holds them. A record
+ * integrates at once; what it names that has not arrived takes its hold when
+ * it does (`applyPendingHolds`).
+ */
+export class ContentHold {
+    /**
+     * @param {Array<number>} ids
+     */
+    constructor(ids: Array<number>);
+    ids: number[];
+    /**
+     * @return {number}
+     */
+    getLength(): number;
+    /**
+     * @return {Array<any>}
+     */
+    getContent(): Array<any>;
+    /**
+     * @return {boolean}
+     */
+    isCountable(): boolean;
+    /**
+     * @return {ContentHold}
+     */
+    copy(): ContentHold;
+    /**
+     * @param {number} offset
+     * @return {ContentHold}
+     */
+    splice(offset: number): ContentHold;
+    /**
+     * @param {ContentHold} right
+     * @return {boolean}
+     */
+    mergeWith(right: ContentHold): boolean;
+    /**
+     * @param {Transaction} transaction
+     * @param {Item} _item
+     */
+    integrate(transaction: Transaction, _item: Item): void;
+    /**
+     * @param {Transaction} transaction
+     */
+    delete(transaction: Transaction): void;
+    /**
+     * @param {Transaction} _tr
+     */
+    gc(_tr: Transaction): void;
+    /**
+     * @param {UpdateEncoder} encoder
+     * @param {number} offset
+     * @param {number} offsetEnd
+     */
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
+    /**
+     * @return {11}
+     */
+    getRef(): 11;
 }
 /**
  * @private

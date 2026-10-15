@@ -170,8 +170,9 @@ describe('independent review: transport boundaries', () => {
 
 	describe('save tracking covers deletes', () => {
 		/** A provider (never connected) on `value`, a stand-in room, and the acknowledgement it would send. */
-		const setup = (value: object) => {
-			const document = createDocument({ value, history: { captureTimeout: 0 } });
+		const setup = (value: object, captureTimeout = 0) => {
+			const document = createDocument({ value, history: { captureTimeout } });
+			void document.history;
 			const Provider = bindWebsocketProvider(Y).WebsocketProvider;
 			const provider = new Provider('ws://review.invalid', 'deletes', document.doc, {
 				connect: false,
@@ -267,11 +268,14 @@ describe('independent review: transport boundaries', () => {
 		});
 
 		it('deletes the room holds pending (their items missing) are never acknowledged', () => {
-			const { document, provider, updates, deliver, done } = setup(paragraph);
+			// Text typed and erased in one undo step is removed, not held (fork
+			// patch YP20): its delete is a delete set, with no struct.
+			const { document, provider, updates, deliver, done } = setup(paragraph, 60_000);
 			document.transact(() => document.facade.insertText('p', 5, '!'));
 			const insert = updates.at(-1)!;
 			document.transact(() => document.facade.deleteText('p', 5, 1));
 			const remove = updates.at(-1)!;
+			expect(Y.decodeUpdate(remove).structs).toHaveLength(0);
 			// The deletion reaches the room before the insertion it deletes.
 			deliver(remove);
 			const beforeInsert = provider.saved;

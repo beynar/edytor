@@ -73,6 +73,8 @@ export type Tx = {
 	insertSet?: IdSetLike;
 	deleteSet?: IdSetLike;
 	changed?: EngineTransaction['changed'];
+	/** The visibility changes hold records made, in order (fork patch YP20). */
+	holds?: number[];
 };
 
 /** The index's self-checks (`indexChecks`), run after each fold and each report. */

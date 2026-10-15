@@ -892,7 +892,6 @@ export type PurgeReport = {
     removed: number;
     emptied: number;
     marks: number;
-    records: number;
     candidates: number;
     claims: number;
     merged: number;

@@ -328,13 +328,13 @@ const withTail = (seed, ids) => {
 					ops.splitBlock(set.B, 't', 0, 'u'); // world is live on B
 					deliverOrdered(set, order);
 					settle(set);
-					// The undo copy and B's boundary share origin and right origin:
-					// the lower client id goes left (YATA order, pinned both ways).
+					// The undo shows world's own items again (a hold record goes,
+					// fork patch YP20), and B's boundary sits before them: B's split
+					// at 0 hands world to u whatever the client ids.
 					const verify = (s) => {
 						expect(text(s.A, 'b')).toBe('hello ');
-						expect(text(s.A, 't') + text(s.A, 'u')).toBe('world');
-						expect(text(s.A, 't')).toBe(a < b ? 'world' : '');
-						expect(text(s.A, 'u')).toBe(a < b ? '' : 'world');
+						expect(text(s.A, 't')).toBe('');
+						expect(text(s.A, 'u')).toBe('world');
 					};
 					verify(set);
 					reloadAll(set, verify);

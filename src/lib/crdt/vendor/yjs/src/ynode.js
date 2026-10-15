@@ -10,6 +10,7 @@ import {
   ContentFormat,
   ContentString,
   ContentType,
+  ContentHold, // YP20
   YXmlFragmentRefID,
   YXmlElementRefID,
   YXmlHookRefID
@@ -292,28 +293,74 @@ export const insertAtGapEndHelper = (transaction, parent, index, content) => {
 }
 // YP7 end
 
+// YP20 begin (edytor fork: hold records — see UPSTREAM.md YP20)
 /**
+ * The first clock in `(clock, end)` where membership in `set` changes, else `end`.
+ *
+ * @param {import('./utils/ids.js').IdSet} set
+ * @param {number} client
+ * @param {number} clock
+ * @param {number} end
+ * @return {number}
+ */
+const runEnd = (set, client, clock, end) => {
+  for (const r of set.clients.get(client)?.getIds() ?? []) {
+    if (r.clock > clock) return math.min(r.clock, end)
+    if (r.clock + r.len > clock) return math.min(r.clock + r.len, end)
+  }
+  return end
+}
+
+/**
+ * Append a hold record of `ids` to `list` (the document's records list).
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} list
+ * @param {Array<number>} ids
+ */
+const holdHelper = (transaction, list, ids) => {
+  insertInGapHelper(transaction, list, list._length, new ContentHold(ids))
+}
+// YP20 end
+
+/**
+ * With `held`, the live units are not deleted: their ids go to `held`
+ * (`client, clock, len`), except those `fresh` names (YP20).
+ *
  * @param {Transaction} transaction
  * @param {ItemTextListPosition} currPos
  * @param {number} length
+ * @param {Array<number>|null} [held]
+ * @param {import('./utils/ids.js').IdSet|null} [fresh]
  * @return {ItemTextListPosition}
  *
  * @private
  * @function
  */
-export const deleteText = (transaction, currPos, length) => {
+export const deleteText = (transaction, currPos, length, held = null, fresh = null) => {
   const startLength = length
+  let kept = 0 // YP20
   while (length > 0 && currPos.right !== null) {
     const item = currPos.right
     if (!item.deleted && item.countable) {
-      if (length < item.length) {
-        getItemCleanStart(transaction, createID(item.id.client, item.id.clock + length))
+      const { client, clock } = item.id
+      // YP20: a held run ends where the open step's inserts start or end
+      const n = fresh === null ? math.min(length, item.length) : runEnd(fresh, client, clock, clock + math.min(length, item.length)) - clock
+      if (n < item.length) {
+        getItemCleanStart(transaction, createID(client, clock + n))
       }
       length -= item.length
-      item.delete(transaction)
+      if (held === null || (fresh !== null && fresh.has(client, clock))) {
+        item.delete(transaction)
+      } else {
+        held.push(client, clock, item.length)
+        kept += item.length
+      }
     }
     currPos.forward()
   }
+  // YP20: the held units hide when their record integrates
+  currPos.index -= kept
   const parent = /** @type {YNode} */ (/** @type {Item} */ (currPos.left || currPos.right).parent)
   if (parent._searchMarker) {
     updateMarkerChanges(parent._searchMarker, currPos.index, -startLength + length)
@@ -939,11 +986,17 @@ export class YNode {
 
   /**
    * Deletes elements starting from an index. A deleted node is left as it is.
+   * YP20: with `into` (the document's records list), the live units are not
+   * removed but held by one record appended to `into` (their writer's delete,
+   * which an undo of the record takes back), except those `fresh` names (the
+   * open undo step's inserts: removed, so that step's undo changes nothing).
    *
    * @param {number} index Index at which to start deleting elements
    * @param {number} length The number of elements to remove. Defaults to 1.
+   * @param {YNode|null} [into]
+   * @param {import('./utils/ids.js').IdSet|null} [fresh]
    */
-  delete (index, length = 1) {
+  delete (index, length = 1, into = null, fresh = null) {
     if (!(length > 0)) return
     if (this.doc == null) {
       const runs = prelimOf(this).runs
@@ -959,9 +1012,28 @@ export class YNode {
     if (this._item !== null && this._item.deleted) return
     transact(this.doc, transaction => {
       const currPos = cursorAt(transaction, this, index)
-      deleteText(transaction, currPos, length)
+      const held = into === null ? null : [] // YP20
+      deleteText(transaction, currPos, length, held, fresh)
+      if (held !== null && held.length > 0) {
+        // YP20: `deleteText` moved the markers as for a delete; the hold keeps them
+        const ms = this._searchMarker === null ? null : this._searchMarker.slice()
+        holdHelper(transaction, /** @type {YNode} */ (into), held)
+        if (ms !== null && this._searchMarker !== null) this._searchMarker.splice(0, this._searchMarker.length, ...ms)
+      }
       plantMarker(this, currPos)
     })
+  }
+
+  /**
+   * YP20: append to this node (the document's records list) one hold record of
+   * the items `ids` names (`client, clock, len` triples): they read as deleted
+   * while the record is live.
+   *
+   * @param {Array<number>} ids
+   */
+  hold (ids) {
+    if (this.doc == null) throw new Error('hold: node is not integrated')
+    if (ids.length > 0) transact(this.doc, transaction => holdHelper(transaction, this, ids))
   }
 
   /**
@@ -1112,12 +1184,28 @@ export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
  */
 export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen())
 
+/**
+ * YP20: a hold record, one `client, clock, len` per unit.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentHold}
+ */
+export const readContentHold = decoder => {
+  const ids = []
+  for (let n = decoder.readLen(); n > 0; n--) {
+    const id = decoder.readLeftID()
+    ids.push(id.client, id.clock, decoder.readLen())
+  }
+  return new ContentHold(ids)
+}
+
 const refused = () => { error.unexpectedCase() }
 
 /**
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
- * writes none, so an update holding one is malformed.
+ * writes none, so an update holding one is malformed. YP20: 11 is a hold
+ * record.
  *
  * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
@@ -1132,7 +1220,8 @@ export const contentRefs = [
   readContentType, // 7
   readContentAny, // 8
   refused, // 9 - subdocument
-  refused // 10 - Skip is not ItemContent
+  refused, // 10 - Skip is not ItemContent
+  readContentHold // 11 - a hold record (YP20)
 ]
 
 /**

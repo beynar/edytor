@@ -50,6 +50,8 @@ export type EngineItemRef = {
  */
 export interface EngineTransaction {
 	changed?: Map<unknown, Set<string | null>>;
+	/** The visibility changes hold records made, in order: `client, clock, ±len` per item (`> 0` shown). */
+	holds?: number[];
 }
 
 /**
@@ -74,7 +76,15 @@ export interface EngineNode {
 	attrKeys(): IterableIterator<string>;
 
 	insert(index: number, content: unknown): void;
-	delete(index: number, length?: number): void;
+	/**
+	 * Delete `length` live units at `index`. With `into` (the document's
+	 * records list), they are held by one record appended there instead (a
+	 * delete its writer can take back), except those `fresh` names, which are
+	 * removed.
+	 */
+	delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
+	/** Append one hold record of `ids` (`client, clock, len` triples) to this records list: they read as deleted while it lives. */
+	hold(ids: number[]): void;
 }
 
 /** Structural minimum of the vendored `Y.Doc`. */

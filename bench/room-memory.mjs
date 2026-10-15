@@ -11,8 +11,8 @@
  * engine doc that snapshot loads into, plus, once a server edit, a history,
  * a validation or a read needs it, the facade's index. This script builds
  * documents of several shapes with `createDocument`, stores them the way a
- * compaction does, loads each into a room-like doc (`keepCopies`, as
- * `prepareRoomDoc`) three times over, and reads the retained heap after a
+ * compaction does, loads each into a room-like doc (as `prepareRoomDoc`)
+ * three times over, and reads the retained heap after a
  * full GC: once with the bare doc, once with its facade too.
  *
  * workerd exposes no heap counter (`process.memoryUsage()` and
@@ -134,7 +134,6 @@ const retained = (bytes, facade) => {
 	const held = [];
 	for (let i = 0; i < 3; i++) {
 		const doc = crdt.createDoc();
-		crdt.doc.keepCopies(doc);
 		Y.applyUpdate(doc, bytes);
 		const f = facade ? crdt.doc.create(doc, lookups) : null;
 		if (f) f.toJSON();

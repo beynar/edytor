@@ -120,7 +120,6 @@ const counters = () => ({
 		removed: 0,
 		emptied: 0,
 		marks: 0,
-		records: 0,
 		candidates: 0,
 		claims: 0,
 		merged: 0

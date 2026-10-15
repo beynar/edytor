@@ -50,6 +50,19 @@ const ed = (peer: Peer) => {
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
 
 /**
+ * The document's own history on `peer` (its local origin, one step per op):
+ * a text delete is a hold record and undoing typing holds the typed text
+ * (fork patch YP20), so text never comes back as a copy the records do not
+ * name — the raw engine undo manager re-creates typed text as copies.
+ */
+const history = (peer: Peer) => {
+	peer.undoManager = ed(peer).createUndoManager({
+		captureTimeout: 0,
+		trackedOrigins: new Set([peer.localOrigin])
+	}) as never;
+};
+
+/**
  * D-14 (R3): a delete now hides everything the block displays, so the
  * pre-D1 "a deleted holder releases its coverage" state is staged by
  * removing the registry entry — an absent block's records claim nothing,
@@ -128,7 +141,7 @@ describe('regression A — insert after concurrent splits must not steal owned a
 				}
 			};
 			mid(set);
-			A.enableUndo({ scope: A.doc.get('blocks'), captureTimeout: 0 });
+			history(A);
 			// The reproducing op: left-edge insert into the middle segment.
 			op(A, () => ops.insertText(A, 'early', 0, 'X'));
 			exchange();
@@ -205,22 +218,19 @@ describe('regression A — insert after concurrent splits must not steal owned a
 			verify2(set);
 
 			// ── undo/redo over the six writes (each its own stack item) ──
-			// R3 undo-ownership repair (docs/crdt-v14-undo-ownership-adr.md):
-			// the engine resurrects a deleted atom as a NEW item whose slice
-			// anchors do not follow it — the repair re-asserts the pre-delete
-			// holder's claim over the copy atoms as replicated state, so a
-			// resurrected atom displays under the SAME block that held it
-			// when it was deleted (no drift on undoing the delete AND no
-			// drift on redoing the inserts: Z returns to 'late').
+			// R3 undo ownership: an undo shows the atoms it hid again, the
+			// same items where they were (fork patch YP20: no copy), so each
+			// displays under the block that held it (no drift on undoing the
+			// delete AND no drift on redoing the inserts: Z returns to 'late').
 			for (let i = 0; i < 6; i++) A.undoManager.undo();
 			// All six writes undone → back to the nested partition.
 			expect(text(A, 'b')).toBe('abc');
 			expect(text(A, 'early')).toBe('defgh');
 			expect(text(A, 'late')).toBe('ij');
 			for (let i = 0; i < 6; i++) A.undoManager.redo();
-			// After the full redo the resurrection path restores each atom
-			// to the block that displayed it: Z lands back on 'late' (the
-			// pre-repair drift put it under early's still-covering record).
+			// After the full redo each atom is back in the block that
+			// displayed it: Z lands back on 'late' (the pre-repair drift put
+			// it under early's still-covering record).
 			expect(text(A, 'b')).toBe('abc');
 			expect(text(A, 'early')).toBe('defghY');
 			expect(text(A, 'late')).toBe('Zij');
@@ -299,7 +309,7 @@ describe('regression B — insert into an empty head must not edit the tail', ()
 	it('revive claims the inserted atoms on the head, tail untouched', () => {
 		const set = createPeerPair(SEED);
 		const { A } = set;
-		A.enableUndo({ scope: A.doc.get('blocks'), captureTimeout: 0 });
+		history(A);
 		op(A, () => ops.splitBlock(A, 'b', 0, 'tail'));
 		expect(text(A, 'b')).toBe('');
 		expect(text(A, 'tail')).toBe('abcdefghij');
@@ -325,14 +335,14 @@ describe('regression B — insert into an empty head must not edit the tail', ()
 			{ kind: 'inline', id: 'in-b', type: 'mention' }
 		]);
 		expect(text(A, 'tail')).toBe('abcdefghij');
-		// ── undo/redo: undoing the delete resurrects X as a NEW item, which
-		// `redoItem` integrates beside its tombstone — before tail's boundary,
-		// in b's stream (R2): X comes home to 'b' with no repair write.
+		// ── undo/redo: undoing the delete shows X again where it was —
+		// before tail's boundary, in b's stream (R2): X comes home to 'b'
+		// with no repair write.
 		A.undoManager.undo(); // undoes `del` — X resurrects in b's stream
 		expect(text(A, 'b')).toBe('XY');
 		expect(text(A, 'tail')).toBe('abcdefghij');
 		// Undo the rest (mark, in-b, Y, X-insert) — the insert's own undo
-		// removes the resurrected successor too, restoring the split state.
+		// hides X again, restoring the split state.
 		for (let i = 0; i < 4; i++) A.undoManager.undo();
 		expect(text(A, 'b')).toBe('');
 		expect(text(A, 'tail')).toBe('abcdefghij');

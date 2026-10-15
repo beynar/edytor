@@ -44,6 +44,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
+import { TEXT_DELETES_ROOT } from '../../../lib/crdt/schema.js';
 import { mulberry32 } from './rng.js';
 import { updateHash } from './trace.js';
 import type { TraceEvent } from './trace.js';
@@ -200,11 +201,17 @@ export class Peer {
 	/**
 	 * Enable a local UndoManager tracking only this peer's local origin.
 	 * `opts.scope` narrows the scope to a subtree (e.g. the model registry
-	 * node); the doc-wide default matches upstream behavior.
+	 * node), always with the text hold records (a text delete is a record
+	 * there, fork patch YP20); the doc-wide default matches upstream behavior.
 	 */
 	enableUndo(opts: Record<string, unknown> & { scope?: unknown } = {}): UndoManager {
 		const { scope, ...rest } = opts;
-		this.undoManager = new UndoManager((scope ?? this.doc) as never, {
+		const records = this.doc.get(TEXT_DELETES_ROOT);
+		const narrowed =
+			scope === undefined || scope === this.doc
+				? this.doc
+				: [...(Array.isArray(scope) ? scope : [scope]).filter((t) => t !== records), records];
+		this.undoManager = new UndoManager(narrowed as never, {
 			trackedOrigins: new Set([this.localOrigin]),
 			...rest
 		});

@@ -40,6 +40,13 @@ export class Transaction {
      */
     this.insertSet = createIdSet()
     /**
+     * YP20: the visibility changes hold records made, in order: per item,
+     * `client, clock, len` (`len > 0`: shown, `< 0`: hidden; an item removed
+     * while held is logged shown, as the delete set counts it hidden).
+     * @type {Array<number>}
+     */
+    this.holds = []
+    /**
      * All types that were directly modified (property added or child
      * inserted/deleted). New types are not included in this Set.
      * Maps from type to parentSubs (`item.parentSub = null` for YArray)

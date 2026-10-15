@@ -7,7 +7,7 @@
  * - a deleted block whose text family is all dead and that nothing is
  *   placed under goes whole (its registry entry); any other keeps its node,
  *   its stream's text, data leaves and claims deleted;
- * - text delete mark records past the horizon go; a withdrawn creation
+ * - text hold records past the horizon go, with what they hold; a withdrawn creation
  *   goes; a runner-up placement candidate of an old, accepted winner goes;
  * - a history drops the steps below the horizon: their undo restores
  *   nothing, a newer step still undoes;
@@ -271,7 +271,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		expect(crdt.doc.horizonOf(room.doc)).toEqual(horizon);
 		const sv = Y.encodeStateVector(room.doc);
 		const report = purge(room, horizon);
-		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, records: 0, candidates: 0 });
+		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, candidates: 0 });
 		// Only the record is written again (one attr); the room never repeats a horizon.
 		expect(Y.decodeStateVector(Y.encodeStateVector(room.doc)).get(room.doc.clientID)).toBe(
 			(Y.decodeStateVector(sv).get(room.doc.clientID) ?? 0) + 1

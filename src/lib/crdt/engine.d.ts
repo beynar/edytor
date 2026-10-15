@@ -30,7 +30,6 @@ export type EngineSymbol =
 	| 'followRedone'
 	| 'isParentOf'
 	| 'mergeIdSets'
-	| 'ContentAny'
 	| 'createID';
 
 export declare const Y: Pick<typeof V, EngineSymbol>;

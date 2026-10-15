@@ -7,9 +7,13 @@ import { ID, createID, compareIDs, findRootTypeKey } from '../utils/ID.js'
 import { GC } from '../structs/GC.js'
 import { sortsBefore, pairedRole } from '../utils/marks.js' // YP13
 
+import * as math from 'lib0-v14/math' // YP20
+
 import {
   replaceStruct,
   getItemCleanEnd,
+  getItemCleanStart, // YP20
+  findIndexSS, // YP20
   addChangedTypeToTransaction,
   isKeptReplaced // YP14
 } from '../utils/transaction-helpers.js'
@@ -107,6 +111,13 @@ export class Item extends AbstractStruct {
      * @type {number} byte
      */
     this.info = this.content.isCountable() ? binary.BIT2 : 0
+    /**
+     * YP20: how many live hold records (`ContentHold`) name this item. A
+     * held item reads as deleted; the count is local, never encoded (each
+     * replica counts the records it integrated).
+     * @type {number}
+     */
+    this.holds = 0
   }
 
   /**
@@ -142,10 +153,19 @@ export class Item extends AbstractStruct {
   }
 
   /**
-   * Whether this item was deleted or not.
+   * Whether this item is hidden: removed, or held by a live hold record (YP20).
    * @type {Boolean}
    */
   get deleted () {
+    return (this.info & binary.BIT3) > 0 || this.holds > 0
+  }
+
+  /**
+   * Whether the engine deleted this item (the delete set's fact; YP20: a held
+   * item is hidden, not removed).
+   * @type {Boolean}
+   */
+  get removed () {
     return (this.info & binary.BIT3) > 0
   }
 
@@ -266,7 +286,7 @@ export class Item extends AbstractStruct {
       addChangedTypeToTransaction(transaction, /** @type {YNode} */ (this.parent), this.parentSub)
       const parentItem = /** @type {YNode} */ (this.parent)._item
       // YP14: a node a concurrent value replaced keeps its subtree: what lands in it stays
-      if ((parentItem !== null && parentItem.deleted && !isKeptReplaced(parentItem)) || (this.parentSub !== null && this.right !== null)) {
+      if ((parentItem !== null && parentItem.removed && !isKeptReplaced(parentItem)) || (this.parentSub !== null && this.right !== null)) { // YP20: a held parent is alive
         // delete if parent is deleted or if this is not the current attribute value of parent
         this.delete(transaction)
       }
@@ -298,7 +318,8 @@ export class Item extends AbstractStruct {
       compareIDs(this.rightOrigin, right.rightOrigin) &&
       this.id.client === right.id.client &&
       this.id.clock + this.length === right.id.clock &&
-      this.deleted === right.deleted &&
+      this.removed === right.removed &&
+      this.holds === right.holds && // YP20
       this.redone === null &&
       right.redone === null &&
       this.content.constructor === right.content.constructor &&
@@ -339,10 +360,13 @@ export class Item extends AbstractStruct {
    * @param {Transaction} transaction
    */
   delete (transaction) {
-    if (!this.deleted) {
+    if (!this.removed) {
       const parent = /** @type {YNode} */ (this.parent)
       // adjust the length of parent
-      if (this.countable && this.parentSub === null) {
+      if (this.holds > 0) {
+        // YP20: already hidden — the delete set counts it again, the log gives it back
+        logHold(transaction, this, this.length)
+      } else if (this.countable && this.parentSub === null) {
         parent._length -= this.length
       }
       // WU9 format-aware markers: tombstoning a format item changes the format
@@ -367,7 +391,7 @@ export class Item extends AbstractStruct {
    * @param {boolean} parentGCd
    */
   gc (tr, parentGCd) {
-    if (!this.deleted) {
+    if (!this.removed) { // YP20
       throw error.unexpectedCase()
     }
     this.content.gc(tr)
@@ -399,9 +423,10 @@ export class Item extends AbstractStruct {
       this.parentSub,
       this.content.splice(diff)
     )
-    if (this.deleted) {
+    if (this.removed) { // YP20
       rightItem.markDeleted()
     }
+    rightItem.holds = this.holds // YP20
     if (this.keep) {
       rightItem.keep = true
     }
@@ -580,9 +605,9 @@ export class AbstractContent {
   }
 
   /**
-   * @return {1|2|3|4|5|6|7|8|9}
+   * @return {1|2|3|4|5|6|7|8|9|11}
    */
-  getRef () {
+  getRef () { // YP20: 11, a hold record
     throw error.methodUnimplemented()
   }
 }
@@ -851,6 +876,227 @@ export class ContentDeleted {
     return 1
   }
 }
+
+// YP20 begin (edytor fork: hold records — see UPSTREAM.md YP20)
+/**
+ * Log that a hold changed `item`'s visibility (`len > 0`: shown, `< 0`:
+ * hidden) in `tr.holds`, in order, and its parent as changed.
+ *
+ * @param {Transaction} tr
+ * @param {Item} item
+ * @param {number} len
+ */
+const logHold = (tr, item, len) => {
+  tr.holds.push(item.id.client, item.id.clock, len)
+  addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
+}
+
+/**
+ * Add `delta` (1: hold, -1: release) to `item`'s holds; an item that is not
+ * removed and starts or stops being held moves its parent's length, drops
+ * its search markers and is logged.
+ *
+ * @param {Transaction} tr
+ * @param {Item} item
+ * @param {number} delta
+ */
+const holdItem = (tr, item, delta) => {
+  const was = item.deleted
+  item.holds += delta
+  if (was !== item.deleted) {
+    const parent = /** @type {YNode} */ (item.parent)
+    const len = was ? item.length : -item.length
+    if (item.countable && item.parentSub === null) parent._length += len
+    // the indices the search markers counted moved (a held delete moves them itself)
+    if (parent._searchMarker) parent._searchMarker.length = 0
+    logHold(tr, item, len)
+  }
+}
+
+/**
+ * A hold this replica cannot apply yet (its items have not arrived): it waits
+ * in `store.pendingHolds` (`client → [clock, len, delta, …]`).
+ *
+ * @param {import('../utils/StructStore.js').StructStore} store
+ * @param {number} client
+ * @param {number} from
+ * @param {number} to
+ * @param {number} delta
+ */
+const pendHold = (store, client, from, to, delta) => {
+  const pending = store.pendingHolds ?? (store.pendingHolds = new Map())
+  const list = pending.get(client)
+  if (list === undefined) pending.set(client, [from, to - from, delta])
+  else list.push(from, to - from, delta)
+}
+
+/**
+ * Hold (`delta` 1) or release (-1) the ids `client:clock … clock+len-1`: the
+ * items here take it now, split at the edges; what this replica lacks (past
+ * its clock, or a Skip) waits until it integrates (`applyPendingHolds`). A GC
+ * struct takes nothing (it is gone everywhere).
+ *
+ * @param {Transaction} tr
+ * @param {number} client
+ * @param {number} clock
+ * @param {number} len
+ * @param {number} delta
+ */
+const holdRange = (tr, client, clock, len, delta) => {
+  const store = tr.doc.store
+  const structs = /** @type {Array<GC|Item>} */ (store.clients.get(client))
+  const end = clock + len
+  const state = store.getClock(client)
+  if (end > state) pendHold(store, client, math.max(clock, state), end, delta)
+  for (let k = clock; k < math.min(end, state);) {
+    let struct = structs[findIndexSS(structs, k)]
+    const to = math.min(struct.id.clock + struct.length, end)
+    if (struct.isItem) {
+      if (struct.id.clock < k) struct = getItemCleanStart(tr, createID(client, k))
+      if (struct.id.clock + struct.length > to) getItemCleanStart(tr, createID(client, to))
+      holdItem(tr, /** @type {Item} */ (struct), delta)
+    } else if (!struct.deleted) {
+      pendHold(store, client, k, to, delta) // a Skip
+    }
+    k = to
+  }
+}
+
+/**
+ * Hold or release (`delta`) the items `ids` names (`client, clock, len` triples).
+ *
+ * @param {Transaction} tr
+ * @param {Array<number>} ids
+ * @param {number} delta
+ */
+const holdIds = (tr, ids, delta) => {
+  for (let i = 0; i < ids.length; i += 3) holdRange(tr, ids[i], ids[i + 1], ids[i + 2], delta)
+}
+
+/**
+ * Apply the holds that waited for items of `clients` an update just
+ * integrated (what is still missing waits on).
+ *
+ * @param {Transaction} tr
+ * @param {Array<number>} clients
+ */
+export const applyPendingHolds = (tr, clients) => {
+  const store = tr.doc.store
+  for (const client of clients) {
+    const list = store.pendingHolds?.get(client)
+    if (list === undefined) continue
+    /** @type {Map<number, Array<number>>} */ (store.pendingHolds).delete(client)
+    for (let i = 0; i < list.length; i += 3) holdRange(tr, client, list[i], list[i + 1], list[i + 2])
+  }
+  if (store.pendingHolds?.size === 0) store.pendingHolds = null
+}
+
+/**
+ * A hold record: one unit per held id range (`client, clock, len`). While the
+ * record is live, the items it names read as deleted; deleting the record
+ * shows them again (an undo), unless another live record holds them. A record
+ * integrates at once; what it names that has not arrived takes its hold when
+ * it does (`applyPendingHolds`).
+ */
+export class ContentHold {
+  /**
+   * @param {Array<number>} ids
+   */
+  constructor (ids) {
+    this.ids = ids
+  }
+
+  /**
+   * @return {number}
+   */
+  getLength () {
+    return this.ids.length / 3
+  }
+
+  /**
+   * @return {Array<any>}
+   */
+  getContent () {
+    const out = []
+    for (let i = 0; i < this.ids.length; i += 3) out.push(this.ids.slice(i, i + 3))
+    return out
+  }
+
+  /**
+   * @return {boolean}
+   */
+  isCountable () {
+    return true
+  }
+
+  /**
+   * @return {ContentHold}
+   */
+  copy () {
+    return new ContentHold(this.ids)
+  }
+
+  /**
+   * @param {number} offset
+   * @return {ContentHold}
+   */
+  splice (offset) {
+    const right = new ContentHold(this.ids.slice(offset * 3))
+    this.ids = this.ids.slice(0, offset * 3)
+    return right
+  }
+
+  /**
+   * @param {ContentHold} right
+   * @return {boolean}
+   */
+  mergeWith (right) {
+    this.ids = this.ids.concat(right.ids)
+    return true
+  }
+
+  /**
+   * @param {Transaction} transaction
+   * @param {Item} _item
+   */
+  integrate (transaction, _item) {
+    holdIds(transaction, this.ids, 1)
+  }
+
+  /**
+   * @param {Transaction} transaction
+   */
+  delete (transaction) {
+    holdIds(transaction, this.ids, -1)
+  }
+
+  /**
+   * @param {Transaction} _tr
+   */
+  gc (_tr) {}
+
+  /**
+   * @param {UpdateEncoder} encoder
+   * @param {number} offset
+   * @param {number} offsetEnd
+   */
+  write (encoder, offset, offsetEnd) {
+    const end = this.ids.length - offsetEnd * 3
+    encoder.writeLen(end / 3 - offset)
+    for (let i = offset * 3; i < end; i += 3) {
+      encoder.writeLeftID(createID(this.ids[i], this.ids[i + 1]))
+      encoder.writeLen(this.ids[i + 2])
+    }
+  }
+
+  /**
+   * @return {11}
+   */
+  getRef () {
+    return 11
+  }
+}
+// YP20 end
 
 /**
  * @private
@@ -1132,7 +1378,7 @@ export class ContentType {
   delete (transaction) {
     let item = this.type._start
     while (item !== null) {
-      if (!item.deleted) {
+      if (!item.removed) { // YP20: a held child goes with its node
         item.delete(transaction)
       } else if (!transaction.insertSet.hasId(item.id)) {
         // This will be gc'd later and we want to merge it if possible
@@ -1144,7 +1390,7 @@ export class ContentType {
       item = item.right
     }
     this.type._map.forEach(item => {
-      if (!item.deleted) {
+      if (!item.removed) { // YP20
         item.delete(transaction)
       } else if (!transaction.insertSet.hasId(item.id)) {
         // same as above

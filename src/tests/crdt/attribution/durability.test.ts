@@ -225,10 +225,12 @@ describe('legacy compat — retention / GC', () => {
 		const deleted = legacyRecordFor([x], 'alice', 'deletes');
 		writeLegacyRecord(a.doc, 'a/legacy0/0', inserted);
 		writeLegacyRecord(a.doc, 'a/legacy0/1', deleted);
-		// Delete outside the tracked history: an untracked tombstone is not
+		// Remove it outside the tracked history: an untracked tombstone is not
 		// `keep`-marked, so the delete transaction's cleanup collects its payload.
+		// (A text delete holds its text, fork patch YP20: the engine collects
+		// what is removed, as the purge removes it.)
 		a.clearHistory();
-		a.doc.transact(() => a.facade.deleteText(block.id, 0, 1), 'untracked-gc');
+		a.doc.transact(() => contentNodeOf(a, block.id).delete(0, 1), 'untracked-gc');
 		// The payload is unrecoverable — the struct's content was replaced
 		// by a deleted-marker (the id range itself remains as tombstone
 		// metadata; full GC replacement happens when the parent dies).

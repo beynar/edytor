@@ -1,26 +1,29 @@
 /**
  * The document's history: the one undo manager (fork patch YP18 removed the
  * engine's). It captures the tracked local transactions that write in its
- * scope (the block registry, the text delete marks, the document's data)
+ * scope (the block registry, the text hold records, the document's data)
  * into steps, and an undo or a redo replays a step in one transaction over
- * the engine's struct primitives (`redoItem`, `keepItem`). Its rules: text
- * comes back as the delete marks allow (`hist.undo.restore`), an undone
+ * the engine's struct primitives (`redoItem`, `keepItem`). Its rules: a text
+ * delete is a hold record (fork patch YP20), so undoing it deletes the record
+ * and the text shows again unless another writer's record holds it
+ * (`hist.undo.restore`); undoing typing holds the typed text; an undone
  * creation is withdrawn (`hist.undo.withdraw`), an overwritten attr is
  * repaired, the stack keeps `limit` steps, and the purge horizon drops the
  * steps below it (`hist.purge.horizon`).
  */
 import { getUnixTime } from 'lib0-v14/time';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import type { TextDeletes } from '../text/deletes.js';
-import { ownTextIds } from '../text/model.js';
+import { openSteps, ownTextIds } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
 	BLOCK_NODE,
+	CONTENT_NODE,
 	DATA_LEAF_PREFIX,
 	DOC_DATA_ROOT,
 	HORIZON_ROOT,
 	INLINE_NODE,
 	LAST_CHANGED_ATTR,
+	TEXT_DELETES_ROOT,
 	TYPE
 } from '../schema.js';
 import {
@@ -82,8 +85,8 @@ type Rules = {
 	Y: EngineApi;
 	doc: EngineDoc;
 	scope: EngineNode[];
-	/** The text delete marks' restore and apply rules (`text/deletes.ts`). */
-	marks: { restoreFilter(item: unknown): boolean; onApply(tr: unknown, step: StackItem): void };
+	/** The records list a replay's text holds go to (fork patch YP20). */
+	records: EngineNode;
 	/** Whether an item a replay would delete is withdrawn instead (`hist.undo.withdraw`). */
 	withdraw(item: StoreStruct, step: StackItem): boolean;
 	/** Repair the attrs a replay left undefined. */
@@ -94,6 +97,16 @@ type Rules = {
 const REPAIRED: Record<string, readonly string[]> = {
 	[BLOCK_NODE]: [TYPE, LAST_CHANGED_ATTR],
 	[INLINE_NODE]: [TYPE]
+};
+
+/** A unit of a block's text: a character or an inline atom (what a hold record holds). */
+const isUnit = (it: StoreStruct): boolean => {
+	const content = (it as { content?: { str?: unknown; type?: { name?: string } } }).content;
+	return (
+		it.parentSub === null &&
+		(it.parent as { name?: string } | undefined)?.name === CONTENT_NODE &&
+		(typeof content?.str === 'string' || content?.type?.name === INLINE_NODE)
+	);
 };
 
 /**
@@ -138,7 +151,21 @@ export class UndoManager {
 		this.trackedOrigins.add(this);
 		this.#ops.on(rules.doc, 'afterTransaction', this.#afterTransaction);
 		this.#ops.on(rules.doc, 'destroy', this.destroy);
+		const open = openSteps.get(rules.doc) ?? new Set();
+		openSteps.set(rules.doc, open.add(this.#open));
 	}
+
+	/** What the step still capturing inserted (`null`: none is open): a text delete there removes. */
+	#open = (): IdSetOf | null => {
+		const top = this.undoStack.at(-1);
+		const open =
+			top !== undefined &&
+			!this.undoing &&
+			!this.redoing &&
+			this.lastChange > 0 &&
+			getUnixTime() - this.lastChange < this.captureTimeout;
+		return open ? top.inserts : null;
+	};
 
 	/** Be told of every step taken into a stack (added, or the open one updated). Returns the unsubscribe. */
 	observe(f: (event: StepEvent, added: boolean) => void): () => void {
@@ -186,6 +213,7 @@ export class UndoManager {
 
 	destroy = (): void => {
 		this.trackedOrigins.delete(this);
+		openSteps.get(this.doc)?.delete(this.#open);
 		this.#ops.off(this.doc, 'afterTransaction', this.#afterTransaction);
 		this.#ops.off(this.doc, 'destroy', this.destroy);
 		this.#observers.clear();
@@ -253,13 +281,14 @@ export class UndoManager {
 
 	/**
 	 * Replay the top step of `stack` in one transaction (origin: this
-	 * manager): what it inserted is deleted (or withdrawn), what it deleted
-	 * comes back (text as its delete marks allow), the overwritten attrs are
+	 * manager): what it inserted is deleted (text: held by a record of this
+	 * writer; a block: withdrawn), what it deleted comes back (a text delete
+	 * was a record: deleting it shows the text), the overwritten attrs are
 	 * repaired. A step that changes nothing is skipped for the one below.
 	 */
 	#pop(stack: StackItem[]): StackItem | null {
 		const ops = this.#ops;
-		const { marks, withdraw, repair } = this.#rules;
+		const { records, withdraw, repair } = this.#rules;
 		const deletedByHistory = (id: { client: number; clock: number }) =>
 			[this.undoStack, this.redoStack].some((s) =>
 				s.some((step) => step.deletes.has(id.client, id.clock))
@@ -270,6 +299,7 @@ export class UndoManager {
 				const step = stack.pop()!;
 				const restore = new Set<StoreStruct>();
 				const remove: StoreStruct[] = [];
+				const held: number[] = [];
 				let changed = false;
 				ops.iterate(tr, step.inserts, (struct) => {
 					if (!ops.isItem(struct)) return;
@@ -280,22 +310,23 @@ export class UndoManager {
 					if (!ops.isItem(struct) || !this.#inScope(struct)) return;
 					// Created and deleted within the step: nothing to bring back.
 					if (step.inserts.has(struct.id.client, struct.id.clock)) return;
-					// Text comes back through the delete marks (`onApply`): withheld here.
-					if (!marks.restoreFilter(struct)) changed = true;
-					else restore.add(struct);
+					// Text a record holds stays hidden: the record decides (removed with its node).
+					if ((struct.holds ?? 0) > 0) return;
+					restore.add(struct);
 				});
 				for (const item of restore)
 					changed = ops.redo(tr, item, restore, step.inserts, deletedByHistory) !== null || changed;
 				// Children before parents: more is known when an item is judged.
 				for (let i = remove.length - 1; i >= 0; i--) {
-					if (!withdraw(remove[i]!, step)) ops.remove(tr, remove[i]!);
+					const item = remove[i]!;
+					// Text the step wrote is held, never removed: a redo shows it again where it was.
+					if (isUnit(item)) held.push(item.id.client, item.id.clock, item.length);
+					else if (!withdraw(item, step)) ops.remove(tr, item);
 					changed = true;
 				}
+				records.hold(held);
 				this.currStackItem = changed ? step : null;
-				if (changed) {
-					marks.onApply(tr, step);
-					repair(step);
-				}
+				if (changed) repair(step);
 			}
 			tr.changed.forEach((keys, node) => {
 				if (keys.has(null)) dropSearchMarkers(node);
@@ -309,8 +340,8 @@ export class UndoManager {
 	/**
 	 * Release what dropped steps kept for their replay: the engine collects
 	 * that content now, as it would have at the delete without a history
-	 * (the doc's `gcFilter` still decides: a text copy another replica may
-	 * have to copy again stays, `text/deletes.ts`). An item is released only
+	 * (the doc's `gcFilter` still decides), and the text their hold records
+	 * hold is deleted for good. An item is released only
 	 * once every step that deleted part of it was dropped (the engine merges
 	 * deleted items across steps): never split, so the store keeps its
 	 * merged items. Only the items themselves are released: a kept
@@ -328,6 +359,8 @@ export class UndoManager {
 			);
 		};
 		const gc = collects(doc);
+		const ops = this.#ops;
+		const { records } = this.#rules;
 		doc.transact((tr: unknown) => {
 			for (const step of dropped)
 				walkIdSet(Y, doc, step.deletes, (st) => {
@@ -336,6 +369,22 @@ export class UndoManager {
 					it.keep = false;
 					if (gc && it.deleted && collectable(doc, it)) collectNow(it, tr);
 				});
+			// A dropped step's text deletes can never be undone here: what its
+			// live records hold is deleted for good, as the purge does, and the
+			// engine collects it (`hist.delete-marks.release`).
+			const held = ops.idSet();
+			for (const step of dropped)
+				ops.iterate(tr, step.inserts, (st) => {
+					const ids = (st as { content?: { ids?: number[] } }).content?.ids;
+					if (st.parent !== records || st.deleted || ids === undefined) return;
+					for (let i = 0; i < ids.length; i += 3) held.add(ids[i], ids[i + 1], ids[i + 2]);
+					ops.remove(tr, st);
+				});
+			ops.iterate(tr, held, (it) => {
+				if (it.removed !== false) return;
+				ops.remove(tr, it);
+				dropSearchMarkers(it.parent);
+			});
 		}, HISTORY_TRIM);
 	}
 
@@ -370,14 +419,13 @@ export class UndoManager {
 /** What a facade's history is made over: its doc, the write funnel and the bound engine layers. */
 export type HistoryContext = DocBase &
 	Pick<WriteFunnel, 'write' | 'disposed'> & {
-		D: TextDeletes;
 		/** Stamp the version record before the history attaches. */
 		init: (doc: EngineDoc) => void;
 	};
 
 /** The history factory of one facade. */
 export const docHistory = (c: HistoryContext) => {
-	const { Y, doc, D, init, write, disposed } = c;
+	const { Y, doc, init, write, disposed } = c;
 
 	/**
 	 * Undo repair, inside the replay's transaction. A replayed step
@@ -413,7 +461,7 @@ export const docHistory = (c: HistoryContext) => {
 
 	/**
 	 * The document's undo manager, SCOPED TO THE BLOCK REGISTRY (with the
-	 * text delete marks and the document's data), attached only after the
+	 * text hold records and the document's data), attached only after the
 	 * doc carries the schema version record:
 	 *
 	 * - the `meta` root (version stamp, schema name) is outside the scope,
@@ -433,23 +481,21 @@ export const docHistory = (c: HistoryContext) => {
 		write(() => {
 			if (!isInitialized(doc)) init(doc);
 		});
-		// Text delete marks (`text/deletes.ts`): the marks are in scope (an undo
-		// removes the undoer's own), and the history restores text only as the
-		// marks allow. An undone creation withdraws the block instead of
-		// deleting it (`hist.undo.withdraw`).
-		const marks = D.history(doc, () => um);
-		const um: UndoManager = new UndoManager(
+		// The text hold records are in scope (an undo deletes the undoer's
+		// own, fork patch YP20). An undone creation withdraws the block instead
+		// of deleting it (`hist.undo.withdraw`).
+		const records = doc.get(TEXT_DELETES_ROOT);
+		return new UndoManager(
 			{
 				Y,
 				doc,
-				scope: [registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)],
-				marks,
+				scope: [registryOf(doc), records, doc.get(DOC_DATA_ROOT)],
+				records,
 				withdraw: withdrawOnUndo(doc),
 				repair: repairAttrs
 			},
 			options
 		);
-		return um;
 	};
 
 	return { createUndoManager };

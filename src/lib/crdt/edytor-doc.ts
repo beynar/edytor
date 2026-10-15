@@ -60,7 +60,6 @@ import {
 	type BlockId
 } from './placement/model.js';
 import { bindText } from './text/model.js';
-import { bindDeletes } from './text/deletes.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
 import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
@@ -181,7 +180,6 @@ type Layers = {
  * use it directly; {@link bindDocModel} is the public binding around it).
  */
 export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
-	const D = bindDeletes(Y);
 	// Compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
@@ -270,7 +268,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			funnel.dispose();
 			events.close();
 		};
-		const { createUndoManager } = docHistory({ ...base, ...funnel, D, init });
+		const { createUndoManager } = docHistory({ ...base, ...funnel, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
 		const { plan } = steps;
@@ -523,7 +521,6 @@ export const bindDocModel = (Y: EngineApi) => {
 	const M = bindModel(Y);
 	const T = bindText(Y);
 	const R = bindRuns(Y);
-	const D = bindDeletes(Y);
 	const { init, seed } = bindSeed(Y, bindBlockAttribution(Y));
 	const create = docFacade(Y, { model: M, text: T });
 	return {
@@ -553,14 +550,6 @@ export const bindDocModel = (Y: EngineApi) => {
 		 */
 		newDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc =>
 			keepingReplaced(new Y.Doc(opts)),
-		/**
-		 * Keep, on `doc`, the text a replica may have to copy again: its
-		 * `gcFilter` then spares a deleted copy's content, as every facade's
-		 * history does. A doc that only relays updates (the room) calls it
-		 * before applying anything, so what it collects and encodes matches
-		 * what an editing replica keeps.
-		 */
-		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
 		/** The bound engine layers (same instances the facades use). */
 		model: M,
 		text: T,

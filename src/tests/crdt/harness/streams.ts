@@ -8,7 +8,7 @@
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindRuns } from '../../../lib/crdt/text/runs.js';
-import { isBoundary, scanText } from '../../../lib/crdt/text/model.js';
+import { isRowMark, scanText } from '../../../lib/crdt/text/model.js';
 
 const R = bindRuns(Y);
 const E = bindEdytorDoc(Y);
@@ -21,7 +21,9 @@ export const streamView = (doc) => {
 		if (!rec.content) continue;
 		const row = scanText(rec.id, rec.content);
 		const list = v.own.streamsIn(rec.id);
-		texts.set(rec.content, { home: rec.id, bounds: row.bounds, streams: list, len: row.len });
+		// Its boundaries (a claim item is a row's bound too, never a boundary).
+		const bounds = row.bounds.filter((b) => b.m === undefined);
+		texts.set(rec.content, { home: rec.id, bounds, streams: list, len: row.len });
 		for (const s of list) streams.set(s.block, s);
 	}
 	return { blocks: v.blocks, own: v.own, order: v.order, texts, streams };
@@ -42,7 +44,7 @@ export const runs = (doc, id) => R.attach(doc).runs(id);
 
 /**
  * The display owner of every live content unit of `home`'s text, in order
- * (boundary items skipped; `null` for a unit no displayed stream holds).
+ * (boundary and claim items skipped; `null` for a unit no displayed stream holds).
  */
 export const contentOwners = (doc, home) => {
 	const v = streamView(doc);
@@ -53,7 +55,7 @@ export const contentOwners = (doc, home) => {
 	for (let it = text._start; it !== null; it = it.right) {
 		if (it.deleted || !it.countable) continue;
 		for (let j = 0; j < it.length; j++, pos++) {
-			if (isBoundary(it.content.arr?.[j])) continue;
+			if (isRowMark(it.content.arr?.[j])) continue;
 			const s = v.own.streamsIn(home).find((x) => x.start <= pos && pos < x.end);
 			const owner = s === undefined ? null : v.own.ownerOf(s.block);
 			out.push(typeof owner === 'string' ? owner : null);

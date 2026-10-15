@@ -117,17 +117,23 @@ export const formatValue = value => value instanceof MarkState ? value.value : v
 /**
  * The integration class of an item among the items of one origin: a
  * left-side mark item `0`, content and plain formats `1`, a right-side
- * mark item `2`. Deleted or collected items keep the class their content
- * gave them while it is there; a collected format item (its content gone)
- * would read `1`, which is why the fork never collects a paired mark item's
- * content (`ContentFormat#gc` keeps it).
+ * mark item `2`, a claim item `3` (YP21: a sequence unit `{ m }`, after
+ * everything else, so content and boundaries a concurrent writer puts at
+ * its origin land before it). Deleted or collected items keep the class
+ * their content gave them while it is there; a collected item (its content
+ * gone) would read `1`, which is why the fork never collects the content of
+ * an item of another class (`Item#gc` keeps it).
  *
  * @param {any} item
  * @return {number}
  */
 export const markClass = item => {
   const content = item.content
-  if (content === undefined || typeof content.key !== 'string') return 1
+  if (content === undefined) return 1
+  if (typeof content.key !== 'string') {
+    // YP21: a claim item
+    return item.parentSub === null && typeof content.arr?.[0]?.m === 'string' ? 3 : 1
+  }
   const role = pairedRole(content)
   if (role < 0) return 1
   const side = role === 0 ? content.value[4] : content.value[2]

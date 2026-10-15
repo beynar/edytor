@@ -20,20 +20,13 @@ import {
 import { displayIndex } from './index-checks.js';
 import {
 	bindText,
+	claimsIn,
 	deepFreeze,
 	delimiters,
 	placeText,
-	readClaims,
 	scanText
 } from '../../lib/crdt/text/model.js';
-import {
-	CLAIMS,
-	CONTENT,
-	hasDeleteMark,
-	NONCE,
-	REGISTRY_KEY,
-	TYPE
-} from '../../lib/crdt/schema.js';
+import { CONTENT, hasDeleteMark, NONCE, REGISTRY_KEY, TYPE } from '../../lib/crdt/schema.js';
 import { cloneJsonSafe } from '../../lib/utils/json.js';
 import { readData } from '../../lib/crdt/data.js';
 import type { EngineApi, EngineDoc } from '../../lib/crdt/engine-api.js';
@@ -41,15 +34,13 @@ import type { EngineApi, EngineDoc } from '../../lib/crdt/engine-api.js';
 const isNodeLike = (v: unknown) =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
-/** Read every registry entry into a record map. */
+/** Read every registry entry into a record map (its claims: the claim items of its stream). */
 export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
 	const blocks = new Map<BlockId, BlockRec>();
 	doc.get(REGISTRY_KEY).forEachAttr((v: unknown, id: string) => {
 		if (!isNodeLike(v)) return;
 		const content = v.getAttr(CONTENT);
-		const claims = v.getAttr(CLAIMS);
 		const type = v.getAttr(TYPE);
-		const claimsNode = isNodeLike(claims) ? claims : undefined;
 		blocks.set(id, {
 			id,
 			node: v,
@@ -58,11 +49,14 @@ export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
 			n: v.getAttr(NONCE),
 			deleted: hasDeleteMark(v),
 			content: isNodeLike(content) ? content : undefined,
-			claimsNode,
-			claims: readClaims(claimsNode),
+			claims: [],
 			cands: candidatesOf(v)
 		});
 	});
+	const rows = [...blocks.values()].flatMap((r) => (r.content ? [scanText(r.id, r.content)] : []));
+	const delim = delimiters(blocks, rows);
+	for (const row of rows)
+		for (const st of placeText(row, delim)) blocks.get(st.block)!.claims = claimsIn(row, st);
 	settleWithdrawn(blocks);
 	return blocks;
 };

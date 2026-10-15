@@ -87,6 +87,8 @@ export const writeFunnel = (c: FunnelContext) => {
 	type Frame = {
 		inherit: Map<BlockId, BlockId>;
 		unions: [into: BlockId, from: BlockId][];
+		/** A write whose facets are not the frame's (`RunView.track`'s `quiet`). */
+		quiet: (write: () => void) => void;
 	};
 
 	/** The frame's one attribution pass over the facets the fold saw it write. */
@@ -105,6 +107,8 @@ export const writeFunnel = (c: FunnelContext) => {
 					)
 						changed.add(id);
 		}
+		// A merge changed its survivor (its claim item, written quietly, is no edit of the text holding it).
+		for (const [into] of f.unions) changed.add(into);
 		for (const id of created) {
 			const node = blockNodeOf(doc, id);
 			if (node !== null) BA.stampCreated(doc, node, id, actor.id, f.inherit.get(id));
@@ -119,10 +123,13 @@ export const writeFunnel = (c: FunnelContext) => {
 	/**
 	 * A streamless block gets its own text before the first write that
 	 * needs a stream (`ownText`: a writer derived from its dead
-	 * incarnation); its attribution record follows the re-minted nonce.
+	 * incarnation); its attribution record follows the re-minted nonce. A
+	 * claim item needs the block's own stream (`claim`); text, any piece of
+	 * its display.
 	 */
-	const needStream = (id: BlockId): void => {
-		if ((modelView(doc).own.display(id) ?? []).length > 0) return;
+	const needStream = (id: BlockId, claim = false): void => {
+		const { own } = modelView(doc);
+		if (claim ? own.streamOf(id) !== undefined : (own.display(id) ?? []).length > 0) return;
 		const { from, to } = ownText(doc, id);
 		BA.retarget(doc, id, from, to);
 	};
@@ -135,6 +142,8 @@ export const writeFunnel = (c: FunnelContext) => {
 				blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
 			);
 		if (w.op === 'splitBlock' || w.op === 'insertText' || w.op === 'insertInline') needStream(w.id);
+		// A claim item goes at the end of the stream of the block merged into.
+		if (w.op === 'mergeBlocks') needStream(w.into, true);
 		const { blocks, own } = modelView(doc);
 		const node = (id: BlockId) => blockNodeOf(doc, id)!;
 		switch (w.op) {
@@ -147,7 +156,7 @@ export const writeFunnel = (c: FunnelContext) => {
 				return writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
 			case 'mergeBlocks':
 				f.unions.push([w.into, w.from]);
-				return claimInto(blocks, own, w.from, w.into);
+				return f.quiet(() => claimInto(own, w.from, w.into));
 			case 'setBlockType':
 				return void node(w.id).setAttr(TYPE, w.type);
 			case 'patchData':
@@ -178,7 +187,7 @@ export const writeFunnel = (c: FunnelContext) => {
 		return write(() =>
 			doc.transact(() => {
 				const frame = runsView.track();
-				const f: Frame = { inherit: new Map(), unions: [] };
+				const f: Frame = { inherit: new Map(), unions: [], quiet: frame.quiet };
 				try {
 					for (const w of p.writes) writeStep(w, f);
 				} catch (error) {

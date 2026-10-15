@@ -1,22 +1,25 @@
 /**
  * The stream table: one maintained row per backing text, the
- * delimiting boundary of each block, and each block's segment.
+ * delimiting boundary of each block, each block's segment, and each
+ * block's claims (the claim items of its segment).
  */
 import type { BlockId } from '../../placement/model.js';
-import { type Stream, byId, scanText } from '../model.js';
+import { type Claim, type Stream, byId, cmpStamp, scanText } from '../model.js';
 import {
 	type LiveRow,
 	headOf,
 	placeRow,
 	rowOf,
 	segmentAt,
+	segmentClaims,
 	segmentOfCut,
 	streamOfSegment
 } from '../rows.js';
-import type { IndexState, Placed } from './state.js';
+import type { IndexClaims } from './claims.js';
+import type { FoldCtx, IndexState, Placed } from './state.js';
 
-/** The stream table of one doc's index, over its state. */
-export const indexStreams = (ix: IndexState) => {
+/** The stream table of one doc's index, over its state and claim graph. */
+export const indexStreams = (ix: IndexState & IndexClaims) => {
 	const {
 		blocks,
 		listConsumers,
@@ -24,10 +27,10 @@ export const indexStreams = (ix: IndexState) => {
 		streamIx,
 		placed,
 		homeOfText,
-		anchoredIn,
-		retargets,
-		unresolved,
-		regroup
+		reclaim,
+		regroup,
+		noteClaims,
+		invalidateBlock
 	} = ix;
 
 	// ── the stream table ────────────────────────────────────
@@ -75,7 +78,7 @@ export const indexStreams = (ix: IndexState) => {
 		}
 		if (old?.key === row?.key) return;
 		for (const b of old?.bounds ?? []) {
-			if (row?.keyIndex.has(b.key)) continue;
+			if (b.m !== undefined || row?.keyIndex.has(b.key)) continue;
 			const by = boundsBy.get(b.s);
 			// A text can change homes (a key's node becomes a losing incarnation,
 			// `id.same.concurrent`): drop the entry only while it is still this row's.
@@ -84,7 +87,7 @@ export const indexStreams = (ix: IndexState) => {
 			named.add(b.s);
 		}
 		for (const b of row?.bounds ?? []) {
-			if (old?.keyIndex.has(b.key)) continue;
+			if (b.m !== undefined || old?.keyIndex.has(b.key)) continue;
 			let by = boundsBy.get(b.s);
 			if (by === undefined) boundsBy.set(b.s, (by = new Map()));
 			by.set(b.key, { home, n: b.n });
@@ -129,14 +132,16 @@ export const indexStreams = (ix: IndexState) => {
 			now.head = row.head;
 			for (const j of row.cuts) {
 				now.keys.push(row.bounds[j].key);
-				now.blocks.push(row.bounds[j].s);
+				now.blocks.push(row.bounds[j].s!);
 			}
 		}
 		if (row === undefined) placed.delete(home);
 		else placed.set(home, now);
-		// Its cuts may move the claims anchored in its text (`merge.claim.anchor`).
-		for (const h of anchoredIn.get(home) ?? []) retargets.add(h);
-		for (const h of unresolved) retargets.add(h);
+		// Its segments' claim items may have changed, or gone to other blocks.
+		for (const x of [before, now]) {
+			if (x.head !== null) reclaim.add(x.head);
+			for (const b of x.blocks) reclaim.add(b);
+		}
 		// A change of the text's segments re-decides its pieces' order.
 		if (
 			before.head !== now.head ||
@@ -174,6 +179,7 @@ export const indexStreams = (ix: IndexState) => {
 		boundsBy.clear();
 		for (const [home, row] of rows)
 			for (const b of row.bounds) {
+				if (b.m !== undefined) continue;
 				let by = boundsBy.get(b.s);
 				if (by === undefined) boundsBy.set(b.s, (by = new Map()));
 				by.set(b.key, { home, n: b.n });
@@ -184,6 +190,40 @@ export const indexStreams = (ix: IndexState) => {
 		for (const home of homes) placeHome(home, invalidated);
 	};
 
+	// ── claims ──────────────────────────────────────────────
+	// A block's claims are its implicit ones (`id.same.concurrent`), then
+	// the claim items of its segment, in text order (fork patch YP21:
+	// YATA placed each one, so a split its writer did not see leaves it in
+	// the piece that ends its holder's region, `merge.claim.anchor`). They
+	// change with the record (its implicit claims) and with its row's bounds
+	// or cuts: re-read after each fold's texts for the blocks queued.
+	const sameClaims = (x: readonly Claim[], y: readonly Claim[]): boolean =>
+		x.length === y.length &&
+		x.every((c, i) => c.m === y[i].m && cmpStamp(c.stamp, y[i].stamp) === 0);
+	/** `b`'s claims now: its implicit ones, then its segment's claim items. */
+	const claimsOf = (b: BlockId): Claim[] => {
+		const at = streamIx.get(b);
+		const row = at && rows.get(at.home);
+		const k = row === undefined ? -1 : segmentOfCut(row, at!.cut);
+		const items = k < 0 ? [] : segmentClaims(row!, k);
+		const implicit = blocks.get(b)?.implicit ?? [];
+		return implicit.length === 0 ? items : [...implicit, ...items];
+	};
+	/** Re-read the claims of the blocks queued; a change is a structural change of the block. */
+	const applyReclaims = (ctx: FoldCtx | null): void => {
+		for (const b of reclaim) {
+			const rec = blocks.get(b);
+			if (rec === undefined) continue;
+			const before = rec.claims;
+			const after = claimsOf(b);
+			if (sameClaims(before, after)) continue;
+			rec.claims = after;
+			noteClaims(b, before, after);
+			if (ctx !== null) invalidateBlock(b, ctx, before);
+		}
+		reclaim.clear();
+	};
+
 	return {
 		streamOf,
 		streamsIn,
@@ -192,7 +232,10 @@ export const indexStreams = (ix: IndexState) => {
 		scanRow,
 		refreshDelims,
 		placeHome,
-		rebuildTable
+		rebuildTable,
+		sameClaims,
+		claimsOf,
+		applyReclaims
 	};
 };
 

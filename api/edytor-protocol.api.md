@@ -327,7 +327,7 @@ export type ProviderStack = ReturnType<typeof bindProviders>;
 
 ```ts
 // crdt/doc/gate.d.ts
-declare const SCHEMA_VERSION: 7;
+declare const SCHEMA_VERSION: 8;
 ```
 
 ### SchemaMismatchDetail
@@ -525,7 +525,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 7;
+            readonly version: 8;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -536,7 +536,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 7;
+        SCHEMA_VERSION: 8;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -640,7 +640,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
                 itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
                 readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-                computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+                computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
                 flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
                 ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
                 contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -654,8 +654,8 @@ declare const bindCrdt: (Y: EngineApi) => {
                     at: number;
                     node: import("./engine-api.js").EngineNode;
                 } | null;
-                splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-                claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+                splitAt: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+                claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
                 ownText: (doc: import("./engine-api.js").EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
                     from: unknown;
                     to: number;
@@ -850,7 +850,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
             readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+            computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
             contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -864,8 +864,8 @@ declare const bindCrdt: (Y: EngineApi) => {
                 at: number;
                 node: import("./engine-api.js").EngineNode;
             } | null;
-            splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-            claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+            splitAt: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+            claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
             ownText: (doc: import("./engine-api.js").EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
                 from: unknown;
                 to: number;

@@ -19,7 +19,13 @@ import {
 	type BlockRec,
 	type PlacementModel
 } from './placement/model.js';
-import { purgeStreams, type Claim, type Stream, type TextEngine } from './text/model.js';
+import {
+	deleteClaims,
+	purgeStreams,
+	type Claim,
+	type Stream,
+	type TextEngine
+} from './text/model.js';
 import {
 	AT,
 	BLOCK_ATTR_ROOT,
@@ -293,8 +299,7 @@ export const bindPurge = (Y: EngineApi) => {
 			const rec = blocks.get(id)!;
 			for (const key of [...rec.node.attrKeys()])
 				if (key === DATA || key.startsWith(DATA_LEAF_PREFIX)) rec.node.deleteAttr(key);
-			if (rec.claimsNode !== undefined && rec.claimsNode.length > 0)
-				rec.claimsNode.delete(0, rec.claimsNode.length);
+			deleteClaims(doc, rec.claims);
 			report.emptied++;
 		}
 		// The blocks that go whole: their entries, attribution records and the claims naming them.
@@ -302,13 +307,9 @@ export const bindPurge = (Y: EngineApi) => {
 		const attribution = doc.get(BLOCK_ATTR_ROOT);
 		for (const [id, rec] of blocks) {
 			// An emptied block's claims are gone already (above).
-			if (removable.has(id) || dead.has(id) || rec.claimsNode === undefined) continue;
-			// The claims its list stores (an anchor may show one in another block).
-			const named = (rec.listClaims ?? rec.claims)
-				.filter((c) => removable.has(c.m))
-				.map((c) => c.seqIndex)
-				.filter((at) => at >= 0);
-			for (const at of named.sort((a, b) => b - a)) rec.claimsNode.delete(at, 1);
+			if (removable.has(id) || dead.has(id)) continue;
+			const named = rec.claims.filter((c) => c.stamp.c >= 0 && removable.has(c.m));
+			deleteClaims(doc, named);
 			report.claims += named.length;
 		}
 		for (const id of removable) {
@@ -335,16 +336,16 @@ export const bindPurge = (Y: EngineApi) => {
 		// own attribution records go (no history reaches a step below the
 		// horizon to split them out again); their registry entries stay.
 		const claimsOn = new Map<BlockId, Claim[]>();
-		for (const [holder, rec] of blocks) {
+		for (const rec of blocks.values()) {
 			if (rec.deleted) continue;
-			for (const c of own.claimsOf?.(holder) ?? rec.claims) {
+			for (const c of rec.claims) {
 				const list = claimsOn.get(c.m);
 				if (list === undefined) claimsOn.set(c.m, [c]);
 				else list.push(c);
 			}
 		}
 		const claimedOld = (id: BlockId): boolean =>
-			(claimsOn.get(id) ?? []).every((c) => c.seqIndex >= 0 && old(c.stamp.c, c.stamp.k));
+			(claimsOn.get(id) ?? []).every((c) => c.stamp.c >= 0 && old(c.stamp.c, c.stamp.k));
 		for (const [id, rec] of blocks) {
 			if (rec.deleted || removable.has(id) || dead.has(id) || isIncarnationId(id)) continue;
 			const owner = own.ownerOf(id);

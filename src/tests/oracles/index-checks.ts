@@ -19,13 +19,12 @@ import {
 	type Stream,
 	type TextRow,
 	claimGraph,
-	cmpStamp,
+	claimsIn,
 	delimiters,
 	placeText,
 	scanText
 } from '../../lib/crdt/text/model.js';
 import { boundAt, rowLength, type LiveRow } from '../../lib/crdt/text/rows.js';
-import type { IndexAnchored } from '../../lib/crdt/text/index/anchored.js';
 import type { IndexCache } from '../../lib/crdt/text/index/cache.js';
 import type { IndexClaims } from '../../lib/crdt/text/index/claims.js';
 import type { IndexFold } from '../../lib/crdt/text/index/fold.js';
@@ -66,7 +65,6 @@ export const indexSelfChecks = (
 	ix: IndexState &
 		IndexClaims &
 		IndexStreams &
-		IndexAnchored &
 		IndexLayout &
 		IndexPlacement &
 		IndexCache &
@@ -85,7 +83,6 @@ export const indexSelfChecks = (
 		ownerOf,
 		streamOf,
 		sameClaims,
-		targetOf,
 		dissolve,
 		ranker,
 		ownShim,
@@ -120,36 +117,19 @@ export const indexSelfChecks = (
 		const streamSig = (st: Stream | undefined) =>
 			st && `${st.home}:${st.start}-${st.end}/${st.inert.join(',')}`;
 		const placed = new Set<BlockId>();
+		// Each record's claims: its implicit ones, then the claim items of its stream.
+		const items = new Map<BlockId, Claim[]>();
 		for (const [home, scan] of scans)
 			for (const st of placeText(scan, want)) {
 				placed.add(st.block);
+				items.set(st.block, claimsIn(scan, st));
 				if (streamSig(streamOf(st.block)) !== streamSig(st))
 					fail(`stream of ${st.block} in ${home}`);
 			}
 		for (const b of streamIx.keys()) if (!placed.has(b)) fail(`stream of ${b}`);
-		// The anchored claims (`merge.claim.anchor`): each record's effective claims, from scratch.
-		{
-			const moved = new Map<BlockId, Claim[]>();
-			const stays = new Map<BlockId, Claim[]>();
-			for (const [h, rec] of blocks) {
-				const list = rec.listClaims ?? rec.claims;
-				const own: Claim[] = [];
-				for (const c of list) {
-					const [t] = targetOf(h, c);
-					if (t === h) own.push(c);
-					else {
-						let into = moved.get(t);
-						if (into === undefined) moved.set(t, (into = []));
-						into.push({ ...c, holder: h });
-					}
-				}
-				stays.set(h, own);
-			}
-			for (const [b, rec] of blocks) {
-				const extra = (moved.get(b) ?? []).sort((x, y) => cmpStamp(x.stamp, y.stamp));
-				if (!sameClaims(rec.claims, [...stays.get(b)!, ...extra])) fail(`claims of ${b}`);
-			}
-		}
+		for (const [b, rec] of blocks)
+			if (!sameClaims(rec.claims, [...(rec.implicit ?? []), ...(items.get(b) ?? [])]))
+				fail(`claims of ${b}`);
 		for (const [b, c] of cache) {
 			if (dirty.has(b)) continue;
 			const fresh = computeFresh(b).fresh;

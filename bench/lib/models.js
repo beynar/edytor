@@ -66,10 +66,8 @@ export const insertModelBlock14 = (doc, spec) => {
 		block.setAttr('n', 1);
 		block.setAttr('type', spec.type ?? 'paragraph');
 		const content = new Y14.Node('content');
-		const claims = new Y14.Node('claims');
 		const at = new Y14.Node('at');
 		block.setAttr('content', content);
-		block.setAttr('claims', claims);
 		block.setAttr('at', at);
 		let clen = 0;
 		for (const item of spec.content ?? []) {
@@ -111,7 +109,7 @@ export const moveByModel14 = (doc, id, dest, rank) => {
 /**
  * One real `splitBlock` (arch-v2 D12, R2): ONE boundary item `{s, n}` at the
  * end of the gap at `offset` (engine primitive P7) and the sibling's node with
- * an empty claims list + placement — the backing text is NEVER re-encoded.
+ * its placement — the backing text is NEVER re-encoded.
  * Mirrors `writeSplit` in src/lib/crdt for a block with no merge claims.
  */
 export const splitModelBlock14 = (doc, id, offset, newId, rank = 's1') => {
@@ -123,7 +121,6 @@ export const splitModelBlock14 = (doc, id, offset, newId, rank = 's1') => {
 		sibling.setAttr('id', newId);
 		sibling.setAttr('n', 2);
 		sibling.setAttr('type', block.getAttr('type'));
-		sibling.setAttr('claims', new Y14.Node('claims'));
 		const sAt = new Y14.Node('at');
 		sibling.setAttr('at', sAt);
 		sAt.setAttr(`1.${doc.clientID}`, { p: null, r: rank });
@@ -132,15 +129,14 @@ export const splitModelBlock14 = (doc, id, offset, newId, rank = 's1') => {
 };
 
 /**
- * One real `mergeBlocks` on a childless source: ONE `{m:from}` claim item
- * appended to the destination's claims list — the source's text stays where
- * it is and is displayed through the live claim.
+ * One real `mergeBlocks` on a childless source: ONE `{m:from}` claim item at
+ * the end of the destination's stream (its own text here, fork patch YP21) —
+ * the source's text stays where it is and is displayed through the live claim.
  */
 export const mergeModelBlocks14 = (doc, fromId, intoId) => {
-	const into = doc.get('blocks').getAttr(intoId);
-	const claims = into.getAttr('claims');
+	const content = doc.get('blocks').getAttr(intoId).getAttr('content');
 	doc.transact(() => {
-		claims.insert(claims.length, [{ m: fromId }]);
+		content.insertAtGapEnd(content.length, [{ m: fromId }]);
 	});
 };
 

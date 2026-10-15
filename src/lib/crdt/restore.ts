@@ -39,7 +39,7 @@ import {
 import type { DataPatch } from './data.js';
 import { DEL_PREFIX, TYPE, WITHDRAW_PREFIX } from './schema.js';
 import { common, patchWrites, writeLeaves } from './data.js';
-import { canonKey } from './text/model.js';
+import { canonKey, deleteClaims } from './text/model.js';
 import { randOf } from './rand.js';
 import type { JSONDoc } from '../utils/json.js';
 import { toBlockSpec } from '../utils/json.js';
@@ -201,13 +201,11 @@ export const restoreDocument = <Plan>(
 		const { blocks } = modelView(doc);
 		for (const rec of blocks.values()) {
 			// A deleted holder's claims are void (and stay so): only the others.
-			if (rec.deleted || rec.claimsNode === undefined) continue;
-			// The claims its list stores (an anchor may show one in another block).
-			const named = (rec.listClaims ?? rec.claims)
-				.filter((claim) => all.has(claim.m))
-				.map((c) => c.seqIndex)
-				.filter((at) => at >= 0);
-			for (const at of named.sort((a, b) => b - a)) rec.claimsNode.delete(at, 1);
+			if (!rec.deleted)
+				deleteClaims(
+					doc,
+					rec.claims.filter((claim) => all.has(claim.m))
+				);
 		}
 	}
 
@@ -270,10 +268,9 @@ export const restoreDocument = <Plan>(
 		const want = unitsOf(spec.content ?? []);
 		let have = unitsOf(facade.contentItems(id));
 		if (have.length === want.length && have.every((u, i) => u.key === want[i].key)) continue;
-		const rec = modelView(doc).blocks.get(id);
-		const claims = rec?.claimsNode;
-		if (claims !== undefined && claims.length > 0) {
-			claims.delete(0, claims.length);
+		const claims = modelView(doc).blocks.get(id)?.claims ?? [];
+		if (claims.some((c) => c.stamp.c >= 0)) {
+			deleteClaims(doc, claims);
 			have = unitsOf(facade.contentItems(id));
 		}
 		rewriteContent(facade, id, have, want);

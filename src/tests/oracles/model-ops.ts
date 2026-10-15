@@ -79,7 +79,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!pos) return false;
 		const node = M.blockNodeOf(doc, id);
 		return doc.transact(() => {
-			if (!M.view(doc).blocks.get(id)?.claimsNode) return false;
+			if (!M.view(doc).blocks.has(id)) return false;
 			if ((M.view(doc).own.display(id) ?? []).length === 0) M.ownText(doc, id);
 			const { blocks } = M.view(doc);
 			const sibs = kids(doc, pos.parent);
@@ -100,11 +100,13 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 		const { blocks, placements, own } = v;
 		if (M.isSelfOrDescendant(placements, own, intoId, fromId)) return false;
-		if (!blocks.get(intoId)?.claimsNode) return false;
+		if (!blocks.has(intoId)) return false;
 		return doc.transact(() => {
 			const intoKids = kids(doc, intoId);
 			const fromKids = kids(doc, fromId);
-			T.claimInto(blocks, own, fromId, intoId);
+			// A claim item goes in the stream of the block merged into (a streamless one gets its own text).
+			if (own.streamOf(intoId) === undefined) M.ownText(doc, intoId);
+			T.claimInto(M.view(doc).own, fromId, intoId);
 			const r = ranks(doc, intoKids, intoKids.length, fromKids.length);
 			fromKids.forEach((k, i) => M.writePlacement(doc, M.blockNodeOf(doc, k.id), intoId, r[i]));
 			return true;
@@ -114,7 +116,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	/** A live content target's view, or null. */
 	const ownView = (doc, id) => {
 		const v = M.view(doc);
-		return isLiveIn(v, id) && v.blocks.get(id)?.claimsNode ? v : null;
+		return isLiveIn(v, id) && v.blocks.has(id) ? v : null;
 	};
 	/** `[at, end)` of a display range, clamped. */
 	const clamp = (v, id, offset, length) => {

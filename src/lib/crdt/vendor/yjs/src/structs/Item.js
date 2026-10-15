@@ -5,7 +5,7 @@ import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
 
 import { ID, createID, compareIDs, findRootTypeKey } from '../utils/ID.js'
 import { GC } from '../structs/GC.js'
-import { sortsBefore, pairedRole } from '../utils/marks.js' // YP13
+import { sortsBefore, pairedRole, markClass } from '../utils/marks.js' // YP13, YP21
 
 import * as math from 'lib0-v14/math' // YP20
 
@@ -397,9 +397,10 @@ export class Item extends AbstractStruct {
     this.content.gc(tr)
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
-    } else if (!(this.content.constructor === ContentFormat && pairedRole(/** @type {ContentFormat} */ (this.content)) >= 0)) {
-      // YP13: a paired mark item keeps its content: its side orders
-      // concurrent inserts (`markClass`) on every replica, collected or not.
+    } else if (markClass(this) === 1) {
+      // YP13, YP21: a paired mark item or a claim item keeps its content: its
+      // class orders concurrent inserts (`markClass`) on every replica,
+      // collected or not.
       this.content = new ContentDeleted(this.length)
     }
   }

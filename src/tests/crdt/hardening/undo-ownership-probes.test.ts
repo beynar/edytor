@@ -42,6 +42,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { view } from '../../../lib/crdt/placement/model.js';
 import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
@@ -61,9 +62,9 @@ const push = (from: Y.Doc, to: Y.Doc) => {
 	Y.applyUpdate(to, Y.encodeStateAsUpdate(from, Y.encodeStateVector(to)));
 };
 
-/** The block's replicated claims list — an undo must write nothing there (R2: no repair). */
+/** The block's replicated claims (claim items) — an undo must write nothing there (R2: no repair). */
 const slicesOf = (ed: any, id: string) =>
-	ed.resolveBlock(id)!.getAttr('claims').toArray() as unknown[];
+	view(ed.resolveBlock(id)!.doc).blocks.get(id)!.claims as unknown[];
 
 describe('gateH-R3 — undo inside an outer transaction', () => {
 	test('ed.transact(() => um.undo()) — repair must still fire', () => {

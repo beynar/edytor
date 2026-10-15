@@ -362,9 +362,8 @@ export const docReads = (c: DocBase) => {
 
 	/** The one liveness answer (`isLive`): `id` renders in `project()`. O(depth). */
 	const live = (id: BlockId): boolean => isLive(doc, id);
-	/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
-	const contentTarget = (id: BlockId): boolean =>
-		live(id) && view().blocks.get(id)?.claimsNode !== undefined;
+	/** A live block that can hold content (a streamless block gets its own text on first write). */
+	const contentTarget = (id: BlockId): boolean => live(id) && view().blocks.has(id);
 
 	return {
 		dataNode,

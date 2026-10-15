@@ -54,7 +54,6 @@ describe('views sharing one document', () => {
 			expect(view.awareness).toBe(document.awareness);
 			expect(view.undoManager).toBe(document.history);
 			expect(view.synced).toBe(true);
-			expect(view.ownsDocument).toBe(false);
 		}
 
 		views.forEach((view) => view.destroy());
@@ -162,14 +161,8 @@ describe('views sharing one document', () => {
 		document.destroy();
 	});
 
-	it('rejects `document` combined with separate `doc`/`awareness`', () => {
+	it("rejects `document` combined with an owned document's `actor`", () => {
 		const document = createDocument();
-		expect(
-			() => new Edytor({ document, doc: new Y.Doc(), plugins: [richTextPlugin] })
-		).toThrowError(/cannot be combined/);
-		expect(
-			() => new Edytor({ document, awareness: undefined, doc: new Y.Doc(), plugins: [] })
-		).toThrowError(/cannot be combined/);
 		expect(() => new Edytor({ document, actor: { id: 'u1' }, plugins: [] })).toThrowError(
 			/cannot be combined/
 		);
@@ -185,24 +178,6 @@ describe('views sharing one document', () => {
 });
 
 describe('view-owned vs borrowed teardown', () => {
-	it('a borrowed raw doc survives the view that internally owns a document around it', () => {
-		const raw = new Y.Doc();
-		const view = new Edytor({ doc: raw, plugins: [richTextPlugin], value: docValue() });
-		expect(view.ownsDocument).toBe(true);
-		expect(view.synced).toBe(true);
-
-		view.destroy();
-		expect(view.document.destroyed).toBe(true);
-		// Borrowing granted no destruction authority — the caller's doc lives.
-		expect(raw.isDestroyed).toBe(false);
-
-		// …and the same raw doc composes a fresh document afterward.
-		const next = attachDocument(raw);
-		expect(next.facade.isInitialized()).toBe(true);
-		next.destroy();
-		expect(raw.isDestroyed).toBe(false);
-	});
-
 	it('a view-owned document is released exactly once with the view', () => {
 		const view = new Edytor({ plugins: [richTextPlugin], value: docValue() });
 		const document = view.document;
@@ -211,24 +186,6 @@ describe('view-owned vs borrowed teardown', () => {
 		expect(document.destroyed).toBe(true);
 		// The view-created awareness was owned by the document — dropped.
 		expect(document.awareness.getLocalState()).toBeNull();
-	});
-
-	it('an injected awareness is borrowed — never destroyed by the view', () => {
-		const raw = new Y.Doc();
-		const awareness = new Awareness(raw);
-		const view = new Edytor({
-			doc: raw,
-			awareness,
-			plugins: [richTextPlugin],
-			value: docValue()
-		});
-		expect(view.awareness).toBe(awareness);
-
-		view.destroy();
-		expect(view.document.destroyed).toBe(true);
-		// The caller's awareness survives — it was only borrowed.
-		expect(awareness.getLocalState()).not.toBeNull();
-		awareness.destroy();
 	});
 
 	it('the sync-prop path keeps deferral — no premature seed', () => {
@@ -325,20 +282,6 @@ describe('attachDocument dedupe — one document per raw doc', () => {
 		expect(a.destroyed).toBe(true);
 		b.destroy();
 	});
-
-	it('two legacy `{doc}` views on one raw doc share the document, released ref-wise', () => {
-		const raw = new Y.Doc();
-		const v1 = new Edytor({ doc: raw, plugins: [richTextPlugin], value: docValue() });
-		const v2 = new Edytor({ doc: raw, plugins: [richTextPlugin] });
-		expect(v2.document).toBe(v1.document);
-
-		v1.destroy();
-		expect(v1.document.destroyed).toBe(false); // v2's reference keeps it alive
-		expect(raw.isDestroyed).toBe(false);
-		v2.destroy();
-		expect(v1.document.destroyed).toBe(true);
-		expect(raw.isDestroyed).toBe(false); // the borrowed raw doc survives
-	});
 });
 
 describe('view origin tracking lifecycle', () => {
@@ -403,18 +346,5 @@ describe('constructor failure cleanup', () => {
 
 		v1.destroy();
 		document.destroy();
-	});
-
-	it('a failed view destroys the document it internally owned', () => {
-		const raw = new Y.Doc();
-		expect(
-			() => new Edytor({ doc: raw, plugins: [throwingPlugin], value: docValue() })
-		).toThrowError('plugin boom');
-
-		// If the failed view's document leaked, this reattach returns IT —
-		// refs 2 — and a single destroy could not tear it down.
-		const next = attachDocument(raw);
-		next.destroy();
-		expect(next.destroyed).toBe(true); // fresh single-reference document
 	});
 });

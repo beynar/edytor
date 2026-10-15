@@ -5,11 +5,9 @@
 	import { Edytor as EdytorClass, useEdytor } from '../edytor.svelte.js';
 	import {
 		SyncRefusedError,
-		type Awareness,
 		type DocChange,
 		type DocumentActor,
-		type EdytorDocument,
-		type YDoc
+		type EdytorDocument
 	} from '../crdt/index.js';
 	import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 	import type { EdytorSync, WebsocketSyncOptions } from '$lib/collaboration/index.js';
@@ -75,8 +73,6 @@
 		edytor?: EdytorClass;
 		/** The assembled document this view renders (see `crdt/document.ts`). */
 		document?: EdytorDocument;
-		doc?: YDoc;
-		awareness?: Awareness;
 		/** The local author (id, name, color) of the document this view owns: attribution and presence. */
 		actor?: DocumentActor;
 		/**
@@ -187,7 +183,6 @@
 		edytor = $bindable(),
 		// Aliased so the DOM `document` global keeps working in this scope.
 		document: edytorDocument,
-		doc,
 		readonly = false,
 		allowNesting = false,
 		value = defaultValue,
@@ -200,7 +195,6 @@
 		onSyncRefused,
 		requireHydration,
 		snapshot,
-		awareness,
 		actor,
 		presence,
 		onChange,
@@ -221,8 +215,6 @@
 		allowNesting,
 		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
-		doc,
-		awareness,
 		actor,
 		requireHydration,
 		hotkeys,
@@ -294,7 +286,7 @@
 		}
 	});
 
-	// The component owns the Edytor — release its doc/awareness/facade/
+	// The component owns the Edytor — release its facade/
 	// undo-manager listeners so a shared doc doesn't retain dead mounts.
 	// `onDestroy` also runs after a server render: a view-owned document
 	// (and its awareness timer) must not outlive the request.

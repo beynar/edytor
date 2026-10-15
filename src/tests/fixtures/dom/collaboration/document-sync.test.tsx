@@ -193,7 +193,6 @@ describe('document-lifetime sync for injected documents', () => {
 
 		const rendered = await renderDomEdytor(input, { sync });
 		expect(counts.attach).toBe(1);
-		expect(rendered.edytor.ownsDocument).toBe(true);
 
 		rendered.unmount();
 		await flushDomUpdates();
@@ -229,7 +228,6 @@ describe('document-lifetime sync for injected documents', () => {
 			}
 		});
 		expect(counts.attach).toBe(1);
-		expect(edytor!.ownsDocument).toBe(true);
 		expect(edytor!.synced).toBe(false); // the provider owns the decision
 		expect(edytor!.document.syncPending).toBe(true);
 

@@ -1426,8 +1426,6 @@ export type EdytorOptions = {
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     plugins?: Plugin[];
     document?: EdytorDocument;
-    doc?: YDoc;
-    awareness?: Awareness;
     actor?: DocumentActor;
     requireHydration?: boolean;
     presence?: PresenceOptions;

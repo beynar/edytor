@@ -21,7 +21,7 @@ Edytor reports problems three ways: it **throws** when you misuse an API, a **pr
 | `EdytorDocDisposedError` | a document operation | An operation or read ran after its document was destroyed. |
 | `Error: [edytor-doc] stale plan` | `document.apply(plan)` | The plan was prepared before another write. Prepare and apply in the same turn, or `compose` plans prepared at one version. |
 | `Error: No Edytor found` | `useEdytor()` | Called outside a component rendered inside `<Edytor>`. |
-| `Error: EdytorOptions: document cannot be combined…` | `new Edytor(…)`, in development | Pass either `document` or `doc`/`awareness`/`actor`, not both (a production build does not check: the `document` wins). |
+| `Error: EdytorOptions: document cannot be combined…` | `new Edytor(…)`, in development | Pass either `document` or `actor`/`requireHydration`, not both (a production build does not check: the `document` wins). |
 
 [Documents](/docs/collaboration/documents#errors) lists the document errors with their options.
 

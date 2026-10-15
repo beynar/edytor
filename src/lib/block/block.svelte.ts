@@ -1,3 +1,4 @@
+import { cleanups } from '$lib/utils.js';
 import { Text } from '../text/text.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
@@ -364,10 +365,9 @@ export class Block {
 		this.edytor.selection.keep(this);
 		// A block laid out again with no commit moves the chrome beside it (the overlay measures).
 		const unobserve = this.edytor.overlay.observe(node);
-		const onDestroy = this.edytor.plugins.flatMap((plugin) => {
-			const action = plugin.onBlockAttached?.({ node, block: this });
-			return typeof action === 'function' ? [action] : [];
-		});
+		const onDestroy = cleanups(this.edytor.plugins, (plugin) =>
+			plugin.onBlockAttached?.({ node, block: this })
+		);
 		return {
 			destroy: () => {
 				this.#viewState = read(node);

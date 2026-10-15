@@ -248,9 +248,15 @@ export class SurfaceObserver {
 		};
 	};
 
-	/** Register an element the core rendered (an attachment); returns its release. */
+	/**
+	 * Register an element the core rendered (an attachment); returns its
+	 * release. A text element takes the table's attributes now (its id, its
+	 * editing host inside a void).
+	 */
 	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
-		this.#registry.set(node, { kind, block, name, owned });
+		const entry = { kind, block, name, owned };
+		this.#registry.set(node, entry);
+		if (kind === 'text') heal(node as HTMLElement, ownedOf(this.edytor, node, entry)!);
 		if (kind === 'block') this.#blocks.set(block, node);
 		else if (kind !== 'anchor' && kind !== 'preview') {
 			const set = this.#contents.get(block) ?? new Set();

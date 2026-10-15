@@ -40,7 +40,7 @@ import Ranges from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
-import { id } from './utils.js';
+import { cleanups, id } from './utils.js';
 import { Y } from '$lib/crdt/engine.js';
 import { markName } from '$lib/crdt/text/marks.js';
 import { callEach } from '$lib/crdt/protocols/observable.js';
@@ -1016,10 +1016,7 @@ export class Edytor {
 			() => unmount(live),
 			detachOverlay
 		);
-		this.plugins.forEach((plugin) => {
-			const action = plugin.onEdytorAttached?.({ node });
-			if (typeof action === 'function') this.off.push(action);
-		});
+		this.off.push(...cleanups(this.plugins, (plugin) => plugin.onEdytorAttached?.({ node })));
 
 		return {
 			destroy: () => {

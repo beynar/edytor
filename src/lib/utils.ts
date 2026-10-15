@@ -46,3 +46,10 @@ export const vetoable = <R>(call: (prevent: Prevent) => R): R => {
 	if (veto) throw veto;
 	return out;
 };
+
+/** The cleanups `call` answers for each of `items` (a hook answers a function or nothing). */
+export const cleanups = <T>(items: readonly T[], call: (item: T) => unknown): (() => void)[] =>
+	items.flatMap((item) => {
+		const action = call(item);
+		return typeof action === 'function' ? [action as () => void] : [];
+	});

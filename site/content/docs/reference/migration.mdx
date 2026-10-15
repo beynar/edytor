@@ -26,6 +26,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 - **Undo brings back the very text that was deleted.** Undoing a text delete shows the same characters again, where they were, instead of copies: a caret, a selection or a comment anchored inside the deleted text resolves where it was after the undo, and a peer who split or typed next to the deleted text sees it come back in the same place on every replica, whatever the order the edits arrive in.
 - **A peer's delete holds as soon as it arrives.** When two people delete the same text and one undoes before the other's delete reached them, the text is hidden again the moment that delete arrives, on every replica; it no longer waited for the other person's next edit.
 - **Deleting text a room lost is saved.** A delete of text the room no longer holds (after a restore from an older snapshot) is stored and acknowledged at once, and holds the text when its author brings it back.
+- **Code highlighting on TanStack Highlight 1.1.** The code block's grammars come from `@tanstack/highlight` 1.1 (was 0.1); the languages, tokens and theme classes are the same.
 
 ### From 2.0.0
 

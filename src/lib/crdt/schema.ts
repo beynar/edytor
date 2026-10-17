@@ -6,7 +6,7 @@
  */
 import type { EngineNode } from './engine-api.js';
 
-/** A replicated value that is a node (a block, its content or `at` map, an atom). */
+/** A replicated value that is a node (a block, its content, an atom). */
 export const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
@@ -43,7 +43,6 @@ export const HORIZON_ATTR = 'h';
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';
-export const AT_NODE = 'at';
 export const INLINE_NODE = 'inline';
 
 /** Attr keys on a block node (`SCHEMA.blockAttrs`). */
@@ -81,7 +80,6 @@ export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }):
 /** The per-block `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
-export const AT = 'at';
 
 /** `b/<blockId>` record-key prefix on the `blockattr` root. */
 export const REC_PREFIX = 'b/';
@@ -90,9 +88,11 @@ export const REC_PREFIX = 'b/';
 export const SCHEMA = {
 	// 7: a text delete is a hold record (fork patch YP20) on the wire and in
 	// storage; 8: a merge claim is an item `{m}` in a backing text (fork patch
-	// YP21), a block has no `claims` list. A container or frame of an earlier
-	// generation is refused.
-	version: 8,
+	// YP21), a block has no `claims` list; 9: a block's place is its home slot
+	// in its parent's sequence and a move is a move record (fork patch YP22),
+	// a block has no `at` map and an array item no rank. A container or frame
+	// of an earlier generation is refused.
+	version: 9,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

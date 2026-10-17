@@ -232,13 +232,13 @@ const splitKeepingChildren = (
 	const step = 'writes' in split ? split.writes[0] : undefined;
 	if (step?.op !== 'splitBlock') return REFUSED;
 	if (!child) return facade.compose({ ...(split as Plan), writes: [step] });
-	// The rank of a first child, and the document's answer on placing the kind there.
+	// The document's answer on placing the kind as a first child.
 	const slot = facade.prepare.insertBlocks({ parent: id, index: 0 }, [
 		{ id: born, type: tail?.type ?? facade.defaultChild(id) }
 	]);
 	const first = 'writes' in slot ? slot.writes[0] : undefined;
 	if (first?.op !== 'insertBlocks') return REFUSED;
-	const placed = { ...step, parent: id, rank: first.ranks[0]! };
+	const placed = { ...step, parent: id, index: 0 };
 	return facade.compose({ ...(split as Plan), writes: [placed] });
 };
 

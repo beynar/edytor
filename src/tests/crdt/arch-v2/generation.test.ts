@@ -33,11 +33,12 @@ const fixture = (name: string) =>
 	new Uint8Array(readFileSync(new URL(`../fixtures/generation-4/${name}`, import.meta.url)));
 const VALUE = JSON.parse(new TextDecoder().decode(fixture('value.json')));
 
-describe('generation 8', () => {
-	it('is schema 8, wire word 14008; no other generation’s record is this one’s', () => {
-		expect(SCHEMA_VERSION).toBe(8);
-		expect(GENERATION).toBe(14008);
+describe('generation 9', () => {
+	it('is schema 9, wire word 14009; no other generation’s record is this one’s', () => {
+		expect(SCHEMA_VERSION).toBe(9);
+		expect(GENERATION).toBe(14009);
 		expect(isGenerationRecord(GENERATION_RECORD)).toBe(true);
+		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 8 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 7 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 6 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 5 })).toBe(false);
@@ -45,8 +46,8 @@ describe('generation 8', () => {
 		expect(isGenerationRecord({ engine: 'yjs-v14', protocol: 14 })).toBe(false);
 	});
 
-	it('a frame of generation 5, 6 or 7 is refused before anything is decoded', () => {
-		for (const word of [14005, 14006, 14007]) {
+	it('a frame of generation 5 to 8 is refused before anything is decoded', () => {
+		for (const word of [14005, 14006, 14007, 14008]) {
 			const old = encoding.encode((e) => {
 				encoding.writeVarUint(e, word);
 				encoding.writeVarUint(e, 0);

@@ -118,6 +118,13 @@ export class Item extends AbstractStruct {
      * @type {number}
      */
     this.holds = 0
+    /**
+     * YP22: the live move records (`ContentMove`) naming this item, or
+     * `null`. Its mover is the argmax of `(priority, client, clock)` over
+     * them: the item shows there, hidden at home. Local, never encoded.
+     * @type {Array<Item>|null}
+     */
+    this.movers = null
   }
 
   /**
@@ -153,11 +160,30 @@ export class Item extends AbstractStruct {
   }
 
   /**
-   * Whether this item is hidden: removed, or held by a live hold record (YP20).
+   * Whether this item is hidden at home: removed, held by a live hold record
+   * (YP20), or moved by a live move record (YP22: it shows at its mover).
    * @type {Boolean}
    */
   get deleted () {
+    return (this.info & binary.BIT3) > 0 || this.holds > 0 || this.movers !== null
+  }
+
+  /**
+   * Whether this item shows nowhere: removed or held (YP22; a moved item
+   * shows at its mover).
+   * @type {Boolean}
+   */
+  get gone () {
     return (this.info & binary.BIT3) > 0 || this.holds > 0
+  }
+
+  /**
+   * YP22: the live move record this item shows at (the argmax of
+   * `(priority, client, clock)` over `movers`), or `null` at home.
+   * @type {Item|null}
+   */
+  get mover () {
+    return moverOf(this.movers)
   }
 
   /**
@@ -226,7 +252,7 @@ export class Item extends AbstractStruct {
           conflictingItems.add(o)
           if (compareIDs(this.origin, o.origin)) {
             // case 1
-            if (sortsBefore(o, this)) { // YP13: paired marks sort by side, then by client id
+            if (sortsBefore(o, this, transaction)) { // YP13: paired marks sort by side, then by client id
               left = o
               conflictingItems.clear()
             } else if (compareIDs(this.rightOrigin, o.rightOrigin)) {
@@ -320,6 +346,7 @@ export class Item extends AbstractStruct {
       this.id.clock + this.length === right.id.clock &&
       this.removed === right.removed &&
       this.holds === right.holds && // YP20
+      this.movers === null && right.movers === null && // YP22: a moved unit stands alone
       this.redone === null &&
       right.redone === null &&
       this.content.constructor === right.content.constructor &&
@@ -366,6 +393,9 @@ export class Item extends AbstractStruct {
       if (this.holds > 0) {
         // YP20: already hidden — the delete set counts it again, the log gives it back
         logHold(transaction, this, this.length)
+      } else if (this.movers !== null) {
+        // YP22: hidden at home already; its mover shows it no more (`gone`)
+        logMove(transaction, this, this.mover)
       } else if (this.countable && this.parentSub === null) {
         parent._length -= this.length
       }
@@ -398,10 +428,14 @@ export class Item extends AbstractStruct {
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
     } else if (markClass(this) === 1) {
-      // YP13, YP21: a paired mark item or a claim item keeps its content: its
-      // class orders concurrent inserts (`markClass`) on every replica,
-      // collected or not.
-      this.content = new ContentDeleted(this.length)
+      // YP13, YP21, YP22: a paired mark item, a claim item or a move record
+      // keeps its content: its class orders concurrent inserts (`markClass`)
+      // on every replica, collected or not. A block slot a split made keeps
+      // its split key the same way (`splitKey`), trimmed to it.
+      const arr = /** @type {any} */ (this.content).arr
+      this.content = arr !== undefined && arr.some((/** @type {any} */ v) => v != null && Array.isArray(v.s))
+        ? new ContentAny(arr.map((/** @type {any} */ v) => (v != null && Array.isArray(v.s) ? { s: v.s } : null)))
+        : new ContentDeleted(this.length)
     }
   }
 
@@ -428,6 +462,7 @@ export class Item extends AbstractStruct {
       rightItem.markDeleted()
     }
     rightItem.holds = this.holds // YP20
+    rightItem.movers = this.movers === null ? null : this.movers.slice() // YP22
     if (this.keep) {
       rightItem.keep = true
     }
@@ -606,9 +641,9 @@ export class AbstractContent {
   }
 
   /**
-   * @return {1|2|3|4|5|6|7|8|9|11}
+   * @return {1|2|3|4|5|6|7|8|9|11|12}
    */
-  getRef () { // YP20: 11, a hold record
+  getRef () { // YP20: 11, a hold record; YP22: 12, a move record
     throw error.methodUnimplemented()
   }
 }
@@ -934,7 +969,7 @@ const pendHold = (store, client, from, to, delta) => {
 /**
  * Hold (`delta` 1) or release (-1) the ids `client:clock … clock+len-1`: the
  * items here take it now, split at the edges; what this replica lacks (past
- * its clock, or a Skip) waits until it integrates (`applyPendingHolds`). A GC
+ * its clock, or a Skip) waits until it integrates (`applyPending`). A GC
  * struct takes nothing (it is gone everywhere).
  *
  * @param {Transaction} tr
@@ -975,29 +1010,11 @@ const holdIds = (tr, ids, delta) => {
 }
 
 /**
- * Apply the holds that waited for items of `clients` an update just
- * integrated (what is still missing waits on).
- *
- * @param {Transaction} tr
- * @param {Array<number>} clients
- */
-export const applyPendingHolds = (tr, clients) => {
-  const store = tr.doc.store
-  for (const client of clients) {
-    const list = store.pendingHolds?.get(client)
-    if (list === undefined) continue
-    /** @type {Map<number, Array<number>>} */ (store.pendingHolds).delete(client)
-    for (let i = 0; i < list.length; i += 3) holdRange(tr, client, list[i], list[i + 1], list[i + 2])
-  }
-  if (store.pendingHolds?.size === 0) store.pendingHolds = null
-}
-
-/**
  * A hold record: one unit per held id range (`client, clock, len`). While the
  * record is live, the items it names read as deleted; deleting the record
  * shows them again (an undo), unless another live record holds them. A record
  * integrates at once; what it names that has not arrived takes its hold when
- * it does (`applyPendingHolds`).
+ * it does (`applyPending`).
  */
 export class ContentHold {
   /**
@@ -1099,6 +1116,266 @@ export class ContentHold {
 }
 // YP20 end
 
+// YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
+/**
+ * The record that wins `movers`: the greatest `(priority, client, clock)`,
+ * or `null` for none.
+ *
+ * @param {Array<Item>|null} movers
+ * @return {Item|null}
+ */
+const moverOf = movers => {
+  if (movers === null) return null
+  let best = movers[0]
+  for (let i = 1; i < movers.length; i++) {
+    const m = movers[i]
+    const a = /** @type {ContentMove} */ (m.content).priority
+    const b = /** @type {ContentMove} */ (best.content).priority
+    if (a > b || (a === b && (m.id.client > best.id.client || (m.id.client === best.id.client && m.id.clock > best.id.clock)))) best = m
+  }
+  return best
+}
+
+/**
+ * Log that `item`'s mover changed (or it left its mover: removed) in
+ * `tr.moves`, in order, and its home and its new mover's sequences as changed.
+ *
+ * @param {Transaction} tr
+ * @param {Item} item
+ * @param {Item|null} mover
+ */
+const logMove = (tr, item, mover) => {
+  tr.moves.push(item.id.client, item.id.clock, item.length)
+  addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
+  if (mover !== null) addChangedTypeToTransaction(tr, /** @type {YNode} */ (mover.parent), null)
+}
+
+/**
+ * Add (`delta` 1) or drop (-1) the live record `record` from `item`'s
+ * movers. An item that starts or stops being moved (and is not gone)
+ * moves its home sequence's length and drops its search markers; one
+ * whose mover changed is logged (`tr.moves`). A record never moves a
+ * record: it is skipped.
+ *
+ * @param {Transaction} tr
+ * @param {Item} item
+ * @param {Item} record
+ * @param {number} delta
+ */
+const moveItem = (tr, item, record, delta) => {
+  if (item.content.constructor === ContentMove) return
+  const was = item.deleted
+  const before = item.mover
+  if (delta > 0) {
+    if (item.movers === null) item.movers = [record]
+    else item.movers.push(record)
+  } else if (item.movers !== null) {
+    const i = item.movers.indexOf(record)
+    if (i >= 0) item.movers.splice(i, 1)
+    if (item.movers.length === 0) item.movers = null
+  }
+  const after = item.mover
+  if (was !== item.deleted) {
+    const parent = /** @type {YNode} */ (item.parent)
+    if (item.countable && item.parentSub === null) parent._length += was ? item.length : -item.length
+    if (parent._searchMarker) parent._searchMarker.length = 0
+  }
+  if (before !== after) {
+    logMove(tr, item, after)
+    if (before !== null) addChangedTypeToTransaction(tr, /** @type {YNode} */ (before.parent), null)
+  }
+}
+
+/**
+ * Add or drop `record` on the ids `client:clock … clock+len-1` (`holdRange`'s
+ * walk): the items take it now, split at the edges. Every unit is here: a
+ * record integrates once every unit it names has, and no Skip stands for one
+ * (`getMissing`). A GC struct takes nothing.
+ *
+ * @param {Transaction} tr
+ * @param {Item} record
+ * @param {number} client
+ * @param {number} clock
+ * @param {number} len
+ * @param {number} delta
+ */
+const moveRange = (tr, record, client, clock, len, delta) => {
+  const store = tr.doc.store
+  const structs = /** @type {Array<GC|Item>} */ (store.clients.get(client))
+  const end = clock + len
+  for (let k = clock; k < end;) {
+    let struct = structs[findIndexSS(structs, k)]
+    const to = math.min(struct.id.clock + struct.length, end)
+    if (struct.isItem) {
+      if (struct.id.clock < k) struct = getItemCleanStart(tr, createID(client, k))
+      if (struct.id.clock + struct.length > to) getItemCleanStart(tr, createID(client, to))
+      moveItem(tr, /** @type {Item} */ (struct), record, delta)
+    }
+    k = to
+  }
+}
+
+/**
+ * Add or drop `record` on the items `ids` names (`client, clock, len` triples).
+ *
+ * @param {Transaction} tr
+ * @param {Item} record
+ * @param {Array<number>} ids
+ * @param {number} delta
+ */
+const moveIds = (tr, record, ids, delta) => {
+  for (let i = 0; i < ids.length; i += 3) moveRange(tr, record, ids[i], ids[i + 1], ids[i + 2], delta)
+}
+
+/**
+ * Apply the holds (YP20) that waited for items of `clients` an update just
+ * integrated (what is still missing waits on).
+ *
+ * @param {Transaction} tr
+ * @param {Array<number>} clients
+ */
+export const applyPending = (tr, clients) => {
+  const store = tr.doc.store
+  for (const client of clients) {
+    const holds = store.pendingHolds?.get(client)
+    if (holds !== undefined) {
+      /** @type {Map<number, Array<number>>} */ (store.pendingHolds).delete(client)
+      for (let i = 0; i < holds.length; i += 3) holdRange(tr, client, holds[i], holds[i + 1], holds[i + 2])
+    }
+  }
+  if (store.pendingHolds?.size === 0) store.pendingHolds = null
+}
+
+/**
+ * A move record: one countable unit at its destination, naming the units
+ * it moves (`client, clock, len` ranges, in the order they show) with a
+ * Lamport `priority`, a `side` (`0`: it stands after what precedes it,
+ * `1`: before what follows it — its sort class among the items of one
+ * origin, `markClass`), and for the sort of two records at one origin
+ * (`utils/marks.js` `sourceOrder`) the unit it stands at (`at`, else the
+ * first it names) and its `part` there. While the record is live, each named unit shows at
+ * the record that wins its movers and is hidden at home; deleting the
+ * record (an undo) hands the unit to the next record, else home. A record
+ * waits for the units it names as an item waits for its origin
+ * (`getMissing`), so two records at one origin sort by their units' home
+ * order on every replica (`sourceOrder`). Immutable once written, so
+ * replicas converge in any order.
+ */
+export class ContentMove {
+  /**
+   * @param {number} priority
+   * @param {number} side
+   * @param {Array<number>} ids
+   * @param {number} [part] the writer's order among the records standing at one unit (0–7)
+   * @param {ID|null} [at] the unit the record stands at (`null`: the first it names)
+   */
+  constructor (priority, side, ids, part = 0, at = null) {
+    this.priority = priority
+    this.side = side
+    this.ids = ids
+    this.part = part
+    this.at = at
+    /**
+     * The record item, once integrated (its id and parent decide the move).
+     * @type {Item|null}
+     */
+    this.item = null
+  }
+
+  /**
+   * @return {number}
+   */
+  getLength () {
+    return 1
+  }
+
+  /**
+   * @return {Array<any>}
+   */
+  getContent () {
+    return [{ priority: this.priority, side: this.side, part: this.part, at: this.at, ids: this.ids }]
+  }
+
+  /**
+   * @return {boolean}
+   */
+  isCountable () {
+    return true
+  }
+
+  /**
+   * @return {ContentMove}
+   */
+  copy () {
+    return new ContentMove(this.priority, this.side, this.ids, this.part, this.at)
+  }
+
+  /**
+   * @param {number} _offset
+   * @return {ContentMove}
+   */
+  splice (_offset) {
+    throw error.methodUnimplemented()
+  }
+
+  /**
+   * @param {ContentMove} _right
+   * @return {boolean}
+   */
+  mergeWith (_right) {
+    return false
+  }
+
+  /**
+   * @param {Transaction} transaction
+   * @param {Item} item
+   */
+  integrate (transaction, item) {
+    this.item = item
+    const doc = /** @type {any} */ (transaction.doc)
+    // A peer's record raises the clock; this writer's own leave it, so its
+    // next records stay level with these until it sees a peer's.
+    if (!transaction.local && this.priority > doc._clock) doc._clock = this.priority
+    moveIds(transaction, item, this.ids, 1)
+  }
+
+  /**
+   * @param {Transaction} transaction
+   */
+  delete (transaction) {
+    if (this.item !== null) moveIds(transaction, this.item, this.ids, -1)
+  }
+
+  /**
+   * @param {Transaction} _tr
+   */
+  gc (_tr) {}
+
+  /**
+   * @param {UpdateEncoder} encoder
+   * @param {number} _offset
+   * @param {number} _offsetEnd
+   */
+  write (encoder, _offset, _offsetEnd) {
+    // One varint: the priority, whether an anchor follows, the part, the side.
+    encoder.writeLen(this.priority * 32 + (this.at === null ? 0 : 16) + this.part * 2 + this.side)
+    if (this.at !== null) encoder.writeLeftID(this.at)
+    encoder.writeLen(this.ids.length / 3)
+    for (let i = 0; i < this.ids.length; i += 3) {
+      encoder.writeLeftID(createID(this.ids[i], this.ids[i + 1]))
+      encoder.writeLen(this.ids[i + 2])
+    }
+  }
+
+  /**
+   * @return {12}
+   */
+  getRef () {
+    return 12
+  }
+}
+// YP22 end
+
 /**
  * @private
  */
@@ -1163,11 +1440,12 @@ export class ContentFormat {
   integrate (_transaction, item) {
     // Format items are non-countable: no marker index shifts (YP4).
     // YP13: a paired mark's start carries its Lamport timestamp; the document
-    // keeps the greatest it saw, so the next mark it writes wins over it.
+    // keeps the greatest it saw (YP22: one clock with the move records), so the
+    // next mark or move it writes wins over it.
     if (pairedRole(this) === 0) {
       const doc = /** @type {any} */ (_transaction.doc)
       const l = /** @type {Array<any>} */ (this.value)[1]
-      if (l > doc._markClock) doc._markClock = l
+      if (l > doc._clock) doc._clock = l
     }
   }
 

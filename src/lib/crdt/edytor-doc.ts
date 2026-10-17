@@ -49,6 +49,7 @@
 import { setMarkEdges } from './text/marks.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
+import { orderingUnits } from './placement/resolve.js';
 import { SCHEMA } from './schema.js';
 import {
 	bindModel,
@@ -187,7 +188,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	const { init, seed } = bindSeed(Y, BA);
 
 	return (doc: EngineDoc, config: EdytorDocConfig = {}) => {
-		keepingReplaced(doc);
+		orderingUnits(keepingReplaced(doc));
 		setMarkEdges(doc, config.markEdge ?? (() => undefined));
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';
@@ -549,7 +550,7 @@ export const bindDocModel = (Y: EngineApi) => {
 		 * not have integrated anything yet.
 		 */
 		newDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc =>
-			keepingReplaced(new Y.Doc(opts)),
+			orderingUnits(keepingReplaced(new Y.Doc(opts))),
 		/** The bound engine layers (same instances the facades use). */
 		model: M,
 		text: T,

@@ -14,8 +14,8 @@
  * 2. its type and data, per leaf, where they differ;
  * 3. its place: under its snapshot parent, in the snapshot's order (the
  *    longest run of that parent's children already in order stays; each
- *    other block gets a placement candidate between its neighbours); a
- *    snapshot block the registry no longer holds is created there;
+ *    other block is moved after the one before it); a snapshot block the
+ *    registry no longer holds is created there;
  * 4. its content, where it differs: its own claims removed, then its
  *    stream's text replaced through the facade's per-stream delete and
  *    insert, the common prefix and suffix kept;
@@ -26,10 +26,9 @@
 import type { EngineDoc, EngineNode } from './engine-api.js';
 import {
 	blockNodeOf,
-	materializeSpec,
-	ranksAt,
+	insertSpecsAt,
+	moveBlocksTo,
 	view as modelView,
-	writePlacement,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
@@ -38,7 +37,7 @@ import {
 } from './placement/model.js';
 import type { DataPatch } from './data.js';
 import { DEL_PREFIX, TYPE, WITHDRAW_PREFIX } from './schema.js';
-import { common, patchWrites, writeLeaves } from './data.js';
+import { common, patchWrites, writeData } from './data.js';
 import { canonKey, deleteClaims } from './text/model.js';
 import { randOf } from './rand.js';
 import type { JSONDoc } from '../utils/json.js';
@@ -214,7 +213,7 @@ export const restoreDocument = <Plan>(
 		const n = node(id);
 		if (n === null) continue;
 		if (n.getAttr(TYPE) !== spec.type) n.setAttr(TYPE, spec.type);
-		writeLeaves(
+		writeData(
 			n,
 			patchWrites(n, [{ path: [], value: spec.data ?? {} }], doc.clientID, randOf(doc)) ?? []
 		);
@@ -226,7 +225,6 @@ export const restoreDocument = <Plan>(
 	for (const [parent, list] of parents) {
 		if (list.length === 0) continue;
 		const slots = facade.childSlots(parent);
-		const index = new Map(slots.map((slot, i) => [slot.id, i] as const));
 		// What a longest common run of the two orders keeps stays where it is.
 		const kept = new Set(
 			common(
@@ -234,32 +232,25 @@ export const restoreDocument = <Plan>(
 				list.map((spec) => spec.id)
 			).map(([, j]) => j)
 		);
-		let prev: string | undefined;
+		let prev: BlockId | null = null;
 		list.forEach((spec, i) => {
 			if (kept.has(i)) {
-				prev = slots[index.get(spec.id)!].rank;
+				prev = spec.id;
 				return;
 			}
-			let next: string | undefined;
-			for (let j = i + 1; j < list.length; j++)
-				if (kept.has(j)) {
-					next = slots[index.get(list[j].id)!].rank;
-					break;
-				}
-			const bounds = [
-				...(prev === undefined ? [] : [{ rank: prev }]),
-				...(next === undefined ? [] : [{ rank: next }])
-			];
-			const [rank] = ranksAt(bounds, prev === undefined ? 0 : 1, 1, doc.clientID, randOf(doc));
+			const v = modelView(doc);
+			// Right after the block before it in the snapshot (the list as it stands, the block itself left out).
+			const shown = (v.kids.get(parent) ?? []).map((k) => k.id).filter((id) => id !== spec.id);
+			const at = prev === null ? 0 : shown.indexOf(prev) + 1;
 			const n = node(spec.id);
 			if (n === null) {
-				materializeSpec(doc, { ...spec, children: [] }, parent, rank);
+				insertSpecsAt(doc, v, parent, at, [{ ...spec, children: [] }]);
 				report.created++;
 			} else {
-				writePlacement(doc, n, parent, rank);
+				moveBlocksTo(doc, v, [spec.id], parent, at);
 				report.moved++;
 			}
-			prev = rank;
+			prev = spec.id;
 		});
 	}
 

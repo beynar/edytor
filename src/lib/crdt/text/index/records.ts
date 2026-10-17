@@ -7,7 +7,7 @@ import { readData } from '../../data.js';
 import { Y } from '../../engine.js';
 import type { EngineNode } from '../../engine-api.js';
 import { baseIdOf, incarnationNode, incarnationsOf, isIncarnationId } from '../../incarnations.js';
-import { type BlockId, type BlockRec, candidatesOf } from '../../placement/model.js';
+import type { BlockId, BlockRec } from '../../placement/model.js';
 import { engineOps } from '../../structs.js';
 import { CONTENT, NONCE, hasDeleteMark, hasWithdrawMark, isNodeLike } from '../../schema.js';
 import type { Claim } from '../model.js';
@@ -24,15 +24,14 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 		blocks,
 		shells,
 		reclaim,
-		byArgParent,
+		rawOrder,
 		placementSeeds,
 		stateSeeds,
 		incarnations,
 		noteClaims,
 		claimsOf,
 		noteKind,
-		argParent,
-		noteCands
+		homeFor
 	} = ix;
 
 	// ── records ──────────────────────────────────────────────────────
@@ -71,7 +70,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 			implicit,
 			// Read from its stream once the record is in (`claimsOf`), again after the fold's texts.
 			claims: [],
-			cands: candidatesOf(node)
+			home: homeFor(id)
 		};
 	};
 
@@ -79,7 +78,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 	 * Rebuild (or create, or drop) block `id`'s record, and note what the
 	 * maintained facts must re-decide: its owner and the tops of the
 	 * blocks it claims, its placement — and, when its entry came or
-	 * went, the placements of the blocks whose candidate names it.
+	 * went, the placements of the blocks whose display edge it holds.
 	 */
 	const updateBlockRec = (id: BlockId): void => {
 		const old = blocks.get(id);
@@ -94,11 +93,10 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 		const rec = blocks.get(id);
 		noteShell(id);
 		noteClaims(id, old?.claims ?? [], rec?.claims ?? []);
-		noteCands(id, argParent(old));
 		placementSeeds.add(id);
 		if ((old === undefined) !== (rec === undefined)) {
 			stateSeeds.add(id);
-			for (const c of byArgParent.get(id) ?? []) placementSeeds.add(c);
+			for (const c of rawOrder.get(id) ?? []) placementSeeds.add(c.id);
 		}
 		if (old?.type !== rec?.type) {
 			noteKind(id);

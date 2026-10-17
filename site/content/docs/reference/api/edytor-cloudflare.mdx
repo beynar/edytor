@@ -1309,7 +1309,7 @@ export type PurgeReport = {
     removed: number;
     emptied: number;
     marks: number;
-    candidates: number;
+    records: number;
     claims: number;
     merged: number;
 };
@@ -1318,7 +1318,7 @@ export type PurgeReport = {
 - `removed`: Blocks removed: registry entry deleted, node collected.
 - `emptied`: Deleted blocks kept (they delimit a live text, or a block is placed under them) whose stream, data and claims were deleted.
 - `marks`: Text hold records deleted (what they held deleted with them).
-- `candidates`: Placement candidates dropped (runner-ups of an old, accepted winner).
+- `records`: Move records dropped: old ones no block shows at any more (a lost move, a move of removed blocks).
 - `claims`: Claims naming a removed block, deleted from the blocks that hold them.
 - `merged`: Attribution records of blocks merged away before the horizon (their text shows in the block that claimed them, which unioned their contributors at the merge): deleted, their registry entries kept.
 

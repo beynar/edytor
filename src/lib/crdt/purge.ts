@@ -10,15 +10,17 @@
  * stored by the room before the horizon's time (`room.purge.timing`). A
  * deletion's time is the struct that made it: a block's oldest live delete
  * mark (a withdrawn block: its withdraw mark, and the records of what it last
- * held), a text hold record, a placement candidate.
+ * held), a text hold record, a move record.
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
 import {
+	recordsOf,
+	registryOf,
 	view as modelView,
 	type BlockId,
-	type BlockRec,
 	type PlacementModel
 } from './placement/model.js';
+import { removeUnit, unitOf } from './placement/slots.js';
 import {
 	deleteClaims,
 	purgeStreams,
@@ -27,14 +29,12 @@ import {
 	type TextEngine
 } from './text/model.js';
 import {
-	AT,
 	BLOCK_ATTR_ROOT,
 	DATA,
 	DATA_LEAF_PREFIX,
 	DEL_PREFIX,
 	HORIZON_ATTR,
 	HORIZON_ROOT,
-	isNodeLike,
 	REC_PREFIX,
 	REGISTRY_KEY,
 	TEXT_DELETES_ROOT,
@@ -57,8 +57,8 @@ export type PurgeReport = {
 	emptied: number;
 	/** Text hold records deleted (what they held deleted with them). */
 	marks: number;
-	/** Placement candidates dropped (runner-ups of an old, accepted winner). */
-	candidates: number;
+	/** Move records dropped: old ones no block shows at any more (a lost move, a move of removed blocks). */
+	records: number;
 	/** Claims naming a removed block, deleted from the blocks that hold them. */
 	claims: number;
 	/**
@@ -173,7 +173,7 @@ export const bindPurge = (Y: EngineApi) => {
 			removed: 0,
 			emptied: 0,
 			marks: 0,
-			candidates: 0,
+			records: 0,
 			claims: 0,
 			merged: 0
 		};
@@ -218,17 +218,24 @@ export const bindPurge = (Y: EngineApi) => {
 			if (marks(rec.node, WITHDRAW_PREFIX).some(oldItem)) shells.push(id);
 		}
 		// A withdrawn block is hidden since it last held something: what its
-		// stream held was deleted, and its children left, before the horizon.
+		// stream held was deleted, and its children left (the move that took
+		// them is old), before the horizon.
 		const children = new Map<BlockId, BlockId[]>();
 		const add = (map: Map<BlockId, BlockId[]>, key: BlockId, id: BlockId) => {
 			const list = map.get(key);
 			if (list === undefined) map.set(key, [id]);
 			else list.push(id);
 		};
-		for (const [id, rec] of blocks)
-			for (const c of rec.cands) if (typeof c.p === 'string') add(children, c.p, id);
-		const winnerOld = (rec: BlockRec) =>
-			oldItem(mapOf(rec.node.getAttr(AT) as EngineNode)?.get(rec.cands[0]?.key));
+		for (const [id, rec] of blocks) {
+			const p = rec.home?.parent;
+			if (typeof p === 'string') add(children, p, id);
+		}
+		/** The block's display edge is old: it shows at its home slot (written with the block), or at an old record. */
+		const edgeOld = (id: BlockId): boolean => {
+			const home = blocks.get(id)?.home;
+			const r = home ? (unitOf(doc, home)?.item.mover ?? null) : null;
+			return r === null ? true : old(r.id.client, r.id.clock);
+		};
 		const holds = shells.length > 0 ? holdsOf(doc) : [];
 		for (let grew = true; grew; ) {
 			grew = false;
@@ -236,10 +243,9 @@ export const bindPurge = (Y: EngineApi) => {
 				if (dead.has(id)) continue;
 				const s = own.streamOf(id);
 				if (s !== undefined && !heldBefore(holds, regionSpans(s), old)) continue;
-				const left = (children.get(id) ?? []).every((child) => {
-					const rec = blocks.get(child)!;
-					return rec.cands[0]?.p === id ? dead.has(child) : winnerOld(rec);
-				});
+				const left = (children.get(id) ?? []).every((child) =>
+					placements.get(child)?.parent === id ? dead.has(child) : edgeOld(child)
+				);
 				if (!left) continue;
 				dead.add(id);
 				grew = true;
@@ -274,14 +280,17 @@ export const bindPurge = (Y: EngineApi) => {
 		const removable = new Set<BlockId>();
 		for (const family of families.values())
 			if (family.every((id) => dead.has(id))) for (const id of family) removable.add(id);
-		// Nothing that stays may be placed under a block that goes.
+		// Nothing that stays may be placed under a block that goes, or keep its
+		// home slot in the sequence of one (the slot goes with the node).
 		for (let shrank = true; shrank; ) {
 			shrank = false;
-			for (const [id, pl] of placements) {
-				if (removable.has(id) || typeof pl.parent !== 'string' || !removable.has(pl.parent))
-					continue;
-				for (const member of families.get(root(pl.parent)) ?? []) removable.delete(member);
-				shrank = true;
+			for (const [id, rec] of blocks) {
+				if (removable.has(id)) continue;
+				for (const p of [placements.get(id)?.parent, rec.home?.parent]) {
+					if (typeof p !== 'string' || !removable.has(p)) continue;
+					for (const member of families.get(root(p)) ?? []) removable.delete(member);
+					shrank = true;
+				}
 			}
 		}
 
@@ -313,6 +322,9 @@ export const bindPurge = (Y: EngineApi) => {
 			report.claims += named.length;
 		}
 		for (const id of removable) {
+			// Its home slot goes with it: nothing shows it any more.
+			const home = blocks.get(id)?.home;
+			if (home) removeUnit(doc, home);
 			if (isIncarnationId(id)) {
 				// A losing incarnation is no registry value: its subtree goes.
 				// Its node is a deleted value, which the node API writes nothing to:
@@ -354,18 +366,19 @@ export const bindPurge = (Y: EngineApi) => {
 			attribution.deleteAttr(`${REC_PREFIX}${id}`);
 			report.merged++;
 		}
-		// Runner-up candidates of an old winner that stands.
-		for (const [id, rec] of blocks) {
-			if (removable.has(id) || rec.cands.length < 2) continue;
-			const winner = rec.cands[0];
-			const at = rec.node.getAttr(AT);
-			if (!isNodeLike(at) || !oldItem(mapOf(at).get(winner.key))) continue;
-			const pl = placements.get(id);
-			const p = winner.p !== null && !blocks.has(winner.p) ? null : winner.p;
-			if (pl === undefined || pl.parent !== p || pl.rank !== winner.r) continue;
-			for (const c of rec.cands.slice(1)) at.deleteAttr(c.key);
-			report.candidates += rec.cands.length - 1;
-		}
+		// Old move records no block shows at (lost to a newer move, or their blocks
+		// removed): no undo below the horizon can make them movers again.
+		const sequences: EngineNode[] = [registryOf(doc)];
+		for (const [id, rec] of blocks) if (!removable.has(id)) sequences.push(rec.node);
+		doc.transact((tr) => {
+			for (const node of sequences)
+				for (const r of recordsOf(doc, node)) {
+					if (r.wins || !old(r.item.id.client, r.item.id.clock)) continue;
+					ops.remove(tr, r.item);
+					dropSearchMarkers(node);
+					report.records++;
+				}
+		});
 		// Text hold records past the horizon, with what they hold.
 		report.marks = purgeText(doc, old);
 		// The horizon record, last.

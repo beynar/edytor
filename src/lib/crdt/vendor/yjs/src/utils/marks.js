@@ -1,4 +1,8 @@
 /**
+ * @typedef {import('./Transaction.js').Transaction} Transaction
+ */
+
+/**
  * Paired marks — an edytor fork addition (UPSTREAM.md YP13), not upstream source.
  *
  * Upstream formatting writes a format item `{key: value}` where a range
@@ -119,7 +123,10 @@ export const formatValue = value => value instanceof MarkState ? value.value : v
  * left-side mark item `0`, content and plain formats `1`, a right-side
  * mark item `2`, a claim item `3` (YP21: a sequence unit `{ m }`, after
  * everything else, so content and boundaries a concurrent writer puts at
- * its origin land before it). Deleted or collected items keep the class
+ * its origin land before it), a move record `4` or `5` by its side (YP22:
+ * after every slot of its origin — a split's pieces first — and a record
+ * standing after what precedes it before one standing before what follows
+ * it: the order every serial run of the gestures gives). Deleted or collected items keep the class
  * their content gave them while it is there; a collected item (its content
  * gone) would read `1`, which is why the fork never collects the content of
  * an item of another class (`Item#gc` keeps it).
@@ -131,6 +138,8 @@ export const markClass = item => {
   const content = item.content
   if (content === undefined) return 1
   if (typeof content.key !== 'string') {
+    // YP22: a move record (its side: 0 after, 1 before)
+    if (content.priority !== undefined && content.ids !== undefined) return 4 + content.side
     // YP21: a claim item
     return item.parentSub === null && typeof content.arr?.[0]?.m === 'string' ? 3 : 1
   }
@@ -141,15 +150,156 @@ export const markClass = item => {
 }
 
 /**
- * Whether `o` sorts before `item` among the items of one origin (the
- * integration's conflict rule): by class, then by client id as upstream.
+ * YP22: whether `item` is a list item outside a text (a block's or an
+ * array's slot: its parent is no `content` node) written by the writer of
+ * its origin: it extends that writer's run there, and sorts before every
+ * other writer's slot of the same origin (`order.insert.run`: the lines one
+ * writer types after its own line stay together around a peer's line
+ * inserted there meanwhile). Read from the item's ids and parent, which
+ * collection never changes, so every replica integrates alike.
  *
- * @param {any} o
  * @param {any} item
  * @return {boolean}
  */
-export const sortsBefore = (o, item) => {
+/**
+ * YP22: a block slot's split key (`{ b, s: [client, clock] }`: the id of the
+ * boundary item of the split that made the block, kept when the slot is
+ * collected, `Item#gc`), `null` for any other item (a slot no split made, a
+ * boundary, whose own `s` names a block).
+ *
+ * @param {any} item
+ * @return {{ client: number, clock: number } | null}
+ */
+const splitKey = item => {
+  const v = item.content.arr?.[0]
+  return v != null && Array.isArray(v.s) ? { client: v.s[0], clock: v.s[1] } : null
+}
+
+const extendsRun = (/** @type {Item} */ item) =>
+  item.parentSub === null && /** @type {YNode} */ (item.parent).name !== 'content' && item.origin !== null && item.origin.client === item.id.client
+
+/**
+ * YP22: the order of two items of one sequence (one parent, one key):
+ * negative when `x` stands before `y`, positive after, `0` for one item,
+ * `NaN` when they are not in one sequence. The walk goes left from both at
+ * once, so it costs the distance between them.
+ *
+ * @param {any} x
+ * @param {any} y
+ * @return {number}
+ */
+export const sequenceOrder = (x, y) => {
+  if (x === y) return 0
+  if (x.parent !== y.parent || x.parentSub !== y.parentSub) return NaN
+  for (let l = x, r = y; ;) {
+    l = l.left
+    r = r.left
+    if (l === y || r === null) return 1
+    if (r === x || l === null) return -1
+  }
+}
+
+/**
+ * YP22: the unit record `r` stands at (`at`, else the first it names) as its
+ * item and clock, `null` when none, or a GC struct replaced it.
+ *
+ * @param {any} r
+ * @param {import('./StructStore.js').StructStore} store
+ * @return {{ item: any, clock: number } | null}
+ */
+const anchorOf = (r, store) => {
+  const c = r.content
+  const id = c.at !== null ? c.at : c.ids.length > 0 ? { client: c.ids[0], clock: c.ids[1] } : null
+  if (id === null) return null
+  const item = store.getItem(id)
+  return item.isItem ? { item, clock: id.clock } : null
+}
+
+/**
+ * YP22: the order of two move records at one origin: by the units they
+ * stand at (`anchorOf`) — in one sequence by `sequenceOrder` (one item: by
+ * clock); in two sequences by the document's `_unitOrder` (the
+ * application's order of two units of different sequences, `null` for
+ * none) — then by their `part` (the writer's order among the records
+ * standing at one unit), then the stronger record first (the greater
+ * priority, then client: a unit both move shows at the first of the two).
+ * Two writers that move blocks out of one list into one gap at once (an
+ * outdent, a lift, a divider after an item) keep the list's order there and
+ * every serial order's placement of what stands at one item, whatever their
+ * client ids (the delete contract's CW-01 and DR-crdt-6 rules). It runs only
+ * on a conflict of two records at one origin, and both records' units are
+ * present then (`getMissing`).
+ *
+ * @param {any} o
+ * @param {any} item
+ * @param {Transaction} tr
+ * @return {number}
+ */
+const sourceOrder = (o, item, tr) => {
+  const store = tr.doc.store
+  const x = anchorOf(o, store)
+  const y = anchorOf(item, store)
+  let d = 0
+  if (x !== null && y !== null) {
+    if (x.item === y.item) d = x.clock - y.clock
+    else {
+      d = sequenceOrder(x.item, y.item)
+      if (Number.isNaN(d)) {
+        const order = /** @type {any} */ (tr.doc)._unitOrder
+        d = order === null ? 0 : order(x, y)
+      }
+    }
+  }
+  if (d === 0) d = o.content.part - item.content.part
+  if (d === 0) d = item.content.priority - o.content.priority || item.id.client - o.id.client
+  return d
+}
+
+/**
+ * Whether `o` sorts before `item` among the items of one origin (the
+ * integration's conflict rule): by class, then (YP22) block slots by their
+ * split key and the origin writer's own first, records by `sourceOrder`,
+ * then by client id as upstream.
+ *
+ * @param {any} o
+ * @param {any} item
+ * @param {Transaction} tr
+ * @return {boolean}
+ */
+export const sortsBefore = (o, item, tr) => {
   const a = markClass(o)
   const b = markClass(item)
-  return a !== b ? a < b : o.id.client < item.id.client
+  if (a !== b) return a < b
+  if (a === 1) {
+    // YP22: block slots a split made sort by their boundaries' order in the
+    // text (two writers' splits of one block keep its text's order), before
+    // the slots no split made; then the origin writer's own slots first.
+    const sa = splitKey(o)
+    const sb = splitKey(item)
+    if (sa !== null || sb !== null) {
+      if (sa === null || sb === null) return sb === null
+      const store = tr.doc.store
+      const x = store.getItem(sa)
+      const y = store.getItem(sb)
+      if (x.isItem && y.isItem) {
+        // One total order over the keyed slots of an origin: the boundaries' text
+        // first (by the text node's item id, a root text first), then their place in
+        // it (two boundaries one item holds: their clocks).
+        const px = /** @type {YNode} */ (x.parent)._item
+        const py = /** @type {YNode} */ (y.parent)._item
+        if (x.parent !== y.parent) {
+          if (px === null || py === null) return px === null
+          return px.id.client !== py.id.client ? px.id.client < py.id.client : px.id.clock < py.id.clock
+        }
+        const d = x === y ? sa.clock - sb.clock : sequenceOrder(x, y)
+        if (d !== 0) return d < 0
+      }
+    }
+    const x = extendsRun(o)
+    if (x !== extendsRun(item)) return x
+  } else if (a >= 4) {
+    const d = sourceOrder(o, item, tr)
+    if (d !== 0) return d < 0
+  }
+  return o.id.client < item.id.client
 }

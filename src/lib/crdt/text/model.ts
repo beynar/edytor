@@ -279,6 +279,8 @@ export type Ownership = {
 	hidden: (b: BlockId) => boolean;
 	/** The claimed block's max-stamp live claimer. */
 	top: (m: BlockId) => BlockId | undefined;
+	/** The position of `m` among `holder`'s claims (`-1`: none): the order the claimed blocks' children show in. */
+	claimIndex: (holder: BlockId, m: BlockId) => number;
 	streamOf: (b: BlockId) => Stream | undefined;
 	/** The streams of `home`'s text, in text order. */
 	streamsIn: (home: BlockId) => readonly Stream[];
@@ -361,6 +363,7 @@ export const computeOwnership = (_doc: EngineDoc, given: ReadonlyMap<BlockId, Te
 		ownerOf,
 		hidden: (b) => ownerOf(b) !== b,
 		top: (m) => top.get(m),
+		claimIndex: (holder, m) => blocks.get(holder)?.claims.findIndex((c) => c.m === m) ?? -1,
 		streamOf: (b) => streams.get(b),
 		streamsIn: (home) => inText.get(home) ?? [],
 		streamAt: (home, i) => (inText.get(home) ?? []).find((x) => x.start <= i && i <= x.end),

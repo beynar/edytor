@@ -69,6 +69,7 @@ import type { SchemaProblem } from './edytor-doc.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
 import { keepingReplaced } from './incarnations.js';
+import { orderingUnits } from './placement/resolve.js';
 
 // ── shared gate vocabulary (one doorway for document + transport layers) ──
 export {
@@ -172,7 +173,7 @@ export const bindAdmission = (Y: EngineApi) => ({
 			prepare?: (doc: YDoc) => void;
 		} = {}
 	): YDoc => {
-		const doc = keepingReplaced(new Y.Doc());
+		const doc = orderingUnits(keepingReplaced(new Y.Doc()));
 		options.prepare?.(doc);
 		const apply = (part: Uint8Array) => Y.applyUpdate(doc, part);
 		try {

@@ -37,6 +37,12 @@ export class Transaction {
      */
     holds: Array<number>;
     /**
+     * YP22: the units whose mover changed (a move record integrated or
+     * deleted, a moved unit removed), in order: per item `client, clock, len`.
+     * @type {Array<number>}
+     */
+    moves: Array<number>;
+    /**
      * All types that were directly modified (property added or child
      * inserted/deleted). New types are not included in this Set.
      * Maps from type to parentSubs (`item.parentSub = null` for YArray)

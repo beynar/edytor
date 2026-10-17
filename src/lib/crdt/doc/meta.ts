@@ -15,14 +15,7 @@ import {
 	type JSONText
 } from '../../utils/json.js';
 import { patchWrites, leafKey, isObject, type DataPatch } from '../data.js';
-import {
-	collides,
-	promotedRank,
-	ranksAt,
-	type BlockId,
-	type BlockSpec,
-	type ContentItem
-} from '../placement/model.js';
+import { collides, type BlockId, type BlockSpec, type ContentItem } from '../placement/model.js';
 import { ref, refused, sanitizeItem } from './plan.js';
 import type { Prepared, PlanStep, DataTarget } from './types.js';
 import type { OpsContext } from './steps.js';
@@ -46,7 +39,6 @@ export const metaOps = (c: OpsContext) => {
 		contentTarget,
 		REFUSED,
 		plan,
-		moveTo,
 		attr,
 		leavingIsland,
 		settle,
@@ -67,7 +59,7 @@ export const metaOps = (c: OpsContext) => {
 		// A block kind's atomic paths are written as one leaf each (`data.atomic`).
 		const type = inlineId === undefined && id !== undefined ? blockTypeOf(id) : undefined;
 		const atomic = (type === undefined ? undefined : roleOf(type)?.atomic) ?? [];
-		const leaves = node
+		const writes = node
 			? patchWrites(
 					node,
 					patches,
@@ -76,8 +68,8 @@ export const metaOps = (c: OpsContext) => {
 					atomic.map((p) => leafKey(typeof p === 'string' ? [p] : p))
 				)
 			: [];
-		if (leaves === null) return null; // a patch fits no value there
-		if (leaves.length === 0) return [];
+		if (writes === null) return null; // a patch fits no value there
+		if (writes.length === 0) return [];
 		const offset = inlineId === undefined ? undefined : atomOf(id!, inlineId)?.at;
 		return [
 			{
@@ -85,7 +77,7 @@ export const metaOps = (c: OpsContext) => {
 				...(id !== undefined && { id }),
 				...(inlineId !== undefined && { inlineId, offset }),
 				ops: patches,
-				leaves
+				writes
 			}
 		];
 	};
@@ -113,10 +105,8 @@ export const metaOps = (c: OpsContext) => {
 	/**
 	 * The target role decides: nothing renders a void's children,
 	 * so a block retyped to a void kind hands them to the slot right after
-	 * it, as the kind they show there (`settledKind`). Each moves to the
-	 * rank the read-time
-	 * shedding gives it (`promotedRank`), so a child a peer adds
-	 * meanwhile keeps its place in the void's order among them. An island
+	 * it, as the kind they show there (`settledKind`), in their order (where
+	 * the read-time shedding shows a child a peer adds meanwhile). An island
 	 * declared `lines` retyped to an ordinary kind keeps its lines, each
 	 * retyped to the new kind's default child (the document's where that
 	 * renders no content): no line kind outside its island. Any other
@@ -142,17 +132,15 @@ export const metaOps = (c: OpsContext) => {
 			];
 		}
 		if (!roles.childless(type) || moved.length === 0 || pos === null) return steps;
-		const slotRank = kids.get(pos.parent)![pos.index]!.rank;
-		const ids = moved.map((k) => k.id);
+		// The children keep their home slots: the read shows them in the void's
+		// slot (`conc.void-children`), settled for its parent.
 		return [
 			...steps,
-			...moveTo(
-				ids,
-				pos.parent,
-				pos.index + 1,
-				moved.map((k) => promotedRank(slotRank, k.rank))
-			),
-			...settle(id, ids, pos.parent)
+			...settle(
+				id,
+				moved.map((k) => k.id),
+				pos.parent
+			)
 		];
 	};
 
@@ -248,10 +236,8 @@ export const metaOps = (c: OpsContext) => {
 		}
 		if (children !== undefined) {
 			for (const kid of childrenIds(id)) writes.push(remove(kid));
-			// Every current child is deleted, so the new ones rank from an empty list.
-			const ranks = ranksAt([], 0, children.length, doc.clientID, randOf(doc));
 			if (children.length > 0)
-				writes.push({ op: 'insertBlocks', parent: id, index: 0, specs: children, ranks });
+				writes.push({ op: 'insertBlocks', parent: id, index: 0, specs: children });
 		}
 		return plan([id], writes);
 	};

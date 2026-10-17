@@ -202,15 +202,21 @@ describe('D5 — composites are prepared as one plan of named steps', () => {
 		expect(ed.blockText('a')).toBe('aabb');
 	});
 
-	row('delete keeping children: move them out, then delete — the children are not removed', () => {
-		const { doc, ed } = make([p('x', 'xx', [p('y', 'yy')]), p('z', 'zz')]);
-		const plan = ed.prepare.deleteBlock('x', { keepChildren: true });
-		expect(ops(plan)).toEqual(['moveBlocks', 'deleteBlock']);
-		expect(plan.effect.removes).toEqual(['x']);
-		expect(plan.effect.moves).toEqual(['y']);
-		prepareApply(ed, doc, 'deleteBlock', () => ed.prepare.deleteBlock('x', { keepChildren: true }));
-		expect(ed.listBlockIds()).toEqual(['y', 'z']);
-	});
+	row(
+		'delete keeping children: only the block is deleted — the children are not removed, they take its slot',
+		() => {
+			const { doc, ed } = make([p('x', 'xx', [p('y', 'yy')]), p('z', 'zz')]);
+			const plan = ed.prepare.deleteBlock('x', { keepChildren: true });
+			// The children keep their home slots: the read shows them in x's slot (no move written).
+			expect(ops(plan)).toEqual(['deleteBlock']);
+			expect(plan.effect.removes).toEqual(['x']);
+			expect(plan.effect.moves).toEqual([]);
+			prepareApply(ed, doc, 'deleteBlock', () =>
+				ed.prepare.deleteBlock('x', { keepChildren: true })
+			);
+			expect(ed.listBlockIds()).toEqual(['y', 'z']);
+		}
+	);
 
 	row(
 		'delete keepChildren: false hides the subtree: every block that leaves the document is in removes',
@@ -227,13 +233,13 @@ describe('D5 — composites are prepared as one plan of named steps', () => {
 	);
 
 	row(
-		'delete (the default) promotes: only the block is in removes, its children move to its slot',
+		'delete (the default) promotes: only the block is in removes, its children show in its slot',
 		() => {
 			const { doc, ed } = make([p('x', 'xx', [p('y', 'yy', [p('w', 'ww')])]), p('z', 'zz')]);
 			const plan = ed.prepare.deleteBlock('x');
-			expect(ops(plan)).toEqual(['moveBlocks', 'deleteBlock']);
+			expect(ops(plan)).toEqual(['deleteBlock']);
 			expect(plan.effect.removes).toEqual(['x']);
-			expect(plan.effect.moves).toEqual(['y']);
+			expect(plan.effect.moves).toEqual([]);
 			prepareApply(ed, doc, 'deleteBlock', () => ed.prepare.deleteBlock('x'));
 			expect(ed.listBlockIds()).toEqual(['y', 'w', 'z']);
 		}

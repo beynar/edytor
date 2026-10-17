@@ -2,44 +2,46 @@
  * Placement engine — the Edytor document model on vendored Yjs v14.
  *
  * Architecture: every block is a stable registry entry keyed by its logical
- * id; displayed structure is DERIVED from per-block placement candidate
- * records, never from physical nesting.
+ * id; displayed structure is DERIVED from the order sequences (fork patch
+ * YP22), never from physical nesting.
  *
  * ```
  * doc.get('blocks')                        registry — flat map, block-id → node
+ *   │  [ {b: id}, {b: id}, R, … ]          its list part: the top-level blocks' home slots and move records
  *   └ <blockId>  node('block')             stable identity; survives every move
- *        ├ id / type / data / n            payload attrs (n: incarnation nonce)
+ *        ├ id / type / n                    payload attrs (n: incarnation nonce)
+ *        ├ d/<pointer>                      data leaves (`crdt/data.ts`)
  *        ├ del.<writer>                     per-writer delete marks (any live mark = deleted)
  *        ├ content → node('content')       BACKING text of a block created fresh
  *        │                                  (its streams' boundaries `{s, n}`, claim items `{m}`)
- *        └ at → node('at')                 placement candidate map
- *             └ "<seq>.<clientId>" → { p: parentId|null, r: rank }
+ *        └ [ {b: child}, {p, i}, R, … ]    its list part: its children's home slots, its data
+ *                                           arrays' item slots, and move records
  * ```
  *
- * Placement record semantics (see docs/crdt-v14-move-adr.md):
+ * Placement semantics (`placement/slots.ts`, `placement/resolve.ts`):
  *
- * - `{p, r}` is written atomically as ONE attr value under an ever-increasing
- *   per-writer key `seq.clientId`. Parent and rank can never merge across
- *   records — the atomicity requirement.
- * - Winner per block = the max candidate under total order
- *   `(seq, clientId, blockId)` — LWW over replicated, delivery-order-free
- *   metadata. Candidates beyond the top two are tombstoned on write
- *   (compaction); the runner-up is kept as the acyclic fallback.
- * - Projection resolves placements greedily in that order: accept a
- *   candidate's parent edge iff its DISPLAY edge `owner(p)` cannot close a
- *   cycle through already accepted display edges; otherwise try the next
- *   candidate; a block with no acceptable candidate is rehomed at the root
- *   (deterministic, acyclic, pure — no repair writes). The acyclic relation
- *   is the COMPOSED one — raw placements are acyclic but merge claims can
- *   redirect a display edge back into the block's own subtree.
+ * - A block's home slot `{b: id}` is written once, at its creation, in its
+ *   parent's sequence right after its left sibling's unit (YATA's origin
+ *   rule). A move is one record in the destination's sequence naming the
+ *   moved blocks' home slots in order; each slot shows at the record that
+ *   wins its movers — the greatest `(priority, client, clock)` — and is
+ *   hidden at home; deleting a record (an undo) hands the slot to the next
+ *   record, else home. Replicas converge in any delivery order.
+ * - Projection resolves the display edges greedily in that order: an edge is
+ *   accepted iff its DISPLAY parent chain cannot reach back to the block
+ *   through already accepted edges; a rejected block (the oldest edge of a
+ *   cycle) shows at the root after the last top-level block (deterministic,
+ *   acyclic, pure — no repair writes). The acyclic relation is the COMPOSED
+ *   one — raw edges are acyclic but merge claims can redirect a display edge
+ *   back into the block's own subtree.
  * - Delete marks `del.<writer>` are independent replicated attrs: a marked
- *   block is hidden regardless of which placement candidate wins — explicit
- *   deletion beats concurrent move. Deleting marks the block and every
- *   block it displays through merge claims, a whole-subtree delete
- *   every member; undo removes only the undoer's mark. An unmarked block
- *   under a marked one is promoted into its slot at read time
- *   (`displaySlotOf`), so a concurrent child is never hidden with it; a
- *   block under a void kind (`DisplayOwnership.childless`) likewise.
+ *   block is hidden regardless of where its slot shows — explicit deletion
+ *   beats concurrent move. Deleting marks the block and every block it
+ *   displays through merge claims, a whole-subtree delete every member; undo
+ *   removes only the undoer's mark. An unmarked block under a marked one is
+ *   promoted into its slot at read time (`displaySlotOf`), so a concurrent
+ *   child is never hidden with it; a block under a void kind
+ *   (`DisplayOwnership.childless`) likewise.
  *
  * Content ownership (`text/model.ts`): a block displays its stream —
  * delimited by boundary items in a backing text — then the displays of the
@@ -50,17 +52,15 @@
  * types, `engine-api.ts`): this file never imports vendor `.js` (which
  * `pnpm check` must not traverse).
  *
- * Placement resolution is `placement/resolve.ts`, the source ranks
- * `placement/source.ts`, where a block displays `placement/display.ts`
- * (re-exported here); this module declares the model's types and its write
- * and read primitives, each a function edytor's modules import (the
- * public binding's `model` lists them, `bindModel`).
+ * Placement resolution is `placement/resolve.ts`, the sequences
+ * `placement/slots.ts`, the order keys `placement/keys.ts`, where a block
+ * displays `placement/display.ts` (re-exported here); this module declares
+ * the model's types and its write and read primitives, each a function
+ * edytor's modules import (the public binding's `model` lists them,
+ * `bindModel`).
  */
 import type { EngineApi, EngineDoc, EngineItemRef, EngineNode } from '../engine-api.js';
-import { rankAfter, rankBetween } from './rank.js';
 import {
-	AT,
-	AT_NODE,
 	BLOCK_NODE,
 	CONTENT,
 	CONTENT_NODE,
@@ -74,7 +74,7 @@ import {
 	TYPE,
 	WITHDRAW_PREFIX
 } from '../schema.js';
-import { nonceOf, randOf } from '../rand.js';
+import { nonceOf } from '../rand.js';
 import { indexOf } from '../text/runs.js';
 import { Y } from '../engine.js';
 import { writeRunMarks } from '../text/marks.js';
@@ -88,10 +88,24 @@ import {
 	type Ownership,
 	type TextBlockRec
 } from '../text/model.js';
-import { cloneJson } from '../../utils/json.js';
-import { dataLeaves, patchWrites, writeLeaves } from '../data.js';
+import { cloneJsonSafe } from '../../utils/json.js';
+import { dataWrites, patchWrites, writeData } from '../data.js';
 import { incarnationNode, isIncarnationId } from '../incarnations.js';
-import { engineOps } from '../structs.js';
+import { engineOps, firstItem, storeOf } from '../structs.js';
+import {
+	anchorOf,
+	before,
+	isBlockSlot,
+	nodeOf,
+	placeAfter,
+	triples,
+	type BlockSlot,
+	type Entry,
+	type Unit,
+	type SeqItem,
+	type Stamp
+} from './slots.js';
+import { resolvePlacements, type SlotRef } from './resolve.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -132,48 +146,38 @@ export type ProjectedBlock = {
 export type ProjectedDoc = { children: ProjectedBlock[] };
 
 export { REGISTRY_KEY };
-
-export { candidatesOf, resolvePlacements } from './resolve.js';
-export { promotedRank, sourceRank, SOURCE_SIDE } from './source.js';
+export { resolvePlacements, type SlotRef, type Edge } from './resolve.js';
+export { promotedRank } from './keys.js';
 export {
 	bySlot,
 	childrenIndex,
 	displayParentOf,
 	displaySlotOf,
 	documentOrder,
-	isLiveIn,
-	textRanker
+	isLiveIn
 } from './display.js';
-import { candidatesOf, resolvePlacements } from './resolve.js';
-import { bySlot, childrenIndex, displayParentOf, displaySlotOf, isLiveIn } from './display.js';
-
-/** Placement value written atomically as one attr: `{p, r}`. */
-export type PlacementValue = { p: BlockId | null; r: string };
-
-/** A parsed placement candidate (key + value). */
-export type PlacementCand = {
-	key: string;
-	seq: number;
-	client: number;
-	p: BlockId | null;
-	r: string;
-};
+import { bySlot, childrenIndex, displaySlotOf, displayParentOf, isLiveIn } from './display.js';
 
 /**
- * Internal per-block record: the registry node plus decoded placement
- * candidates sorted by `(seq, client)` descending (index 0 = argmax), plus
- * the text-ownership facts (nonce, own text, merge claims).
+ * Internal per-block record: the registry node, its home slot (`null`: none
+ * found), plus the text-ownership facts (nonce, own text, merge claims).
  */
 export type BlockRec = TextBlockRec & {
 	type: string;
 	data: unknown;
-	cands: PlacementCand[];
+	home: SlotRef | null;
 };
 
-/** Resolved placement after acyclic acceptance. */
+/**
+ * Resolved placement after acyclic acceptance: the owner of the sequence
+ * that shows the block (`null`: the root), its order key there (an in-memory
+ * key, `placement/keys.ts`: never stored), and whether it shows at its home
+ * slot (`home`: no move since it was made).
+ */
 export type ResolvedPlacement = {
 	parent: BlockId | null;
 	rank: string;
+	home?: boolean;
 };
 
 /**
@@ -216,12 +220,6 @@ export type DisplayOwnership = Ownership & {
 	 * it ({@link displaySlotOf}).
 	 */
 	sheds?: (owner: BlockId, child: BlockId) => boolean;
-	/**
-	 * The rank `id` displays at directly under `parent` (its placement's own
-	 * parent) — `rank` unless it is a piece of a text (`order.split.text`,
-	 * {@link textRanker}).
-	 */
-	textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
 	/**
 	 * The rank `id` displays at directly under `owner`, its placement's own
 	 * parent, when a rule other than its placement orders it there (a
@@ -273,13 +271,6 @@ export type ModelView = {
  */
 export type DocOrder = { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, number> };
 
-/**
- * Bind the placement model to a concrete engine surface.
- *
- * `Y` must be the vendored v14 module (`import * as Y from
- * 'lib/crdt/vendor/yjs'`). Consumers inject it so this file stays free of
- * runtime vendor imports (see `engine-api.ts`).
- */
 const { isKeptReplaced } = engineOps(Y);
 
 // ── registry / record access ────────────────────────────────────────
@@ -310,10 +301,11 @@ export const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(do
 /**
  * The history's creation rule (`doc/history.ts`, `hist.undo.withdraw`): an
  * undo never deletes a block the undone step created. Its node and
- * structure (attrs, placement candidates, the content node) stay and the
- * undoer's withdraw mark is written on it; what the step wrote inside the
- * content node (the undoer's own text, atoms, boundaries, claims) is
- * deleted as usual. The index shows a withdrawn
+ * structure (attrs, its home slot in its parent's sequence, the content
+ * node) stay and the undoer's withdraw mark is written on it; what the step
+ * wrote inside the content node (the undoer's own text, atoms, boundaries,
+ * claims) is deleted as usual, and so are the move records and data slots
+ * the step wrote in the created node's sequence. The index shows a withdrawn
  * block while it holds another writer's content.
  */
 export const withdrawOnUndo =
@@ -323,6 +315,15 @@ export const withdrawOnUndo =
 		stackItem: { inserts: { has(client: number, clock: number): boolean } }
 	): boolean => {
 		const registry = registryOf(doc);
+		const created = (id: BlockId): boolean => {
+			const node = registry.getAttr(id);
+			const entry = isNodeLike(node) ? node._item : null;
+			return !!entry?.id && stackItem.inserts.has(entry.id.client, entry.id.clock);
+		};
+		// A home slot of a block the step created stays with the block (withdrawn, not gone).
+		const seq = item as { parentSub?: string | null; content?: { arr?: unknown[] } } | null;
+		if (seq?.parentSub === null && seq.content?.arr !== undefined)
+			return seq.content.arr.every((v) => isBlockSlot(v) && created(v.b));
 		let below: EngineItemRef = null;
 		let cur = item;
 		while (cur?.parent !== registry) {
@@ -330,38 +331,18 @@ export const withdrawOnUndo =
 			cur = (cur?.parent as EngineNode | undefined)?._item ?? null;
 			if (cur === null) return false;
 		}
-		if (!cur.id || !stackItem.inserts.has(cur.id.client, cur.id.clock)) return false;
+		if (!cur.id || cur.parentSub === null || !stackItem.inserts.has(cur.id.client, cur.id.clock))
+			return false;
 		if (below === null) {
 			const node = (cur as { content: { type: EngineNode } }).content.type;
 			node.setAttr(WITHDRAW_PREFIX + doc.clientID, true);
 			return true;
 		}
-		return below === item || below.parentSub !== CONTENT;
+		// The created node's own attrs stay (its content node among them); the records and data
+		// slots of its sequence go, and so does what the step wrote inside the content node.
+		if (below === item) return below.parentSub !== null;
+		return below.parentSub !== CONTENT;
 	};
-
-// ── placement write ──────────────────────────────────────────────────
-
-/**
- * Atomically append one placement candidate `{p, r}` to a block's `at`
- * map, stamped `seq = localMax+1, client = doc.clientID`, then compact:
- * candidates below the top-2 are tombstoned (the runner-up survives as
- * the acyclic fallback; deeper history is re-created by undo anyway).
- * Must run inside a transaction.
- */
-export const writePlacement = (
-	doc: EngineDoc,
-	node: EngineNode,
-	p: BlockId | null,
-	r: string
-): void => {
-	const at = node.getAttr(AT);
-	if (!isNodeLike(at)) throw new Error(`writePlacement: block missing at-map`);
-	const cands = candidatesOf(node);
-	const seq = (cands[0]?.seq ?? 0) + 1;
-	// Tombstone everything below the runner-up (top-2 kept).
-	for (const c of cands.slice(2)) at.deleteAttr(c.key);
-	at.setAttr(`${seq}.${doc.clientID}`, { p, r });
-};
 
 // ── derived state ───────────────────────────────────────────────────
 
@@ -375,7 +356,7 @@ export const buildInline = (atom: InlineSpec): EngineNode => {
 	const node = newNode(INLINE_NODE);
 	node.setAttr(ID, atom.id);
 	node.setAttr(TYPE, atom.type);
-	writeLeaves(node, dataLeaves(atom.data));
+	writeData(node, dataWrites(atom.data));
 	return node;
 };
 
@@ -414,73 +395,131 @@ export const isSelfOrDescendant = (
 // The document's prepared plans decide every write; these only
 // perform one planned step and never refuse. Must run inside a transaction.
 
+/** The sequence node of `parent` (`null`: the root's). */
+const sequenceOf = (doc: EngineDoc, parent: BlockId | null): EngineNode =>
+	parent === null ? registryOf(doc) : blockNodeOf(doc, parent)!;
+
+/** The entry block `id` displays as in `v` (its home slot, or its mover's unit), or `null`. */
+const anchorIn = (doc: EngineDoc, v: ModelView, id: BlockId): Entry | null => {
+	const home = v.blocks.get(id)?.home;
+	return home === undefined || home === null ? null : anchorOf(doc, home);
+};
+
 /**
- * `count` consecutive insertion ranks at `index` into the sibling list
- * `siblings`.
- *
- * Degenerate seams (`left >= right`) are legal replicated states, not
- * caller errors: equal-rank neighbours occur after cycle-fallback
- * rehoming (two blocks may carry the same rank string minted in
- * different sibling lists), and `rankBetween` THROWS on them — so
- * callers must guard. No string sorts strictly between equal strings,
- * so each new member takes `left` verbatim: it JOINS the tie and the
- * `(rank, id)` display sort orders the whole group deterministically.
- * On a valid seam the emitted chain is `rankBetween(left, right)` then
- * `rankBetween(prev, right)` — with `run`, `rankAfter` (an insert: after a
- * block this client ranked, in its run there).
+ * Write `slots` (new blocks' home slots) and/or a move of `moved` (their
+ * home units, as `client, clock, len` triples) under `parent`, right after
+ * the displayed child `left` (`null`: first) and before `right`: into the
+ * sequence that holds `left`'s displaying unit (a promoted or claimed
+ * neighbour's own parent), after it — or before `right`'s — else into
+ * `parent`'s own sequence. `side` is the record's class among the items of
+ * its origin (`placement/slots.ts`: `0` after, `1` before).
  */
-export const ranksAt = (
-	siblings: readonly { rank: string }[],
+export const placeBlocks = (
+	doc: EngineDoc,
+	v: ModelView,
+	parent: BlockId | null,
+	left: BlockId | null,
+	right: BlockId | null,
+	slots: readonly BlockSlot[] | null,
+	moved: readonly number[] | null = null,
+	side = 0,
+	part = 0,
+	at: Unit | null = null
+): void => {
+	const isBlock = (e: Entry) => isBlockSlot(e.value);
+	const l = left === null ? null : anchorIn(doc, v, left);
+	if (l !== null)
+		return void placeAfter(doc, nodeOf(doc, l), l, null, slots, moved, side, part, at);
+	const r = right === null ? null : anchorIn(doc, v, right);
+	if (r !== null)
+		return void placeAfter(
+			doc,
+			nodeOf(doc, r),
+			before(doc, r, isBlock),
+			r,
+			slots,
+			moved,
+			side,
+			part,
+			at
+		);
+	placeAfter(doc, sequenceOf(doc, parent), null, null, slots, moved, side, part, at);
+};
+
+/** The displayed children of `parent` in `v`, the `exclude`d left out. */
+const kidsWithout = (v: ModelView, parent: BlockId | null, exclude: readonly BlockId[]) => {
+	const list = v.kids.get(parent) ?? [];
+	return exclude.length === 0 ? list : list.filter((k) => !exclude.includes(k.id));
+};
+
+/**
+ * Move `ids` (in order) to display index `index` among `parent`'s children
+ * (themselves left out): one record naming their home slots, after the
+ * child before that index. `at` is the block the record stands at for the
+ * engine's sort of two records at one origin (its home slot; `null`: the
+ * first moved) and `part` its order among the records standing there.
+ */
+export const moveBlocksTo = (
+	doc: EngineDoc,
+	v: ModelView,
+	ids: readonly BlockId[],
+	parent: BlockId | null,
 	index: number,
-	count: number,
-	clientId: number,
-	rand?: () => number,
-	run = false
-): string[] => {
-	let left = siblings[index - 1]?.rank;
-	const right = siblings[index]?.rank;
-	if (left !== undefined && right !== undefined && left >= right) {
-		return new Array<string>(count).fill(left);
-	}
-	const out: string[] = [];
-	for (let i = 0; i < count; i++) {
-		// An insert extends this client's run after a block it ranked.
-		const r = run
-			? rankAfter(left, right, clientId, rand)
-			: rankBetween(left, right, clientId, rand);
-		out.push(r);
-		left = r;
-	}
-	return out;
+	side = 0,
+	part = 0,
+	at: BlockId | null = null
+): void => {
+	const units = ids.flatMap((id) => {
+		const home = v.blocks.get(id)?.home;
+		return home ? [home] : [];
+	});
+	if (units.length === 0) return;
+	const list = kidsWithout(v, parent, ids);
+	const i = Math.max(0, Math.min(index, list.length));
+	const anchor = at === null ? null : (v.blocks.get(at)?.home ?? null);
+	placeBlocks(
+		doc,
+		v,
+		parent,
+		list[i - 1]?.id ?? null,
+		list[i]?.id ?? null,
+		null,
+		triples(units),
+		side,
+		part,
+		anchor
+	);
 };
 
 /**
  * One registry entry: the block node with its own backing text holding
  * `items` (none for a split-born block: its stream lives in the text it was
- * split from), and the atomic first placement candidate `{p, r}` stamped
- * `1.clientID`. Pre-integration writes materialize when the node integrates
- * (the registry write comes last).
+ * split from) and, in its sequence, its children's home slots in order (each
+ * child's node created the same way). Pre-integration writes materialize
+ * when the node integrates (the registry write comes last). The block's own
+ * home slot is the caller's ({@link placeBlocks}).
  */
 const createBlock = (
 	doc: EngineDoc,
-	id: BlockId,
-	type: unknown,
-	data: unknown,
-	place: PlacementValue,
+	sp: BlockSpec,
 	items: readonly ContentItem[] | null,
 	n: number = nonceOf(doc)
 ): void => {
 	const node = newNode(BLOCK_NODE);
-	node.setAttr(ID, id);
+	node.setAttr(ID, sp.id);
 	node.setAttr(NONCE, n);
-	node.setAttr(TYPE, type);
-	writeLeaves(node, dataLeaves(data));
+	node.setAttr(TYPE, sp.type);
+	writeData(node, dataWrites(sp.data));
 	const content = items === null ? null : textOf(items);
 	if (content !== null) node.setAttr(CONTENT, content);
-	const at = newNode(AT_NODE);
-	node.setAttr(AT, at);
-	at.setAttr(`1.${doc.clientID}`, place);
-	registryOf(doc).setAttr(id, node);
+	const children = sp.children ?? [];
+	if (children.length > 0)
+		node.insert(
+			node.length,
+			children.map((c): BlockSlot => ({ b: c.id }))
+		);
+	for (const child of children) createBlock(doc, child, child.content ?? []);
+	registryOf(doc).setAttr(sp.id, node);
 	if (content !== null) markText(doc, content, items!);
 };
 
@@ -513,16 +552,47 @@ const markText = (doc: EngineDoc, content: EngineNode, items: readonly ContentIt
 	);
 
 /**
+ * Materialize `specs` (whole subtrees, in order) under `parent` at display
+ * index `index`: each spec's node with its children, then their home slots
+ * in one run after the child before that index. `split`: the boundary of
+ * the split these blocks come with (a paste's lines at a split point), their
+ * slots' sort key among the slots of one origin ({@link BlockSlot}).
+ */
+export const insertSpecsAt = (
+	doc: EngineDoc,
+	v: ModelView,
+	parent: BlockId | null,
+	index: number,
+	specs: readonly BlockSpec[],
+	split: Unit | null = null
+): void => {
+	if (specs.length === 0) return;
+	const list = v.kids.get(parent) ?? [];
+	const at = Math.max(0, Math.min(index, list.length));
+	for (const sp of specs) createBlock(doc, sp, sp.content ?? []);
+	placeBlocks(
+		doc,
+		v,
+		parent,
+		list[at - 1]?.id ?? null,
+		list[at]?.id ?? null,
+		specs.map(
+			(sp): BlockSlot => (split === null ? { b: sp.id } : { b: sp.id, s: [split.c, split.k] })
+		)
+	);
+};
+
+/**
  * Restore definition (migration only; a first import
  * restores into an empty doc): make `specs` the whole visible document
  * under their own ids, in ONE transaction. An existing id keeps its
  * registry entry: every delete mark is cleared and its type, data,
- * placement and content are rewritten in place — its claims deleted, a
+ * place and content are rewritten in place — its claims deleted, a
  * fresh own text holding the spec's content; a block whose stream still
  * starts at a live boundary gets a new nonce, so that boundary goes inert
  * and the own text is its stream. An absent id is created. Every other
- * block gets this writer's delete mark. Ranks are derived from the tree
- * alone and the rewrites are last-writer-wins attrs, so two replicas
+ * block gets this writer's delete mark. The places are written in the
+ * tree's order and the rewrites are last-writer-wins attrs, so two replicas
  * restoring the same specs converge on one copy.
  */
 export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
@@ -530,31 +600,31 @@ export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 		const { blocks, own } = view(doc);
 		const keep = new Set<BlockId>();
 		const restore = (list: BlockSpec[], parent: BlockId | null): void => {
-			let rank: string | undefined;
+			let left: BlockId | null = null;
 			for (const sp of list) {
 				keep.add(sp.id);
 				let node = blockNodeOf(doc, sp.id);
+				const v = view(doc);
 				if (node === null) {
-					node = newNode(BLOCK_NODE);
-					node.setAttr(ID, sp.id);
-					node.setAttr(NONCE, nonceOf(doc));
-					node.setAttr(AT, newNode(AT_NODE));
-					registryOf(doc).setAttr(sp.id, node);
+					createBlock(doc, { ...sp, children: [] }, []);
+					placeBlocks(doc, v, parent, left, null, [{ b: sp.id }]);
+					node = blockNodeOf(doc, sp.id)!;
 				} else {
 					deleteClaims(doc, blocks.get(sp.id)?.claims ?? []);
 					if (own.streamOf(sp.id)?.home !== sp.id && own.streamOf(sp.id) !== undefined)
 						node.setAttr(NONCE, nonceOf(doc));
+					const home = v.blocks.get(sp.id)?.home;
+					if (home) placeBlocks(doc, v, parent, left, null, null, triples([home]));
 				}
 				for (const key of [...node.attrKeys()]) {
 					if (key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX)) node.deleteAttr(key);
 				}
 				if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
-				writeLeaves(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]) ?? []);
+				writeData(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]) ?? []);
 				const text = textOf(sp.content ?? []);
 				node.setAttr(CONTENT, text);
 				markText(doc, text, sp.content ?? []);
-				rank = rankBetween(rank, undefined, 0, () => 0);
-				writePlacement(doc, node, parent, rank);
+				left = sp.id;
 				restore(sp.children ?? [], sp.id);
 			}
 		};
@@ -565,26 +635,6 @@ export const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 			}
 		});
 	});
-
-/**
- * Materialize one spec subtree: the block owns its backing text (its
- * stream from index 0); children recurse under a fresh sequential rank
- * chain (a new block has no siblings to interleave with).
- */
-export const materializeSpec = (
-	doc: EngineDoc,
-	sp: BlockSpec,
-	parent: BlockId | null,
-	rank: string
-): void => {
-	createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, sp.content ?? []);
-	let left: string | undefined;
-	for (const child of sp.children ?? []) {
-		const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
-		materializeSpec(doc, child, sp.id, r);
-		left = r;
-	}
-};
 
 /**
  * Does any id of `specs` (whole subtrees) collide — with another spec id,
@@ -617,10 +667,7 @@ export const insertBlocks = (doc: EngineDoc, dest: Destination, specs: BlockSpec
 	if (dest.parent !== null && !isLive(doc, dest.parent)) return false;
 	if (collides(doc, specs)) return false;
 	return doc.transact(() => {
-		const sibs = view(doc).kids.get(dest.parent) ?? [];
-		const at = Math.max(0, Math.min(dest.index, sibs.length));
-		const ranks = ranksAt(sibs, at, specs.length, doc.clientID, randOf(doc));
-		specs.forEach((sp, i) => materializeSpec(doc, sp, dest.parent, ranks[i]!));
+		insertSpecsAt(doc, view(doc), dest.parent, dest.index, specs);
 		return true;
 	});
 };
@@ -630,13 +677,15 @@ export const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec):
 	insertBlocks(doc, dest, [spec]);
 
 /**
- * Split `id` at content `offset` into the new block `newId` placed at
- * `place`: one boundary item for `newId` at the end of the gap at `offset`
- * (fork patch YP7) and the merge claims that follow it written again in the new block's stream —
- * no text is copied, so an offline edit to the tail keeps landing on the
- * same items and displays in the new block after convergence. `tail` is
- * the new block's type/data, decided once by the plan. Children are a
- * separate step. `id` must have a stream or a claim ({@link ownText}).
+ * Split `id` at content `offset` into the new block `newId` placed under
+ * `parent` at display `index`: one boundary item for `newId` at the end of
+ * the gap at `offset` (fork patch YP7) and the merge claims that follow it
+ * written again in the new block's stream — no text is copied, so an
+ * offline edit to the tail keeps landing on the same items and displays in
+ * the new block after convergence. `tail` is the new block's type/data,
+ * decided once by the plan. Children are a separate step. `id` must have a
+ * stream or a claim ({@link ownText}).
+ * Returns the split's boundary unit (the key of the slots a paste adds at it).
  */
 export const writeSplit = (
 	doc: EngineDoc,
@@ -644,13 +693,24 @@ export const writeSplit = (
 	offset: number,
 	newId: BlockId,
 	tail: SplitTail,
-	place: PlacementValue
-): void => {
-	const { blocks, own } = view(doc);
+	parent: BlockId | null,
+	index: number
+): Unit => {
+	const v = view(doc);
 	const n = nonceOf(doc);
-	splitAt(doc, blocks, own, id, offset, newId, n);
-	const data = tail.data === undefined ? undefined : cloneJson(tail.data);
-	createBlock(doc, newId, tail.type, data, place, null, n);
+	// The boundary is the split's first write: its id is this writer's next.
+	const bound: Unit = { c: doc.clientID, k: storeOf(doc).getClock(doc.clientID) };
+	splitAt(doc, v.blocks, v.own, id, offset, newId, n);
+	const data = tail.data === undefined ? undefined : cloneJsonSafe(tail.data);
+	createBlock(doc, { id: newId, type: tail.type, data }, null, n);
+	const list = v.kids.get(parent) ?? [];
+	const at = Math.max(0, Math.min(index, list.length));
+	// The tail's slot carries its boundary (`BlockSlot.s`): two peers' splits of
+	// one block sort by their boundaries' order in the text, in the gap after it.
+	placeBlocks(doc, v, parent, list[at - 1]?.id ?? null, list[at]?.id ?? null, [
+		{ b: newId, s: [bound.c, bound.k] }
+	]);
+	return bound;
 };
 
 /**
@@ -663,7 +723,7 @@ export const ownText = (doc: EngineDoc, id: BlockId) => ownTextOf(doc, view(doc)
 
 /**
  * Canonical projection: pure derivation from replicated state — the
- * visible tree of live blocks ordered by `(rank, id)`, children of a
+ * visible tree of live blocks in their sequences' order, children of a
  * merged-away parent under its owner, those of a deleted parent in its
  * slot ({@link displaySlotOf}). Content is each block's display.
  */
@@ -723,6 +783,27 @@ export const crdtId = (doc: EngineDoc, id: BlockId): string | null => {
 export const resolveBlock = (doc: EngineDoc, id: BlockId): EngineNode | null => liveNodeOf(doc, id);
 
 /**
+ * The live move records of `node`'s sequence (the room's purge, tests):
+ * each with its stamp and whether some unit still shows at it.
+ */
+export const recordsOf = (
+	doc: EngineDoc,
+	node: EngineNode
+): { item: SeqItem; stamp: Stamp; wins: boolean }[] => {
+	const out: { item: SeqItem; stamp: Stamp; wins: boolean }[] = [];
+	for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
+		if (it.deleted || it.content.priority === undefined || it.content.ids === undefined) continue;
+		const ids = it.content.ids;
+		let wins = false;
+		for (let i = 0; i < ids.length && !wins; i += 3)
+			for (let k = 0; k < ids[i + 2]! && !wins; k++)
+				wins = anchorOf(doc, { c: ids[i]!, k: ids[i + 1]! + k })?.via === it;
+		out.push({ item: it, stamp: [it.content.priority, it.id.client, it.id.clock], wins });
+	}
+	return out;
+};
+
+/**
  * The placement model as one object (the public binding's `model`): the
  * primitives above. Edytor's own modules import them directly.
  */
@@ -734,7 +815,6 @@ export const bindModel = (_Y: EngineApi) => ({
 	blockNodeOf,
 	liveNodeOf,
 	isLive,
-	candidatesOf,
 	/** The doc's index as a `ModelView`. */
 	view,
 	resolvePlacements,
@@ -743,13 +823,14 @@ export const bindModel = (_Y: EngineApi) => ({
 	// write primitives (the document's prepared plans apply these)
 	buildInline,
 	isSelfOrDescendant,
-	ranksAt,
-	writePlacement,
+	placeBlocks,
+	moveBlocksTo,
+	insertSpecsAt,
 	withdrawOnUndo,
-	materializeSpec,
 	collides,
 	writeSplit,
 	ownText,
+	recordsOf,
 	// the seed writer's bulk insert
 	insertBlocks,
 	insertBlock,

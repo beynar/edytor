@@ -49,15 +49,27 @@ export const moveByPlacement14 = (doc, block, dest) => {
 	});
 };
 
-// ── v14 U03 placement model (mirrors src/lib/crdt/placement/model.ts) ────────
-// The real model is TypeScript; this bench replicates its exact wire shape —
-// what `writePlacement` emits — so the byte counts are faithful without a
-// TS build step. Registry = doc.get('blocks'); each block node carries
-// id/type/data/content/at; a move is ONE atomic `{p, r}` attr write under
-// key `seq.clientID` on the block's `at` map, plus tombstoning of candidates
-// below the top-2.
+// ── v14 placement model (mirrors src/lib/crdt/placement/model.ts) ────────
+// The real model is TypeScript; this bench replicates its exact wire shape
+// (fork patch YP22) so the byte counts are faithful without a TS build step.
+// Registry = doc.get('blocks'); its list part holds the top-level blocks'
+// home slots `{b: id}` and the move records; each block node carries
+// id/type/n/content (+ its own list part for its children's slots). A move is
+// ONE move record (`node.move`) naming the moved slot, written at the
+// destination index.
 
 export const newPlacementDoc14 = () => new Y14.Doc();
+
+/** The id (`client, clock, len`) of block `id`'s home slot in the root sequence. */
+const rootSlotOf = (doc, id) => {
+	for (let it = doc.get('blocks')._start; it !== null; it = it.right) {
+		const arr = it.content.arr;
+		if (arr === undefined) continue;
+		const k = arr.findIndex((v) => v?.b === id);
+		if (k >= 0) return [it.id.client, it.id.clock + k, 1];
+	}
+	throw new Error(`no slot for ${id}`);
+};
 
 export const insertModelBlock14 = (doc, spec) => {
 	doc.transact(() => {
@@ -66,65 +78,51 @@ export const insertModelBlock14 = (doc, spec) => {
 		block.setAttr('n', 1);
 		block.setAttr('type', spec.type ?? 'paragraph');
 		const content = new Y14.Node('content');
-		const at = new Y14.Node('at');
 		block.setAttr('content', content);
-		block.setAttr('at', at);
 		let clen = 0;
 		for (const item of spec.content ?? []) {
 			content.insert(clen, item.text, item.marks);
 			clen += item.text.length;
 		}
 		// R2: a block created fresh owns its whole backing text — no record.
-		at.setAttr(`1.${doc.clientID}`, { p: spec.parent ?? null, r: spec.rank ?? 'a0' });
 		doc.get('blocks').setAttr(spec.id, block);
+		const root = doc.get('blocks');
+		root.insert(root.length, [{ b: spec.id }]);
 	});
 	return doc.get('blocks').getAttr(spec.id);
 };
 
 /**
- * One real `moveBlock` placement write: seq = localMax+1, candidate kept
- * (top-2 compaction tombstones the rest — identical to `writePlacement`).
+ * One real `moveBlocks` write: one move record at the destination index of
+ * the root sequence naming the block's home slot (fork patch YP22).
  */
-export const moveByModel14 = (doc, id, dest, rank) => {
-	const block = doc.get('blocks').getAttr(id);
-	const at = block.getAttr('at');
+export const moveByModel14 = (doc, id, dest) => {
+	const root = doc.get('blocks');
 	doc.transact(() => {
-		let maxSeq = 0;
-		const keys = [];
-		at.forEachAttr((v, key) => {
-			keys.push(key);
-			const seq = Number(key.slice(0, key.indexOf('.')));
-			if (seq > maxSeq) maxSeq = seq;
-		});
-		keys.sort((a, b) => {
-			const [sa, ca] = a.split('.').map(Number);
-			const [sb, cb] = b.split('.').map(Number);
-			return sb - sa || cb - ca;
-		});
-		for (const k of keys.slice(2)) at.deleteAttr(k);
-		at.setAttr(`${maxSeq + 1}.${doc.clientID}`, { p: dest.parent, r: rank });
+		root.move(Math.min(dest.index ?? 0, root.length), rootSlotOf(doc, id));
 	});
 };
 
 /**
  * One real `splitBlock` (arch-v2 D12, R2): ONE boundary item `{s, n}` at the
  * end of the gap at `offset` (engine primitive P7) and the sibling's node with
- * its placement — the backing text is NEVER re-encoded.
+ * its home slot right after the source's — the backing text is NEVER re-encoded.
  * Mirrors `writeSplit` in src/lib/crdt for a block with no merge claims.
  */
-export const splitModelBlock14 = (doc, id, offset, newId, rank = 's1') => {
+export const splitModelBlock14 = (doc, id, offset, newId) => {
 	const block = doc.get('blocks').getAttr(id);
 	const content = block.getAttr('content');
+	const root = doc.get('blocks');
 	doc.transact(() => {
 		content.insertAtGapEnd(offset, [{ s: newId, n: 2 }]);
 		const sibling = new Y14.Node('block');
 		sibling.setAttr('id', newId);
 		sibling.setAttr('n', 2);
 		sibling.setAttr('type', block.getAttr('type'));
-		const sAt = new Y14.Node('at');
-		sibling.setAttr('at', sAt);
-		sAt.setAttr(`1.${doc.clientID}`, { p: null, r: rank });
 		doc.get('blocks').setAttr(newId, sibling);
+		const [c, k] = rootSlotOf(doc, id);
+		const at = Y14.indexOfId(doc, Y14.createID(c, k)).index + 1;
+		root.insert(at, [{ b: newId }]);
 	});
 };
 

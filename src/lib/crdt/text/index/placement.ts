@@ -3,20 +3,20 @@
  * ownership the display reads (`ownShim`), and THE shown-kind rule
  * (`typeOf`).
  *
- * A structural change re-decides only what it can change: the winning
- * placement of the blocks whose candidates (or whose parent's
- * registry entry) changed, and the display slot of every block whose
- * slot walk (`displaySlotOf`) reads one that changed — its stored
- * subtree, through the blocks it displays — patched into the parents'
- * child lists. While every block shows its winning candidate (no
- * cycle rejected, none rehomed), a block's placement is its argmax
- * (`resolvePlacements` accepts it), so only a cycle through a changed
- * display edge needs the global resolution, which then runs whole.
- * The layout rules re-run only on the layouts a change reaches.
+ * A structural change re-decides only what it can change: the display
+ * edge of the blocks whose slot, record or mover changed (fork patch
+ * YP22), and the display slot of every block whose slot walk
+ * (`displaySlotOf`) reads one that changed — its stored subtree, through
+ * the blocks it displays — patched into the parents' child lists. A
+ * block's edge is accepted unless its display parent chain reaches back
+ * to it; the oldest edge of such a cycle is rejected and its block shows
+ * at the root's tail (`placement/resolve.ts`), so a cycle resolves
+ * locally: no global pass. A placed block's order key is found from its
+ * sequence neighbours (`placement/keys.ts`), never by walking the parent's
+ * sequence. The layout rules re-run only on the layouts a change reaches.
  */
 import {
 	type BlockId,
-	type BlockRec,
 	type ChildSlot,
 	type DisplayOwnership,
 	type DocOrder,
@@ -24,34 +24,51 @@ import {
 	bySlot,
 	childrenIndex,
 	displaySlotOf,
-	documentOrder,
-	resolvePlacements,
-	textRanker
+	documentOrder
 } from '../../placement/model.js';
+import { keyBetween } from '../../placement/keys.js';
+import {
+	NO_SLOT,
+	blockBefore,
+	byTail,
+	cycleThrough,
+	collectSlots,
+	edgeOf,
+	homeOf,
+	registryOwners,
+	resolveAll,
+	slotOwner,
+	type Edge,
+	type Slots
+} from '../../placement/resolve.js';
+import { before, cmpStamp, isBlockSlot, type Entry, type Stamp } from '../../placement/slots.js';
+import { Y } from '../../engine.js';
+import { engineOps } from '../../structs.js';
 import { DEAD, displayOf } from '../model.js';
 import type { IndexClaims } from './claims.js';
 import type { IndexLayout } from './layout.js';
-import { addTo, dropFrom } from './shared.js';
 import type { IndexState, Slot } from './state.js';
 import type { IndexStreams } from './streams.js';
 
 /** Placement maintenance of one doc's index, over its state, claims, streams and layout rules. */
 export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & IndexLayout) => {
 	const {
+		doc,
+		registry,
 		blocks,
 		displaysMap,
 		ownerChanged,
-		streamIx,
-		placed,
 		placementsMap,
-		regroup,
-		byArgParent,
 		following,
 		dirtyLists,
 		leftLists,
 		placementSeeds,
 		stateSeeds,
 		kindsOf,
+		slotsByBlock,
+		rawOrder,
+		edges,
+		rejected,
 		ensureOwners,
 		ownerOf,
 		top,
@@ -70,24 +87,14 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		dissolve,
 		redissolve
 	} = ix;
+	const kept = engineOps(Y).isKeptReplaced;
 
 	// ── placements and the children index (maintained) ────────────
-	/** The blocks of `home`'s text, in text order (segment 0's first). */
-	const rowBlocks = (home: BlockId): BlockId[] => {
-		const at = placed.get(home);
-		if (at === undefined) return [];
-		return at.head === null ? at.blocks : [at.head, ...at.blocks];
-	};
-	const ranker = textRanker(blocks, placementsMap, (b) => streamIx.get(b)?.home, rowBlocks);
-	/** Resolved parent → the blocks placed under it. */
-	const kidsOf = new Map<BlockId | null, Set<BlockId>>();
 	/** The document holds a layout or an item kind: `kids0` and `kidsMap` differ. */
 	let layoutMode = false;
 	/** The line kinds the roles declare, and those of the lines islands the document holds. */
 	let lineKinds = new Set<string>();
 	let orderCache: DocOrder | null = null;
-	/** Some block shows no argmax candidate (a cycle rejected one, or none): passes run whole. */
-	let irregular = false;
 	let layoutBlocks = 0;
 	let itemBlocks = 0;
 	/** Tables, rows and cells (`table.*`): their rules run in the layout pass. */
@@ -108,11 +115,11 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		},
 		slotRank: (owner, id) => cellRank(owner, id),
 		top,
+		claimIndex: (holder, m) => blocks.get(holder)?.claims.findIndex((c) => c.m === m) ?? -1,
 		streamOf,
 		streamsIn,
 		streamAt,
-		display: (b) => displayOf(b, blocks, ownShim),
-		textRank: (id, parent, rank) => ranker.rank(id, parent, rank)
+		display: (b) => displayOf(b, blocks, ownShim)
 	};
 	/** Re-count `id`'s kind facts; a fact the roles never declared forces a full pass. */
 	const noteKind = (id: BlockId): void => {
@@ -147,14 +154,6 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		const rows = type === undefined ? undefined : rowOfTable(type);
 		if (rows !== undefined && ix.rowKinds.get(rows[0]) !== rows[1]) ix.placementFull = true;
 		if (layoutMode !== layoutBlocks + itemBlocks + tableBlocks > 0) ix.placementFull = true;
-	};
-	/** The argmax candidate's parent (a registry entry or the root), and its index entry. */
-	const argParent = (rec: BlockRec | undefined): BlockId | null | undefined => rec?.cands[0]?.p;
-	const noteCands = (id: BlockId, before: BlockId | null | undefined): void => {
-		const after = argParent(blocks.get(id));
-		if (before === after) return;
-		if (typeof before === 'string') dropFrom(byArgParent, before, id);
-		if (typeof after === 'string') addTo(byArgParent, after, id);
 	};
 	/** The ownership the layout rules read: none of their decisions applied. */
 	const own0: DisplayOwnership = {
@@ -243,9 +242,9 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
 			if (out.has(x)) continue;
 			out.add(x);
-			for (const c of kidsOf.get(x) ?? []) stack.push(c);
+			for (const c of rawOrder.get(x) ?? []) stack.push(c.id);
 			for (const d of displaysMap.get(x) ?? [])
-				if (d !== x) for (const c of kidsOf.get(d) ?? []) stack.push(c);
+				if (d !== x) for (const c of rawOrder.get(d) ?? []) stack.push(c.id);
 		}
 		return out;
 	};
@@ -260,42 +259,186 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		if (follows) following.add(id);
 		else following.delete(id);
 	};
-	/** The placement `resolvePlacements` gives `id` while every block shows its argmax. */
-	const argmaxOf = (id: BlockId): ResolvedPlacement | null | undefined => {
-		const rec = blocks.get(id);
-		if (rec === undefined) return undefined;
-		const c = rec.cands[0];
-		if (c === undefined) return null;
-		const p = c.p !== null && !blocks.has(c.p) ? null : c.p;
-		return { parent: p, rank: c.r };
+
+	// ── edges, keys and acceptance ─────────────────────────────────
+	/**
+	 * Whether the slot map has been read from the sequences: once, before the
+	 * first rebuild (a shell settled on the first fold asks for a home), then
+	 * the fold keeps it and every rebuild fills it again.
+	 */
+	let slotsRead = false;
+	/** What the first read collected, for a rebuild while no sequence changed since (one scan). */
+	let collected: Slots | null = null;
+	let collectedAt = -1;
+	const readSlots = (): void => {
+		slotsRead = true;
+		slotsByBlock.clear();
+		// Every registry node, its kept incarnations too (the records may not all be built yet).
+		collected = collectSlots(doc, registryOwners(registry, kept), kept);
+		collectedAt = ix.seqEpoch;
+		for (const [b, refs] of collected.slots) slotsByBlock.set(b, refs);
 	};
-	/** A display edge walk from `id`'s parent reaches `id` (or loops): the argmax graph has a cycle. */
-	const cyclic = (id: BlockId): boolean => {
-		let steps = 0;
-		for (let cur = placementsMap.get(id)?.parent ?? null; cur !== null; ) {
-			const o = ownerOf(cur);
-			const at = o === DEAD ? cur : o;
-			if (at === id || ++steps > blocks.size) return true;
-			const cp = placementsMap.get(at);
-			if (cp === undefined) return false;
-			cur = cp.parent;
-		}
-		return false;
+	/** `id`'s home slot among the slots naming its registry id (`null`: none). */
+	const homeFor = (id: BlockId): ReturnType<typeof homeOf> => {
+		if (!slotsRead) readSlots();
+		return homeOf(registry, kept, slotsByBlock, id);
+	};
+	/** `id`'s display edge, read from the engine (`null`: no slot, or gone). */
+	const edgeOfBlock = (id: BlockId): Edge | null => {
+		const home = blocks.get(id)?.home ?? homeFor(id);
+		return home === null ? null : edgeOf(doc, registry, kept, home);
+	};
+	/** The owner of the sequence `id`'s slot shows in (`null`: the root), as the engine stands. */
+	const edgeParent = (id: BlockId): BlockId | null | undefined => edgeOfBlock(id)?.parent;
+	/** The raw children of `parent` in order (every block whose edge parent it is), kept sorted by key. */
+	const rawList = (parent: BlockId | null): ChildSlot[] => {
+		let l = rawOrder.get(parent);
+		if (l === undefined) rawOrder.set(parent, (l = []));
+		return l;
 	};
 	const setPlacement = (id: BlockId, pl: ResolvedPlacement | undefined): void => {
+		ix.foldStats.placed++;
 		const old = placementsMap.get(id);
-		if (old !== undefined) dropFrom(kidsOf, old.parent, id);
+		if (old !== undefined) {
+			const l = rawList(old.parent);
+			const at = seek(l, { id, rank: old.rank });
+			if (l[at]?.id === id) l.splice(at, 1);
+			if (l.length === 0) rawOrder.delete(old.parent);
+		}
 		if (pl === undefined) placementsMap.delete(id);
 		else {
 			placementsMap.set(id, pl);
-			addTo(kidsOf, pl.parent, id);
+			const l = rawList(pl.parent);
+			const slot = { id, rank: pl.rank };
+			l.splice(seek(l, slot), 0, slot);
 		}
 	};
-	/** Everything rebuilt from the records (the first build, roles, an irregular state). */
+	/**
+	 * The key `id` takes under `edge.parent`: between the key of the block
+	 * before its displaying unit in the sequence (placed first when it is
+	 * a pending seed; walked past when it shows elsewhere) and the next key
+	 * of that list.
+	 */
+	const keyFor = (id: BlockId, edge: Edge, place: (b: BlockId) => void): string => {
+		const isBlock = (e: Entry) => isBlockSlot(e.value);
+		const home = blocks.get(id)?.home ?? homeFor(id)!;
+		let prev = blockBefore(doc, registry, kept, home, edge);
+		let lrank: string | undefined;
+		for (let guard = 0; prev !== null && guard < 256; guard++) {
+			// A slot that is not its block's home (a second creation of one id) places nothing.
+			const h = blocks.get(prev.block)?.home ?? homeFor(prev.block);
+			if (h !== null && h.c === prev.entry.unit.c && h.k === prev.entry.unit.k) {
+				place(prev.block);
+				const pl = placementsMap.get(prev.block);
+				if (pl !== undefined && pl.parent === edge.parent && !rejected.has(prev.block)) {
+					lrank = pl.rank;
+					break;
+				}
+			}
+			const e = before(doc, prev.entry, isBlock);
+			if (e === null) break;
+			prev = {
+				entry: e,
+				block: slotOwner(registry, kept, (e.value as { b: BlockId }).b, e.unit.c)
+			};
+		}
+		const list = rawOrder.get(edge.parent as BlockId | null) ?? [];
+		const i = lrank === undefined ? 0 : seek(list, { id: '', rank: lrank }) + 1;
+		return keyBetween(lrank, list[i]?.rank);
+	};
+	/** The key of `id` at the root's tail, among the rejected by stamp then id, after the last top-level block. */
+	const tailKey = (id: BlockId, stamp: Stamp): string => {
+		const tail = [...rejected]
+			.filter((x) => x !== id)
+			.map((x) => ({ id: x, stamp: edges.get(x)?.stamp ?? NO_SLOT }))
+			.sort(byTail);
+		const list = rawOrder.get(null) ?? [];
+		const me = { id, stamp };
+		let at = 0;
+		while (at < tail.length && byTail(tail[at]!, me) < 0) at++;
+		const prev =
+			at > 0
+				? placementsMap.get(tail[at - 1]!.id)?.rank
+				: list[list.length - tail.length - 1]?.rank;
+		const next = at < tail.length ? placementsMap.get(tail[at]!.id)?.rank : undefined;
+		return keyBetween(prev, next);
+	};
+	/** Show `id` at the root's tail: its edge rejected (a cycle), or none. */
+	const reject = (id: BlockId, edge: Edge | null): void => {
+		edges.set(id, edge);
+		if (placementsMap.has(id)) setPlacement(id, undefined);
+		rejected.add(id);
+		setPlacement(id, { parent: null, rank: tailKey(id, edge?.stamp ?? NO_SLOT), home: false });
+	};
+	/**
+	 * Accept `id`'s `edge`, unless it closes a cycle through the accepted
+	 * edges and the claim owners: then the cycle's oldest edge is rejected
+	 * (its block shows at the root's tail, its subtree with it), and `id`'s
+	 * is accepted when it is not that one. `place` places a pending
+	 * neighbour first. Returns the blocks whose placement changed.
+	 */
+	const accept = (id: BlockId, edge: Edge, place: (b: BlockId) => void): BlockId[] => {
+		const changed = [id];
+		const parent = edge.parent;
+		if (parent === undefined || (parent !== null && !blocks.has(parent))) {
+			reject(id, edge);
+			return changed;
+		}
+		const cycle = cycleThrough(placementsMap, ownerOf, id, parent);
+		if (cycle !== null) {
+			let [min, minStamp] = [id, edge.stamp];
+			for (const m of cycle) {
+				const e = m === id ? edge : edges.get(m);
+				if (m !== id && e && cmpStamp(e.stamp, minStamp) < 0) [min, minStamp] = [m, e.stamp];
+			}
+			if (min === id) {
+				reject(id, edge);
+				return changed;
+			}
+			reject(min, edges.get(min) ?? null);
+			changed.push(min);
+		}
+		edges.set(id, edge);
+		rejected.delete(id);
+		if (placementsMap.has(id)) setPlacement(id, undefined);
+		setPlacement(id, { parent, rank: keyFor(id, edge, place), home: edge.via === null });
+		return changed;
+	};
+	/** The same display edge: the same sequence, the same record, the same stamp. */
+	const sameEdge = (a: Edge, b: Edge): boolean =>
+		a.parent === b.parent && a.via === b.via && cmpStamp(a.stamp, b.stamp) === 0;
+	/**
+	 * Try every rejected block again (a changed edge may have broken its
+	 * cycle, or made it the one to reject): accepted ones join `moved`.
+	 */
+	const retryRejected = (moved: Set<BlockId>): void => {
+		for (let round = 0; round < rejected.size + 2 && rejected.size > 0; round++) {
+			let changed = false;
+			const tail = [...rejected]
+				.map((x) => ({ id: x, stamp: edges.get(x)?.stamp ?? NO_SLOT }))
+				.sort(byTail);
+			for (const { id } of tail) {
+				const edge = edgeOfBlock(id);
+				if (edge === null || edge.parent === undefined) continue;
+				if (edge.parent !== null && !blocks.has(edge.parent)) continue;
+				const cycle = cycleThrough(placementsMap, ownerOf, id, edge.parent);
+				if (cycle !== null) {
+					let oldest = edge.stamp;
+					for (const m of cycle) {
+						const e = edges.get(m);
+						if (m !== id && e && cmpStamp(e.stamp, oldest) < 0) oldest = e.stamp;
+					}
+					if (oldest === edge.stamp) continue; // still the one to reject
+				}
+				for (const x of accept(id, edge, () => {})) moved.add(x);
+				changed = true;
+			}
+			if (!changed) break;
+		}
+	};
+	/** Everything rebuilt from the sequences (the first build, roles). */
 	const rebuildPlacements = (): void => {
 		ix.placementFull = false;
-		ranker.forget();
-		regroup.clear();
 		placementSeeds.clear();
 		stateSeeds.clear();
 		ownerChanged.clear();
@@ -318,31 +461,40 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (const b of blocks.keys()) noteKind(b);
 		for (const line of lineCounts.keys()) lineKinds.add(line);
 		ix.placementFull = false;
-		const resolved = resolvePlacements(blocks, ownerOf);
+		const resolved = resolveAll(
+			doc,
+			blocks,
+			ownerOf,
+			kept,
+			collected !== null && collectedAt === ix.seqEpoch ? collected : undefined
+		);
+		collected = null;
 		placementsMap.clear();
-		kidsOf.clear();
-		irregular = false;
-		for (const [id, pl] of resolved) {
-			setPlacement(id, pl);
-			const arg = argmaxOf(id);
-			if (!arg || arg.parent !== pl.parent || arg.rank !== pl.rank) irregular = true;
-		}
+		rawOrder.clear();
+		edges.clear();
+		rejected.clear();
+		slotsByBlock.clear();
+		for (const [b, refs] of resolved.slots) slotsByBlock.set(b, refs);
+		slotsRead = true;
+		for (const rec of blocks.values()) rec.home = resolved.homes.get(rec.id) ?? null;
+		for (const [id, pl] of resolved.placements) setPlacement(id, pl);
+		for (const [id, e] of resolved.edges) edges.set(id, e);
+		for (const id of resolved.rejected) rejected.add(id);
 		layoutMode = layoutBlocks + itemBlocks + tableBlocks > 0;
 		ix.dissolved = new Set();
-		const index = (own: DisplayOwnership, map: Map<BlockId | null, ChildSlot[]>) => {
+		const index = (map: Map<BlockId | null, ChildSlot[]>) => {
 			const at = new Map<BlockId, Slot>();
 			for (const [parent, list] of map)
 				for (const { id, rank, reset } of list)
 					at.set(id, reset === undefined ? { parent, rank } : { parent, rank, reset });
-			void own;
 			return at;
 		};
 		ix.kids0 = childrenIndex(placementsMap, own0);
-		ix.slots0 = index(own0, ix.kids0);
+		ix.slots0 = index(ix.kids0);
 		if (layoutMode) {
 			ix.dissolved = dissolve(ix.kids0);
 			ix.kidsMap = childrenIndex(placementsMap, ownShim);
-			ix.slots = index(ownShim, ix.kidsMap);
+			ix.slots = index(ix.kidsMap);
 		} else [ix.kidsMap, ix.slots] = [ix.kids0, ix.slots0];
 		following.clear();
 		for (const id of ix.slots.keys()) noteFollowing(id);
@@ -352,38 +504,50 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	};
 	const ensurePlacements = (): void => {
 		ensureOwners();
-		if (ix.placementFull || irregular) {
-			if (ix.placementFull || placementSeeds.size + stateSeeds.size + ownerChanged.size > 0)
-				rebuildPlacements();
-			return;
-		}
-		if (placementSeeds.size + stateSeeds.size + ownerChanged.size + regroup.size === 0) return;
+		if (ix.placementFull) return rebuildPlacements();
+		if (placementSeeds.size + stateSeeds.size + ownerChanged.size === 0) return;
 		const moved = new Set<BlockId>();
-		for (const id of placementSeeds) {
-			// A candidate change (a move, even to the same slot) re-decides its text's order.
-			const home = streamIx.get(id)?.home;
-			if (home !== undefined) regroup.add(home);
-			const next = argmaxOf(id);
-			if (next === null) return rebuildPlacements();
-			const old = placementsMap.get(id);
-			if (old?.parent === next?.parent && old?.rank === next?.rank) continue;
-			setPlacement(id, next);
-			moved.add(id);
-		}
-		// A changed display edge closing a cycle needs the global resolution.
-		for (const id of moved) if (cyclic(id)) return rebuildPlacements();
+		const seeds = new Set(placementSeeds);
+		const done = new Set<BlockId>();
+		/** Place one seed (its left neighbour first, when it is a seed too). */
+		const place = (id: BlockId): void => {
+			if (done.has(id) || !seeds.has(id)) return;
+			done.add(id);
+			if (!blocks.has(id)) {
+				if (placementsMap.has(id)) {
+					setPlacement(id, undefined);
+					edges.delete(id);
+					rejected.delete(id);
+					moved.add(id);
+				}
+				return;
+			}
+			const edge = edgeOfBlock(id);
+			const old = edges.get(id);
+			// The same edge, placed: its key still orders it (its neighbours' keys are theirs).
+			if (edge !== null && old && !rejected.has(id) && placementsMap.has(id) && sameEdge(edge, old))
+				return;
+			if (edge === null) {
+				reject(id, null);
+				moved.add(id);
+			} else for (const x of accept(id, edge, place)) moved.add(x);
+		};
+		for (const id of [...seeds]) place(id);
+		// A changed claim owner can close a cycle through a display edge that did not change.
 		for (const o of ownerChanged)
-			for (const c of kidsOf.get(o) ?? []) if (cyclic(c)) return rebuildPlacements();
-		const seeds = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
-		// Every block of a text whose pieces' order may have changed re-reads its slot.
-		for (const home of regroup)
-			for (const b of ranker.regroup(home)) if (placementsMap.has(b)) seeds.add(b);
-		regroup.clear();
+			for (const c of [...(rawOrder.get(o) ?? [])]) {
+				const edge = edges.get(c.id);
+				if (!edge || rejected.has(c.id) || edge.parent === undefined) continue;
+				if (cycleThrough(placementsMap, ownerOf, c.id, edge.parent) !== null)
+					for (const x of accept(c.id, edge, () => {})) moved.add(x);
+			}
+		if (rejected.size > 0 && (moved.size > 0 || ownerChanged.size > 0)) retryRejected(moved);
+		const seeds2 = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
 		const kinds = [...stateSeeds];
 		placementSeeds.clear();
 		stateSeeds.clear();
 		ownerChanged.clear();
-		const affected = reach(seeds);
+		const affected = reach(seeds2);
 		let touched: Iterable<BlockId> = affected;
 		const changed = patch(ix.kids0, ix.slots0, own0, affected);
 		let any = changed.size > 0;
@@ -398,6 +562,21 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			orderCache = null;
 			ix.kidsVersion++;
 		}
+	};
+
+	/**
+	 * A plain block (the document's default kind) directly in a container
+	 * whose item is a kind of its own that renders content (a list) shows
+	 * as that item — the read-time side of the facade's `fitted`: a race
+	 * (a peer's lift of an item another peer's outdent moves, a concurrent
+	 * undo of a retype) or an explicit write never shows a bare paragraph
+	 * in a list. Anywhere else it shows `plain`.
+	 */
+	const itemOf = (under: BlockId, plain: string): string => {
+		const parent = typeOf(under);
+		if (!ix.roles!.container(parent)) return plain;
+		const item = ix.roles!.defaultChild(parent);
+		return ix.roles!.rendersContent(item) ? item : plain;
 	};
 
 	/**
@@ -416,21 +595,6 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	 * (`itemOf`). Any other shows its stored kind (a retype shows). Read from the stored kinds
 	 * at call time: a retype rebuilds no placement.
 	 */
-	/**
-	 * A plain block (the document's default kind) directly in a container
-	 * whose item is a kind of its own that renders content (a list) shows
-	 * as that item — the read-time side of the facade's `fitted`: a race
-	 * (a peer's lift of an item another peer's outdent moves, a concurrent
-	 * undo of a retype) or an explicit write never shows a bare paragraph
-	 * in a list. Anywhere else it shows `plain`.
-	 */
-	const itemOf = (under: BlockId, plain: string): string => {
-		const parent = typeOf(under);
-		if (!ix.roles!.container(parent)) return plain;
-		const item = ix.roles!.defaultChild(parent);
-		return ix.roles!.rendersContent(item) ? item : plain;
-	};
-
 	const typeOf = (id: BlockId): string => {
 		const stored = blocks.get(id)?.type ?? 'unknown';
 		const slot = ix.slots.get(id);
@@ -467,12 +631,11 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	const order = (): DocOrder => (orderCache ??= documentOrder(ix.kidsMap));
 
 	return {
-		ranker,
 		ownShim,
 		own0,
 		noteKind,
-		argParent,
-		noteCands,
+		homeFor,
+		edgeParent,
 		noteFollowing,
 		ensurePlacements,
 		typeOf,

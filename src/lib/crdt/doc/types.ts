@@ -14,7 +14,7 @@ import type {
 } from '../placement/model.js';
 import type { Anchor } from '../text/model.js';
 import type { ContentRun } from '../text/runs.js';
-import type { DataPatch, LeafWrite } from '../data.js';
+import type { DataPatch, DataWrite } from '../data.js';
 import type { DocPosition } from '../rangeDelete.js';
 
 /** Structural role of a block type (plugin-side policy, resolved per op). */
@@ -186,18 +186,35 @@ export type TextRange = { block: BlockId; offset: number; length: number };
 /**
  * One planned write, named by the document operation that
  * performs it — the name a hook matches. Steps carry everything
- * their write needs (ranks, marks, offsets), decided at prepare time.
+ * their write needs (places, marks, offsets), decided at prepare time; a
+ * place is a display index among a parent's children, read against the
+ * document as the step is written (the steps before it applied).
  */
 export type PlanStep =
-	/** `index`: the destination slot at prepare time, as hooks see it. */
+	/** `index`: the destination slot, as hooks see it. */
+	/** `split`: the split-born block of this plan whose boundary these blocks' slots take as their sort key (a paste's lines at its split). */
 	| {
 			op: 'insertBlocks';
 			parent: BlockId | null;
 			index: number;
 			specs: BlockSpec[];
-			ranks: string[];
+			split?: BlockId;
 	  }
-	| { op: 'moveBlocks'; ids: BlockId[]; parent: BlockId | null; index: number; ranks: string[] }
+	/**
+	 * `side`: the move record's class among the items of its origin —
+	 * absent or `0`, the blocks stand after what precedes them; `1`, before
+	 * what follows them (blocks leaving a block for the gap before it).
+	 */
+	/** `side`: the record's class at its origin (`1`: before); `at`, `part`: the block it stands at and its order there (`moveTo`). */
+	| {
+			op: 'moveBlocks';
+			ids: BlockId[];
+			parent: BlockId | null;
+			index: number;
+			side?: 0 | 1;
+			part?: number;
+			at?: BlockId;
+	  }
 	/** `marks`: the blocks that get this writer's mark; `removes`: those that leave the document. */
 	| { op: 'deleteBlock'; id: BlockId; marks: BlockId[]; removes: BlockId[] }
 	| {
@@ -209,7 +226,7 @@ export type PlanStep =
 			newId: BlockId;
 			tail: SplitTail;
 			parent: BlockId | null;
-			rank: string;
+			index: number;
 	  }
 	/** `at`/`length`: where `from`'s display lands in `into`'s. */
 	| { op: 'mergeBlocks'; from: BlockId; into: BlockId; at: number; length: number }
@@ -217,7 +234,7 @@ export type PlanStep =
 	/**
 	 * A data patch (`crdt/data.ts`): of block `id`, of its atom `inlineId`
 	 * (at display `offset`), or of the document (no `id`). `ops` as asked;
-	 * `leaves` the attr writes they plan.
+	 * `writes` the attr and slot writes they plan.
 	 */
 	| {
 			op: 'patchData';
@@ -225,7 +242,7 @@ export type PlanStep =
 			inlineId?: string;
 			offset?: number;
 			ops: DataPatch[];
-			leaves: LeafWrite[];
+			writes: DataWrite[];
 	  }
 	| {
 			op: 'insertText';

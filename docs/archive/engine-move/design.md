@@ -1,8 +1,13 @@
 # A move in the fork (YP21?) — design
 
-Status: design only (2026-10-15, branch `engine-move`). Nothing is
-implemented; every number below is either measured today (said so) or an
-estimate (with its confidence). The model to follow is
+Status: prototyped (2026-10-17, branch `engine-move-proto`, fork patch
+YP22, stages 1 and 2 together, schema generation 9, with fork patch YP23
+for an upstream crash the wide corpus reached; the measured numbers
+and what the build changed against this design are in
+["Prototype: measured"](#prototype-measured) at the end). The sections
+below are the design as written on 2026-10-15: every number in them is
+either measured then (said so) or an estimate (with its confidence). The
+model followed is
 [`docs/archive/engine-delete/design.md`](../engine-delete/design.md) (YP20).
 
 ## Verdict
@@ -1042,3 +1047,264 @@ written so that nothing in it has to be redone then.
   - `transform.ts` — https://github.com/ckeditor/ckeditor5/blob/master/packages/ckeditor5-engine/src/model/operation/transform.ts
 - Fluid SharedTree, array merge semantics — https://github.com/microsoft/FluidFramework/blob/main/packages/dds/tree/docs/user-facing/array-merge-semantics.md
 - y-prosemirror, `sync-plugin.js` — https://github.com/yjs/y-prosemirror/blob/master/src/sync-plugin.js
+
+## Prototype: measured
+
+Built on branch `engine-move-proto` (2026-10-17): fork patch **YP22**
+(YP21 was taken by the merge-claim items, PR #27), stages 1 (arrays) and 2
+(block tree) together, schema generation 9 (wire word 14009, browser
+database `edytor-v14-g9:`). Stage 3 (text) was not built: merges stay
+claim items, splits stay boundaries, `clipboard/moveText.ts` is untouched.
+Every number below was measured on one machine (Apple M4 Pro, Node
+v24.22.0), the "before" on `origin/engine-cuts` merged with `engine-move`
+(the branch's base) and the "after" on the prototype, with the same
+scripts (`scratchpad/measure.mjs`, `scripts/bundle-size.mjs`,
+`bench/run.js`).
+
+### Sizes
+
+| Measure | Before | After | Change |
+| --- | --- | --- | --- |
+| Stored, 1,000 seeded paragraphs | 199,157 B (198.8 B/block) | 166,554 B (166.2 B/block) | −32.6 B/block (−16.4 %) |
+| Stored, 300 Enters at one spot (each with two typed characters) | 90,661 B (302.2 B/Enter) | 81,606 B (272.0 B/Enter) | −30 B/Enter |
+| Longest order key after those Enters | 39 chars, stored in every block's `at` node | 54 chars, in memory only (`placement/keys.ts`; nothing is stored) | no stored rank |
+| Stored, 200 single-block moves | 8,807 B (44 B/move) | 2,500 B (12.5 B/move) | −71 % |
+| Heap after loading 1,000 blocks | 8.2 MB | 7.17 MB | −13 % |
+| Heap after loading 5,000 blocks | 33.8 MB | 30.01 MB | −11 % |
+| Cycle race (two blocks nested into each other), placements decided at 1,000 blocks | 1,001 | 2 | local |
+| Cycle race at 5,000 blocks | 5,001 | 2 | local |
+| Bundle `minimal`, edytor's own min / total min / gzip | 424.6 / 472.4 / 162.5 KB | 423.9 / 470.6 / 161.6 KB | −0.7 / −1.8 / −0.9 KB |
+| Bundle `all`, own / total / gzip | 659.4 / 709.3 / 247.4 KB | 653.3 / 701.9 / 244.5 KB | −6.1 / −7.4 / −2.9 KB |
+| Bundle `export`, own / total / gzip | 52.2 / 78.4 / 29.6 KB | 51.0 / 76.6 / 28.9 KB | −1.2 / −1.8 / −0.7 KB |
+| Purge of 1,000 of 1,001 deleted blocks: what stays | (ratio bound 1/5 of the deleted document) | 39,268 B for 189,950 B deleted, 176,920 B full; 374 B visible alone | the tombstones (a registry key and an attribution key per removed block, ~39 B) are unchanged while the document itself is leaner: the bound is now 1/4 |
+
+The `minimal` bundle shrank less than the design's −0.9 to −3.7 KB
+estimate for stages 1 + 2: the engine grew by what the design did not
+foresee (below) — the anchored records with their parts, the sort rule
+that reads them and the split keys, the cross-sequence order hook, the
+GC rule that keeps a slot's key — about as much as the rank layer,
+`sourceRank`, the candidates and the text ranker removed. `all` shrank
+by 6.1 KB of edytor's own.
+
+### Timings (`bench/run.js`, two runs each, alternating, medians)
+
+The "before" ran on an export of the branch's base commit, the "after" on
+the prototype, one after the other on an idle machine (2026-10-17). The
+facade lanes restore a fresh document from a snapshot for every sample,
+so their time is the first operation after a load: it includes the
+index's first build.
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Keystroke on a long-lived document, 1,000 / 5,000 blocks (scale) | 0.05 / 0.04 ms | 0.07 / 0.04 ms |
+| Remote keystroke, 5,000 blocks | 0.02 ms | 0.02 ms |
+| Enter, 1,000 / 5,000 blocks | 0.15 / 0.21 ms | 0.17 / 0.15 ms |
+| Backspace, 1,000 / 5,000 blocks | 0.06 / 0.08 ms | 0.06 / 0.10 ms |
+| Range delete of 40 blocks, 1,000 / 5,000 blocks | 1.68 / 1.85 ms | 1.93 / 2.04 ms |
+| Delete of 1,000 blocks, range / selected blocks | 13.7 / 17.0 ms | 19.0 / 18.6 ms |
+| Load 1,000 / 5,000 blocks (scale) | 12.3 / 69.4 ms | 13.8 / 54.3 ms |
+| Construct 1,000 / 5,000 blocks | 49.7 / 163 ms | 46.6 / 177 ms |
+| Encode 1,000 blocks (p50) | 1.29 ms | 1.00 ms |
+| Encode / load after 5,000 history steps | 0.65 / 3.70 ms | 0.69 / 3.27 ms |
+| Undo, last of 10 (p50) | 0.07 ms | 0.07 ms |
+| Undo after 5,000 history steps | 0.41 ms | 0.39 ms |
+| Move update, same parent / reparent (p50) | 80 / 80 B | 44 / 40 B |
+| 500 sequential moves | 75 B per move | 34 B per move |
+| Stored after 5,000 history steps | 67,551 B | 67,186 B |
+| Heap retained by 1,000 / 5,000 blocks (three documents held) | 23.7 / 123 MB | 18.9 / 98.6 MB |
+| First keystroke after a load, 1,000 / 5,000 blocks (facade lane) | 1.58 / 8.1 ms | 2.95 / 17.3 ms |
+| First move after a load, same parent (facade lane) | 0.11 ms | 0.27 ms |
+| First block delete after a load, 1,000 blocks (facade lane) | 1.43 ms | 2.77 ms |
+
+The first operation after a load is the regression: the index's first
+read resolves every slot (`resolveAll`, the registry's slots collected
+once) and inserts every placement into the sorted children lists
+(`rebuildPlacements`, `setPlacement`/`seek`), where the ranks were read
+off each block's `at` node. Timed alone on a document loaded from a
+snapshot: apply 4.5 → 3.1 ms and 19.4 → 16.0 ms, view creation 6.3 → 7.0
+and 26.6 → 31.4 ms, first keystroke 1.9 → 3.8 and 11.8 → 19.9 ms (1,000 /
+5,000 blocks); the second keystroke is unchanged (0.07 → 0.08 ms). Load to
+first keystroke, total: 12.7 → 13.9 ms and 57.7 → 67.4 ms.
+
+### What the build changed against the design
+
+1. **Concurrent order needs more than the origin rule.** The design kept
+   `order.insert.run` structural (YATA's origin) and dropped `sourceRank`,
+   `exitRanks` and `pieceRanks` as workarounds. The gesture sweeps
+   (`gesture-order-sweep.test.ts`, 240 client-id pairs a row;
+   `dr-crdt-order.test.ts`) showed what they encoded: two peers' exits
+   into one gap from one list sort by the clients' ids under YATA alone.
+   The fork's sort rule (`utils/marks.js`) now orders the items of one
+   origin by class, then:
+   - a move record by the unit it stands at (`ContentMove.at`, by default
+     the first it names) in that unit's sequence (`sourceOrder`), two units
+     of different sequences through edytor's `unitOrder` hook on the
+     document (`doc._unitOrder`: the chain of home slots up to the root,
+     read from the engine's structs alone), then its part (`ContentMove.part`:
+     `PART` in `doc/steps.ts` — a head holding the items before the block,
+     new blocks kept before the next, a head holding the block, the block,
+     new blocks after it), then the stronger record (priority, client);
+   - a block slot a split made by its split's boundary item
+     (`BlockSlot.s`, the boundary's id; two boundaries in one text by their
+     order there, in different texts by the text): `order.split.text`
+     becomes structural and the text ranker (`display.ts textRanker`, its
+     regroup wiring in the index) is removed; a collected slot keeps its
+     key (`Item#gc` trims the content to it), since a sort that read
+     content collection erases diverged between a replica that collected
+     and one that had not;
+   - `extendsRun` reads the item's ids and its parent node (a list item
+     outside a `content` node), never its content, for the same reason.
+   A split's head list and its new blocks are created in the innermost
+   level at the split and moved out by records standing at the block they
+   stand beside, written last first so each stands before the one written
+   before it (`splitOut`).
+2. **A record waits for its units.** `getMissing` treats a record's named
+   units and its anchor as dependencies, like an origin; `pendingMoves`
+   only covers a Skip. The design had records integrate at once.
+3. **One priority per writer until it sees a peer's.** `doc._clock` rises
+   only on a peer's record, so a writer's gestures between syncs win or
+   lose a contested block together (`FX-05`'s mixed outcomes are gone).
+4. **Read-time promotion writes no move.** Deleting a block
+   (`del.blocks.promote`), retyping one to a void kind
+   (`conc.void-children`), a dissolving layout (`layout.single`) and a
+   deleted layout item (`layout.only-items`) leave the children's home
+   slots where they are; the read shows them in the slot. The design kept
+   the delete's planned moves; with records they sorted after everything
+   promoted at the slot, so a tail a peer split off or a child a peer added
+   read first. A plan of `deleteBlocks` has no `moveBlocks` step and its
+   `effect.moves` lists no children.
+5. **The runner and oracle fingerprints.** A record written beside a unit
+   carries the record's later units along (`placeAfter`), so their mover
+   changes without a move: the F-O11 oracle and the corpus runner compare
+   sequences and relative order, never a record's identity.
+6. **Two engine findings the wide corpus (seeds 1–1,000, 300 ops) made.**
+   A record waits while a Skip stands for a unit it names or stands at
+   (`getMissing`: a skip counts in the clock but holds no item), or two
+   records at one origin sorted by their units' order on one replica and
+   by priority on another (the raw `pendingMoves` path is gone: it was the
+   only reader of a skipped unit). And upstream's `BlockSet.exclude` read a
+   client's first and last struct once, before the loop over the known
+   ranges, so a GC spanning a skip, known ids and the state's end
+   integrated whole and its delete-set entry outran the store
+   (`tryMerge` threw) — the corpus's tracked `seed-140` crash, reached in a
+   dozen more raw seeds once a move is one record: fork patch YP23
+   (`UPSTREAM.md`, `yp23-exclude.test.ts`).
+7. **A children list compares one key space.** The index's order keys are
+   local to a replica (`placement/keys.ts`); a child shown under its
+   parent's claim owner after a promotion (a block deleted inside a
+   merged-away block) was keyed in the merged block's sequence space and
+   compared with the owner's own children's keys — two replicas that
+   folded the writes in different orders read different lists (model
+   seeds 291, 506, 671 of the wide corpus). `displaySlotOf` keys it in the
+   owner's claimed space whatever the hops (`display-keys.test.ts`). With
+   stored ranks the mix was harmless: every replica held the same strings.
+8. **The runner's lossy window travels with a sync.** A peer in the window
+   a dropped pending attribute write opens (the old value's delete
+   integrated, the new value not) hands it to a peer syncing from it; the
+   step check skips the receiver too until it holds the dropped ranges
+   (`inheritWindow`; roles seed 131, a type attr missing on a peer that
+   never dropped anything). And a block shown under a block an undo
+   lawfully removes shows elsewhere afterwards — at home, the removed
+   block's sequence and the records it held gone with it — which the
+   runner's placement fingerprint (now the display edge, not the raw
+   candidates) sees and the undo's envelope allows (model seed 615); so
+   does a block whose creation the undo or redo withdraws or brings back:
+   the records its creation wrote beside it go and come back with the
+   step, so it shows at home while withdrawn (doc seeds 848, 859: a split
+   of a block with children, undone).
+
+### Behaviour changes for the user's decision
+
+Each existing test whose expected value changed, with before → after:
+
+- MV05 / MV05a (`placement/concurrency.test.ts`, `scenarios/active-model.ts`):
+  the block whose edge a cycle rejects shows at the root's tail (index 1
+  after `b3`) → it showed where it stood before (index 0). The design's §3.3.
+- MV10: a move writes nothing inside the moved node: `deepEvents` after
+  the move is 0 (was > 0); a remote text edit still reaches the handle.
+- `prepared-ops.test.ts` D5: `deleteBlock('x')` and
+  `deleteBlock('x', { keepChildren: true })` plan `['deleteBlock']` (was
+  `['moveBlocks', 'deleteBlock']`), `effect.moves` `[]` (was `['y']`).
+- `layout.test.ts` "deleting one of three columns": a reader without the
+  layout role sees `C[K1[A], B, K3[D]] Z` (the row's `writes` check is off;
+  the role sees `C[K1[A], K3[D]] B Z` as before).
+- `order-scope.test.ts` (pinned residuals, now the serial order on every
+  client-id pair): Enter at a paragraph's end ‖ Backspace at the first
+  item below → `p|n|a|b` only (was either order); two Enters by one peer ‖
+  Backspace → `hello| wo|rld|a|b` (was `hello| wo|a|rld|b`); Tab on y ‖
+  Enter at the end of the last child above → `x|k|n|y` only; Enter at the
+  end and typing ‖ Enter in the middle → `P|hello| world|foo|Q` only;
+  Duplicate then Enter ‖ Enter earlier → `P|he|llo| world|hello world|Q`
+  only; a paste of whole blocks, a paste over a block and typing over a
+  block ‖ Enter → the split's piece first, only; a list pasted at a line's
+  start ‖ Enter above → `hello| world|one|xbody text|Q` only; FX-05's
+  "Turn a and b into headings ‖ Shift+Tab on c" and "Shift+Tab on a and c
+  ‖ Shift+Tab on d" → `p|a|b|c|d|e|q` only (the mixed outcomes are gone).
+- `order-scope.test.ts` FX-06: a line added at the end of `hello` while the
+  pasted lines after it were deleted, then the delete undone →
+  `P|hello|new|one|two|Q` (was `P|hello|one|two|new|Q`): the restored
+  lines come back after the line written at their place, as restored text
+  comes back after text typed in its place.
+- `purge-before-horizon.test.ts`: the purged document is held under a
+  quarter of the deleted one (was a fifth; the tombstones per removed block
+  are unchanged, the document is leaner).
+- `yp22-moves.test.ts`: a record waits for its units (was: integrates at
+  once); two records of incomparable units sort the stronger (greater
+  client) first on equal priority and part; a record whose unit a skip
+  stands for waits for the gap to fill.
+- `random/corpus.test.ts` diagnostic lane: `seed-140` replays clean (was:
+  an `upstream-engine-crash` evidence row that had to keep failing) — fork
+  patch YP23 fixed the crash it pinned; the artifact stays as its repro.
+- `fixtures/dom/collaboration/room-props.test.tsx`,
+  `room-id-props.test.tsx`: the browser database is `edytor-v14-g9:…`
+  (was `g8`), schema generation 9.
+- `purge-before-horizon.test.ts`: `records: 0` replaces `candidates: 0`
+  (the purge counts move records).
+
+### Risks not in the design
+
+- The cross-sequence order (`unitOrder`) picks each ancestor's home slot
+  as the lowest `(client, clock)` slot its registry value owns; two
+  concurrent creations of one block id whose slots arrive in different
+  orders could make two replicas compare differently while they differ.
+- A collected slot keeps its split key (~8 B) instead of merging into a
+  bare tombstone: a purge leaves it. Measured above; no slot of the
+  1,000-block purge carried one.
+- The in-memory order key grows with inserts at one spot (54 characters
+  after 300 Enters): nothing is stored, but a very long run at one spot
+  costs memory and comparisons in the index.
+- Records are countable units of their sequence (`YNode.length` counts
+  them); every edytor read goes through `entriesOf`.
+- The first operation after a load costs about twice as much (the index's
+  first read resolves every slot and inserts every placement; above): 8 ms
+  more at 5,000 blocks. Steady-state keystrokes, Enter, undo and moves are
+  level or cheaper.
+- A document must carry `orderingUnits` (the cross-sequence order of two
+  records at one origin) before it integrates anything, as it carries
+  `keepingReplaced`: the order of two items is decided when they
+  integrate, so one that took such records without it sorted them by
+  priority and client, and reads them in another order than a replica
+  that had it. The view's facade and the admission check install it first;
+  the prefetch document (stores bytes, reads nothing) and the seed's
+  scratch document (one writer) carry `keepingReplaced` only, and the
+  bench's restore path applies the snapshot before the facade attaches.
+  A new construction site must add it; nothing checks this yet.
+- The index's order keys are local to a replica; any new display rule that
+  shows a block in a list must key it in that list's key space (the
+  promotion-under-a-claim-owner divergence the wide corpus found).
+
+### Lanes (final tree)
+
+`check`, `lint`, `check:deps`, `check:worker`, `check:api`, `check:docs` and
+the three typechecks pass; `test:crdt` (the known local-only
+`search-marker-format` baseline row fails, as on the base), `test:dom`,
+`test:do`, Playwright `block-handles.spec.ts` in Chromium, Firefox and
+WebKit, `test:hosted` (Chromium), the packed consumer and `test:dst` pass;
+`test:dst:extensive` fails exactly the known solo seeds (17, 18, 25, 34, 43,
+45, 52, 53, 61, 67, 70, 88, 90, 97, 98) and collab seed 20. The wide corpus
+(`CRDT_SEEDS=1-1000 CRDT_OPS=300`, every adapter, 5,027 rows) fails three
+model rows, all one violation — an undo that tombstones a peer's text typed
+into a block the undo withdraws: seed 417 fails the same way on the base;
+seeds 219 and 889 pass there in full, but their minimized schedules fail on
+the base with the same violation. No divergence, crash or ill-formed state.
+

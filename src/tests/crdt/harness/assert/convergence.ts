@@ -66,6 +66,48 @@ export const assertConverged = (set: PeerSet, ops: CrdtOps, context = ''): void 
 	const projections = set.peers.map((p) => ({ peer: p.name, doc: ops.project(p) }));
 	for (let i = 1; i < projections.length; i++) {
 		const diff = findFirstDiff(projections[0].doc, projections[i].doc);
+		if (diff !== null && process.env.EDYTOR_DUMP_ROOT) {
+			const dump = (p) => {
+				const out: string[] = [];
+				const reg = p.doc.get('blocks');
+				const where = (id) => {
+					const structs = p.doc.store.clients.get(id[0]);
+					if (!structs) return 'missing-client';
+					const it = structs.find((x) => x.id.clock <= id[1] && id[1] < x.id.clock + x.length);
+					if (!it || !it.isItem) return 'gc';
+					let i = 0;
+					for (let x = it.parent._start; x !== null && x !== it; x = x.right) i++;
+					const pid = it.parent._item
+						? `${it.parent._item.id.client % 1000}:${it.parent._item.id.clock}`
+						: it.parent.name;
+					return `${pid}#${i}${it.deleted ? 'd' : ''}`;
+				};
+				for (let it = reg._start; it !== null; it = it.right) {
+					const c = it.content;
+					const what =
+						c.arr !== undefined
+							? c.arr
+									.map((v) =>
+										v && v.s !== undefined && Array.isArray(v.s)
+											? `${v.b ?? ''}/s${v.s[0] % 1000}:${v.s[1]}@${where(v.s)}`
+											: v && v.b !== undefined
+												? v.b
+												: JSON.stringify(v)
+									)
+									.join(',')
+							: c.priority !== undefined
+								? `R(pr${c.priority} part${c.part} at${c.at ? `${c.at.client % 1000}:${c.at.clock}` : '-'} ids${JSON.stringify(c.ids)})`
+								: 'GC';
+					out.push(
+						`${it.id.client % 1000}:${it.id.clock}${it.deleted ? '(del)' : ''}[${what}]<-${it.origin ? `${it.origin.client % 1000}:${it.origin.clock}` : 'null'}`
+					);
+				}
+				return out.join(' ');
+			};
+			process.stderr.write(
+				`ROOT ${projections[0].peer}: ${dump(set.peers[0])}\nROOT ${projections[i].peer}: ${dump(set.peers[i])}\n`
+			);
+		}
 		expect(
 			diff,
 			`projection divergence${context ? ` (${context})` : ''}: ` +

@@ -316,13 +316,15 @@ for (const adapterName of SELECTED_ADAPTERS) {
 
 describe('diagnostic lane: persisted upstream crash repros', () => {
 	// seed-140 is a committed artifact of a genuine vendored-engine crash
-	// (lossy reloads + Skip/GC overlap → findIndexSS). It stays DIAGNOSTIC
-	// on the raw adapter forever — a replay must classify as
-	// upstream-engine-crash EVIDENCE, never as a gate violation, and never
-	// silently disappear. (seed-86 crashed in the formatting cleanup's
+	// (lossy reloads + Skip/GC overlap → findIndexSS): an update's block set
+	// trimmed to the first known range only, so a GC spanning a gap and the
+	// end of the state integrated whole over the known middle. Fork patch
+	// YP23 trims every range; the artifact stays as the regression repro on
+	// the raw adapter — a replay must pass, with no crash evidence, and
+	// never silently disappear. (seed-86 crashed in the formatting cleanup's
 	// delete-set walk, which fork patch YP19 removed with plain formats.)
 	for (const name of ['seed-140']) {
-		it(`${name} replays as upstream-engine-crash evidence`, () => {
+		it(`${name} replays clean (fork patch YP23)`, () => {
 			const artifact = JSON.parse(readFileSync(`${FAILURE_DIR}/${name}.json`, 'utf8')) as {
 				seed: number;
 				peers: number;
@@ -333,9 +335,9 @@ describe('diagnostic lane: persisted upstream crash repros', () => {
 				createRawNodeOps(),
 				BASE_SEED
 			);
-			expect(res.ok).toBe(false);
-			expect(res.violations).toEqual([]);
-			expect(res.evidence).toContain('upstream-engine-crash');
+			expect(res.failure, 'the replay crashed').toBeUndefined();
+			expect(res.ok).toBe(true);
+			expect(res.evidence).not.toContain('upstream-engine-crash');
 		});
 	}
 });

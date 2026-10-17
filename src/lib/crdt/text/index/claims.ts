@@ -112,6 +112,7 @@ export const indexClaims = (ix: IndexState) => {
 		// The tops a seed's claims (now, and those it dropped: noted in `claimersOf` changes) decide.
 		const affected = new Set<BlockId>();
 		const stack: BlockId[] = [];
+		const seeds = [...ownerSeeds];
 		for (const x of ownerSeeds) {
 			stack.push(x);
 			for (const m of claimTargets.get(x) ?? []) if (setTop(m, topClaim(m))) stack.push(m);
@@ -135,6 +136,15 @@ export const indexClaims = (ix: IndexState) => {
 			if (now === was) continue;
 			setDisplay(x, was, now);
 			ownerChanged.add(x);
+		}
+		// A holder whose claims changed re-slots what shows through them: their
+		// order among its claims is the key of the blocks shown under it
+		// (`claimedRank`) — under its owner when it is itself merged away.
+		for (const x of seeds) {
+			if (!blocks.has(x)) continue;
+			ownerChanged.add(x);
+			const o = owners.get(x);
+			if (typeof o === 'string' && o !== x) ownerChanged.add(o);
 		}
 	};
 	/** The claims each seed held before its record changed (their tops are re-decided too). */

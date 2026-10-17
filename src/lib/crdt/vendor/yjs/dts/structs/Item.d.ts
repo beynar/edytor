@@ -75,6 +75,13 @@ export class Item extends AbstractStruct {
      */
     holds: number;
     /**
+     * YP22: the live move records (`ContentMove`) naming this item, or
+     * `null`. Its mover is the argmax of `(priority, client, clock)` over
+     * them: the item shows there, hidden at home. Local, never encoded.
+     * @type {Array<Item>|null}
+     */
+    movers: Array<Item> | null;
+    /**
      * This is used to mark the item as an indexed fast-search marker
      *
      * @type {boolean}
@@ -87,6 +94,18 @@ export class Item extends AbstractStruct {
      */
     get keep(): boolean;
     get countable(): boolean;
+    /**
+     * Whether this item shows nowhere: removed or held (YP22; a moved item
+     * shows at its mover).
+     * @type {Boolean}
+     */
+    get gone(): boolean;
+    /**
+     * YP22: the live move record this item shows at (the argmax of
+     * `(priority, client, clock)` over `movers`), or `null` at home.
+     * @type {Item|null}
+     */
+    get mover(): Item | null;
     markDeleted(): void;
     /**
      * Computes the last content address of this Item.
@@ -117,7 +136,7 @@ export class Item extends AbstractStruct {
      * @return {Item}
      */
     split(transaction: Transaction | null, diff: number): Item;
-    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11;
+    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12;
     /**
      * @type {true}
      */
@@ -179,9 +198,9 @@ export class AbstractContent {
      */
     write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
-     * @return {1|2|3|4|5|6|7|8|9|11}
+     * @return {1|2|3|4|5|6|7|8|9|11|12}
      */
-    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11;
+    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12;
 }
 export class ContentAny {
     /**
@@ -354,13 +373,12 @@ export class ContentDeleted {
      */
     getRef(): 1;
 }
-export function applyPendingHolds(tr: Transaction, clients: Array<number>): void;
 /**
  * A hold record: one unit per held id range (`client, clock, len`). While the
  * record is live, the items it names read as deleted; deleting the record
  * shows them again (an undo), unless another live record holds them. A record
  * integrates at once; what it names that has not arrived takes its hold when
- * it does (`applyPendingHolds`).
+ * it does (`applyPending`).
  */
 export class ContentHold {
     /**
@@ -417,6 +435,91 @@ export class ContentHold {
      * @return {11}
      */
     getRef(): 11;
+}
+export function applyPending(tr: Transaction, clients: Array<number>): void;
+/**
+ * A move record: one countable unit at its destination, naming the units
+ * it moves (`client, clock, len` ranges, in the order they show) with a
+ * Lamport `priority`, a `side` (`0`: it stands after what precedes it,
+ * `1`: before what follows it — its sort class among the items of one
+ * origin, `markClass`), and for the sort of two records at one origin
+ * (`utils/marks.js` `sourceOrder`) the unit it stands at (`at`, else the
+ * first it names) and its `part` there. While the record is live, each named unit shows at
+ * the record that wins its movers and is hidden at home; deleting the
+ * record (an undo) hands the unit to the next record, else home. A record
+ * waits for the units it names as an item waits for its origin
+ * (`getMissing`), so two records at one origin sort by their units' home
+ * order on every replica (`sourceOrder`). Immutable once written, so
+ * replicas converge in any order.
+ */
+export class ContentMove {
+    /**
+     * @param {number} priority
+     * @param {number} side
+     * @param {Array<number>} ids
+     * @param {number} [part] the writer's order among the records standing at one unit (0–7)
+     * @param {ID|null} [at] the unit the record stands at (`null`: the first it names)
+     */
+    constructor(priority: number, side: number, ids: Array<number>, part?: number, at?: ID | null);
+    priority: number;
+    side: number;
+    ids: number[];
+    part: number;
+    at: ID | null;
+    /**
+     * The record item, once integrated (its id and parent decide the move).
+     * @type {Item|null}
+     */
+    item: Item | null;
+    /**
+     * @return {number}
+     */
+    getLength(): number;
+    /**
+     * @return {Array<any>}
+     */
+    getContent(): Array<any>;
+    /**
+     * @return {boolean}
+     */
+    isCountable(): boolean;
+    /**
+     * @return {ContentMove}
+     */
+    copy(): ContentMove;
+    /**
+     * @param {number} _offset
+     * @return {ContentMove}
+     */
+    splice(_offset: number): ContentMove;
+    /**
+     * @param {ContentMove} _right
+     * @return {boolean}
+     */
+    mergeWith(_right: ContentMove): boolean;
+    /**
+     * @param {Transaction} transaction
+     * @param {Item} item
+     */
+    integrate(transaction: Transaction, item: Item): void;
+    /**
+     * @param {Transaction} transaction
+     */
+    delete(transaction: Transaction): void;
+    /**
+     * @param {Transaction} _tr
+     */
+    gc(_tr: Transaction): void;
+    /**
+     * @param {UpdateEncoder} encoder
+     * @param {number} _offset
+     * @param {number} _offsetEnd
+     */
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
+    /**
+     * @return {12}
+     */
+    getRef(): 12;
 }
 /**
  * @private

@@ -44,6 +44,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
+import { orderingUnits } from '../../../lib/crdt/placement/resolve.js';
 import { TEXT_DELETES_ROOT } from '../../../lib/crdt/schema.js';
 import { mulberry32 } from './rng.js';
 import { updateHash } from './trace.js';
@@ -164,7 +165,7 @@ export class Peer {
 	 * the reloaded doc is a new writer. Undo history does not survive reload.
 	 */
 	reload(mode: 'snapshot' | 'log' = 'snapshot'): void {
-		const doc = new Y.Doc({ guid: this.set.guid });
+		const doc = orderingUnits(new Y.Doc({ guid: this.set.guid }));
 		// Copy before clearing/reattaching (#attach would overwrite persisted
 		// with the empty doc's state).
 		const sourceLog = this.updateLog.slice();
@@ -525,7 +526,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 	if (seed instanceof Uint8Array) {
 		seedUpdate = seed;
 	} else {
-		const seedDoc = new Y.Doc({ guid });
+		const seedDoc = orderingUnits(new Y.Doc({ guid }));
 		// The seed doc writes too (modelSpecSeed allocates ranks through
 		// insertBlock) — pin its identity or the seed bytes, hence every
 		// peer's initial state, would differ run to run.
@@ -536,7 +537,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 	}
 	const names = opts.names ?? Array.from({ length: n }, (_, i) => String.fromCharCode(65 + i));
 	for (let i = 0; i < n; i++) {
-		const doc = new Y.Doc({ guid });
+		const doc = orderingUnits(new Y.Doc({ guid }));
 		Y.applyUpdate(doc, seedUpdate, remoteOrigin('seed'));
 		doc.clientID = set.nextClientId();
 		setDocRand(doc, set.randFor(i, 0));

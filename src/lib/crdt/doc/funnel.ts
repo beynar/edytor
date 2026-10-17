@@ -4,21 +4,22 @@
  * transaction, its result read from what the transaction wrote, and the
  * frame's one attribution pass.
  */
+import type { Unit } from '../placement/slots.js';
 import {
 	blockNodeOf,
 	buildInline,
-	materializeSpec,
+	insertSpecsAt,
+	moveBlocksTo,
 	ownText,
 	view as modelView,
-	writePlacement,
 	writeSplit,
 	type BlockId
 } from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
 import type { AttributionActor } from '../attribution/index.js';
-import { ENTRY_FACET, type Folded } from '../text/runs.js';
-import { AT, DEL_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../schema.js';
-import { writeLeaves } from '../data.js';
+import { ENTRY_FACET, SEQ_FACET, type Folded } from '../text/runs.js';
+import { DEL_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../schema.js';
+import { writeData } from '../data.js';
 import { NOOP } from './plan.js';
 import type { EdytorDocConfig, OpResult, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
@@ -77,8 +78,8 @@ export const writeFunnel = (c: FunnelContext) => {
 	// Each apply opens a frame that tracks the index's folds. When it
 	// closes, ONE pass over the facets the fold saw stamps attribution: a
 	// block whose registry entry was created gets its `createdBy` record; a block whose content, claims, type or data
-	// changed gets a contributor stamp; moves and delete marks stamp
-	// nothing. Two intents the effects cannot name are recorded by their
+	// changed gets a contributor stamp; moves (a record or a slot in a
+	// block's sequence) and delete marks stamp nothing. Two intents the effects cannot name are recorded by their
 	// steps: a split-born block inherits its source's contributors, and a
 	// merge survivor unions the absorbed block's. With no configured
 	// `actor` the funnel writes no attribution at all.
@@ -86,6 +87,8 @@ export const writeFunnel = (c: FunnelContext) => {
 	const actorOf = (): AttributionActor | undefined => config.actor?.();
 	type Frame = {
 		inherit: Map<BlockId, BlockId>;
+		/** Each split-born block's boundary (the key of the slots a paste adds at its split). */
+		bounds: Map<BlockId, Unit>;
 		unions: [into: BlockId, from: BlockId][];
 		/** A write whose facets are not the frame's (`RunView.track`'s `quiet`). */
 		quiet: (write: () => void) => void;
@@ -103,7 +106,7 @@ export const writeFunnel = (c: FunnelContext) => {
 				for (const facet of facets)
 					if (
 						!facet.startsWith(DEL_PREFIX) &&
-						![ENTRY_FACET, AT, ID, LAST_CHANGED_ATTR].includes(facet)
+						![ENTRY_FACET, SEQ_FACET, ID, LAST_CHANGED_ATTR].includes(facet)
 					)
 						changed.add(id);
 		}
@@ -136,7 +139,7 @@ export const writeFunnel = (c: FunnelContext) => {
 
 	/** One planned step, written (the plan decided it; writers never refuse). */
 	const writeStep = (w: PlanStep, f: Frame): void => {
-		// Structural steps need no view: delete marks and placements write one node.
+		// Delete marks need no view: they write one node.
 		if (w.op === 'deleteBlock')
 			return w.marks.forEach((id) =>
 				blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
@@ -144,23 +147,41 @@ export const writeFunnel = (c: FunnelContext) => {
 		if (w.op === 'splitBlock' || w.op === 'insertText' || w.op === 'insertInline') needStream(w.id);
 		// A claim item goes at the end of the stream of the block merged into.
 		if (w.op === 'mergeBlocks') needStream(w.into, true);
-		const { blocks, own } = modelView(doc);
+		const v = modelView(doc);
+		const { blocks, own } = v;
 		const node = (id: BlockId) => blockNodeOf(doc, id)!;
 		switch (w.op) {
 			case 'insertBlocks':
-				return w.specs.forEach((sp, i) => materializeSpec(doc, sp, w.parent, w.ranks[i]!));
+				return insertSpecsAt(
+					doc,
+					v,
+					w.parent,
+					w.index,
+					w.specs,
+					w.split === undefined ? null : (f.bounds.get(w.split) ?? null)
+				);
 			case 'moveBlocks':
-				return w.ids.forEach((id, i) => writePlacement(doc, node(id), w.parent, w.ranks[i]!));
+				return moveBlocksTo(
+					doc,
+					v,
+					w.ids,
+					w.parent,
+					w.index,
+					w.side ?? 0,
+					w.part ?? 0,
+					w.at ?? null
+				);
 			case 'splitBlock':
 				f.inherit.set(w.newId, w.id);
-				return writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
+				f.bounds.set(w.newId, writeSplit(doc, w.id, w.offset, w.newId, w.tail, w.parent, w.index));
+				return;
 			case 'mergeBlocks':
 				f.unions.push([w.into, w.from]);
 				return f.quiet(() => claimInto(own, w.from, w.into));
 			case 'setBlockType':
 				return void node(w.id).setAttr(TYPE, w.type);
 			case 'patchData':
-				return writeLeaves(dataNode(w.id, w.inlineId)!, w.leaves);
+				return writeData(dataNode(w.id, w.inlineId)!, w.writes);
 			case 'insertText':
 				return insertIntoText(doc, blocks, own, w.id, w.offset, w.text, w.marks);
 			case 'insertInline':
@@ -187,7 +208,7 @@ export const writeFunnel = (c: FunnelContext) => {
 		return write(() =>
 			doc.transact(() => {
 				const frame = runsView.track();
-				const f: Frame = { inherit: new Map(), unions: [], quiet: frame.quiet };
+				const f: Frame = { inherit: new Map(), bounds: new Map(), unions: [], quiet: frame.quiet };
 				try {
 					for (const w of p.writes) writeStep(w, f);
 				} catch (error) {

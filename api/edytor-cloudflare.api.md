@@ -892,7 +892,7 @@ export type PurgeReport = {
     removed: number;
     emptied: number;
     marks: number;
-    candidates: number;
+    records: number;
     claims: number;
     merged: number;
 };
@@ -1360,6 +1360,12 @@ export type DataPatch = {
 };
 ```
 
+#### crdt/data.d.ts#DataWrite
+
+```ts
+export type DataWrite = LeafWrite | SlotWrite;
+```
+
 #### crdt/data.d.ts#LeafWrite
 
 ```ts
@@ -1367,6 +1373,26 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
+```
+
+#### crdt/data.d.ts#SlotWrite
+
+```ts
+export type SlotWrite = {
+    seq: 'insert';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'move';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'remove';
+    path: string;
+    ids: string[];
+};
 ```
 
 #### crdt/doc/content.d.ts#NewInline
@@ -1494,13 +1520,15 @@ export type PlanStep = {
     parent: BlockId | null;
     index: number;
     specs: BlockSpec[];
-    ranks: string[];
+    split?: BlockId;
 } | {
     op: 'moveBlocks';
     ids: BlockId[];
     parent: BlockId | null;
     index: number;
-    ranks: string[];
+    side?: 0 | 1;
+    part?: number;
+    at?: BlockId;
 } | {
     op: 'deleteBlock';
     id: BlockId;
@@ -1514,7 +1542,7 @@ export type PlanStep = {
     newId: BlockId;
     tail: SplitTail;
     parent: BlockId | null;
-    rank: string;
+    index: number;
 } | {
     op: 'mergeBlocks';
     from: BlockId;
@@ -1531,7 +1559,7 @@ export type PlanStep = {
     inlineId?: string;
     offset?: number;
     ops: DataPatch[];
-    leaves: LeafWrite[];
+    writes: DataWrite[];
 } | {
     op: 'insertText';
     id: BlockId;

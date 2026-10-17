@@ -28,7 +28,6 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 		placed,
 		homeOfText,
 		reclaim,
-		regroup,
 		noteClaims,
 		invalidateBlock
 	} = ix;
@@ -142,13 +141,6 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 			if (x.head !== null) reclaim.add(x.head);
 			for (const b of x.blocks) reclaim.add(b);
 		}
-		// A change of the text's segments re-decides its pieces' order.
-		if (
-			before.head !== now.head ||
-			before.blocks.length !== now.blocks.length ||
-			before.blocks.some((b, i) => now.blocks[i] !== b)
-		)
-			regroup.add(home);
 		const [a, b] = [before.keys, now.keys];
 		let p = 0;
 		while (p < a.length && p < b.length && a[p] === b[p]) p++;

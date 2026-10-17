@@ -25,6 +25,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
+import { resolveAll } from '../../../../lib/crdt/placement/resolve.js';
+import { engineOps } from '../../../../lib/crdt/structs.js';
 import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
 import { readData } from '../../../../lib/crdt/data.js';
 import {
@@ -581,6 +583,7 @@ export const tagAtomDeps = (
 export const captureOpState = (peer: Peer): OpState => {
 	const blocks = M.collectBlocks(peer.doc);
 	const own = T.computeOwnership(peer.doc, blocks);
+	const { edges } = resolveAll(peer.doc, blocks, own.ownerOf, engineOps(Y).isKeptReplaced);
 	const atoms: OpState['atoms'] = new Map();
 	const claims: OpState['claims'] = new Map();
 	const blocksOut: OpState['blocks'] = new Map();
@@ -621,12 +624,14 @@ export const captureOpState = (peer: Peer): OpState => {
 			// (`hist.undo.withdraw`) is derived from what it holds, not a delete.
 			deleted: delItems.length > 0,
 			delStamp: delItems.length > 0 ? delItems.join(',') : null,
+			// Its display edge: the sequence its home slot shows in, at home or at a record
+			// (never the record's identity: a record written beside it carries it along
+			// without moving it, fork patch YP22 `placeAfter`).
 			placements: canonKey(
-				rec.cands.map((c: { key: string; p: unknown; r: string }) => ({
-					key: c.key,
-					p: c.p,
-					r: c.r
-				}))
+				(() => {
+					const e = edges.get(id);
+					return e ? { p: e.parent ?? null, home: e.via === null } : null;
+				})()
 			)
 		});
 	}

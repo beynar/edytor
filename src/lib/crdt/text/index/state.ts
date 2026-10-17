@@ -11,7 +11,9 @@ import {
 	type BlockId,
 	type BlockRec,
 	type ChildSlot,
-	type ResolvedPlacement
+	type Edge,
+	type ResolvedPlacement,
+	type SlotRef
 } from '../../placement/model.js';
 import { DOC_DATA_ROOT } from '../../schema.js';
 import type { IdSetLike } from '../../structs.js';
@@ -75,6 +77,8 @@ export type Tx = {
 	changed?: EngineTransaction['changed'];
 	/** The visibility changes hold records made, in order (fork patch YP20). */
 	holds?: number[];
+	/** The units whose mover changed, in order (fork patch YP22). */
+	moves?: number[];
 };
 
 /** The index's self-checks (`indexChecks`), run after each fold and each report. */
@@ -130,10 +134,16 @@ export const indexState = (doc: EngineDoc) => {
 		dissolved: new Set<BlockId>(),
 		/** Resolved placements. */
 		placementsMap: new Map<BlockId, ResolvedPlacement>(),
-		/** The texts whose pieces' order is re-decided at the next pass (`order.split.text`). */
-		regroup: new Set<BlockId>(),
-		/** A block's argmax candidate parent → the blocks naming it (its entry decides theirs). */
-		byArgParent: new Map<BlockId, Set<BlockId>>(),
+		/** Counts the folds that changed a sequence (a slot or record written or removed): a slot map read before one is stale. */
+		seqEpoch: 0,
+		/** Every block slot by the id it names (`{ b }`, fork patch YP22), kept from the folds; a block's home is `homeFor`. */
+		slotsByBlock: new Map<BlockId, SlotRef[]>(),
+		/** Each sequence owner's blocks (every block whose display edge it holds), sorted by key. */
+		rawOrder: new Map<BlockId | null, ChildSlot[]>(),
+		/** Each block's display edge as placed or rejected (`null`: no slot). */
+		edges: new Map<BlockId, Edge | null>(),
+		/** The blocks at the root's tail: their edge rejected (a cycle), or no slot. */
+		rejected: new Set<BlockId>(),
 		/** The children index without the layout rules (what they read), and with them. */
 		kids0,
 		slots0,
@@ -155,7 +165,7 @@ export const indexState = (doc: EngineDoc) => {
 		allListsDirty: true,
 		/** The next pass rebuilds everything (first build, roles, an irregular state). */
 		placementFull: true,
-		/** Blocks whose candidates or record changed, whose display state changed. */
+		/** Blocks whose slot, record or mover changed; blocks whose display state changed. */
 		placementSeeds: new Set<BlockId>(),
 		stateSeeds: new Set<BlockId>(),
 		/**
@@ -187,7 +197,7 @@ export const indexState = (doc: EngineDoc) => {
 		/** The index version (`RunView.version`). */
 		version: 0,
 		/** The fold counters `debug` exposes read-only. */
-		foldStats: { folds: 0, pairs: 0, structs: 0 },
+		foldStats: { folds: 0, pairs: 0, structs: 0, placed: 0 },
 
 		// ── the fold (`fold.ts`) and the report (`report.ts`)
 		/** Frames tracking the folds (the write funnel's `track()`), and the report's candidates. */

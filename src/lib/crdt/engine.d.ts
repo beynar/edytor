@@ -18,6 +18,7 @@ export type EngineSymbol =
 	| 'Skip'
 	| 'findIndexSS'
 	| 'isKeptReplaced'
+	| 'sequenceOrder'
 	| 'idAtIndex'
 	| 'indexOfId'
 	| 'createIdSet'

@@ -76,7 +76,7 @@ import { indexCache } from './index/cache.js';
 import { indexFold } from './index/fold.js';
 import { indexReporter } from './index/report.js';
 
-export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
+export { CONTENT_ATTR, ENTRY_FACET, SEQ_FACET, indexChecks } from './index/shared.js';
 
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
@@ -151,6 +151,8 @@ export type RunViewDebug = {
 	 * last `reset()`: each struct once, whatever the number of reads.
 	 */
 	readonly foldedStructs: number;
+	/** Blocks whose placement the index decided since last `reset()` (a global pass decides every one). */
+	readonly placements: number;
 	reset: () => void;
 };
 

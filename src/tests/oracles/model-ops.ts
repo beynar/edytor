@@ -14,26 +14,35 @@
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import { bindModel as bindPlacement } from '../../lib/crdt/placement/model.js';
 import { isLiveIn } from '../../lib/crdt/placement/model.js';
-import { bindText } from '../../lib/crdt/text/model.js';
-import { randOf } from '../../lib/crdt/rand.js';
+import { resolvePlacements as resolveOver } from '../../lib/crdt/placement/resolve.js';
+import { bindText, computeOwners, DEAD } from '../../lib/crdt/text/model.js';
+import { engineOps } from '../../lib/crdt/structs.js';
 import { DEL_PREFIX, TYPE } from '../../lib/crdt/schema.js';
-import { patchWrites, readData, writeLeaves } from '../../lib/crdt/data.js';
+import { patchWrites, readData, writeData } from '../../lib/crdt/data.js';
 import { collectBlocks } from './fresh-view.js';
 
 export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	const M = bindPlacement(...args);
 	const T = bindText(args[0]);
+	const kept = engineOps(args[0]).isKeptReplaced;
 	const kids = (doc, parent) => [...(M.view(doc).kids.get(parent) ?? [])];
-	const ranks = (doc, sibs, index, count) =>
-		M.ranksAt(sibs, Math.max(0, Math.min(index, sibs.length)), count, doc.clientID, randOf(doc));
+	/**
+	 * Every block's placement from scratch over a collected block map (its
+	 * document read from a record's node; the claim owners computed when not given).
+	 */
+	const resolvePlacements = (blocks, ownerOf?) => {
+		const first = blocks.values().next().value;
+		if (first === undefined) return new Map();
+		const owner = ownerOf ?? ((b) => computeOwners(blocks).get(b) ?? DEAD);
+		return resolveOver(first.node.doc, blocks, owner, kept);
+	};
 
 	const insertBlocks = (doc, dest, specs) => {
 		if (specs.length === 0) return true;
 		if (dest.parent !== null && !M.isLive(doc, dest.parent)) return false;
 		if (M.collides(doc, specs)) return false;
 		return doc.transact(() => {
-			const r = ranks(doc, kids(doc, dest.parent), dest.index, specs.length);
-			specs.forEach((sp, i) => M.materializeSpec(doc, sp, dest.parent, r[i]));
+			M.insertSpecsAt(doc, M.view(doc), dest.parent, dest.index, specs);
 			return true;
 		});
 	};
@@ -64,11 +73,8 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 			if (!isLiveIn({ placements, own }, dest.parent)) return false;
 			if (ids.some((id) => M.isSelfOrDescendant(placements, own, dest.parent, id))) return false;
 		}
-		const nodes = ids.map((id) => M.blockNodeOf(doc, id));
 		return doc.transact(() => {
-			const sibs = kids(doc, dest.parent).filter((k) => !ids.includes(k.id));
-			const r = ranks(doc, sibs, dest.index, ids.length);
-			nodes.forEach((node, i) => M.writePlacement(doc, node, dest.parent, r[i]));
+			M.moveBlocksTo(doc, M.view(doc), ids, dest.parent, dest.index);
 			return true;
 		});
 	};
@@ -79,17 +85,19 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!pos) return false;
 		const node = M.blockNodeOf(doc, id);
 		return doc.transact(() => {
-			if (!M.view(doc).blocks.get(id)?.claimsNode) return false;
+			if (!M.view(doc).blocks.has(id)) return false;
 			if ((M.view(doc).own.display(id) ?? []).length === 0) M.ownText(doc, id);
-			const { blocks } = M.view(doc);
-			const sibs = kids(doc, pos.parent);
-			const myIdx = sibs.findIndex((s) => s.id === id);
-			const [rank] = ranks(doc, sibs, myIdx + 1, 1);
 			const children = kids(doc, id);
 			const t = tail ?? { type: node.getAttr(TYPE), data: readData(node) };
-			M.writeSplit(doc, id, offset, newId, t, { p: pos.parent, r: rank });
-			const r = ranks(doc, [], 0, children.length);
-			children.forEach((k, i) => M.writePlacement(doc, blocks.get(k.id).node, newId, r[i]));
+			M.writeSplit(doc, id, offset, newId, t, pos.parent, pos.index + 1);
+			if (children.length > 0)
+				M.moveBlocksTo(
+					doc,
+					M.view(doc),
+					children.map((k) => k.id),
+					newId,
+					0
+				);
 			return true;
 		});
 	};
@@ -100,13 +108,12 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 		const { blocks, placements, own } = v;
 		if (M.isSelfOrDescendant(placements, own, intoId, fromId)) return false;
-		if (!blocks.get(intoId)?.claimsNode) return false;
+		if (!blocks.has(intoId)) return false;
 		return doc.transact(() => {
-			const intoKids = kids(doc, intoId);
-			const fromKids = kids(doc, fromId);
-			T.claimInto(blocks, own, fromId, intoId);
-			const r = ranks(doc, intoKids, intoKids.length, fromKids.length);
-			fromKids.forEach((k, i) => M.writePlacement(doc, M.blockNodeOf(doc, k.id), intoId, r[i]));
+			// A claim item goes in the stream of the block merged into (a streamless one gets its own text).
+			if (own.streamOf(intoId) === undefined) M.ownText(doc, intoId);
+			T.claimInto(M.view(doc).own, fromId, intoId);
+			// Its children stay under it and show under the holder after its own (the claim order).
 			return true;
 		});
 	};
@@ -114,7 +121,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	/** A live content target's view, or null. */
 	const ownView = (doc, id) => {
 		const v = M.view(doc);
-		return isLiveIn(v, id) && v.blocks.get(id)?.claimsNode ? v : null;
+		return isLiveIn(v, id) && v.blocks.has(id) ? v : null;
 	};
 	/** `[at, end)` of a display range, clamped. */
 	const clamp = (v, id, offset, length) => {
@@ -151,6 +158,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	const moveBlock = (doc, id, dest) => moveBlocks(doc, [id], dest);
 	return {
 		...M,
+		resolvePlacements,
 		/** The fresh collect production no longer has (the index is the owner). */
 		collectBlocks,
 		insertBlocks,
@@ -175,7 +183,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 				const v = ownView(doc, id);
 				const hit = v && T.findAtom(v.own, id, inlineId);
 				if (!hit) return false;
-				writeLeaves(hit.node, patchWrites(hit.node, [{ path: [], value: data }]));
+				writeData(hit.node, patchWrites(hit.node, [{ path: [], value: data }]));
 				return true;
 			}),
 		moveBlock,

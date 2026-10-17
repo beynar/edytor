@@ -41,8 +41,14 @@ export type StoreStruct = {
 	redone?: { client: number; clock: number } | null;
 	/** Live hold records naming the item (fork patch YP20): a held item reads as deleted. */
 	holds?: number;
-	/** Whether the engine deleted it (`deleted` also covers a held item). */
+	/** Whether the engine deleted it (`deleted` also covers a held or moved item). */
 	removed?: boolean;
+	/** Removed or held: shown nowhere (fork patch YP22; a moved item shows at its mover). */
+	gone?: boolean;
+	/** The live move records naming the item (fork patch YP22), `null` at home. */
+	movers?: StoreStruct[] | null;
+	/** The record that shows the item (the greatest `(priority, client, clock)` of `movers`). */
+	mover?: StoreStruct | null;
 };
 
 /**

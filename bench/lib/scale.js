@@ -228,10 +228,86 @@ const batched1000 = () => {
 	};
 };
 
+/**
+ * A two-block cycle race on `n` blocks (fork patch YP22): Ada nests X under
+ * Y while Bob nests Y under X; what Ada's index did to apply Bob's move
+ * (the counters `facade.runsView.debug` keeps: `placements` is the blocks
+ * whose placement it decided — a global pass decides every one), and the
+ * time. A report, not a gate: `src/tests/crdt/arch-v2/cycle-scale.test.ts`
+ * holds the scaling contract.
+ */
+const cycle = (n) => {
+	const seed = createDocument({ value: { children: blocks(n) } });
+	const update = seed.encode();
+	seed.destroy();
+	const a = loadDocument(update);
+	const b = loadDocument(update);
+	const [x, y] = [`b${n >> 1}`, `b${(n >> 1) + 1}`];
+	const svA = Y.encodeStateVector(a.doc);
+	const svB = Y.encodeStateVector(b.doc);
+	a.facade.nestBlock(x, y);
+	b.facade.nestBlock(y, x);
+	const ua = Y.encodeStateAsUpdate(a.doc, svA);
+	const ub = Y.encodeStateAsUpdate(b.doc, svB);
+	a.facade.toJSON();
+	const dbg = a.facade.runsView.debug;
+	dbg.reset();
+	const [, ms] = time(() => {
+		crdt.sync.applyRemote(a.doc, ub, REMOTE);
+		a.facade.childrenIds(null);
+	});
+	const out = {
+		applyMs: round(ms),
+		folds: dbg.folds,
+		foldedPairs: dbg.foldedPairs,
+		foldedStructs: dbg.foldedStructs,
+		recomputes: dbg.recomputes,
+		itemsWalked: dbg.itemsWalked,
+		placements: dbg.placements ?? null
+	};
+	crdt.sync.applyRemote(b.doc, ua, REMOTE);
+	out.converged = JSON.stringify(a.facade.toJSON()) === JSON.stringify(b.facade.toJSON());
+	a.destroy();
+	b.destroy();
+	return out;
+};
+
+/** The moves of the scale workload: a block move and Tab/Shift+Tab at `n` blocks, in ms, and the bytes a move costs. */
+const moves = (n) => {
+	const doc = createDocument({ value: { children: blocks(n) } });
+	const ed = doc.facade;
+	const mid = n >> 1;
+	const mv = Array.from(
+		{ length: 5 },
+		(_, i) =>
+			time(() =>
+				ed.moveBlocks([`b${mid + i}`], { parent: null, index: (mid + 37 * (i + 1)) % n })
+			)[1]
+	);
+	const tab = Array.from(
+		{ length: 5 },
+		(_, i) => time(() => ed.nestBlock(`b${10 + 2 * i}`, `b${9 + 2 * i}`))[1]
+	);
+	const out = Array.from({ length: 5 }, (_, i) => time(() => ed.unNestBlock(`b${10 + 2 * i}`))[1]);
+	const before = doc.encode().length;
+	for (let i = 0; i < 50; i++)
+		ed.moveBlocks([`b${(i * 7) % n}`], { parent: null, index: (i * 13) % n });
+	const bytesPerMove = Math.round((doc.encode().length - before) / 50);
+	doc.destroy();
+	return {
+		moveMs: round(med(mv)),
+		tabMs: round(med(tab)),
+		outdentMs: round(med(out)),
+		bytesPerMove
+	};
+};
+
 export const scale = () => {
 	const sizes = { 1000: atSize(1000), 5000: atSize(5000) };
 	const result = {
 		sizes,
+		moves: { 1000: moves(1000), 5000: moves(5000) },
+		cycle: { 1000: cycle(1000), 5000: cycle(5000) },
 		batch2000: batch2000(),
 		history5000: history5000(),
 		deletes1000: (deletes(100), deletes(1000)), // the first warms the JIT

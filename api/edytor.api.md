@@ -3178,13 +3178,15 @@ export type PlanStep = {
     parent: BlockId | null;
     index: number;
     specs: BlockSpec[];
-    ranks: string[];
+    split?: BlockId;
 } | {
     op: 'moveBlocks';
     ids: BlockId[];
     parent: BlockId | null;
     index: number;
-    ranks: string[];
+    side?: 0 | 1;
+    part?: number;
+    at?: BlockId;
 } | {
     op: 'deleteBlock';
     id: BlockId;
@@ -3198,7 +3200,7 @@ export type PlanStep = {
     newId: BlockId;
     tail: SplitTail;
     parent: BlockId | null;
-    rank: string;
+    index: number;
 } | {
     op: 'mergeBlocks';
     from: BlockId;
@@ -3215,7 +3217,7 @@ export type PlanStep = {
     inlineId?: string;
     offset?: number;
     ops: DataPatch[];
-    leaves: LeafWrite[];
+    writes: DataWrite[];
 } | {
     op: 'insertText';
     id: BlockId;
@@ -5102,6 +5104,12 @@ export declare class TRANSACTION {
 }
 ```
 
+#### crdt/data.d.ts#DataWrite
+
+```ts
+export type DataWrite = LeafWrite | SlotWrite;
+```
+
 #### crdt/data.d.ts#LeafWrite
 
 ```ts
@@ -5109,6 +5117,26 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
+```
+
+#### crdt/data.d.ts#SlotWrite
+
+```ts
+export type SlotWrite = {
+    seq: 'insert';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'move';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'remove';
+    path: string;
+    ids: string[];
+};
 ```
 
 #### crdt/doc/content.d.ts#NewInline
@@ -5146,7 +5174,7 @@ export type YUndoManager = import('./doc/history.js').UndoManager;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'sequenceOrder' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y

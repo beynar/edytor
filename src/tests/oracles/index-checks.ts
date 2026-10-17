@@ -9,9 +9,12 @@ import { sameIds } from '../../lib/utils/json.js';
 import {
 	type BlockId,
 	type ChildSlot,
-	childrenIndex,
-	resolvePlacements
+	type ResolvedPlacement,
+	childrenIndex
 } from '../../lib/crdt/placement/model.js';
+import { resolveAll } from '../../lib/crdt/placement/resolve.js';
+import { engineOps } from '../../lib/crdt/structs.js';
+import { Y } from '../../lib/crdt/engine.js';
 import {
 	type Claim,
 	DEAD,
@@ -19,13 +22,12 @@ import {
 	type Stream,
 	type TextRow,
 	claimGraph,
-	cmpStamp,
+	claimsIn,
 	delimiters,
 	placeText,
 	scanText
 } from '../../lib/crdt/text/model.js';
 import { boundAt, rowLength, type LiveRow } from '../../lib/crdt/text/rows.js';
-import type { IndexAnchored } from '../../lib/crdt/text/index/anchored.js';
 import type { IndexCache } from '../../lib/crdt/text/index/cache.js';
 import type { IndexClaims } from '../../lib/crdt/text/index/claims.js';
 import type { IndexFold } from '../../lib/crdt/text/index/fold.js';
@@ -66,7 +68,6 @@ export const indexSelfChecks = (
 	ix: IndexState &
 		IndexClaims &
 		IndexStreams &
-		IndexAnchored &
 		IndexLayout &
 		IndexPlacement &
 		IndexCache &
@@ -85,9 +86,7 @@ export const indexSelfChecks = (
 		ownerOf,
 		streamOf,
 		sameClaims,
-		targetOf,
 		dissolve,
-		ranker,
 		ownShim,
 		own0,
 		noteFollowing,
@@ -120,36 +119,19 @@ export const indexSelfChecks = (
 		const streamSig = (st: Stream | undefined) =>
 			st && `${st.home}:${st.start}-${st.end}/${st.inert.join(',')}`;
 		const placed = new Set<BlockId>();
+		// Each record's claims: its implicit ones, then the claim items of its stream.
+		const items = new Map<BlockId, Claim[]>();
 		for (const [home, scan] of scans)
 			for (const st of placeText(scan, want)) {
 				placed.add(st.block);
+				items.set(st.block, claimsIn(scan, st));
 				if (streamSig(streamOf(st.block)) !== streamSig(st))
 					fail(`stream of ${st.block} in ${home}`);
 			}
 		for (const b of streamIx.keys()) if (!placed.has(b)) fail(`stream of ${b}`);
-		// The anchored claims (`merge.claim.anchor`): each record's effective claims, from scratch.
-		{
-			const moved = new Map<BlockId, Claim[]>();
-			const stays = new Map<BlockId, Claim[]>();
-			for (const [h, rec] of blocks) {
-				const list = rec.listClaims ?? rec.claims;
-				const own: Claim[] = [];
-				for (const c of list) {
-					const [t] = targetOf(h, c);
-					if (t === h) own.push(c);
-					else {
-						let into = moved.get(t);
-						if (into === undefined) moved.set(t, (into = []));
-						into.push({ ...c, holder: h });
-					}
-				}
-				stays.set(h, own);
-			}
-			for (const [b, rec] of blocks) {
-				const extra = (moved.get(b) ?? []).sort((x, y) => cmpStamp(x.stamp, y.stamp));
-				if (!sameClaims(rec.claims, [...stays.get(b)!, ...extra])) fail(`claims of ${b}`);
-			}
-		}
+		for (const [b, rec] of blocks)
+			if (!sameClaims(rec.claims, [...(rec.implicit ?? []), ...(items.get(b) ?? [])]))
+				fail(`claims of ${b}`);
 		for (const [b, c] of cache) {
 			if (dirty.has(b)) continue;
 			const fresh = computeFresh(b).fresh;
@@ -170,18 +152,65 @@ export const indexSelfChecks = (
 			)
 				fail(`displays of ${o}`);
 		for (const o of displaysMap.keys()) if (!shown.has(o)) fail(`displays of ${o}`);
-		const resolved = resolvePlacements(blocks, ownerOf);
+		// The placements: the same parents, the same order under each (the keys
+		// are each index's own: the rebuild's are dense, the maintained ones
+		// between neighbours).
+		const all = resolveAll(ix.doc, blocks, ownerOf, engineOps(Y).isKeptReplaced);
+		const resolved = all.placements;
 		if (resolved.size !== placementsMap.size) fail('placements');
+		const slotsOf = (b: BlockId) =>
+			`kept ${JSON.stringify(ix.slotsByBlock.get(b) ?? null)} home ${JSON.stringify(blocks.get(b)?.home ?? null)} | rebuild ${JSON.stringify(all.slots.get(b) ?? null)} home ${JSON.stringify(all.homes.get(b) ?? null)}`;
+		const byParent = (map: ReadonlyMap<BlockId, ResolvedPlacement>) => {
+			const out = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
+			for (const [id, pl] of map) {
+				const list = out.get(pl.parent);
+				if (list === undefined) out.set(pl.parent, [{ id, rank: pl.rank }]);
+				else list.push({ id, rank: pl.rank });
+			}
+			for (const list of out.values())
+				list.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
+			return out;
+		};
+		const wantOrder = byParent(resolved);
+		const haveOrder = byParent(placementsMap);
 		for (const [b, pl] of resolved) {
 			const mine = placementsMap.get(b);
-			if (mine?.parent !== pl.parent || mine.rank !== pl.rank) fail(`placement of ${b}`);
+			if (mine?.parent !== pl.parent || mine.home !== pl.home)
+				fail(
+					`placement of ${b} (kept ${JSON.stringify(mine ?? null)} | rebuild ${JSON.stringify(pl)}; ${slotsOf(b)})`
+				);
+		}
+		for (const [p, list] of wantOrder) {
+			const mine = haveOrder.get(p) ?? [];
+			if (
+				!sameIds(
+					list.map((x) => x.id),
+					mine.map((x) => x.id)
+				)
+			)
+				fail(
+					`order under ${p} (rebuild ${list.map((x) => x.id).join(' ')} | kept ${mine
+						.map((x) => `${x.id}@${x.rank}${ix.rejected.has(x.id) ? '!' : ''}`)
+						.join(' ')}; ${list
+						.map((x) => x.id)
+						.filter((id, i) => mine[i]?.id !== id)
+						.map((id) => `${id}: ${slotsOf(id)}`)
+						.join('; ')})`
+				);
 		}
 		const same = (x: Map<BlockId | null, ChildSlot[]>, y: Map<BlockId | null, ChildSlot[]>) =>
 			x.size === y.size && [...x].every(([p, l]) => keyOf(l) === keyOf(y.get(p) ?? null));
-		// The text orders decided afresh: a stale one shows as a slot mismatch.
-		ranker.forget();
+		const diff = (x: Map<BlockId | null, ChildSlot[]>, y: Map<BlockId | null, ChildSlot[]>) =>
+			[...new Set([...x.keys(), ...y.keys()])]
+				.filter((p) => keyOf(x.get(p) ?? null) !== keyOf(y.get(p) ?? null))
+				.map(
+					(p) =>
+						`${p}: rebuild ${(x.get(p) ?? []).map((c) => `${c.id}@${c.rank}`).join(' ')} | kept ${(y.get(p) ?? []).map((c) => `${c.id}@${c.rank}`).join(' ')}`
+				)
+				.join('; ');
 		const k0 = childrenIndex(placementsMap, own0);
-		if (!same(k0, ix.kids0)) fail('children index (before the layout rules)');
+		if (!same(k0, ix.kids0))
+			fail(`children index (before the layout rules) (${diff(k0, ix.kids0)})`);
 		const out = dissolve(k0);
 		if (out.size !== ix.dissolved.size || [...out].some((b) => !ix.dissolved.has(b)))
 			fail('dissolved');

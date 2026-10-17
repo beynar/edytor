@@ -23,7 +23,7 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SRC = join(ROOT, 'src/lib/crdt/vendor/yjs/src');
 
 // prettier-ignore
-const KEPT = ['AbstractStruct', 'ContentAny', 'ContentBinary', 'ContentDeleted', 'ContentFormat', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdSet', 'Item', 'Node', 'RangeCursor', 'Skip', 'Transaction', 'UpdateDecoder', 'UpdateEncoder', 'applyUpdate', 'compareIDs', 'createDeleteSetFromStructStore', 'createID', 'createIdSet', 'decodeStateVector', 'decodeUpdate', 'diffIdSet', 'diffUpdate', 'encodeStateAsUpdate', 'encodeStateVector', 'findIndexSS', 'findRootTypeKey', 'followRedone', 'getItemCleanEnd', 'getItemCleanStart', 'idAtIndex', 'indexOfId', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'keepItem', 'mergeIdSets', 'mergeUpdates', 'readIdSet', 'redoItem', 'transact', 'writeIdSet'];
+const KEPT = ['AbstractStruct', 'ContentAny', 'ContentBinary', 'ContentDeleted', 'ContentFormat', 'ContentMove', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdSet', 'Item', 'Node', 'RangeCursor', 'Skip', 'Transaction', 'UpdateDecoder', 'UpdateEncoder', 'applyUpdate', 'compareIDs', 'createDeleteSetFromStructStore', 'createID', 'createIdSet', 'decodeStateVector', 'decodeUpdate', 'diffIdSet', 'diffUpdate', 'encodeStateAsUpdate', 'encodeStateVector', 'findIndexSS', 'findRootTypeKey', 'followRedone', 'getItemCleanEnd', 'getItemCleanStart', 'idAtIndex', 'indexOfId', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'keepItem', 'mergeIdSets', 'mergeUpdates', 'readIdSet', 'redoItem', 'sequenceOrder', 'transact', 'writeIdSet'];
 
 /**
  * Reached beyond the engine object: `mergeUpdates` (server coordinators

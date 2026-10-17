@@ -19,7 +19,7 @@ export { RangeCursor } from './utils/RangeCursor.js'
 export { YNode as Node } from './ynode.js'
 export { AbstractStruct } from './structs/AbstractStruct.js'
 export { GC } from './structs/GC.js'
-export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType } from './structs/Item.js'
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType, ContentMove } from './structs/Item.js' // YP22: ContentMove
 export { Skip } from './structs/Skip.js'
 
 /**
@@ -48,3 +48,4 @@ if (glo[importIdentifier] === true) {
   console.error('Yjs was already imported. This breaks constructor checks and will lead to issues! - https://github.com/yjs/yjs/issues/438')
 }
 glo[importIdentifier] = true
+export { sequenceOrder } from './utils/marks.js' // YP22

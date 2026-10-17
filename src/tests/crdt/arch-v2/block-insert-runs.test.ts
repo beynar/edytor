@@ -2,21 +2,15 @@
  * H1 (CRDT study 2026-10, `research-loro/exp1`; contract row
  * `order.insert.run`): a block inserted right after a block this client
  * ranked extends the client's run there, as an array item does
- * (`crdt/data.ts`, YATA's origin rule) — so two peers that each press Enter
- * at the end of the same block and type several paragraphs keep each one's
+ * (`crdt/data.ts`, YATA's origin rule: a new block's home slot goes right after
+ * the block's, fork patch YP22) — so two peers that each press Enter at the
+ * end of the same block and type several paragraphs keep each one's
  * paragraphs together, whatever their client ids. Before, each new line took
  * a random rank in the gap and 34 of 40 client-id pairs interleaved
  * (`x a1 b1 a2 a3 b2 b3 q`).
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import {
-	decodeRank,
-	encodeRank,
-	rankAfter,
-	RANK_RUN,
-	rankBetween
-} from '$lib/crdt/placement/rank.js';
 import { clientPairs, converge } from './replica-harness.js';
 
 const ok = (r) => {
@@ -115,45 +109,6 @@ describe('H1: concurrent Enters at the end of one block never interleave', () =>
 			expect(o.problems).toEqual([]);
 			expect(texts(o)).toMatch(/a1\|a2\|a3/);
 			for (const r of o.reps) r.destroy();
-		}
-	});
-});
-
-describe('H1: the run rule (`rankAfter`)', () => {
-	it('after a rank another client made: a plain rank', () => {
-		const left = rankBetween(undefined, undefined, 5, () => 0.5);
-		const right = rankBetween(left, undefined, 5, () => 0.5);
-		const r = rankAfter(left, right, 9, () => 0.5);
-		expect(decodeRank(r)).toHaveLength(1);
-		expect(left < r && r < right).toBe(true);
-	});
-	/** A run member's digit lies in the band right above the run marker's (`rankAfter`). */
-	const inBand = (v: number) => v > RANK_RUN && v < RANK_RUN + 2 ** 29;
-	it('after its own rank: the rank, then one segment of its run', () => {
-		const left = rankBetween(undefined, undefined, 9, () => 0.5);
-		const right = rankBetween(left, undefined, 5, () => 0.5);
-		const r = rankAfter(left, right, 9, () => 0.5);
-		expect(r.startsWith(left)).toBe(true);
-		const segs = decodeRank(r);
-		expect(segs).toHaveLength(2);
-		expect(inBand(segs[1].v) && segs[1].t === 9).toBe(true);
-		expect(left < r && r < right).toBe(true);
-		// The next one after it stays in that run, at the same depth.
-		const next = rankAfter(r, right, 9, () => 0.5);
-		expect(decodeRank(next)).toHaveLength(2);
-		expect(r < next && next < right).toBe(true);
-		// So does one inserted right after `left` again, before the run's first member.
-		const before = rankAfter(left, r, 9, () => 0.5);
-		expect(decodeRank(before)).toHaveLength(2);
-		expect(left < before && before < r).toBe(true);
-	});
-	it('nothing a peer inserts after the same left lands inside the run', () => {
-		const left = rankBetween(undefined, undefined, 9, () => 0.5);
-		const right = rankBetween(left, undefined, 5, () => 0.9);
-		const mine = rankAfter(left, right, 9, () => 0.5);
-		for (const rand of [0, 0.25, 0.5, 0.75, 0.999]) {
-			const theirs = rankAfter(left, right, 7, () => rand);
-			expect(theirs < left || theirs > mine).toBe(true);
 		}
 	});
 });

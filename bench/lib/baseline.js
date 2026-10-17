@@ -55,11 +55,14 @@ const { bindSync } = await jiti.import(`${here}../../src/lib/crdt/protocols/sync
 // arch-v2 D9: production has no fresh collect (the doc's index is the owner);
 // the from-scratch stages below measure the test oracle's rebuild.
 const { collectBlocks } = await jiti.import(`${here}../../src/tests/oracles/fresh-view.ts`);
+const { engineOps } = await jiti.import(`${here}../../src/lib/crdt/structs.ts`);
 
 const E = bindEdytorDoc(Y14);
 const S = bindSync(Y14);
 const M = E.model;
 const T = E.text;
+// The kept-replaced rule every edytor document carries (the placement read takes it).
+const kept = engineOps(Y14).isKeptReplaced;
 
 const WARMUP = 3;
 const SAMPLES = 30;
@@ -291,7 +294,7 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 	const own = T.computeOwnership(doc, blocks);
 	const ownMs = performance.now() - o0;
 	const p0 = performance.now();
-	M.resolvePlacements(blocks, own.ownerOf);
+	M.resolvePlacements(doc, blocks, own.ownerOf, kept);
 	const placeMs = performance.now() - p0;
 
 	// WU7 counter: the shared model-state read the next command/anchor/

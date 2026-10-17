@@ -25,9 +25,18 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
+import { resolveAll } from '../../../../lib/crdt/placement/resolve.js';
+import { engineOps } from '../../../../lib/crdt/structs.js';
 import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
 import { readData } from '../../../../lib/crdt/data.js';
-import { bindText, DEAD, canonKey, cmpStamp, isBoundary } from '../../../../lib/crdt/text/model.js';
+import {
+	bindText,
+	DEAD,
+	canonKey,
+	cmpStamp,
+	isBoundary,
+	isClaimItem
+} from '../../../../lib/crdt/text/model.js';
 import type { Peer } from '../peer-set.js';
 import type {
 	AtomFate,
@@ -193,6 +202,8 @@ type AtomRow = {
 	inlineId?: string;
 	/** A stream boundary item (R2) — a claim, not content. */
 	boundary?: { s: string; n: unknown };
+	/** A merge claim item's target. */
+	claim?: string;
 };
 
 const atomRows = (text: unknown): AtomRow[] => {
@@ -252,7 +263,8 @@ const atomRows = (text: unknown): AtomRow[] => {
 					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: readData(v) })
 					: '',
 				...(inline ? { inlineId: v.getAttr('id') as string } : {}),
-				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {})
+				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {}),
+				...(isClaimItem(v) ? { claim: v.m } : {})
 			});
 		}
 		pos += it.length - n;
@@ -270,6 +282,7 @@ const atomRows = (text: unknown): AtomRow[] => {
 			const inline = isNodeLike(v);
 			atoms.push({
 				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {}),
+				...(isClaimItem(v) ? { claim: v.m } : {}),
 				c: it.id.client,
 				k: it.id.clock + j,
 				ch: typeof v === 'string' ? v : '\0',
@@ -350,18 +363,6 @@ export const locateTagAtoms = (
 	// assembled the tag — report nothing rather than borrowing stale atoms.
 	return onlyNew === undefined ? first : null;
 };
-
-/** The records with their effective claims (`merge.claim.anchor`), as the ownership read them. */
-const effective = <R extends { claims: unknown[] }>(
-	blocks: Map<BlockId, R>,
-	own: ReturnType<typeof T.computeOwnership>
-): Map<BlockId, R> =>
-	new Map(
-		[...blocks].map(([id, rec]) => [
-			id,
-			{ ...rec, claims: [...(own.claimsOf?.(id) ?? rec.claims)] }
-		])
-	);
 
 /**
  * Replicates `claimGraph`'s owner walk for ONE block, collecting the traversed
@@ -515,7 +516,7 @@ export const classifyTagAtoms = (
 		if (found.deleted) return { kind: 'tombstoned' } as AtomFate;
 		const at = streamAt(own, found.textId, found.pos);
 		if (at === undefined) return { kind: 'uncovered' } as AtomFate;
-		const chain = ownerChain(effective(blocks, own), at.s.block);
+		const chain = ownerChain(blocks, at.s.block);
 		const owner = chain.owner;
 		const fields = { marks: found.marks, marksObj: found.marksObj, payload: found.payload };
 		if (owner === DEAD) {
@@ -581,6 +582,8 @@ export const tagAtomDeps = (
 /** Snapshot the full mutation surface — atoms, claims (merge claims and boundaries), block state. */
 export const captureOpState = (peer: Peer): OpState => {
 	const blocks = M.collectBlocks(peer.doc);
+	const own = T.computeOwnership(peer.doc, blocks);
+	const { edges } = resolveAll(peer.doc, blocks, own.ownerOf, engineOps(Y).isKeptReplaced);
 	const atoms: OpState['atoms'] = new Map();
 	const claims: OpState['claims'] = new Map();
 	const blocksOut: OpState['blocks'] = new Map();
@@ -590,6 +593,14 @@ export const captureOpState = (peer: Peer): OpState => {
 				claims.set(atomKey(a), { holder: a.boundary.s, kind: 'slice', t: id, live: !a.deleted });
 				continue;
 			}
+			// EVERY claim item — tombstoned included: a claim dying is a state
+			// change the envelope must authorize. Its holder: the block whose
+			// stream holds it.
+			if (a.claim !== undefined) {
+				const holder = a.deleted ? id : (own.streamAt(id, a.pos)?.block ?? id);
+				claims.set(atomKey(a), { holder, kind: 'merge', m: a.claim, live: !a.deleted });
+				continue;
+			}
 			atoms.set(atomKey(a), {
 				text: id,
 				live: !a.deleted,
@@ -597,28 +608,6 @@ export const captureOpState = (peer: Peer): OpState => {
 				marksObj: a.marksObj,
 				payload: a.payload
 			});
-		}
-		// EVERY claims item — tombstoned included: a claim dying is a state
-		// change the envelope must authorize.
-		for (
-			let it = (rec.claimsNode as { _start?: never } | undefined)?._start ?? null;
-			it !== null;
-			it = it.right
-		) {
-			const countable = it.content.isCountable ? it.content.isCountable() : true;
-			if (!countable) continue;
-			const arr = it.content.getContent();
-			const n = Math.min(arr.length, it.length);
-			for (let j = 0; j < n; j++) {
-				const payload = arr[j];
-				const m = typeof payload?.m === 'string' ? payload.m : undefined;
-				claims.set(`${it.id.client}:${it.id.clock + j}`, {
-					holder: id,
-					kind: m === undefined ? 'other' : 'merge',
-					m,
-					live: !it.deleted
-				});
-			}
 		}
 		const delItems = [
 			...((
@@ -635,12 +624,14 @@ export const captureOpState = (peer: Peer): OpState => {
 			// (`hist.undo.withdraw`) is derived from what it holds, not a delete.
 			deleted: delItems.length > 0,
 			delStamp: delItems.length > 0 ? delItems.join(',') : null,
+			// Its display edge: the sequence its home slot shows in, at home or at a record
+			// (never the record's identity: a record written beside it carries it along
+			// without moving it, fork patch YP22 `placeAfter`).
 			placements: canonKey(
-				rec.cands.map((c: { key: string; p: unknown; r: string }) => ({
-					key: c.key,
-					p: c.p,
-					r: c.r
-				}))
+				(() => {
+					const e = edges.get(id);
+					return e ? { p: e.parent ?? null, home: e.via === null } : null;
+				})()
 			)
 		});
 	}
@@ -676,13 +667,9 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 			}
 		}
 	}
-	// Every block whose claims route to `id` — `owner(h) === id` — and the
-	// lists storing their claims (an anchored claim may be stored on another
-	// block's list: `merge.claim.anchor`).
+	// Every block whose claims route to `id` — `owner(h) === id`.
 	const holders = new Set<BlockId>();
 	for (const hid of blocks.keys()) if (own.ownerOf(hid) === id) holders.add(hid);
-	for (const hid of [...holders])
-		for (const c of own.claimsOf?.(hid) ?? []) if (c.holder !== undefined) holders.add(c.holder);
 	const children = new Set<BlockId>(
 		(M.childrenIndex(placements, own).get(id) ?? []).map((k: { id: BlockId }) => k.id)
 	);
@@ -701,7 +688,7 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 	if (rec === undefined) return { kind: 'absent' };
 	if (rec.deleted) return { kind: 'del' };
 	const own = T.computeOwnership(doc, blocks);
-	const chain = ownerChain(effective(blocks, own), id);
+	const chain = ownerChain(blocks, id);
 	if (chain.owner === DEAD) return { kind: 'claim', chain: chain.route, end: chain.end ?? id };
 	const placements = M.resolvePlacements(blocks, own.ownerOf);
 	let cur: BlockId = id;

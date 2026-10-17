@@ -11,6 +11,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
+import { entriesOf } from '../../../lib/crdt/placement/slots.js';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
@@ -405,7 +406,7 @@ describe('one replica', () => {
 		return { document, ed: document.facade };
 	};
 
-	it('stores an array as its marker, each item’s value and its rank', () => {
+	it('stores an array as its marker, each item’s value and its slot in the node’s sequence', () => {
 		const { document, ed } = make({ tags: ['p'], m: { k: [{ a: 1 }] } });
 		const node = blockNodeOf(document.doc, 'A');
 		const leaves = leavesOf(node);
@@ -413,11 +414,19 @@ describe('one replica', () => {
 		const items = Object.keys(leaves).filter((k) => /^d\/tags\/~[a-z][a-z0-9.]*$/.test(k));
 		expect(items).toHaveLength(1);
 		expect(leaves[items[0]]).toBe('p');
-		expect(typeof leaves[`${items[0]}#`]).toBe('string');
+		// No rank leaf: the item's place is its slot `{ p, i }` in the node's one sequence.
+		expect(Object.keys(leaves).some((k) => /[#>]$/.test(k))).toBe(false);
+		const slots = entriesOf(document.doc, node)
+			.map((e) => e.value as { p: string; i: string })
+			.sort((x, y) => (x.p < y.p ? -1 : 1));
+		expect(slots).toEqual([
+			{ p: 'm/k', i: expect.stringMatching(/^~[a-z]/) },
+			{ p: 'tags', i: items[0].slice('d/tags/'.length) }
+		]);
 		expect(Object.keys(leaves).some((k) => /^d\/m\/k\/~[a-z][a-z0-9.]*\/a$/.test(k))).toBe(true);
 	});
 
-	it('ranks stay short: one peer’s pushes one at a time, and inserts after its own items', () => {
+	it('nothing grows with the inserts: 300 items are 300 slots and 300 leaves, no rank', () => {
 		const { document, ed } = make({ tags: [] });
 		for (let i = 0; i < 300; i++) {
 			const n = ed.blockDataOf('A').tags.length;
@@ -426,9 +435,11 @@ describe('one replica', () => {
 			);
 		}
 		const node = blockNodeOf(document.doc, 'A');
-		const ranks = Object.entries(leavesOf(node)).filter(([k]) => /[#>]$/.test(k));
-		expect(ranks).toHaveLength(300);
-		expect(Math.max(...ranks.map(([, r]) => r.length))).toBeLessThanOrEqual(16 * 6);
+		const leaves = Object.keys(leavesOf(node));
+		expect(leaves.filter((k) => /[#>]$/.test(k))).toHaveLength(0);
+		expect(leaves.filter((k) => k.startsWith('d/tags/'))).toHaveLength(300);
+		expect(entriesOf(document.doc, node)).toHaveLength(300);
+		expect(ed.blockDataOf('A').tags).toHaveLength(300);
 	});
 
 	it('every op is one undo step; undo and redo restore exactly', () => {

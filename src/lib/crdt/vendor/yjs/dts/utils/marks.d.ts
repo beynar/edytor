@@ -1,4 +1,7 @@
 /**
+ * @typedef {import('./Transaction.js').Transaction} Transaction
+ */
+/**
  * Paired marks — an edytor fork addition (UPSTREAM.md YP13), not upstream source.
  *
  * Upstream formatting writes a format item `{key: value}` where a range
@@ -80,4 +83,6 @@ export function foldPaired(formats: Map<string, any>, content: {
 }): boolean;
 export function formatValue(value: any): any;
 export function markClass(item: any): number;
-export function sortsBefore(o: any, item: any): boolean;
+export function sequenceOrder(x: any, y: any): number;
+export function sortsBefore(o: any, item: any, tr: Transaction): boolean;
+export type Transaction = import("./Transaction.js").Transaction;

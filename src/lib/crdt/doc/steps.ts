@@ -1,28 +1,29 @@
 /**
- * The step writers every prepared op composes: the plan itself, ranks (a
- * move's, a source rank by where blocks come from, a split's pieces), type
- * steps and the kind a block shows where it lands (`settle`), the
- * containers and layouts a write leaves empty (`emptying`, `dissolving`),
- * delete and merge steps, and display spans of a block's content.
+ * The step writers every prepared op composes: the plan itself, moves (a
+ * move's place and side), type steps and the kind a block shows where it
+ * lands (`settle`), the containers and layouts a write leaves empty
+ * (`emptying`, `dissolving`), delete and merge steps, and display spans of a
+ * block's content.
  */
-import { randOf } from '../rand.js';
 import { TYPE } from '../schema.js';
-import {
-	blockNodeOf,
-	positionInView,
-	promotedRank,
-	ranksAt,
-	SOURCE_SIDE,
-	sourceRank,
-	type BlockId,
-	type ContentItem
-} from '../placement/model.js';
+import { blockNodeOf, type BlockId, type ContentItem } from '../placement/model.js';
 import { REFUSED, effectOf } from './plan.js';
 import type { Plan, PlanStep } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 import type { DocCapability } from './capability.js';
 
 /** What the step writers read: the reads and the structural capability. */
+/**
+ * A record's order among the records standing at one block, for the
+ * engine's sort of two records at one origin (fork patch YP22): what a split
+ * of a list around a block writes there — a new head list holding the items
+ * before it (`head`), new blocks placed after the items before it, which
+ * stay (`kept`), a head holding those items and the block (`with`), the
+ * block itself leaving (`self`), new blocks after it (`after`) — in the
+ * order every serial run of the gestures gives (`del.merge.container`).
+ */
+export const PART = { head: 0, kept: 1, with: 2, self: 3, after: 4 } as const;
+
 export type StepsContext = DocBase & DocReads & DocCapability;
 
 /** The step writers of one facade. */
@@ -47,7 +48,6 @@ export const planSteps = (c: StepsContext) => {
 		isContainer,
 		fitted,
 		emptiable,
-		rendersContent,
 		defaultChild
 	} = c;
 
@@ -59,8 +59,6 @@ export const planSteps = (c: StepsContext) => {
 	// Each prepare normalizes its inputs once, here at ingress: ids
 	// and strings as the wire would deliver them, payloads cloned.
 
-	/** `exitRanks` parts, in their order at one block. */
-	const [HEAD, KEPT, WITH, SELF, AFTER] = [0, 1, 2, 3, 5];
 	const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({
 		ids,
 		writes,
@@ -68,54 +66,45 @@ export const planSteps = (c: StepsContext) => {
 		version: runsView.version()
 	});
 
-	/** This client's next clock: what its source ranks are tied by (`sourceRank`). */
-	const clock = () => doc.store?.getClock(doc.clientID) ?? 0;
 	/**
-	 * `count` ranks at `index` among `parent`'s children, the moving
-	 * `exclude` left out. `run`: new blocks, which extend this client's run
-	 * after a block it ranked (`order.insert.run`); a move never does
-	 * (the rank-growth guard).
-	 */
-	const ranksFor = (
-		parent: BlockId | null,
-		index: number,
-		count: number,
-		exclude: readonly BlockId[] = [],
-		run = false
-	): string[] => {
-		const v = view();
-		const all = v.kids.get(parent) ?? [];
-		// The moving blocks' own slots left out: index → the list's index past them.
-		const gone = exclude
-			.map((id) => positionInView(v, id))
-			.filter((p) => p !== null && p.parent === parent)
-			.map((p) => p!.index)
-			.sort((a, b) => a - b);
-		const raw = (i: number) => {
-			for (const g of gone) if (g <= i) i++;
-			return i;
-		};
-		const at = Math.max(0, Math.min(index, all.length - gone.length));
-		const pair = [at > 0 ? all[raw(at - 1)] : undefined, all[raw(at)]];
-		return ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc), run);
-	};
-	/**
-	 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).
+	 * Move `ids` to display index `index` among `parent`'s children (the
+	 * slot hooks see). `side`: the move record's class among the items of
+	 * its origin (`placement/slots.ts`) — `0`, the blocks stand after what
+	 * precedes them (a move; blocks leaving a block for the gap after it:
+	 * its children, a list's last items); `1`, before what follows them
+	 * (blocks leaving a block for the gap before it: a list's first item
+	 * lifted out). In one gap every serial order of the gestures puts a
+	 * split's pieces first, then the after-records, then the before-records
+	 * (`del.merge.container`), which the engine's sort gives whatever the
+	 * client ids.
 	 * Every planned move carries the type steps that keep what the moved
 	 * blocks show: one displayed out of an island as another kind than its
 	 * stored one (`displayType`) gets that kind written, so leaving the
 	 * island's slot never brings the island's child kind back.
+	 * `at`, `part`: the block the record stands at and its order among the
+	 * records standing there, for the engine's sort of two records at one
+	 * origin (`PART`; by default the first moved block, as itself).
 	 */
 	const moveTo = (
 		ids: BlockId[],
 		parent: BlockId | null,
 		index: number,
-		ranks: string[]
+		side: 0 | 1 = 0,
+		at?: BlockId,
+		part?: number
 	): PlanStep[] =>
 		ids.length === 0
 			? []
 			: [
-					{ op: 'moveBlocks', ids, parent, index, ranks },
+					{
+						op: 'moveBlocks',
+						ids,
+						parent,
+						index,
+						...(side === 1 && { side }),
+						...(at !== undefined && { at }),
+						...(part !== undefined && { part })
+					},
 					...ids.flatMap((id) => {
 						const shown = runsView.displayType(id);
 						return shown === undefined ? [] : attr(id, TYPE, shown);
@@ -123,93 +112,9 @@ export const planSteps = (c: StepsContext) => {
 				];
 	/** Move `ids` to `index` among `parent`'s children. */
 	const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
-		moveTo(ids, parent, index, ranksFor(parent, index, ids.length, ids));
-	/**
-	 * Ranks for blocks leaving `outer` for the gap right before it (`after`:
-	 * right after it), in the order they come from (`sourceRank`):
-	 * two peers that split or lift out of the same list at once keep the
-	 * text in its order, whatever their client ids. Each part names the
-	 * block in `outer` it stands at (`at`; one that shows no text of its
-	 * own, a list, stands at its first item) and its `part` there:
-	 * - `HEAD`: a new list holding the items before `at`;
-	 * - `KEPT`, index: a block placed after the items before `at`, which
-	 *   stay (a divider inserted after an item: a peer's head that takes
-	 *   them sorts before it);
-	 * - `WITH`: a new list holding the items before `at` and `at` (`keep`);
-	 * - `SELF`: `at` itself leaving (`SELF + 1` when it stands at its first item);
-	 * - `AFTER`, index: a block placed after it.
-	 * A degenerate gap ranks them as any insert.
-	 */
-	const exitRanks = (
-		outer: BlockId,
-		after: boolean,
-		parts: readonly { at: BlockId; part: readonly number[] }[]
-	): string[] => {
-		const { kids } = view();
-		const { parent, index } = positionOf(outer)!;
-		const sibs = kids.get(parent) ?? [];
-		const gap = after ? index + 1 : index;
-		const ranks: string[] = [];
-		for (let { at, part } of parts) {
-			const own = at;
-			while (!rendersContent(at) && childrenIds(at).length > 0) at = childrenIds(at)[0]!;
-			if (part[0] === SELF && at !== own) part = [SELF + 1];
-			const path: string[] = [];
-			for (let c = at; c !== outer; c = positionOf(c)!.parent!) {
-				const pos = positionOf(c)!;
-				path.unshift(kids.get(pos.parent)![pos.index]!.rank);
-			}
-			const side = after ? SOURCE_SIDE.after : SOURCE_SIDE.before;
-			const rank = sourceRank(
-				sibs[gap - 1]?.rank,
-				sibs[gap]?.rank,
-				side,
-				path,
-				part,
-				doc.clientID,
-				clock()
-			);
-			if (rank === null) return ranksFor(parent, gap, parts.length);
-			ranks.push(rank);
-		}
-		return ranks;
-	};
-	/**
-	 * Ranks for the `count` blocks a split of `id` at `at` puts right after
-	 * it (Enter, a paste of several lines), by where it splits
-	 * (SW12-crdt-1, SW12-crdt-4): two peers splitting one block at once
-	 * keep its pieces in text order, whatever their client ids. Counted
-	 * from the end — the text after the split point, most first — so a
-	 * peer's own edit before its split point (typing, then Enter; a paste
-	 * over a selection) does not move it; an unseen edit after
-	 * it does (the residual, in the delete contract).
-	 */
-	const pieceRanks = (id: BlockId, at: number, count: number): string[] => {
-		const { parent, index } = positionOf(id)!;
-		const sibs = view().kids.get(parent) ?? [];
-		const ranks: string[] = [];
-		for (let i = 0; i < count; i++) {
-			const rank = sourceRank(
-				sibs[index]?.rank,
-				sibs[index + 1]?.rank,
-				SOURCE_SIDE.pieces,
-				[],
-				[at - displayLength(id), i],
-				doc.clientID,
-				clock()
-			);
-			if (rank === null) return ranksFor(parent, index + 1, count);
-			ranks.push(rank);
-		}
-		return ranks;
-	};
-	/** `exitRanks` for `ids` themselves leaving `outer`. */
-	const leaving = (outer: BlockId, after: boolean, ids: readonly BlockId[]) =>
-		exitRanks(
-			outer,
-			after,
-			ids.map((at) => ({ at, part: [SELF] }))
-		);
+		moveTo(ids, parent, index);
+	/** The side of blocks leaving a block for the gap right after it (`after`) or right before it. */
+	const leaving = (after: boolean): 0 | 1 => (after ? 0 : 1);
 	/**
 	 * A type step, planned only when the kind differs (the one same-value
 	 * guard). A kind counts as the same only when the block is stored and
@@ -329,10 +234,10 @@ export const planSteps = (c: StepsContext) => {
 	 * with one item or none — `gone` (blocks the plan removes) and
 	 * `leaving` (blocks it moves) no longer count, an item `writes` move or
 	 * insert into it does. With one left, the layout and that item are
-	 * deleted and the item's children moved to the layout's slot at the
-	 * rank `layout.single` reads (`promotedRank` of the layout's, then the
-	 * item's), as the kind they show there (`settle`); with none, the
-	 * layout is deleted. One plan with the write that caused it.
+	 * deleted and the item's children moved right after the layout, where
+	 * `layout.single` shows them, as the kind they show there (`settle`);
+	 * with none, the layout is deleted. One plan with the write that caused
+	 * it.
 	 */
 	const dissolving = (
 		gone: ReadonlySet<BlockId>,
@@ -362,21 +267,17 @@ export const planSteps = (c: StepsContext) => {
 			const slots = kids.get(layout) ?? [];
 			const items = slots.filter((k) => !away.has(k.id) && blockTypeOf(k.id) === item);
 			if (items.length + arriving > 1) continue;
-			const { parent, index } = positionOf(layout)!;
-			const rank = kids.get(parent)![index]!.rank;
+			const { parent } = positionOf(layout)!;
 			const last = items[0];
 			if (last === undefined) {
 				out.push(deleting(layout, [layout]));
 				continue;
 			}
+			// Its blocks keep their home slots: the read shows them in the layout's
+			// slot (`layout.single`), settled for its parent.
 			const moved = (kids.get(last.id) ?? []).filter((k) => !away.has(k.id));
 			const ids = moved.map((k) => k.id);
-			const ranks = moved.map((k) => promotedRank(rank, promotedRank(last.rank, k.rank)));
-			out.push(
-				...moveTo(ids, parent, index + 1, ranks),
-				...settle(last.id, ids, parent),
-				deleting(layout, [layout, last.id])
-			);
+			out.push(...settle(last.id, ids, parent), deleting(layout, [layout, last.id]));
 		}
 		return out;
 	};
@@ -467,17 +368,9 @@ export const planSteps = (c: StepsContext) => {
 
 	return {
 		REFUSED,
-		HEAD,
-		KEPT,
-		WITH,
-		SELF,
-		AFTER,
 		plan,
-		ranksFor,
 		moveTo,
 		move,
-		exitRanks,
-		pieceRanks,
 		leaving,
 		attr,
 		leavingIsland,

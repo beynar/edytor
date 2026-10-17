@@ -77,18 +77,22 @@ const list = (...ids: string[]) => ({
 });
 const X = [para('P'), { id: 'X', text: 'hello world' }, para('Q')];
 
-describe('not covered: the text order can follow the client ids (pinned)', () => {
+describe('the text order of concurrent splits, inserts and lifts in one gap is the serial one (pinned)', () => {
 	it('Enter at the end of X and typing ‖ Enter in the middle of X', () =>
-		expect(outcomes(X, enterEnd('X', 'N', 'foo'), [split('X', 5, 'M')])).toEqual(
-			['P|hello| world|foo|Q', 'P|hello|foo| world|Q'].sort()
-		));
+		// The serial order: the split's piece, then the line added at the end (YP22: a
+		// split-born slot sorts by the text after its split, more first).
+		expect(outcomes(X, enterEnd('X', 'N', 'foo'), [split('X', 5, 'M')])).toEqual([
+			'P|hello| world|foo|Q'
+		]));
 
 	it('Enter at the end of a paragraph ‖ Backspace at the start of the first item below it', () =>
 		expect(
 			outcomes([para('p'), list('a', 'b')], enterEnd('p', 'N', 'n'), [
 				(ed) => ed.mergeBackward('a')
 			])
-		).toEqual(['p|n|a|b', 'p|a|n|b'].sort()));
+			// The serial order: the new paragraph, then the lifted item (fork patch YP22: a slot
+			// sorts before a record at one origin, whatever the client ids).
+		).toEqual(['p|n|a|b']));
 
 	it('two Enters by one peer before it syncs ‖ Backspace at the start of the first item below', () =>
 		expect(
@@ -97,8 +101,8 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[split('X', 5, 'N1'), split('N1', 3, 'N2')],
 				[(ed) => ed.mergeBackward('a')]
 			)
-			// The serial order reads hello| wo|rld|a|b.
-		).toEqual(['hello| wo|a|rld|b']));
+			// The serial order: the writer's pieces stay together before the lifted item (YP22).
+		).toEqual(['hello| wo|rld|a|b']));
 
 	it('Duplicate X, then Enter in X ‖ Enter earlier in X', () =>
 		expect(
@@ -107,10 +111,9 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[(ed) => ed.duplicateBlock('X', (id) => `${id}2`), split('X', 5, 'N1')],
 				[split('X', 2, 'N2')]
 			)
-			// The serial order reads he|llo| world|hello world. Since D-18 the
-			// pieces of X's text keep its order (" world" came too early before);
-			// the copy, a block of its own, still lands at random beside " world".
-		).toEqual(['P|he|llo| world|hello world|Q', 'P|he|llo|hello world| world|Q']));
+			// The serial order reads he|llo| world|hello world: the pieces of X's text
+			// keep its order, and the copy, a block no split made, comes after them (YP22).
+		).toEqual(['P|he|llo| world|hello world|Q']));
 
 	/**
 	 * Enter inside the header of a container that shows nested lines (an open
@@ -122,10 +125,7 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 		(at: number, nid: string): Step =>
 		(ed) => {
 			const split = ed.prepare.splitBlock('C', at, nid);
-			const slot = ed.prepare.insertBlocks({ parent: 'C', index: 0 }, [
-				{ id: nid, type: 'paragraph' }
-			]);
-			const step = { ...split.writes[0], parent: 'C', rank: slot.writes[0].ranks[0] };
+			const step = { ...split.writes[0], parent: 'C', index: 0 };
 			return ed.apply(ed.compose({ ...split, writes: [step] }));
 		};
 	it('two Enters inside a container header that shows nested lines', () =>
@@ -141,12 +141,10 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 	/**
 	 * DR-crdt-1: a paste of whole blocks (a block-selection copy) lands after
 	 * the caret's block, and a paste or typing over selected blocks takes the
-	 * first one's slot, both ranked at random there (`insertBlocks`): a
-	 * peer's split of the block before them sorts before or after them by
-	 * client id, never among them (their lines are one run, `order.insert.run`).
-	 * Ranking them by source kept the order but grew ranks 5 to 7 times as
-	 * fast as plain ones under repeated pastes in one place (the EW-02
-	 * guard's concern), so they stay not covered.
+	 * first one's slot (`insertBlocks`): a peer's split of the block before
+	 * them sorts before them (its slot carries the text after the split, a
+	 * plain slot none), never among them (their lines are one run,
+	 * `order.insert.run`).
 	 */
 	const lines = (...ids: string[]) =>
 		ids.map((id) => ({ id, type: 'paragraph', content: [{ kind: 'text', text: id }] }));
@@ -161,9 +159,9 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				],
 				[split('X', 5, 'N')]
 			)
-			// The serial order reads hello| world|W1|W2. W2 extends W1's run
-			// (`order.insert.run`): " world" never reads between them.
-		).toEqual(['P|hello| world|W1|W2|S|Q', 'P|hello|W1|W2| world|S|Q'].sort()));
+			// The serial order reads hello| world|W1|W2: the split's piece first, then the
+			// pasted blocks, W2 extending W1's run (`order.insert.run`).
+		).toEqual(['P|hello| world|W1|W2|S|Q']));
 	it('a paste over the selected block S ‖ Enter in X', () =>
 		expect(
 			outcomes(
@@ -172,7 +170,7 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[split('X', 5, 'N')]
 			)
 			// The serial order reads hello| world|W1|W2 (W1|W2 one run, `order.insert.run`).
-		).toEqual(['P|hello| world|W1|W2|Q', 'P|hello|W1|W2| world|Q'].sort()));
+		).toEqual(['P|hello| world|W1|W2|Q']));
 	it('typing over the selected block S ‖ Enter in X', () =>
 		expect(
 			outcomes(
@@ -184,7 +182,7 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[split('X', 5, 'N')]
 			)
 			// The serial order reads hello| world|typed.
-		).toEqual(['P|hello| world|typed|Q', 'P|hello|typed| world|Q'].sort()));
+		).toEqual(['P|hello| world|typed|Q']));
 
 	/**
 	 * HX-05: a paste at the start of a line whose first line stands apart
@@ -218,7 +216,7 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[split('P', 5, 'N')]
 			)
 			// The serial order reads hello| world|one|xbody text.
-		).toEqual(['hello| world|one|xbody text|Q', 'hello|one| world|xbody text|Q'].sort()));
+		).toEqual(['hello| world|one|xbody text|Q']));
 	it('a list pasted at the start of B ‖ a list pasted at the end of the line above', () =>
 		expect(
 			outcomes(
@@ -236,7 +234,8 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[(ed) => ed.nestBlock('y', 'x')],
 				enterEnd('k', 'N', 'n')
 			)
-		).toEqual(['x|k|n|y', 'x|k|y|n'].sort()));
+			// The serial order: the new line after k, the nested y after it (YP22).
+		).toEqual(['x|k|n|y']));
 });
 
 /**
@@ -324,7 +323,11 @@ describe('FX-06: a later split never interleaves a restored multi-line paste', (
 			a.destroy();
 			b.destroy();
 		}
-		expect([...out]).toEqual(['P|hello|one|two|new|Q']);
+		// The new line was written at the gap after `hello` while the pasted lines were
+		// deleted there: it stands before them when they are restored, as typed text
+		// before restored text does (fork patch YP22: a slot goes right after its left
+		// neighbour's unit; a restored unit shows where it stood).
+		expect([...out]).toEqual(['P|hello|new|one|two|Q']);
 	});
 });
 
@@ -345,9 +348,11 @@ describe('FX-05, SW15-crdt-1: a command over several groups is several gestures 
 		ed.apply(ed.compose(ed.prepare.liftOut(id, 'heading'), ed.prepare.setBlockType(id, 'heading')));
 	const seed = [para('p'), list('a', 'b', 'c', 'd', 'e'), para('q')];
 	it('Turn a and b into headings ‖ Shift+Tab on c', () =>
-		expect(outcomes(seed, [heading('a'), heading('b')], [(ed) => ed.unNestBlock('c')])).toEqual(
-			['p|a|b|c|d|e|q', 'p|a|c|b|d|e|q'].sort()
-		));
+		// One writer's gestures between syncs keep one priority (YP22), so Ada's two
+		// headings win or lose `a` and `b` together: the serial order on every pair.
+		expect(outcomes(seed, [heading('a'), heading('b')], [(ed) => ed.unNestBlock('c')])).toEqual([
+			'p|a|b|c|d|e|q'
+		]));
 	it('Shift+Tab on a and c, b unselected (two groups, one plan each) ‖ Shift+Tab on d', () =>
 		expect(
 			outcomes(
@@ -355,7 +360,7 @@ describe('FX-05, SW15-crdt-1: a command over several groups is several gestures 
 				[(ed) => ed.unNestBlocks(['a']), (ed) => ed.unNestBlocks(['c'])],
 				[(ed) => ed.unNestBlock('d')]
 			)
-		).toEqual(['p|a|b|c|d|e|q', 'p|a|d|b|c|e|q'].sort()));
+		).toEqual(['p|a|b|c|d|e|q']));
 	it('Shift+Tab on a and b together ‖ Shift+Tab on c: the order holds', () =>
 		expect(
 			outcomes(seed, [(ed) => ed.unNestBlocks(['a', 'b'])], [(ed) => ed.unNestBlock('c')])

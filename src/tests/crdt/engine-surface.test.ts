@@ -26,6 +26,7 @@ const SYMBOLS = {
 	findIndexSS: 1,
 	// a concurrent creation of one block id keeps the losing node (fork P14, H13)
 	isKeptReplaced: 1,
+	sequenceOrder: 1,
 	idAtIndex: 1,
 	indexOfId: 1,
 	createIdSet: 1,

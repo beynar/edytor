@@ -492,7 +492,12 @@ const diffStates = (pre: OpState, post: OpState): OpDiff => {
 	return d;
 };
 
-const checkEnvelope = (diff: OpDiff, env: IntentEnvelope, post: OpState): string[] => {
+const checkEnvelope = (
+	diff: OpDiff,
+	env: IntentEnvelope,
+	post: OpState,
+	pre: OpState
+): string[] => {
 	const bad: string[] = [];
 	for (const k of diff.atomsNew) {
 		const text = post.atoms.get(k)?.text;
@@ -552,8 +557,29 @@ const checkEnvelope = (diff: OpDiff, env: IntentEnvelope, post: OpState): string
 	for (const id of diff.delCleared) {
 		if (!(env.delClear?.has(id) || env.delAny?.has(id))) bad.push(`cleared delete on '${id}'`);
 	}
+	// A block shown under a block the op lawfully removed shows elsewhere now: the
+	// removed block's order sequence went with it, the records it held too, so a
+	// block moved into it returns to its home slot (fork patch YP22).
+	const removed = new Set(diff.blocksGone.filter((id) => env.blocksRemove?.has(id)));
+	const shownUnder = (id: BlockId): string | null => {
+		const was = pre.blocks.get(id)?.placements;
+		if (!was) return null;
+		try {
+			const p = (JSON.parse(was) as { p?: unknown } | null)?.p;
+			return typeof p === 'string' ? p : null;
+		} catch {
+			return null;
+		}
+	};
 	for (const id of diff.placementsChanged) {
-		if (!env.placements?.has(id) && !mintedIds.has(id)) bad.push(`reparented block '${id}'`);
+		if (env.placements?.has(id) || mintedIds.has(id)) continue;
+		// A block the op may create or remove (an undo or redo of its creation)
+		// may change where it shows: the records its creation wrote beside it go
+		// and come back with the step (fork patch YP22), its slot stays.
+		if (env.blocksCreate?.has(id) || env.blocksRemove?.has(id)) continue;
+		const under = shownUnder(id);
+		if (under !== null && removed.has(under)) continue;
+		bad.push(`reparented block '${id}'`);
 	}
 	return bad;
 };
@@ -981,6 +1007,26 @@ export const runSchedule = (
 	 */
 	const droppedBy = new Map<string, IdRange[]>();
 	const droppedAtPersist = new Map<string, IdRange[]>();
+	/**
+	 * A sync from a peer in that window carries it: the receiver takes the
+	 * delete of the old value from the sender's state, and the new value
+	 * only once it receives the dropped ranges itself (a peer reloaded from
+	 * a stale snapshot syncing with the peer that dropped them). Outboxes
+	 * hold local writes only, so a delivery carries nothing of it.
+	 */
+	const inheritWindow = (from: string, to: string): void => {
+		const out = droppedBy.get(from) ?? [];
+		if (out.length === 0) return;
+		const sv = Y.decodeStateVector(set.peer(to).stateVector());
+		const mine = droppedBy.get(to) ?? [];
+		for (const r of out)
+			if (
+				(sv.get(r.client) ?? 0) < r.start + r.len &&
+				!mine.some((m) => m.client === r.client && m.start === r.start && m.len === r.len)
+			)
+				mine.push(r);
+		droppedBy.set(to, mine);
+	};
 	let firstError: { step: number; engineInternal: boolean; message: string } | null = null;
 	let executed = 0;
 
@@ -1671,7 +1717,7 @@ export const runSchedule = (
 		const post = ops.captureOpState!(peer);
 		const pre = preAll[peer.index];
 		const diff = diffStates(pre, post);
-		const bad = checkEnvelope(diff, plan.env, post);
+		const bad = checkEnvelope(diff, plan.env, post, pre);
 		for (const p of peers) {
 			if (p === peer) continue;
 			const fd = diffStates(preAll[p.index], ops.captureOpState!(p));
@@ -1759,9 +1805,13 @@ export const runSchedule = (
 				break;
 			case 'syncSV':
 				set.syncPeer(a, b);
+				inheritWindow(a, b);
+				inheritWindow(b, a);
 				break;
 			case 'syncFull':
 				set.syncPeerFull(a, b);
+				inheritWindow(a, b);
+				inheritWindow(b, a);
 				break;
 			case 'persist':
 				set.peer(a).persist();
@@ -1943,6 +1993,7 @@ export const runSchedule = (
 			violationKinds.add('convergent-loss');
 			return null;
 		}
+		opts.inspectAfter?.(peers, projections);
 		return {
 			ok: false,
 			failure: detail,

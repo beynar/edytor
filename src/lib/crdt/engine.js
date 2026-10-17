@@ -31,6 +31,8 @@ export const Y = {
 	findIndexSS: V.findIndexSS,
 	// a concurrent creation of one block id keeps the losing node (fork patch YP14)
 	isKeptReplaced: V.isKeptReplaced,
+	// the order of two items of one sequence, for the order of two units of different sequences (fork patch YP22)
+	sequenceOrder: V.sequenceOrder,
 	// a position as an item id and back (fork patch YP19)
 	idAtIndex: V.idAtIndex,
 	indexOfId: V.indexOfId,

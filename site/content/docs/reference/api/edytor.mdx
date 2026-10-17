@@ -4922,7 +4922,9 @@ export type PlanEffect = {
 
 One planned write, named by the document operation that
 performs it — the name a hook matches. Steps carry everything
-their write needs (ranks, marks, offsets), decided at prepare time.
+their write needs (places, marks, offsets), decided at prepare time; a
+place is a display index among a parent's children, read against the
+document as the step is written (the steps before it applied).
 
 ```ts
 export type PlanStep = {
@@ -4930,13 +4932,15 @@ export type PlanStep = {
     parent: BlockId | null;
     index: number;
     specs: BlockSpec[];
-    ranks: string[];
+    split?: BlockId;
 } | {
     op: 'moveBlocks';
     ids: BlockId[];
     parent: BlockId | null;
     index: number;
-    ranks: string[];
+    side?: 0 | 1;
+    part?: number;
+    at?: BlockId;
 } | {
     op: 'deleteBlock';
     id: BlockId;
@@ -4950,7 +4954,7 @@ export type PlanStep = {
     newId: BlockId;
     tail: SplitTail;
     parent: BlockId | null;
-    rank: string;
+    index: number;
 } | {
     op: 'mergeBlocks';
     from: BlockId;
@@ -4967,7 +4971,7 @@ export type PlanStep = {
     inlineId?: string;
     offset?: number;
     ops: DataPatch[];
-    leaves: LeafWrite[];
+    writes: DataWrite[];
 } | {
     op: 'insertText';
     id: BlockId;

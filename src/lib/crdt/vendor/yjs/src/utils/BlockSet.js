@@ -147,19 +147,28 @@ export class BlockSet {
     for (const client of clientids) {
       const range = exclude.clients.get(client)
       const structs = this.clients.get(client)?.refs
-      if (range == null || structs == null) return
-      const firstStruct = structs[0]
-      const lastStruct = structs[structs.length - 1]
+      if (range == null || structs == null) continue // YP23: the other clients are excluded too
       const idranges = range.getIds()
       for (let i = 0; i < idranges.length; i++) {
         const range = idranges[i]
-        let startIndex = 0
+        // YP23: read the bounds per range, and the last struct again after
+        // the start's split — `findIndexCleanStart` splits a struct in place
+        // (the struct shrinks, a new one holds the rest), so bounds read
+        // before a split are stale: the next range was skipped (an arriving
+        // GC spanning a skip, known ids and the state's end integrated whole
+        // over the known middle, and its delete-set entry outran the store),
+        // or the end's split was skipped and the range's skip replaced the
+        // struct's tail too.
+        const firstStruct = structs[0]
+        let lastStruct = structs[structs.length - 1]
         if (range.clock >= lastStruct.id.clock + lastStruct.length) continue
+        if (range.clock + range.len <= firstStruct.id.clock) continue
+        let startIndex = 0
         if (range.clock > firstStruct.id.clock) {
           startIndex = findIndexCleanStart(null, structs, range.clock)
         }
+        lastStruct = structs[structs.length - 1]
         let endIndex = structs.length // must be set here, after structs is modified
-        if (range.clock + range.len <= firstStruct.id.clock) continue
         if (range.clock + range.len < lastStruct.id.clock + lastStruct.length) {
           endIndex = findIndexCleanStart(null, structs, range.clock + range.len)
         }

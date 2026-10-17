@@ -39,12 +39,16 @@ export const indexCache = (ix: IndexState & IndexPlacement) => {
 		get foldedStructs() {
 			return foldStats.structs;
 		},
+		get placements() {
+			return foldStats.placed;
+		},
 		reset() {
 			debug.recomputes = 0;
 			debug.recomputed.clear();
 			foldStats.folds = 0;
 			foldStats.pairs = 0;
 			foldStats.structs = 0;
+			foldStats.placed = 0;
 			rangeStats.items = 0;
 			rangeStats.markers = 0;
 		}

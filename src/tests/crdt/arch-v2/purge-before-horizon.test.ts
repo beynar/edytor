@@ -24,7 +24,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { bindCrdt, defaultSemantics } from '$lib/crdt/index.js';
 import { packed } from '$lib/crdt/storage.js';
 import { replica, seedUpdate, syncAll, wellFormed, LIVE } from './replica-harness.js';
-import { blockNodeOf, candidatesOf, view as modelView } from '../../../lib/crdt/placement/model.js';
+import { blockNodeOf, recordsOf, view as modelView } from '../../../lib/crdt/placement/model.js';
 
 const crdt = bindCrdt(Y);
 const PURGE = Symbol('purge');
@@ -204,7 +204,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ada.destroy();
 	});
 
-	it('a withdrawn creation goes; a runner-up candidate of an old winner goes', () => {
+	it('a withdrawn creation goes; an old move record no block shows at goes', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);
 		ok(
@@ -216,17 +216,17 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 0 }));
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 3 }));
 		syncAll([room, ada]);
-		const candidates = (r) => candidatesOf(blockNodeOf(r.doc, 'p4')).length;
-		const held = candidates(room);
+		const records = (r) => recordsOf(r.doc, r.doc.get('blocks')).length;
+		const held = records(room);
 		expect(held).toBeGreaterThanOrEqual(2);
 		expect(registryHas(room, 'x')).toBe(true);
 		const before = room.canonical();
 		const report = purge(room, epoch(room));
-		expect(report.candidates).toBe(held - 1);
+		expect(report.records).toBe(held - 1);
 		syncAll([room, ada]);
 		expect(registryHas(room, 'x')).toBe(false);
-		expect(candidates(room)).toBe(1);
-		expect(candidates(ada)).toBe(1);
+		expect(records(room)).toBe(1);
+		expect(records(ada)).toBe(1);
 		expect(room.canonical()).toBe(before);
 		expect(ada.canonical()).toBe(before);
 		healthy(room, ada);
@@ -290,7 +290,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		expect(crdt.doc.horizonOf(room.doc)).toEqual(horizon);
 		const sv = Y.encodeStateVector(room.doc);
 		const report = purge(room, horizon);
-		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, candidates: 0 });
+		expect(report).toMatchObject({ removed: 0, emptied: 0, marks: 0, records: 0 });
 		// Only the record is written again (one attr); the room never repeats a horizon.
 		expect(Y.decodeStateVector(Y.encodeStateVector(room.doc)).get(room.doc.clientID)).toBe(
 			(Y.decodeStateVector(sv).get(room.doc.clientID) ?? 0) + 1
@@ -366,7 +366,10 @@ describe('H7: the stored size after a purge', () => {
 			`H7 size (v2 / gzip v2): purged ${purged} / ${await stored(room)} B, deleted ${deleted} B, full ${full} B, visible alone ${visible} / ${await stored(alone)} B`
 		);
 		expect(deleted).toBeGreaterThan(full);
-		expect(purged * 5).toBeLessThan(deleted);
+		// The document itself is leaner since the move records (no placement node per
+		// block), so a removed block's fixed tombstones weigh more against it: a
+		// quarter of the deleted document, where the placement nodes left a fifth.
+		expect(purged * 4).toBeLessThan(deleted);
 		// What stays of a removed block: its registry key and its attribution
 		// record's key, as engine tombstones (a map never forgets a key).
 		expect(purged).toBeLessThan(visible + 1000 * 48);

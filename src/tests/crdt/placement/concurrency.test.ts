@@ -132,10 +132,11 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		set.deliverAll();
 		assertConverged(set, ops);
 		assertAllStructurallyValid(set, ops);
-		// Acceptance order is (seq,client,id) desc: b2's candidate (2,2,'b2')
-		// is accepted first → b2 under b1. b1's candidate (2,1,'b1' → b2)
-		// would close the cycle → falls back to its previous placement (root).
-		expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 0 });
+		// Acceptance order is (priority, client, clock) desc: b2's edge (B's
+		// record) is accepted first → b2 under b1. b1's edge (A's record → b2)
+		// would close the cycle → rejected: b1 shows at the root, after the last
+		// top-level block (the parentless fallback, fork patch YP22).
+		expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 1 });
 		expect(ops.positionOf(A, 'b2')).toEqual({ parent: 'b1', index: 0 });
 	});
 
@@ -173,7 +174,7 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		expect(ops.project(rev.A)).toEqual(ops.project(fwd.A));
 	});
 
-	it('cycle fallback uses the rejected block’s previous placement, not a void', () => {
+	it('cycle fallback shows the rejected block at the root’s tail, not a void', () => {
 		const set = createPeerPair(MODEL_BASE_SEED);
 		const { A, B } = set;
 		// Put b2 under b3 first (both see it), then create the cycle.
@@ -186,9 +187,9 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		assertConverged(set, ops);
 		assertAllStructurallyValid(set, ops);
 		// b2's winner (B's move) accepts b2→b1. b1's winner accepts b1→b2 only
-		// if acyclic — b1→b2 + b2→b1 IS a cycle → rejected → fallback = b1's
-		// previous placement (root).
-		expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 0 });
+		// if acyclic — b1→b2 + b2→b1 IS a cycle → rejected → the parentless
+		// fallback: b1 at the root, after the last top-level block (b3).
+		expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 1 });
 		expect(ops.positionOf(A, 'b2')).toEqual({ parent: 'b1', index: 0 });
 	});
 
@@ -338,11 +339,12 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		ops.moveBlock(A, 'b1', { parent: 'b3', index: 0 });
 		// Same engine handle — the anchor followed the move.
 		expect(ops.resolveBlock(A, 'b1')).toBe(handle);
-		expect(deepEvents).toBeGreaterThan(0); // placement write is visible inside the node
+		// A move is a record in the destination's sequence: nothing is written inside the moved node (YP22).
+		expect(deepEvents).toBe(0);
 		// Remote edit lands on the same handle.
 		ops.insertText(B, 'b1', 0, 'X');
 		set.deliver('B', 'A');
-		expect(deepEvents).toBeGreaterThan(1);
+		expect(deepEvents).toBeGreaterThan(0);
 		expect(ops.blockText(A, 'b1')).toBe('Xhello world');
 	});
 

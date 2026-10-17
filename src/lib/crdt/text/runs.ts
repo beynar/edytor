@@ -18,9 +18,9 @@
  * The fold (see `docs/crdt-v14-richtext-adr.md` for the run contract):
  *
  * - One classifier maps a changed `(type, parentSub)` pair to the block and
- *   the facet it entered through (`content`, `claims`, `at`, `n`, a delete
- *   mark, `type`/`data`, or the registry entry itself); one routine folds a
- *   set of such pairs into the indexes.
+ *   the facet it entered through (`content`, `at`, `n`, a delete mark,
+ *   `type`/`data`, or the registry entry itself); one routine folds a set of
+ *   such pairs into the indexes.
  * - A transaction is folded ONCE at commit, from `transaction.changed`.
  * - A read first folds the PENDING part of every transaction whose writes
  *   are in the document and whose commit fold has not run: the open one, and
@@ -29,12 +29,12 @@
  *   fold (the watermark is those sets' lengths). The commit fold takes only
  *   what no read folded.
  * - Each backing text has a maintained row (`text/rows.ts`): its
- *   boundaries and the live units between them. An edit that writes or
- *   removes no boundary moves the row by its units in the gap it lies in
- *   (found by walking the item list to the nearest boundary), never a
- *   rescan; a boundary written or removed rescans that text, re-decides the
- *   delimiters of the blocks its boundaries name, and re-places only the
- *   rows those cut. Every cached block records which texts its display
+ *   boundaries and claim items and the live units between them. An edit
+ *   that writes or removes neither moves the row by its units in the gap it
+ *   lies in (found by walking the item list to the nearest boundary), never a
+ *   rescan; a boundary or claim item written or removed rescans that text,
+ *   re-decides the delimiters of the blocks its boundaries name, re-places
+ *   only the rows those cut, and re-reads the claims of their blocks. Every cached block records which texts its display
  *   walked and which blocks it walked or read a claim on (a skipped claim
  *   included); an edit invalidates the display owner of the stream it lies
  *   in, a placement the blocks whose stream's delimiting boundaries changed
@@ -55,8 +55,8 @@
  *
  * The index is built from parts under `index/`, each over the shared state
  * (`index/state.ts`) and the parts before it: the claim graph
- * (`claims.ts`), the stream table (`streams.ts`), anchored merge claims
- * (`anchored.ts`), the layout rules (`layout.ts`), placements and the
+ * (`claims.ts`), the stream table and each block's claims (`streams.ts`),
+ * the layout rules (`layout.ts`), placements and the
  * children index (`placement.ts`), block records (`records.ts`), the run
  * cache (`cache.ts`), the fold (`fold.ts`), the change report
  * (`report.ts`); the self-checks a test lane installs are `indexChecks`. This module declares the
@@ -69,7 +69,6 @@ import { cloneJsonSafe } from '../../utils/json.js';
 import { indexState, type Tx } from './index/state.js';
 import { indexClaims } from './index/claims.js';
 import { indexStreams } from './index/streams.js';
-import { indexAnchored } from './index/anchored.js';
 import { indexLayout } from './index/layout.js';
 import { indexPlacement } from './index/placement.js';
 import { indexRecords } from './index/records.js';
@@ -77,7 +76,7 @@ import { indexCache } from './index/cache.js';
 import { indexFold } from './index/fold.js';
 import { indexReporter } from './index/report.js';
 
-export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
+export { CONTENT_ATTR, ENTRY_FACET, SEQ_FACET, indexChecks } from './index/shared.js';
 
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
@@ -152,6 +151,8 @@ export type RunViewDebug = {
 	 * last `reset()`: each struct once, whatever the number of reads.
 	 */
 	readonly foldedStructs: number;
+	/** Blocks whose placement the index decided since last `reset()` (a global pass decides every one). */
+	readonly placements: number;
 	reset: () => void;
 };
 
@@ -213,8 +214,10 @@ export type RunView = {
 	 * Track the folds from now on (the write funnel's frame): `end()` folds
 	 * what is pending and returns the facets every fold since `track()` saw
 	 * per block, and whether the transaction wrote anything meanwhile.
+	 * `quiet(write)` runs a write whose facets are not the frame's (it counts
+	 * as written).
 	 */
-	track: () => { end: () => Folded };
+	track: () => { end: () => Folded; quiet: (write: () => void) => void };
 	/**
 	 * Subscribe to the change report — one per commit that changed the
 	 * visible document, after the commit (`update`), with its origin and
@@ -278,8 +281,7 @@ const buildView = (doc: EngineDoc): RunView => {
 	const ix0 = indexState(doc);
 	const ix1 = Object.assign(ix0, indexClaims(ix0));
 	const ix2 = Object.assign(ix1, indexStreams(ix1));
-	const ix3 = Object.assign(ix2, indexAnchored(ix2));
-	const ix4 = Object.assign(ix3, indexLayout(ix3));
+	const ix4 = Object.assign(ix2, indexLayout(ix2));
 	const ix5 = Object.assign(ix4, indexPlacement(ix4));
 	const ix6 = Object.assign(ix5, indexRecords(ix5));
 	const ix7 = Object.assign(ix6, indexCache(ix6));
@@ -300,7 +302,7 @@ const buildView = (doc: EngineDoc): RunView => {
 		order,
 		rebuildTable,
 		scanRow,
-		applyRetargets,
+		applyReclaims,
 		updateBlockRec,
 		syncIncarnations,
 		intern,
@@ -354,7 +356,7 @@ const buildView = (doc: EngineDoc): RunView => {
 		}
 	});
 	rebuildTable(new Set());
-	applyRetargets(null);
+	applyReclaims(null);
 	settle(shells, null);
 
 	// Every commit folds once, before the document's `afterTransaction` listeners.
@@ -428,6 +430,20 @@ const buildView = (doc: EngineDoc): RunView => {
 					syncAll();
 					frames.delete(f);
 					return f;
+				},
+				quiet: (write) => {
+					syncAll();
+					const g: Folded = { touched: new Map(), wrote: false };
+					frames.delete(f);
+					frames.add(g);
+					try {
+						write();
+						syncAll();
+					} finally {
+						frames.delete(g);
+						frames.add(f);
+						f.wrote ||= g.wrote;
+					}
 				}
 			};
 		},

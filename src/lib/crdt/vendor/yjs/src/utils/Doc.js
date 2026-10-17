@@ -56,11 +56,20 @@ export class Doc extends ObservableV2 {
     this.keepReplaced = null
     this.clientID = generateNewClientId()
     /**
-     * YP13: the greatest Lamport timestamp of a paired mark this document
-     * integrated (see `utils/marks.js`).
+     * YP13, YP22: the greatest Lamport timestamp of a paired mark or a move
+     * record this document integrated (see `utils/marks.js`,
+     * `structs/Item.js` `ContentMove`); the next one it writes takes `_clock + 1`.
      * @type {number}
      */
-    this._markClock = 0
+    this._clock = 0
+    /**
+     * YP22: the application's order of two units of different sequences
+     * (`{ item, clock }` each), for the sort of two move records at one
+     * origin whose units stand in different sequences (`utils/marks.js`
+     * `sourceOrder`); `null`: by client id. Set before anything integrates.
+     * @type {null | ((a: { item: any, clock: number }, b: { item: any, clock: number }) => number)}
+     */
+    this._unitOrder = null
     /**
      * @type {Map<string, YNode>}
      */

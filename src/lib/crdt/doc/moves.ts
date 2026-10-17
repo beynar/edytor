@@ -8,7 +8,7 @@ import { asBlockSpec, sanitizeSpec, type JSONBlock } from '../../utils/json.js';
 import { collides, type BlockId, type BlockSpec, type Destination } from '../placement/model.js';
 import { ref } from './plan.js';
 import type { Prepared, PlanStep, Plan } from './types.js';
-import type { OpsContext } from './steps.js';
+import { PART, type OpsContext } from './steps.js';
 
 /** The moves ops of one facade, prepared. */
 export const moveOps = (c: OpsContext) => {
@@ -28,16 +28,9 @@ export const moveOps = (c: OpsContext) => {
 		fits,
 		kindToCopy,
 		REFUSED,
-		HEAD,
-		KEPT,
-		WITH,
-		SELF,
-		AFTER,
 		plan,
-		ranksFor,
 		moveTo,
 		move,
-		exitRanks,
 		leaving,
 		settledKind,
 		settle,
@@ -62,10 +55,9 @@ export const moveOps = (c: OpsContext) => {
 		if (parent !== null && (isVoid(parent) || isLine(parent))) return REFUSED;
 		if (clean.length === 0) return plan([], []);
 		if ((parent !== null && !live(parent)) || collides(doc, clean)) return REFUSED;
-		const ranks = ranksFor(parent, dest.index, clean.length, [], true);
 		return plan(
 			clean.map((s) => s.id),
-			[{ op: 'insertBlocks', parent, index: dest.index, specs: clean, ranks }]
+			[{ op: 'insertBlocks', parent, index: dest.index, specs: clean }]
 		);
 	};
 
@@ -112,8 +104,7 @@ export const moveOps = (c: OpsContext) => {
 		const after = childrenIds(from).slice(pos!.index + 1);
 		const retype = settle(from, moved, ppos.parent);
 		if (isContainer(from)) return splitOut(moved, [from], [], false, retype);
-		const out = leaving(from, true, moved);
-		const writes = [...moveTo(moved, ppos.parent, ppos.index + 1, out), ...retype];
+		const writes = [...moveTo(moved, ppos.parent, ppos.index + 1, leaving(true)), ...retype];
 		const adopts =
 			after.length > 0 &&
 			!isVoid(last!) &&
@@ -162,14 +153,11 @@ export const moveOps = (c: OpsContext) => {
 	): Plan => {
 		const moved = keep ? [] : [...ids];
 		const placed = [...moved, ...specs.map((s) => s.id)];
-		const insert = (at: BlockId | null, index: number, s: BlockSpec[], ranks: string[]) =>
-			s.length ? [{ op: 'insertBlocks' as const, parent: at, index, specs: s, ranks }] : [];
+		const insert = (at: BlockId | null, index: number, s: BlockSpec[]) =>
+			s.length ? [{ op: 'insertBlocks' as const, parent: at, index, specs: s }] : [];
 		const last = ids.at(-1)!;
 		const { parent, index } = positionOf(levels.at(-1) ?? last)!;
-		if (levels.length === 0) {
-			const ranks = ranksFor(parent, index + 1, specs.length, [], true);
-			return plan(placed, [...insert(parent, index + 1, specs, ranks), ...retype]);
-		}
+		if (levels.length === 0) return plan(placed, [...insert(parent, index + 1, specs), ...retype]);
 		// Bottom up: what stays before the split at each level (the level
 		// itself, or a new head holding it), and whether anything follows it.
 		const heads: { spec: BlockSpec; kids: BlockId[]; inner?: BlockSpec }[] = [];
@@ -181,10 +169,8 @@ export const moveOps = (c: OpsContext) => {
 		for (const level of levels) {
 			const kids = childrenIds(level);
 			const at = kids.indexOf(child);
-			const lead: BlockId[] = [
-				...kids.slice(0, keep && child === last ? at + 1 : at).filter((k) => !moved.includes(k)),
-				...(before && !before.head ? [before.id] : [])
-			];
+			const stays: boolean = (keep && child === last) || (before !== null && !before.head);
+			const lead: BlockId[] = kids.slice(0, at + (stays ? 1 : 0)).filter((k) => !moved.includes(k));
 			if (!follows && at + 1 < kids.length) [follows, next] = [true, kids[at + 1]];
 			if ((lead.length > 0 || before?.head) && follows) {
 				const spec = sanitizeSpec({
@@ -197,36 +183,53 @@ export const moveOps = (c: OpsContext) => {
 			} else before = lead.length > 0 ? { id: level } : null;
 			child = level;
 		}
-		// Ranked by where each comes from in the outermost level: the
-		// head right before the first block (with `keep`, right before it
-		// leaves), the blocks, then `specs` after the last — with `keep`,
-		// right before the block after it, so a peer's head that takes the
-		// block they follow sorts before them.
+		// Written in one gap, each right after the block before it, as an
+		// after-record out of the level's slot or a before-record into the gap
+		// before it (`leaving`): the engine's sort decides their order against
+		// a peer's records there (fork patch YP22, `sourceOrder`: the block a
+		// record stands at, then its part), so a peer's heads, pieces, lifts
+		// and new blocks in the same gap keep the serial order whatever the
+		// client ids (`del.merge.container`). The head stands at the first block
+		// (with `keep`, at it: `with`), the blocks at themselves, the new
+		// blocks after the last (`after`) — or, kept before the block that
+		// follows, at that block (`kept`). The records are written last first,
+		// so each stands before the one written before it, in the order the
+		// sort gives them; the head and the new blocks are created in the
+		// innermost level right after the block they stand at (their home,
+		// hidden while their records show them) and moved out by them.
 		const outside = before !== null && !before.head;
-		let gap = index + (outside ? 1 : 0);
-		const ranks = exitRanks(levels.at(-1)!, outside, [
-			...(before?.head ? [{ at: ids[0]!, part: [keep ? WITH : HEAD] }] : []),
-			...moved.map((id) => ({ at: id, part: [SELF] })),
-			...specs.map((_, i) =>
-				keep && !outside ? { at: next!, part: [KEPT, i] } : { at: last, part: [AFTER, i] }
-			)
-		]);
-		const writes: PlanStep[] = before?.head
-			? insert(parent, gap++, [before.head], ranks.splice(0, 1))
-			: [];
+		const side = leaving(outside);
+		const gap = index + (outside ? 1 : 0);
+		const at = moved[0] ?? last;
+		const kids0 = childrenIds(levels[0]!);
+		const home = kids0.indexOf(last) + 1;
+		const specIds = specs.map((sp) => sp.id);
+		const [stands, part] = keep && !outside ? [next!, PART.kept] : [last, PART.after];
+		// One record per run of adjacent blocks, each standing at its first: a
+		// block a peer's move takes out of a run leaves the others at their own place.
+		const runs: BlockId[][] = [];
+		for (const id of moved) {
+			const run = runs.at(-1);
+			if (run !== undefined && kids0.indexOf(run.at(-1)!) + 1 === kids0.indexOf(id)) run.push(id);
+			else runs.push([id]);
+		}
+		const writes: PlanStep[] = [
+			...insert(levels[0]!, home, specs),
+			...(before?.head ? insert(levels[0]!, home, [before.head]) : []),
+			...moveTo(specIds, parent, gap, side, stands, part),
+			...runs.reverse().flatMap((run) => moveTo(run, parent, gap, side, run[0], PART.self)),
+			...(before?.head
+				? moveTo([before.head.id], parent, gap, side, at, keep ? PART.with : PART.head)
+				: [])
+		];
 		for (const { spec, kids, inner } of heads.reverse()) {
-			const inside = ranksFor(spec.id, 0, kids.length + (inner ? 1 : 0));
 			writes.push(
-				...moveTo(kids, spec.id, 0, inside.slice(0, kids.length)),
-				...(inner ? insert(spec.id, kids.length, [inner], inside.slice(-1)) : [])
+				...moveTo(kids, spec.id, 0),
+				...(inner ? insert(spec.id, kids.length, [inner]) : [])
 			);
 		}
-		const mine = ranks.splice(0, moved.length);
-		writes.push(
-			...moveTo(moved, parent, gap, mine),
-			...insert(parent, gap + moved.length, specs, ranks),
-			...retype
-		);
+		writes.push(...retype);
+		void next;
 		return plan(placed, emptying(levels[0]!, moved, writes, landing(parent)));
 	};
 	/**

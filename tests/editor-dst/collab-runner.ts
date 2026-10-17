@@ -671,7 +671,7 @@ const expectConverged = async (
 						for (const key of registry.attrKeys()) {
 							const node = registry.getAttr(key);
 							const rec: Record<string, unknown> = {};
-							for (const attr of ['content', 'claims'] as const) {
+							for (const attr of ['content'] as const) {
 								const list = node?.getAttr?.(attr);
 								if (!list) continue;
 								const items: unknown[] = [];

@@ -29,7 +29,6 @@ import * as yArray from './tests/y-array.tests.js'
 import * as yText from './tests/y-text.tests.js'
 import * as yXml from './tests/y-xml.tests.js'
 import * as encoding from './tests/encoding.tests.js'
-import * as undoredo from './tests/undo-redo.tests.js'
 import * as doc from './tests/doc.tests.js'
 import * as updates from './tests/updates.tests.js'
 import * as idset from './tests/IdSet.tests.js'
@@ -44,7 +43,6 @@ const modules = {
 	'y-text': yText,
 	'y-xml': yXml,
 	encoding,
-	'undo-redo': undoredo,
 	updates,
 	IdSet: idset,
 	attribution,

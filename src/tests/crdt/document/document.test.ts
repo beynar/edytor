@@ -19,6 +19,7 @@ import { DocumentDestroyedError } from '../../../lib/crdt/document.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -99,14 +100,14 @@ describe('encode → loadDocument', () => {
 
 	it('validates the schema BEFORE facade/history/awareness attach', () => {
 		// A rogue doc with registry state but no meta.v version record.
-		const rogue = new Y.Doc();
+		const rogue = keepingReplaced(new Y.Doc());
 		rogue.get('blocks').setAttr('b1', { type: 'paragraph' });
 		const update = Y.encodeStateAsUpdate(rogue);
 		expect(() => loadDocument(update)).toThrowError(E.SchemaMismatchError);
 	});
 
 	it('restores an empty update as a ready bootstrap document', () => {
-		const restored = loadDocument(Y.encodeStateAsUpdate(new Y.Doc()));
+		const restored = loadDocument(Y.encodeStateAsUpdate(keepingReplaced(new Y.Doc())));
 		expect(restored.ready).toBe(true);
 		expect(restored.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		restored.destroy();
@@ -274,7 +275,7 @@ describe('destroy — owned vs borrowed', () => {
 	});
 
 	it('does not destroy a borrowed raw doc (attachDocument)', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		const document = attachDocument(raw);
 		document.sync();
 		document.destroy();
@@ -288,7 +289,7 @@ describe('destroy — owned vs borrowed', () => {
 	});
 
 	it('does not destroy a borrowed awareness', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		const awareness = new Awareness(raw);
 		const document = attachDocument(raw, { awareness });
 		document.destroy();
@@ -308,7 +309,7 @@ describe('destroy — owned vs borrowed', () => {
 	});
 
 	it('refuses to attach a destroyed raw doc', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		raw.destroy();
 		expect(() => attachDocument(raw)).toThrowError(DocumentDestroyedError);
 	});
@@ -316,7 +317,7 @@ describe('destroy — owned vs borrowed', () => {
 
 describe('attach references (U6b/R3)', () => {
 	it('retain() returns a one-shot release — a double release cannot consume another holder', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		const document = attachDocument(raw);
 		// A second holder acquires its own release capability.
 		const release = document.retain();
@@ -330,7 +331,7 @@ describe('attach references (U6b/R3)', () => {
 	});
 
 	it('retained references extend the shared document lifetime independently of destroy order', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		const document = attachDocument(raw);
 		const release = document.retain();
 		document.destroy(); // attach ref released — the retained ref keeps it alive

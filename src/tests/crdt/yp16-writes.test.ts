@@ -9,14 +9,14 @@
  * `deleteAttr`/`clearAttrs`, `push`/`unshift` (the last three the tests'
  * own, `harness/node-reads.js`, on the fork), writes to DETACHED nodes (the
  * pre-integration list replayed on integration, nested detached nodes
- * included), undo/redo, gc on and off — replayed on this fork
+ * included), gc on and off — replayed on this fork
  * and on an engine that still writes through `applyDelta`. After EVERY
  * operation both replicas' `encodeStateAsUpdate` bytes must be identical across
  * the engines, and so must their deep content (the baseline's own `toDelta`,
  * the fork's through the test port). Two baselines:
  *
  * - the pristine upstream engine (`@y/y@14.0.0-rc.26`, the `@y/protocols`
- *   peer): local writes and undo/redo, the fork running without its search
+ *   peer): local writes, the fork running without its search
  *   markers (the cursor walks from the start, as upstream does). Remote
  *   integration already stored differently from upstream before YP16 (the fork's
  *   patches), so exchange is left out; and the YP4 seeded cursor can place an item
@@ -28,6 +28,11 @@
  *   exchange is left out since YP19: the formatting cleanup that followed a
  *   remote change split the items its delete set reached (a split inside a
  *   surrogate pair stores U+FFFD halves), and YP19 removed it.
+ *
+ * Undo and redo are not in the programs: since YP18 the engine has no undo
+ * manager, and the document's history (the editor's) is not an engine write
+ * to compare with upstream's undo manager — it releases a dropped step's
+ * content for collection at once, which upstream's leaves kept.
  */
 // @ts-nocheck -- drives two engines' plain JS directly.
 import { execFileSync } from 'node:child_process';
@@ -39,7 +44,6 @@ import { describe, expect, it } from 'vitest';
 import * as F from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
 import { bool, int, mulberry32, pick } from './harness/rng.js';
-import { undoManagerOf } from './harness/undo.js';
 
 const upstream = async () => {
 	const require = createRequire(import.meta.url);
@@ -84,9 +88,6 @@ const program = (E, seed, gc, exchange, markers) => {
 	docs[1].clientID = 22;
 	// the fork without its search-marker pool: the cursor walks from the start, as upstream does
 	if (!markers) for (const d of docs) d.get('t')._searchMarker = null;
-	const ums = docs.map(
-		(d) => new (E.UndoManager ?? undoManagerOf(E))([d.get('t'), d.get('m')], { captureTimeout: 0 })
-	);
 	/** A detached node with a few writes of its own (lengths tracked here: a detached node has none). */
 	const detached = (depth) => {
 		const n = new E.Node(pick(rng, [null, 'p', 'q']));
@@ -138,8 +139,10 @@ const program = (E, seed, gc, exchange, markers) => {
 		else if (k === 7) m.deleteAttr(pick(rng, ['a', 'b', 'c', 'zz']));
 		else if (k === 8 && bool(rng, 0.2)) m.clearAttrs();
 		else if (k === 9) bool(rng) ? t.push(pick(rng, WORDS)) : t.unshift([int(rng, 0, 9)]);
-		else if (k === 10) ums[di].undo();
-		else if (k === 11) ums[di].redo();
+		// k 10, 11: no write. They were an undo and a redo while the engine had an
+		// undo manager; since YP18 the history is the document's (it releases a
+		// dropped step's content for collection at once, as `hist.delete-marks.release`
+		// decides), not an engine write path to compare with upstream's.
 		else if (k === 12) {
 			const node = m.getAttr('a');
 			if (node instanceof E.Node) node.insert(int(rng, 0, node.length), pick(rng, WORDS));

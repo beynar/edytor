@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls) and YP20 (hold records)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records) and YP23 (a block set's trim)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -870,13 +870,17 @@ Vendored execution lines 4,872 → 4,630; an app bundle 546.4 → 545.0 KB min
 (minimal), 745.4 → 744.0 (every plugin): edytor's manager is 4.3 KB where
 the engine's (without `redoItem`) and the hooks' driver were 5.6.
 
-Test side: `src/tests/crdt/harness/undo.js` is the engine's `UndoManager`
-as it stood before YP18 (`undoManagerOf(Y)`, over the fork or a copy of its
-tree), for the upstream suite, the replica harness's `raw` adapter, the
-engine probes and the differentials. Removed with their subject:
-`yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the hooks' rows;
-the rules are the facade history's `hist.undo.*` rows) and the upstream row
-on `ignoreRemoteAttributeChanges`.
+Test side: the tests keep no undo manager of their own. Every undo a test
+runs is edytor's (`createUndoManager`, `document.history`, or over a raw
+document `src/tests/crdt/harness/history.ts`: the same class with the same
+rules, `historyRules`, its scope narrowed to the probed nodes). Removed with
+their subject: `yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the
+hooks' rows; the rules are the facade history's `hist.undo.*` rows), the
+upstream rows on `ignoreRemoteAttributeChanges`, and later (the review of
+PR #29) the test copy of the engine's `UndoManager` as it stood before YP18
+(`harness/undo.js`, 528 lines), upstream's `undo-redo.tests.js` (20 rows of
+that class) and its `testSubdocsUndo`; the undo/redo steps of the YP16
+writes differential (an engine write path no more).
 
 ### YP19 — the engine ships what edytor calls: no plain formats, no observers, no subdocuments, no relative-position objects (`src/ynode.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/utils/Transaction.js`, `src/utils/transaction-helpers.js`, `src/utils/encoding.js`, `src/utils/ids.js`, `src/utils/StructStore.js`, `src/utils/positions.js` (new), `src/index.js`, `global.d.ts`)
 
@@ -955,8 +959,8 @@ prototype, from `src/tests/setup/engine-reads.ts` in every vitest lane (and
 on a stripped copy's node where a differential loads one). The harness's
 `applyDelta` writes a formatted op as paired mark operations (an insert takes
 exactly its formats, a retain sets the keys it names); the raw adapter marks
-with `mark`; the harness's pre-YP18 `UndoManager` derives
-`changedParentTypes` from `changed`. Removed with their subject: the
+with `mark`; the harness's pre-YP18 `UndoManager` derived
+`changedParentTypes` from `changed` (the copy is gone, YP18's test side). Removed with their subject: the
 upstream tests of observers and events, subdocuments, relative positions,
 plain formatting and its cleanup (`y-text`, `y-map`, `y-array`, `doc`,
 `delta`, `undo-redo`, `attribution`, `IdSet`, `y-xml`;
@@ -1057,6 +1061,222 @@ after every step), the edytor rows `arch-v2/text-delete-marks.test.ts`,
 contract programs (all 12 hold, `split.range-one-undo` included), the random
 corpus (every adapter), the upstream suite unchanged (`encoding.tests.js`
 pins ref 11).
+
+### YP21 — claim items sort after content and are never collected (`src/utils/marks.js`, `src/structs/Item.js`)
+
+Reason: a merge is a claim, "the display of this block continues with that
+block's". Edytor stored it in a `claims` list on the holder's node, so the
+claim had no place in the holder's text: a split its writer did not see could
+not tell which piece keeps it, and edytor carried a layer that anchored each
+claim to the end of its holder's stream as its writer saw it and moved it to
+the piece that ends that region after every fold (`crdt/text/index/anchored.ts`
+and the claim anchoring in `text/model.ts`, 2.4 KB minified, plus a `claims`
+node per block, 13 B stored). A claim is now one countable unit `{ m }` in the
+holder's backing text, at the end of the gap at the end of its stream (YP7's
+`insertAtGapEnd`), and YATA decides which piece of a concurrent split holds it.
+For that to give the serial outcome the engine only needs one sort rule:
+
+- `markClass` (YP13's integration class) answers `3` for a claim item: a
+  sequence item (`parentSub === null`) whose content's first value is an
+  object with a string `m`. Among the items of one origin, left-side mark
+  items, then content (boundaries included), then right-side mark items, then
+  claim items. So a boundary a concurrent split writes at the claim's origin
+  goes before it (the claim follows the split's last piece), and so does text
+  a concurrent writer types there (it stays in the holder, before the claimed
+  text); a writer who saw the claim writes before it anyway (its insert's
+  right origin is the claim).
+- `Item#gc` keeps the content of every item whose class is not `1` (paired
+  mark items, YP13, and claim items): the class orders concurrent inserts on
+  every replica, collected or not. The check was YP13's paired-mark test; it
+  is now `markClass(this) === 1`, the same answer for every format item.
+
+Plain items (every upstream test) are untouched: a sequence of strings,
+nodes or JSON values without an `m` key, and every map value, read class `1`.
+
+Edytor side: schema generation 8 (no conversion). A merge writes the claim
+item (`claimInto`; a streamless block gets its own text first); a block's
+claims are its implicit ones (`id.same.concurrent`), then the claim items of
+its stream, which the index's rows track as they track boundaries (a claim
+item is a row bound that never delimits, so no read shows it); a split writes
+the claims that follow its point again at the end of the new block's stream
+and deletes their items. Removed: the `claims` node, `MergeClaim.a`/`r`,
+`Claim.seqIndex`/`holder`, `TextBlockRec.claimsNode`/`listClaims`,
+`readClaims`, the index's anchored part.
+
+Oracle: `src/tests/crdt/text/merge-claim-anchor.test.ts` (48 client-id pairs,
+both delivery orders, duplicate delivery, a reload: the serial outcomes),
+`src/tests/crdt/yp21-claims.test.ts` (the sort rule against content,
+boundaries and marks on every pair of client ids, collection), the index
+self-checks (each record's claims equal a fresh scan's), the random corpus,
+the upstream suite unchanged.
+
+### YP22 — move records: an attributed, reversible, order-independent move (`src/structs/Item.js`, `src/ynode.js`, `src/utils/marks.js`, `src/utils/Doc.js` (`_clock`), `src/utils/Transaction.js`, `src/utils/StructStore.js`, `src/utils/encoding.js`, `src/index.js`, `global.d.ts`)
+
+Reason: the engine has no move. Edytor placed each block by a map of
+placement candidates (`at`: `{p: parent, r: rank}` under an ever-growing
+per-writer key) and ordered an array's items by a rank attr per item
+(`~id#`, `~id>`), so it carried a dense-key codec (`placement/rank.ts`,
+2.7 KB), source ranks, a candidate argmax with a runner-up fallback, a
+global cycle pass, and ranks that grew with every insert at one spot (39
+characters after 300 Enters) and a 37.7 B `at` node per block. The fork now
+has the move, built like YP20's hold record (Kleppmann's list move: a
+position is a YATA item, an element its original item), and the layer is
+gone. Design: `docs/archive/engine-move/design.md`. Edytor's schema
+generation 9 is the cutover (no conversion).
+
+Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// YP22`):
+
+- **`ContentMove`** (`Item.js`, content ref 12, `readContentMove` in
+  `ynode.js`'s `contentRefs`): one countable unit at its destination
+  holding a Lamport `priority`, a `side` (`0` after, `1` before), the
+  ordered id ranges (`client, clock, len`) of the units it moves and, for
+  the sort of two records at one origin, the chain it stands at (`at`: the
+  ids of the units from the root sequence down to the unit it stands at,
+  outermost first — for a block, the home slots of its ancestors, then its
+  own; `null`: the first unit it names alone) and its `part` there (0–7,
+  the writer's order among the records standing at one unit); `copy` keeps
+  them all (a redo copies the record, never the units); its one unit's
+  value (`getContent`) is the record itself; `write` puts
+  priority, whether a chain follows, part and side in one varint
+  (`priority · 32 + 16 · anchored + part · 2 + side`), then the chain (its
+  length, then its ids), then the ranges as a hold record's (one writer,
+  `writeIds`, and one reader, `readIds`, for both). `Item#delete` hands
+  the deleted item to its content's `delete`, so a record drops itself
+  from its units' movers without keeping its item.
+  A record never moves a record (such ids are skipped). Records are
+  immutable and deleted at most once: the state that decides a unit's place
+  is the items, the records and the deleted records, so replicas converge
+  in any order — no cleanup message, no replay (what sank upstream's
+  `ContentMove`, PR #357).
+- **`Item`**: `movers` (local, never encoded: the live records naming the
+  item, kept strongest first by `(priority, client, clock)`), `mover` (the
+  first of them), `deleted` =
+  `removed || holds > 0 || movers !== null` (hidden at home), `gone` =
+  `removed || holds > 0` (shown nowhere: a delete or a hold beats a move,
+  Collabs' and Liveblocks' rule, not Loro's resurrection). `Item#delete`
+  of a moved item logs it (`tr.moves`) and moves no length; `Item#split`
+  copies `movers`; `Item#mergeWith` requires both unmoved; `Item#gc` keeps
+  a record's content (its class orders concurrent inserts, as YP21's).
+- **Moving** (YP20's walk: `holdRange`/`holdIds`/`holdItem` take the record,
+  `null` for a hold): the items a record names take
+  it when it integrates, split at the range's edges. A record waits for
+  its units and its chain as an item waits for its origin (`getMissing` in
+  `encoding.js`: a named id past a client's clock, or one a Skip stands
+  for, is the missing dependency — a skip counts in the clock but holds no
+  item to sort by), so they are present whenever its place is decided and
+  whenever another record at its origin is sorted against it
+  (`sourceOrder`), in one update or in many; `applyPending` applies YP20's
+  pending holds only. A
+  unit that starts or stops being moved (and is not gone) moves
+  its home sequence's length and drops its search markers; one whose mover
+  changed is logged in `transaction.moves` (`client, clock, len`, in
+  order), and its home and its new mover's sequences are marked changed.
+- **`doc._clock`** (was YP13's `_markClock`): the greatest Lamport
+  timestamp of a mark or a move this document integrated; a local mark or
+  move takes `_clock + 1`, so a move made after seeing another wins over it
+  (Yjs ids are not Lamport timestamps). A move record raises `_clock` only
+  when it comes from a peer (`!transaction.local`): a writer's own records
+  keep one priority until it sees a peer's, so its gestures — one plan or
+  several between syncs — win or lose together against a concurrent peer's
+  (between two records of one writer at one priority the later clock wins),
+  and two peers splitting one list at once keep each block where one of them
+  put it, never half of a head's items with each.
+- **`YNode#move(index, ids, side, part, at)`**: one record at live index
+  `index` (in the gap there, `insertInGapHelper`).
+- **Sort classes** (`marks.js` `markClass`, `sortsBefore`): among the items
+  of one origin, a move record sorts after every slot (class `4 + side`:
+  a split's pieces first, then the after-records, then the before-records
+  — the order every serial run of the gestures gives, DR-crdt-6); two
+  records of one class sort by the chains they stand at (`sourceOrder`),
+  level by level from the root: two units of one sequence by
+  `sequenceOrder` (the walk from each item leftward until one
+  meets the other, the distance between them; one item: by clock), a unit
+  before the units inside its block (the shorter chain first); chains that
+  meet in no sequence (or reach a unit a GC struct replaced) order nothing,
+  and the part, then the stronger record decide — so two peers that outdent
+  or lift blocks out of one list, or of nested lists, into one gap at once
+  keep the list's order there whatever their client ids (CW-01). The
+  record names everything its sort reads, so the order needs no document
+  hook (the prototype's `_unitOrder` read the chains from the sequences at
+  integration time, and a replica that took a record before an ancestor's
+  slot, inside one update, compared it by client id); and among block slots (`{ b }` units)
+  the split key first (`s`: the id of the boundary item of the split that
+  made the block; two such slots sort by their boundaries' order in the
+  text, `sequenceOrder`, and before a slot no split made, so two peers'
+  splits of one block, with the lines a paste adds at its split, read in
+  the text's order whatever each typed meanwhile, `order.split.text`), then
+  the origin writer's own slots first (`extendsRun`): the lines one writer
+  types after its own line stay together around a peer's line inserted
+  there (`order.insert.run`). The two rules read a unit one way (`unitAt`:
+  an id's item and clock, `null` for a GC struct) and order two units one
+  way (`unitOrder`: by clock in one item, else `sequenceOrder`). Each is a
+  total order per origin
+  that every replica computes alike — `sourceOrder` because a record
+  integrates only once its units and its chain have (above), and a unit's
+  place in its sequence never changes.
+
+Plain items (every upstream test) are untouched: with no record, `movers`
+is `null` everywhere, `extendsRun` is false for every array or text item,
+and every changed path reduces to upstream's.
+
+Edytor side: each data owner keeps one order sequence, its node's list
+part (`placement/slots.ts`): a block's children are home slots `{ b }`
+there (the root's in the registry root's list part), an array's items slots
+`{ p, i }`, and a move one record naming the moved units in order. The
+index reads the sequences, keeps an in-memory order key per child
+(`placement/keys.ts`), re-places only the blocks whose slot, record or
+mover changed (`transaction.moves`, the slots and records a fold touched)
+and resolves a cycle locally: a block's candidate places are its live
+records, strongest first, then its home slot, and the block whose move is
+the oldest edge of a cycle is back where it stood (its next record, else
+home; the root's tail only when every place closes a cycle,
+`placement/resolve.ts`); writers name each record's chain (the home slots
+above the unit it stands at) and anchor and carry where the index shows a
+block; the purge drops the old records no block shows at and the slots of
+removed blocks.
+Removed: `placement/rank.ts`, `placement/source.ts`, the `at` nodes, the
+candidate argmax and runner-up, the global resolution pass, the ranks of
+data arrays.
+
+Measured: see `docs/archive/engine-move/design.md` ("Prototype: measured").
+
+Oracle: `src/tests/crdt/yp22-moves.test.ts` (two writers move one unit, in
+both orders; a group move overlapping a single move; undo, redo and a
+fallback; a record whose units arrive later; merged, diffed and reloaded
+updates; the sort classes; three seeded differentials with search markers
+on and off, byte-identical after every step; three replicas syncing in
+random orders), the placement rows (MV01–MV10, the order sweeps,
+`display-cycle`, `reachability`, `same-id-concurrent`), the index
+self-checks (each placement's parent and each parent's order equal the
+rebuild from the sequences), the random corpus (every adapter), the
+upstream suite unchanged (`encoding.tests.js` pins ref 12).
+
+### YP23 — an update's block set is trimmed to every known range (`src/utils/BlockSet.js`)
+
+Reason: before an update integrates, `readUpdate` removes from its block set
+what the store already has (`BlockSet.exclude`: the state below the client's
+clock, minus the store's skips). Upstream read a client's first and last
+struct once, before the loop over the known ranges; trimming the first range
+splits a struct in place (`findIndexCleanStart`), so for the next range the
+bounds were stale and the range was skipped. A struct spanning a skip, known
+ids and the end of the state — a GC of a whole removed subtree, after a
+dropped message left a gap — integrated whole over the known middle: its
+delete-set entry named ids the store never had, and the transaction's
+cleanup threw in `tryMerge` (`findIndexSS`: "Unexpected case", or reading
+`id` of `undefined`). The corpus's `seed-140` raw repro was this
+(`upstream-engine-crash`, tracked since the v14 cutover); the move records
+(YP22) made the raw adapter's runs reach it in a dozen more seeds.
+
+Patch (edits marked `// YP23`): `exclude` reads `firstStruct` and
+`lastStruct` per range, and a client without structs or ranges is skipped
+(`continue`), not the whole exclusion (`return`).
+
+Oracle: `src/tests/crdt/yp23-exclude.test.ts` (a block set holding one GC
+over 1..59 trimmed by the known ranges 0..5 and 9..34 keeps a skip per range
+and the structs only where the store has nothing; a replica that
+integrated around a gap takes the full state of the writer that removed the
+subtree without throwing, and ends at its state vector), the random corpus's
+raw adapter (seed 140 passes: its pin is gone).
 
 ## Generated declarations (`dts/`)
 

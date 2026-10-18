@@ -40,6 +40,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference (`arch-v2/ref-r3`); green since R3. */
 const row = it;
@@ -369,7 +370,7 @@ describe('operations never read the mirror mid-transaction', () => {
 
 /** A peer on a replica of the mounted document; `push` delivers its writes. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

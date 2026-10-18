@@ -21,6 +21,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { createTestEdytor } from './test.utils.js';
 import { Y } from '$lib/crdt/engine.js';
 import { Awareness, bindCrdt } from '$lib/crdt/index.js';
+import { keepingReplaced } from '../lib/crdt/incarnations.js';
 
 /** A peer's own facade binding (a remote replica's, not the view's document). */
 const peer = bindCrdt(Y).doc;
@@ -116,7 +117,7 @@ describe('gate3: undo in app context', () => {
 				<paragraph>base</paragraph>
 			</root>
 		);
-		const B = new edytor.doc.constructor();
+		const B = keepingReplaced(new edytor.doc.constructor());
 		pump(edytor.doc, B);
 		prime(edytor, B);
 
@@ -142,7 +143,7 @@ describe('gate3: undo in app context', () => {
 				<paragraph>base</paragraph>
 			</root>
 		);
-		const B = new edytor.doc.constructor();
+		const B = keepingReplaced(new edytor.doc.constructor());
 		pump(edytor.doc, B);
 		prime(edytor, B);
 
@@ -168,7 +169,7 @@ describe('gate3: selection anchors under remote structural edits', () => {
 				<paragraph>second</paragraph>
 			</root>
 		);
-		const B = new edytor.doc.constructor();
+		const B = keepingReplaced(new edytor.doc.constructor());
 		pump(edytor.doc, B);
 		prime(edytor, B);
 
@@ -195,7 +196,7 @@ describe('gate3: selection anchors under remote structural edits', () => {
 				<paragraph>abcdef</paragraph>
 			</root>
 		);
-		const B = new edytor.doc.constructor();
+		const B = keepingReplaced(new edytor.doc.constructor());
 		pump(edytor.doc, B);
 		prime(edytor, B);
 
@@ -215,7 +216,7 @@ describe('gate3: selection anchors under remote structural edits', () => {
 
 describe('gate3: lifecycle — listener retention on external doc/awareness', () => {
 	test('Edytor.destroy() releases every listener the editor registered on shared objects', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const awareness = new Awareness(doc);
 		const editors = [];
 		const fixture = (

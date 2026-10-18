@@ -15,12 +15,12 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as t from 'lib0-v14/testing'
 import * as delta from 'lib0-v14/delta'
 import { applyDelta, toDelta } from '../../../src/tests/crdt/harness/delta.js'
-import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
+import { historyOf } from '../../../src/tests/crdt/harness/history.ts'
 
 /**
- * Type-scoped UndoManager: tombstone-subtree transactions reach `changedParentTypes` (the
- * scope check), but origin gating still decides capture — an untracked-origin remote change is
- * not captured.
+ * A type-scoped history (the document's, YP18: the engine has no undo manager): tombstone-subtree
+ * transactions reach the scope check, but origin gating still decides capture — an
+ * untracked-origin remote change is not captured.
  */
 export const testRdtDeletedSubtreeUndoScope = () => {
   const docP = new Y.Doc({ gc: false })
@@ -32,7 +32,7 @@ export const testRdtDeletedSubtreeUndoScope = () => {
   )
   Y.applyUpdate(docQ, Y.encodeStateAsUpdate(docP))
   const rootQ = docQ.get('prosemirror')
-  const um = new UndoManager(rootQ)
+  const um = historyOf(docQ, { scope: rootQ })
   applyDelta(rootQ, delta.create().delete(1).done()) // local delete → captured
   t.assert(um.undoStack.length === 1)
   // remote change inside the deleted paragraph with an untracked origin: in scope via the

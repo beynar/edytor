@@ -130,7 +130,7 @@ const modelMoveOnce = (payloadChars) => {
 		}
 	});
 	const updateBytes = captureUpdateBytes(doc, () =>
-		moveByModel14(doc, 'b4', { parent: null }, 'a145')
+		moveByModel14(doc, 'b4', { parent: null, index: 0 })
 	);
 	return { updateBytes };
 };
@@ -150,7 +150,7 @@ const modelMoveAmortized = () => {
 	let bytes = 0;
 	doc.on('update', (u) => (bytes += u.byteLength));
 	for (let i = 0; i < 500; i++) {
-		moveByModel14(doc, 'b0', { parent: null }, `z${String(i).padStart(4, '0')}`);
+		moveByModel14(doc, 'b0', { parent: null, index: i % 5 });
 	}
 	return { moves: 500, totalBytes: bytes, bytesPerMove: Math.round(bytes / 500) };
 };

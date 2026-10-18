@@ -22,6 +22,7 @@ import { attachDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -53,7 +54,7 @@ const permutations = <T>(xs: T[]): T[][] =>
 
 /** Seed update written by a fixed seed writer (optionally followed by setup ops). */
 const seedUpdate = (clientID: number, content: unknown[], setup?: (ed) => void): Uint8Array => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	const ed = E.create(doc);
 	ed.init({ content });
@@ -78,7 +79,7 @@ type Replica = {
  * the headless facade and its own undo manager are used.
  */
 const replica = (seed: Uint8Array, clientID: number, withView: boolean): Replica => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, seed, REMOTE);
 	const sent = Y.encodeStateVector(doc);
@@ -128,7 +129,7 @@ const deliver = (to: Replica | Y.Doc, update: Uint8Array) => {
 const shapeOf = (ed) => ed.project().children.map((b) => [b.id, ed.blockText(b.id)]);
 
 const reloadShape = (doc: Y.Doc, clientID: number) => {
-	const fresh = new Y.Doc();
+	const fresh = keepingReplaced(new Y.Doc());
 	fresh.clientID = clientID;
 	Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc), REMOTE);
 	return shapeOf(E.create(fresh));
@@ -137,7 +138,7 @@ const reloadShape = (doc: Y.Doc, clientID: number) => {
 /** Every observer delivery order (each update twice) plus a reload of each. */
 const expectObservers = (seed: Uint8Array, updates: Uint8Array[], expected: unknown) => {
 	for (const order of permutations(updates)) {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = 902;
 		Y.applyUpdate(doc, seed, REMOTE);
 		for (const u of order) deliver(doc, u);
@@ -169,7 +170,7 @@ const splitVia = (r: Replica, path: Path, id: string, offset: number, newId: str
 describe('F-D3 — a block hidden under a deleted parent is not a target', () => {
 	for (const via of ['facade'] as const) {
 		test(`p > [c]; delete p; insertText/insertBlock/moveBlock/splitBlock on c refused, zero bytes (${via})`, () => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			doc.clientID = 10;
 			const ed = E.create(doc);
 			ed.init({ content: [p('p', 'pp', [p('c', 'cc')]), p('z', 'zz')] });

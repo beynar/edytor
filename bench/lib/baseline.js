@@ -22,7 +22,9 @@
  *                   `collectBlocks` — since arch-v2 D9 no read pays it;
  *                   kept as the rebuild reference)
  *      `ownMs`      ownership computation (`T.computeOwnership`)
- *      `placeMs`    placement resolution (`M.resolvePlacements`)
+ *      `placeMs`    placement resolution from scratch (the test oracle's
+ *                   greedy `resolvePlacements`; the index decides
+ *                   placements one block at a time)
  *      `runsMs`     maintained-runs reconcile for the touched block
  *      `changeMs`   onChange subscriber cost (differential lane — the
  *                   per-commit skeleton snapshot + diff + callback)
@@ -39,7 +41,6 @@
  * measures the WORKING-TREE TypeScript, not a stale `dist/` build.
  */
 import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
-import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { statsOf } from './stats.js';
@@ -55,11 +56,15 @@ const { bindSync } = await jiti.import(`${here}../../src/lib/crdt/protocols/sync
 // arch-v2 D9: production has no fresh collect (the doc's index is the owner);
 // the from-scratch stages below measure the test oracle's rebuild.
 const { collectBlocks } = await jiti.import(`${here}../../src/tests/oracles/fresh-view.ts`);
+const { resolvePlacements } = await jiti.import(`${here}../../src/tests/oracles/placements.ts`);
+const { engineOps } = await jiti.import(`${here}../../src/lib/crdt/structs.ts`);
 
 const E = bindEdytorDoc(Y14);
 const S = bindSync(Y14);
 const M = E.model;
 const T = E.text;
+// The kept-replaced rule every edytor document carries (the placement read takes it).
+const kept = engineOps(Y14).isKeptReplaced;
 
 const WARMUP = 3;
 const SAMPLES = 30;
@@ -115,7 +120,7 @@ const nestedSpec = (depth, chars = 40) => {
  * only the ownership-record count varies.
  */
 const claimsDoc = (chars, claims) => {
-	const doc = new Y14.Doc();
+	const doc = E.newDoc();
 	E.init(doc, {
 		content: Array.from({ length: claims + 1 }, (_, i) => ({
 			id: `b${i}`,
@@ -173,7 +178,7 @@ const inlineSpec = (k) => ({
  * item space vs the fresh-history baseline.
  */
 const fragmentedDoc = (n, cycles) => {
-	const doc = new Y14.Doc();
+	const doc = E.newDoc();
 	E.init(doc, flatSpec(n));
 	const ed = E.create(doc);
 	const r = rng(1234);
@@ -190,21 +195,21 @@ const fragmentedDoc = (n, cycles) => {
 };
 
 const flatDoc = (n, chars) => {
-	const doc = new Y14.Doc();
+	const doc = E.newDoc();
 	E.init(doc, flatSpec(n, chars));
 	const ed = E.create(doc);
 	return { doc, ed, targetId: `b${Math.floor(n / 2)}` };
 };
 
 const nestedDoc = (depth, chars) => {
-	const doc = new Y14.Doc();
+	const doc = E.newDoc();
 	E.init(doc, nestedSpec(depth, chars));
 	const ed = E.create(doc);
 	return { doc, ed, targetId: 'leaf' };
 };
 
 const specDoc = (spec) => {
-	const doc = new Y14.Doc();
+	const doc = E.newDoc();
 	E.init(doc, spec);
 	const ed = E.create(doc);
 	return { doc, ed };
@@ -291,7 +296,7 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 	const own = T.computeOwnership(doc, blocks);
 	const ownMs = performance.now() - o0;
 	const p0 = performance.now();
-	M.resolvePlacements(blocks, own.ownerOf);
+	resolvePlacements(doc, blocks, own.ownerOf, kept);
 	const placeMs = performance.now() - p0;
 
 	// WU7 counter: the shared model-state read the next command/anchor/
@@ -372,7 +377,7 @@ const lane = (fixture, op, { samples = SAMPLES, warmup = WARMUP, runsId } = {}) 
 	const targetId = built.targetId;
 	built.doc.destroy();
 	const restore = () => {
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		Y14.applyUpdate(doc, snapshot);
 		return { doc, ed: E.create(doc) };
 	};
@@ -401,7 +406,7 @@ const snap = (built) => {
 		snapshot,
 		targetId: built.targetId,
 		restore: () => {
-			const doc = new Y14.Doc();
+			const doc = E.newDoc();
 			Y14.applyUpdate(doc, snapshot);
 			return { doc, ed: E.create(doc) };
 		}
@@ -654,7 +659,8 @@ const anchors = () => {
 };
 
 /**
- * Selective undo — the harness UndoManager over the registry scope. Per sample: seed
+ * Selective undo — the document's history (`ed.createUndoManager`, the one the
+ * editor runs). Per sample: seed
  * a doc, perform K tracked ops, undo the LAST one (selective = the undo
  * step rewrites exactly that transaction's items, not a replay).
  */
@@ -665,17 +671,18 @@ const undo = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc, ed } = f.restore();
 		const targetId = f.targetId;
-		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = ed.createUndoManager({ captureTimeout: 0 });
 		for (let k = 0; k < K; k++) ed.insertText(targetId, caret(k), 'y');
-		// useEvents: um.undo() calls module-level transact() — the doc.transact
-		// method wrap can't see it (this was the zero write/commit attribution).
+		// useEvents: the undo's transaction is timed through the doc's events
+		// (the engine's undo manager called module-level transact(), which the
+		// doc.transact method wrap could not see).
 		const r = instrumentOp(doc, ed, () => um.undo(), { runsId: targetId, useEvents: true });
 		if (i >= WARMUP) samples.push(r);
 		doc.destroy();
 	}
 	return {
 		[`undo-last-of-${K}`]: aggOps(samples),
-		note: 'UndoManager scoped to the blocks registry, captureTimeout 0 → one undo step per op; write/commit timed via beforeTransaction→beforeObserverCalls→afterAllTransactions.'
+		note: "the document's history (ed.createUndoManager), captureTimeout 0 → one undo step per op; write/commit timed via beforeTransaction→beforeObserverCalls→afterAllTransactions."
 	};
 };
 
@@ -694,7 +701,7 @@ const remote = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc } = f.restore();
 		const targetId = f.targetId;
-		const peer = new Y14.Doc({ guid: doc.guid });
+		const peer = E.newDoc({ guid: doc.guid });
 		Y14.applyUpdate(peer, f.snapshot);
 		const peerEd = E.create(peer);
 		const updates = [];
@@ -723,7 +730,7 @@ const remote = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc } = f.restore();
 		const targetId = f.targetId;
-		const peer = new Y14.Doc({ guid: doc.guid });
+		const peer = E.newDoc({ guid: doc.guid });
 		Y14.applyUpdate(peer, f.snapshot);
 		const peerEd = E.create(peer);
 		for (let k = 0; k < K; k++) peerEd.insertText(targetId, caret(k), 'z');
@@ -770,7 +777,7 @@ const staging = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc } = f.restore();
 		const doc2 = f.restore().doc; // independent equivalent for `before`
-		const peer = new Y14.Doc({ guid: doc.guid });
+		const peer = E.newDoc({ guid: doc.guid });
 		Y14.applyUpdate(peer, f.snapshot);
 		const peerEd = E.create(peer);
 		const updates = [];
@@ -782,7 +789,7 @@ const staging = () => {
 			const afterMs = performance.now() - t0;
 			// The pre-WU5 algorithm: scratch ← live state + update → verdict.
 			const t1 = performance.now();
-			const scratch = new Y14.Doc();
+			const scratch = E.newDoc();
 			Y14.applyUpdate(scratch, Y14.encodeStateAsUpdate(doc2));
 			Y14.applyUpdate(scratch, u);
 			const stagedMs = performance.now() - t1;
@@ -924,7 +931,7 @@ const rangeReads = () => {
 	const SLICES = 50;
 	const RUN_CHARS = 200;
 	const built = () => {
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		E.init(doc, {
 			content: [
 				{
@@ -1061,7 +1068,7 @@ const memory = async () => {
 	// die when it returns, and the following tick drops them off the stack.
 	const liveDelta = await (async () => {
 		const { doc, ed } = snap(flatDoc(1000)).restore();
-		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = ed.createUndoManager({ captureTimeout: 0 });
 		for (let k = 0; k < 200; k++) {
 			ed.insertText('b500', 10, 'q');
 			if (k % 2) um.undo();
@@ -1114,7 +1121,7 @@ const steadyState = () => {
 	};
 	const enterBuiltKeystroke = {};
 	for (const n of [500, 1000, 2000]) {
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		E.init(doc, { content: [{ id: 'b0', type: 'paragraph', content: [] }] });
 		const ed = E.create(doc);
 		let last = 'b0';
@@ -1132,7 +1139,7 @@ const steadyState = () => {
 	for (const n of [1000, 5000]) {
 		const text = Array.from({ length: n }, (_, i) => `line ${i} `).join('');
 		const parts = text.split(/(?<= )(?=line)/);
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		E.init(doc, { content: [{ id: 'a', type: 'paragraph', content: [{ kind: 'text', text }] }] });
 		const ed = E.create(doc);
 		const ids = [];
@@ -1153,7 +1160,7 @@ const steadyState = () => {
 	}
 	const structural = {};
 	for (const n of [1000, 5000, 20000]) {
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		E.init(doc, flatSpec(n));
 		const ed = E.create(doc);
 		ed.insertText('b5', 2, 'y');

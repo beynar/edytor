@@ -87,7 +87,7 @@ const keystroke = (n, samples, warmup) => {
 	seed.destroy();
 
 	const restoreOff = () => {
-		const doc = new Y14.Doc();
+		const doc = E.newDoc();
 		Y14.applyUpdate(doc, snapshot);
 		return { doc, ed: E.create(doc) };
 	};

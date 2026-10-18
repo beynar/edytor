@@ -1,186 +1,294 @@
 /**
- * Placement resolution: each block's candidates parsed from its `at` map,
- * and the winning placement of every block (acyclic acceptance in global
- * candidate order, a deterministic root fallback). Pure over replicated
- * state.
+ * Placement reads over the sequences (fork patch YP22): which block a home
+ * slot belongs to, each block's display edges (the sequences that can show
+ * its slot: its live move records', strongest first, then its parent's), the
+ * places of every sequence, and the cycle walk. Which edge a block takes is
+ * the index's acceptance (`text/index/placement.ts` `settle`). Pure over
+ * replicated state.
  */
-import type { EngineNode } from '../engine-api.js';
-import { decodeRank, encodeRank, RANK_VMIN } from './rank.js';
-import { AT, isNodeLike } from '../schema.js';
-import { computeOwners, DEAD, type Owner } from '../text/model.js';
-import type {
-	BlockId,
-	BlockRec,
-	PlacementCand,
-	PlacementValue,
-	ResolvedPlacement
-} from './model.js';
+import type { EngineDoc, EngineNode } from '../engine-api.js';
+import { isNodeLike, REGISTRY_KEY } from '../schema.js';
+import { baseIdOf, incarnationId, incarnationsOf, LIVE_WRITERS } from '../incarnations.js';
+import { attrItems, firstItem, itemOf, type StoreStruct } from '../structs.js';
+import {
+	cmpStamp,
+	isBlockSlot,
+	isRecord,
+	itemAt,
+	sameUnit,
+	stampOf,
+	unitsOf,
+	type BlockSlot,
+	type Entry,
+	type SeqItem,
+	type Stamp,
+	type Unit
+} from './slots.js';
+import { DEAD, type Owner } from '../text/model.js';
+import type { BlockId } from './model.js';
+
+/** A block's home slot: the owner of the sequence holding it (`null`: the root) and its unit. */
+export type SlotRef = Unit & { parent: BlockId | null };
+
+/** The stamp of a home slot's edge: below every record's. */
+const HOME = 0;
+/** The stamp of a block with no slot: below every edge (it shows at the root's tail). */
+export const NO_SLOT: Stamp = [-1, 0, 0];
 
 /**
- * Tiebreak for rehome ranks — the placement fallback is PURE replicated
- * state (identical on every replica), so the minted rank must not depend
- * on the local `doc.clientID` or `Math.random`: a fixed value keeps the
- * resolution deterministic everywhere. Ordering between rehomed blocks is
- * carried by the `v` digit (each successive rehome mints below the last).
+ * A block's display edge: the owner of the sequence that shows its slot
+ * (`null`: the root; `undefined`: a node that is no block of the document),
+ * the record it shows through (`null`: at home), the edge's stamp, and the
+ * item of its displaying unit (the slot's, or the record).
  */
-const REHOME_TIE = 0;
-
-/**
- * Deterministic rank strictly below `min` — the candidate-less rehome
- * fallback. The old floor sentinel `encodeRank([{v: RANK_VMIN,
- * t: 0}])` sorted first but was un-insertable-above: `rankBetween(
- * undefined, that)` hits the `rSeg.v <= RANK_VMIN` guard and throws
- * `RankSpaceExhausted` — reachable with ZERO boundary inserts (corpus
- * seed 96). Minting `min[0].v - 1` keeps the documented "orphans rehome
- * to the FRONT of the root" behavior while leaving digit headroom for
- * legal inserts above the rehomed block.
- *
- * `min` = the current minimum rank among placements displaying at the
- * root, `undefined` when the root list is empty (mint `{v:0}` — the same
- * canonical first key `rankBetween(undefined, undefined)` emits). At the
- * absolute floor (`min[0].v` already `RANK_VMIN` — unreachable through
- * any legal write; nothing sorts below it) join `min`'s tie instead of
- * minting an unencodable digit.
- */
-const rehomeRankBelow = (min: string | undefined): string => {
-	if (min === undefined) return encodeRank([{ v: 0, t: REHOME_TIE }]);
-	const v = decodeRank(min)[0].v;
-	if (v <= RANK_VMIN) return min;
-	return encodeRank([{ v: v - 1, t: REHOME_TIE }]);
+export type Edge = {
+	parent: BlockId | null | undefined;
+	via: SeqItem | null;
+	stamp: Stamp;
+	item: SeqItem;
 };
 
-/** Total order on candidate stamps — matches the ADR's conflict order. */
-const cmpStamp = (aSeq: number, aClient: number, bSeq: number, bClient: number): number =>
-	aSeq - bSeq || aClient - bClient;
-
-/** Global acceptance order: (seq, clientId, blockId) descending. */
-type OrderedCand = PlacementCand & { blockId: BlockId };
-
-/** Parse the `at` map of a block node into sorted candidates. */
-export const candidatesOf = (node: EngineNode): PlacementCand[] => {
-	const at = node.getAttr(AT);
-	const cands: PlacementCand[] = [];
-	if (isNodeLike(at)) {
-		at.forEachAttr((v: unknown, key: string) => {
-			const dot = key.indexOf('.');
-			const val = v as PlacementValue;
-			if (dot <= 0 || val == null || typeof val !== 'object' || typeof val.r !== 'string') return;
-			cands.push({
-				key,
-				seq: Number(key.slice(0, dot)),
-				client: Number(key.slice(dot + 1)),
-				p: (val.p as BlockId | null) ?? null,
-				r: val.r
-			});
-		});
-	}
-	cands.sort((a, b) => cmpStamp(b.seq, b.client, a.seq, a.client));
-	return cands;
+/** The registry's current value item for `id` (`undefined`: none). */
+type RegistryItem = StoreStruct & {
+	id: { client: number; clock: number };
+	deleted: boolean;
+	parentSub: string | null;
+	left: RegistryItem | null;
+	right: RegistryItem | null;
+	content: { type?: unknown };
 };
 
 /**
- * Resolve every block's winning placement, in global candidate order
- * `(seq, clientId, blockId)` descending. A candidate is accepted iff its
- * DISPLAY edge cannot reach back to the block through already-accepted
- * display edges; rejected candidates fall through to the block's next
- * candidate, then to a deterministic root fallback. Pure — reads only
- * replicated state, writes nothing.
- *
- * The relation kept acyclic is the COMPOSED display-parent relation
- * `b ↦ owner(parent(b))` (see `displayParentOf`): a placement parent that
- * was merged away resolves to its claim owner, so the raw `pl.parent`
- * graph being acyclic is NOT sufficient — a merge claim can redirect a
- * display edge back into the block's own subtree (e.g. `A` merged into
- * `B` while `B` sits under `A`, or `del` resurrection re-arming a claim).
- * Because the claim-owner map is computed independently of placements
- * (claims live on `claims` lists), the acceptance test composes the
- * two: the candidate's tentative display edge is `ownerOf(p)` — a live
- * self-owned block or `null` (root). A deleted parent is no sink: its
- * unmarked children display in its slot (read-time promotion,
- * {@link displaySlotOf}), so the walk passes through it along its own
- * accepted placement.
- *
- * `ownerOf` is injectable so callers can share an ownership context they
- * already computed; standalone callers get the map derived from the
- * block records (pure over replicated state — claims are `claims` items).
+ * The block a home slot `{ b: id }` written by `client` belongs to: `id`
+ * when its registry value is `client`'s, else the losing incarnation
+ * `client` wrote (`id.same.concurrent`: each creation wrote its own slot),
+ * else `id` (a lone slot).
  */
-export const resolvePlacements = (
-	blocks: Map<BlockId, BlockRec>,
-	ownerOf?: (b: BlockId) => Owner
-): Map<BlockId, ResolvedPlacement> => {
-	let owner = ownerOf;
-	if (!owner) {
-		const owners = computeOwners(blocks);
-		owner = (b: BlockId): Owner => owners.get(b) ?? DEAD;
+export const slotOwner = (
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	id: BlockId,
+	client: number
+): BlockId => {
+	const current = attrItems<RegistryItem>(registry).get(id);
+	if (current === undefined || current.id.client === client) return id;
+	for (let it = current.left; it !== null && it.parentSub === id; it = it.left)
+		if (it.id.client === client && it.id.client >= LIVE_WRITERS && kept(it))
+			return incarnationId(id, it);
+	return id;
+};
+
+/**
+ * The block whose sequence `node` is (`null`: the registry root), or
+ * `undefined` for a node that is no block of the document (an atom, a data
+ * root, a seed's losing incarnation).
+ */
+export const ownerOfNode = (
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	node: EngineNode
+): BlockId | null | undefined => {
+	if (node === registry) return null;
+	const it = itemOf<RegistryItem>(node);
+	if (it === null || it.parent !== registry || typeof it.parentSub !== 'string') return undefined;
+	if (!it.deleted) return it.parentSub;
+	if (!kept(it) || it.id.client < LIVE_WRITERS) return undefined;
+	return incarnationId(it.parentSub, it);
+};
+
+/**
+ * The owner of the sequence block `home`'s slot shows in as the engine
+ * stands — its mover's, else its home's (`undefined`: gone, not arrived, or
+ * a node that is no block): the strongest edge's parent without building the
+ * edges (`candidatesOf`).
+ */
+export const edgeParentOf = (
+	doc: EngineDoc,
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	home: SlotRef
+): BlockId | null | undefined => {
+	const item = itemAt(doc, home);
+	if (item === null || item.gone === true) return undefined;
+	const r = item.mover ?? null;
+	return r === null || r.deleted
+		? home.parent
+		: ownerOfNode(registry, kept, r.parent as EngineNode);
+};
+
+/**
+ * The display edges block `home`'s slot can take, the strongest first: one per
+ * live move record naming it, by descending `(priority, client, clock)` (the
+ * engine keeps a unit's movers in that order; the first is its mover), then
+ * its home slot. A block shows at the
+ * first one that closes no cycle (the later move wins); when that is not the
+ * first, it is back where it stood before the move a cycle dropped: the
+ * record before it, else home. `[]` when the slot is gone or has not arrived.
+ * `at`: the slot's item when the caller read it already (a rebuild's
+ * collection: no store lookup).
+ */
+export const candidatesOf = (
+	doc: EngineDoc,
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	home: SlotRef,
+	at?: SeqItem
+): Edge[] => {
+	const item = at ?? itemAt(doc, home);
+	if (item === null || item.gone === true) return [];
+	const out: Edge[] =
+		(item.movers as SeqItem[] | null | undefined)
+			?.filter((r) => !r.deleted)
+			.map((r) => ({
+				parent: ownerOfNode(registry, kept, r.parent as EngineNode),
+				via: r,
+				stamp: stampOf(r),
+				item: r
+			})) ?? [];
+	out.push({ parent: home.parent, via: null, stamp: [HOME, home.c, home.k], item });
+	return out;
+};
+
+/**
+ * The block slots that can show in one sequence, in its order, as the index
+ * reads it: a slot item's units (moved away or not: a block a cycle sends back
+ * home shows there), a live record's units in the order it names them (a
+ * block a cycle sends back to an older record shows at it). Which block shows
+ * at a position is the index's acceptance; these are the places.
+ */
+export const positionsOfItem = (doc: EngineDoc, it: SeqItem): Entry[] =>
+	unitsOf(doc, it, (_, value) => isBlockSlot(value));
+
+/**
+ * The places before unit `home` shown at `edge`, nearest first: the units its
+ * record names before it (or its slot item's earlier units), then each item to
+ * the left, last place first. The index's order keys walk them to the nearest
+ * block that shows where it was found.
+ */
+export function* slotsBefore(doc: EngineDoc, edge: Edge, home: Unit): Generator<Entry> {
+	const own = positionsOfItem(doc, edge.item);
+	let at = own.findIndex((e) => sameUnit(e.unit, home));
+	if (at < 0) at = edge.via === null ? 0 : own.length;
+	for (let j = at - 1; j >= 0; j--) yield own[j]!;
+	for (let p = edge.item.left; p !== null; p = p.left) {
+		const list = positionsOfItem(doc, p);
+		for (let j = list.length - 1; j >= 0; j--) yield list[j]!;
 	}
-	const ordered: OrderedCand[] = [];
-	for (const [id, rec] of blocks) {
-		for (const c of rec.cands) ordered.push({ ...c, blockId: id });
+}
+
+/** Where a cycle check walks: the display parent of `at` through the accepted edges. */
+type Accepted = ReadonlyMap<BlockId, { parent: BlockId | null }>;
+
+/**
+ * The blocks on the cycle a display edge `block → parent` would close
+ * through `accepted` edges and the claim owners (`ownerOf`: a live parent's
+ * edge is its owner's, a deleted one is walked itself), or `null` when it
+ * closes none. The members are `block` and every block whose edge the walk
+ * followed.
+ */
+export const cycleThrough = (
+	accepted: Accepted,
+	ownerOf: (b: BlockId) => Owner,
+	block: BlockId,
+	parent: BlockId | null
+): BlockId[] | null => {
+	const members = [block];
+	for (let cur = parent, steps = 0; cur !== null; steps++) {
+		const o = ownerOf(cur);
+		const at = o === DEAD ? cur : o;
+		if (at === block) return members;
+		const next = accepted.get(at);
+		if (next === undefined || steps > accepted.size) return null;
+		members.push(at);
+		cur = next.parent;
 	}
-	ordered.sort(
-		(a, b) => cmpStamp(b.seq, b.client, a.seq, a.client) || b.blockId.localeCompare(a.blockId)
-	);
-	const accepted = new Map<BlockId, ResolvedPlacement>();
-	for (const cand of ordered) {
-		if (accepted.has(cand.blockId)) continue;
-		let p = cand.p;
-		if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
-		if (p !== null) {
-			// Reject the candidate iff the block already is a display
-			// ancestor of `p` through accepted edges: a live parent's edge
-			// is its owner's, a deleted one is walked itself (its children
-			// take its slot). Accepted edges are acyclic by induction, so
-			// the walk always terminates.
-			let cyclic = false;
-			for (let cur: BlockId | null = p; cur !== null; ) {
-				const o = owner(cur);
-				const at = o === DEAD ? cur : o;
-				if (at === cand.blockId) {
-					cyclic = true;
-					break;
-				}
-				const cp = accepted.get(at);
-				if (cp === undefined) break; // edge not yet accepted → cannot cycle
-				cur = cp.parent;
+	return null;
+};
+
+/** The order of the blocks at the root's tail (rejected or slotless): by their edge's stamp, then id. */
+export const byTail = (
+	a: { id: BlockId; stamp: Stamp },
+	b: { id: BlockId; stamp: Stamp }
+): number => cmpStamp(a.stamp, b.stamp) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * The home slot of block `id` among the slots naming its registry id
+ * (`slots`: every `{ b }` slot by `b`): the one its writer wrote
+ * (`slotOwner`) — the lowest `(client, clock)` when several do (a redo's
+ * copy beside the original) — or `null`.
+ */
+export const homeOf = (
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	slots: ReadonlyMap<BlockId, readonly SlotRef[]>,
+	id: BlockId
+): SlotRef | null => {
+	const base = baseIdOf(id);
+	let best: SlotRef | null = null;
+	for (const ref of slots.get(base) ?? []) {
+		if (slotOwner(registry, kept, base, ref.c) !== id) continue;
+		if (best === null || ref.c < best.c || (ref.c === best.c && ref.k < best.k)) best = ref;
+	}
+	return best;
+};
+
+/** The block slots of every sequence: by the id they name (with each one's item), and each sequence's places in order. */
+export type Slots = {
+	slots: Map<BlockId, SlotRef[]>;
+	items: Map<SlotRef, SeqItem>;
+	places: Map<BlockId | null, Entry[]>;
+};
+
+/** Every registry node and its kept incarnations, with the block id each stands for (the sequences' owners). */
+export const registryOwners = (
+	registry: EngineNode,
+	kept: (item: unknown) => boolean
+): { id: BlockId; node: EngineNode }[] => {
+	const owners: { id: BlockId; node: EngineNode }[] = [];
+	// The registry's live entries, read from its items (one pass, no attr lookups).
+	for (const [id, item] of attrItems<RegistryItem>(registry)) {
+		if (item.deleted) continue;
+		const node = item.content.type;
+		if (isNodeLike(node)) owners.push({ id, node });
+		owners.push(...incarnationsOf(registry, id, kept));
+	}
+	return owners;
+};
+
+/**
+ * Every block slot of every sequence (the root's, each block's), each item
+ * read once: the slots by the id they name (a slot item's units, moved away
+ * or not, none gone), and each sequence's places in order
+ * (`positionsOfItem`).
+ */
+export const collectSlots = (
+	doc: EngineDoc,
+	owners: Iterable<{ id: BlockId; node: EngineNode }>
+): Slots => {
+	const slots = new Map<BlockId, SlotRef[]>();
+	const items = new Map<SlotRef, SeqItem>();
+	const places = new Map<BlockId | null, Entry[]>();
+	const read = (owner: BlockId | null, node: EngineNode): void => {
+		let list: Entry[] | undefined;
+		for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
+			const here = positionsOfItem(doc, it);
+			if (here.length === 0) continue;
+			if (list === undefined) places.set(owner, (list = []));
+			for (const e of here) {
+				list.push(e);
+				if (e.via !== null) continue;
+				const ref: SlotRef = { parent: owner, c: e.unit.c, k: e.unit.k };
+				const b = (e.value as BlockSlot).b;
+				const named = slots.get(b);
+				if (named === undefined) slots.set(b, [ref]);
+				else named.push(ref);
+				items.set(ref, it);
 			}
-			if (cyclic) continue; // try this block's next candidate
 		}
-		accepted.set(cand.blockId, { parent: p, rank: cand.r });
-	}
-	// Fallback: blocks whose candidates were all cycle-rejected are rehomed
-	// at the root under their argmax rank; a block with NO surviving
-	// candidate mints a deterministic rank strictly below the current root
-	// minimum (rehomeRankBelow; see its comment). The mint
-	// must stay deterministic across replicas: it depends only on the
-	// accepted map + block ids, never on clientID/Math.random.
-	const rehomed: BlockRec[] = [];
-	for (const [id, rec] of blocks) {
-		if (accepted.has(id)) continue;
-		if (rec.cands.length > 0) {
-			accepted.set(id, { parent: null, rank: rec.cands[0].r });
-		} else {
-			rehomed.push(rec);
-		}
-	}
-	if (rehomed.length > 0) {
-		// Minimum rank among placements that DISPLAY at the root (a `null`
-		// parent edge is the only way a display edge is `null` — `owner()`
-		// never returns null). Superset-of-visible is fine: minting below
-		// even an invisible sibling still sorts the rehome first among the
-		// visible list.
-		let min: string | undefined;
-		for (const pl of accepted.values()) {
-			if (pl.parent === null && (min === undefined || pl.rank < min)) min = pl.rank;
-		}
-		// Descending-id mint order → ascending-id display order, the same
-		// (rank, id)-tie order the old shared MIN_RANK produced. Each mint
-		// goes below the running minimum, so stacked rehomes always get
-		// distinct deterministic ranks.
-		rehomed.sort((a, b) => b.id.localeCompare(a.id));
-		for (const rec of rehomed) {
-			min = rehomeRankBelow(min);
-			accepted.set(rec.id, { parent: null, rank: min });
-		}
-	}
-	return accepted;
+	};
+	read(null, doc.get(REGISTRY_KEY));
+	for (const { id, node } of owners) read(id, node);
+	return { slots, items, places };
 };
+
+export { isRecord, type Stamp };

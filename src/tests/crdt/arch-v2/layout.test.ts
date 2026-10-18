@@ -391,7 +391,9 @@ describe('layout.dissolving: deleting a column or a layout', () => {
 				para('Z')
 			],
 			(ed) => ed.deleteBlocks(['K2']),
-			'P:paragraph C:columns[K1:column[A:paragraph],K3:column[D:paragraph]] B:paragraph Z:paragraph'
+			'P:paragraph C:columns[K1:column[A:paragraph],K3:column[D:paragraph]] B:paragraph Z:paragraph',
+			// The delete writes no placement: a reader without the layout role sees B in the layout at K2's place.
+			{ writes: false }
 		));
 
 	it('Ada deletes a column ‖ Bob adds a block to it → Bob’s block follows', () => {

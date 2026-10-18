@@ -15,12 +15,12 @@
  * - F-D21 (D-21, pinned): a split re-inserts the merge claims that follow it
  *   on the new block, so a concurrent undo of that merge leaves the claimed
  *   block merged into the new block.
- * - F-D19 (late redo, orchestrator requirement 3): after the paste's undo and
- *   B's typing into the emptied split-born block, A's late redo shows
- *   `HelloQ world` in P while `u` keeps `z` — nothing lost or doubled. Since
- *   `hist.undo.withdraw` (2026-09-28) the contract's own undo keeps P's text
- *   (and u's boundary): the dead-boundary rows run A's history as a client
- *   without the rule (P12), and one row pins the contract's answer.
+ * - F-D19 (late redo, orchestrator requirement 3): since `hist.undo.withdraw`
+ *   (2026-09-28) the undo of the paste keeps P's text (and u's boundary), and
+ *   A's late redo returns A's text where it was while `u` keeps `z` — nothing
+ *   lost or doubled. The dead-boundary rows build their premise without a
+ *   history: A removes P's node outright, the state a peer that deletes the
+ *   node leaves (no history does since the withdraw rule).
  * - Orchestrator requirements 2+4: concurrent first typing into a
  *   boundary-dead streamless block on two replicas keeps both typings; the
  *   block's own text is written by a writer derived from the block and its
@@ -35,7 +35,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
-import { UndoManager } from '../harness/undo.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -58,7 +58,7 @@ const para = (id: string, text?: string) => ({
 });
 
 const seeded = (blocks) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	E.seed(doc, blocks);
 	return Y.encodeStateAsUpdate(doc);
 };
@@ -66,7 +66,7 @@ const seeded = (blocks) => {
 type Replica = { doc: Y.Doc; ed: ReturnType<typeof E.create>; sent: Uint8Array };
 
 const replica = (base: Uint8Array, clientID: number, config = {}): Replica => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, base, REMOTE);
 	return { doc, ed: E.create(doc, config), sent: Y.encodeStateVector(doc) };
@@ -102,7 +102,7 @@ const sync = (x: Replica, y: Replica, order: 'xy' | 'yx' = 'xy') => {
 };
 
 const reload = (doc: Y.Doc, clientID: number) => {
-	const fresh = new Y.Doc();
+	const fresh = keepingReplaced(new Y.Doc());
 	fresh.clientID = clientID;
 	Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc), REMOTE);
 	return E.create(fresh);
@@ -171,7 +171,7 @@ describe('F-D15 — history independence: a left caret at a block start stays th
 	const cases = {
 		'(a) own text': seeded([para('alpha', 'alpha'), para('d2', 'Hello')]),
 		'(b) split-born': (() => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			E.seed(doc, [para('alpha', 'alphaHello')]);
 			const ed = E.create(doc);
 			expect(ed.splitBlock('alpha', 5, 'd2').status).toBe('applied');
@@ -262,21 +262,20 @@ describe('F-D21 (D-21) — M merges c into b then undoes ‖ S splits b before c
 
 /**
  * A pastes P `Hello world`; B presses Enter inside P at 5 (creating `u`) and
- * types `Q` at u's start; A undoes the paste. Returns both replicas synced.
+ * types `Q` at u's start; A then removes P's node outright (its registry
+ * entry, so its text — and u's boundary in it — goes with it). Returns both
+ * replicas synced.
  *
- * Since `hist.undo.withdraw` (2026-09-28) an undo never deletes the block the
- * step created, so P's text — and `u`'s boundary in it — survives the undo.
- * A boundary still dies with its host when the host node is deleted: a
- * concurrent same-id creation, or a client without the rule (P12) undoing the
- * paste. A's history here is such a client's (a bare engine manager over the
- * registry), so the streamless-block rows below keep their premise; the
- * contract's own answer is the `hist.undo.withdraw` row after them.
+ * Since `hist.undo.withdraw` (2026-09-28) no history deletes the block a step
+ * created, so an undo never leaves this state (the row after this helper's
+ * rows pins the contract's answer); a boundary still dies with its host when
+ * the host's node is deleted, which is the state these rows read: the write
+ * of a peer that removes the node, done here as a raw engine write.
  */
 const deadBoundary = (ids, config: (who: 'A' | 'B') => object = () => ({})) => {
 	const base = seeded([para('x', 'x')]);
 	const A = replica(base, ids.a, config('A'));
 	const B = replica(base, ids.b, config('B'));
-	const um = new UndoManager(A.doc.get('blocks'), { captureTimeout: 0 });
 	expect(
 		A.ed.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'P', type: 'paragraph', content: [{ kind: 'text', text: 'Hello world' }] }
@@ -287,36 +286,15 @@ const deadBoundary = (ids, config: (who: 'A' | 'B') => object = () => ({})) => {
 	expect(B.ed.insertText('u', 0, 'Q').status).toBe('applied');
 	deliver(A, send(B));
 	expect(A.ed.blockText('u')).toBe('Q world');
-	expect(um.undo()).not.toBe(null);
+	A.doc.transact(() => A.doc.get('blocks').deleteAttr('P'));
 	deliver(B, send(A));
 	for (const r of [A, B]) {
 		expect(r.ed.isVisibleBlock('P')).toBe(false);
 		expect(r.ed.isVisibleBlock('u')).toBe(true);
 		expect(r.ed.blockText('u')).toBe('');
 	}
-	return { A, B, um };
+	return { A, B };
 };
-
-describe('F-D19 late redo (requirement 3), pre-contract history: P shows HelloQ world while u keeps z', () => {
-	for (const ids of CLIENT_IDS) {
-		for (const order of ['xy', 'yx'] as const) {
-			red(`A=${ids.a} B=${ids.b} · ${order}`, () => {
-				const { A, B, um } = deadBoundary(ids);
-				expect(B.ed.insertText('u', 0, 'z').status).toBe('applied');
-				expect(um.redo()).not.toBe(null);
-				sync(A, B, order);
-				const expected = [
-					['x', 'x'],
-					['P', 'HelloQ world'],
-					['u', 'z']
-				];
-				for (const ed of [A.ed, B.ed, reload(A.doc, 900), reload(B.doc, 901)]) {
-					expect(shape(ed)).toEqual(expected);
-				}
-			});
-		}
-	}
-});
 
 describe('F-D19 under hist.undo.withdraw: the undo keeps B’s split and Q; the late redo returns A’s text where it was', () => {
 	for (const ids of CLIENT_IDS) {

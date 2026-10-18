@@ -25,6 +25,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -50,7 +51,7 @@ const REMOTE = { remote: true };
 const shape = (ed) => ed.project().children.map((b) => [b.id, ed.blockText(b.id)]);
 
 const replica = (seedUpdate: Uint8Array, clientID: number) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, seedUpdate, REMOTE);
 	return { doc, ed: E.create(doc) };
@@ -70,7 +71,7 @@ const capture = (doc: Y.Doc, fn: () => void): Uint8Array => {
 };
 
 const reloadShape = (doc: Y.Doc, clientID: number) => {
-	const fresh = new Y.Doc();
+	const fresh = keepingReplaced(new Y.Doc());
 	fresh.clientID = clientID;
 	Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc), REMOTE);
 	return shape(E.create(fresh));
@@ -97,7 +98,7 @@ describe('F-U5 — A deletes bb; B edits cc; A undoes → bb restored, cc keeps 
 					bSawDelete ? 'saw' : 'did not see'
 				} the delete · A: ${aOrder}`;
 				test(name, () => {
-					const seedDoc = new Y.Doc();
+					const seedDoc = keepingReplaced(new Y.Doc());
 					seedDoc.clientID = ids.seed;
 					E.create(seedDoc).init({ content: [p('aa'), p('bb'), p('cc')] });
 					const seedUpdate = Y.encodeStateAsUpdate(seedDoc);

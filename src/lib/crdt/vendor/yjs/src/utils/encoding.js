@@ -29,7 +29,7 @@ import { UpdateEncoder } from './UpdateEncoder.js'
 import { LazyStructReader, LazyStructWriter, writeStructToLazyStructWriter, finishLazyStructWriting } from './updates.js'
 import { readBlockSet, writeBlockSet } from './BlockSet.js'
 import { Skip } from '../structs/Skip.js'
-import { Item, applyPendingHolds } from '../structs/Item.js' // YP20: applyPendingHolds
+import { Item, applyPending, ContentMove } from '../structs/Item.js' // YP20, YP22: applyPending, ContentMove
 import { GC } from '../structs/GC.js'
 import { Doc } from './Doc.js'
 import { transact } from './Transaction.js'
@@ -287,7 +287,7 @@ export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new
     // start = performance.now()
     // console.log('time to merge: ', performance.now() - start) // @todo remove
     // start = performance.now()
-    const arrived = Array.from(ss.clients.keys()) // YP20: a hold of this update may wait for another of its clients
+    const arrived = Array.from(ss.clients.keys()) // YP20, YP22: a hold or a move of this update may wait for another of its clients
     const restStructs = integrateStructs(transaction, store, ss)
     const pending = store.pendingStructs
     if (pending) {
@@ -313,7 +313,7 @@ export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new
     }
     // console.log('time to integrate: ', performance.now() - start) // @todo remove
     // start = performance.now()
-    if (store.pendingHolds !== null) applyPendingHolds(transaction, arrived) // YP20: the holds that waited for what just arrived
+    if (store.pendingHolds !== null) applyPending(transaction, arrived) // YP20: the holds that waited for what just arrived
     const dsRest = readAndApplyDeleteSet(structDecoder, transaction, store)
     if (store.pendingDs) {
       // @todo we could make a lower-bound state-vector check as we do above
@@ -530,6 +530,16 @@ const getMissing = (struct, transaction, store) => {
   }
   if (parent && parent.constructor === ID && (parent.clock >= store.getClock(parent.client) || store.skips.hasId(parent))) {
     return parent.client
+  }
+  if (struct.content.constructor === ContentMove) { // YP22: a move record waits for the units it names and stands at
+    // (a skip stands for none of them: its sort reads the units' order, `sourceOrder`)
+    const { ids, at } = /** @type {ContentMove} */ (struct.content)
+    if (at !== null) {
+      for (const id of at) if (id.clock >= store.getClock(id.client) || store.skips.hasId(id)) return id.client
+    }
+    for (let i = 0; i < ids.length; i += 3) {
+      if (ids[i + 1] + ids[i + 2] > store.getClock(ids[i]) || store.skips.intersects(ids[i], ids[i + 1], ids[i + 2])) return ids[i]
+    }
   }
   // We have all missing ids, now find the items
   if (origin) {

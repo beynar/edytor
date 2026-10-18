@@ -25,6 +25,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { blocksBetween } from '../../order.helpers.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -42,14 +43,14 @@ const CONTENT = [p('X', 'xx', [p('box', 'bb', [p('A', 'aa')], 'box')]), p('Y', '
 const roles = { box: { island: true } };
 
 const seed = (): Uint8Array => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 10;
 	E.create(doc, { roleOf: (t: string) => roles[t] }).init({ content: CONTENT });
 	return Y.encodeStateAsUpdate(doc);
 };
 
 const facade = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 20;
 	Y.applyUpdate(doc, seed(), REMOTE);
 	return E.create(doc, { roleOf: (t: string) => roles[t] });
@@ -59,7 +60,7 @@ const noopSnippet = (() => null) as never;
 const boxPlugin = () => ({ blocks: { box: { snippet: noopSnippet, island: true } } });
 
 const view = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 30;
 	Y.applyUpdate(doc, seed(), REMOTE);
 	const document = attachDocument(doc);

@@ -2,7 +2,7 @@
  * Block deletion (`del.blocks.promote`): only the members leave, the
  * unselected children of a deleted block take its slot.
  */
-import { promotedRank, type BlockId } from '../placement/model.js';
+import type { BlockId } from '../placement/model.js';
 import { ref } from './plan.js';
 import type { Prepared } from './types.js';
 import type { OpsContext } from './steps.js';
@@ -23,7 +23,6 @@ export const deleteOps = (c: OpsContext) => {
 		live,
 		REFUSED,
 		plan,
-		moveTo,
 		settle,
 		emptyingAll,
 		emptied,
@@ -79,49 +78,29 @@ export const deleteOps = (c: OpsContext) => {
 		const writes = roots.flatMap((root) => {
 			const pos = positionOf(root)!;
 			const chunk: BlockId[] = [];
-			const kept: { id: BlockId; from: BlockId; rank: string }[] = [];
-			// Each kept child moves to the rank read-time promotion gives it
-			// (`promotedRank`), so a block a peer puts under a member meanwhile
-			// takes the slot in the member's order among them. Right after the
-			// root: a flow placed in the root's slot precedes them.
-			const walk = (b: BlockId, slotRank: string): void => {
+			const kept: { id: BlockId; from: BlockId }[] = [];
+			// The kept children keep their home slots: the read shows them in the
+			// root's slot, in its order (a block a peer puts under a member
+			// meanwhile takes the slot in that order too); only their kinds are
+			// written, as the slot's parent settles them.
+			const walk = (b: BlockId): void => {
 				chunk.push(b);
 				for (const kid of kids.get(b) ?? []) {
-					const rank = promotedRank(slotRank, kid.rank);
-					if (set.has(kid.id)) walk(kid.id, rank);
-					else kept.push({ id: kid.id, from: b, rank });
+					if (set.has(kid.id)) walk(kid.id);
+					else kept.push({ id: kid.id, from: b });
 				}
 			};
-			walk(root, kids.get(pos.parent)![pos.index]!.rank);
+			walk(root);
 			members.push(...chunk);
 			if (kept.length > 0) promoting.add(root);
-			// A layout shows only its items: a deleted item's blocks land right
-			// after it, where read-time promotion shows them (`layout.only-items`).
+			// A layout shows only its items: a deleted item's blocks show right
+			// after the layout (`layout.only-items`), settled for its parent.
 			const item = pos.parent === null ? undefined : itemKindOf(pos.parent);
-			const at = (k: { id: BlockId }) => item !== undefined && blockTypeOf(k.id) !== item;
-			const out = kept.filter(at);
-			const inside = kept.filter((k) => !at(k));
-			const lpos = out.length > 0 ? positionOf(pos.parent!)! : null;
-			const lrank = lpos && kids.get(lpos.parent)![lpos.index]!.rank;
+			const out = (k: { id: BlockId }) => item !== undefined && blockTypeOf(k.id) !== item;
 			return [
-				...moveTo(
-					inside.map((k) => k.id),
-					pos.parent,
-					pos.index + 1,
-					inside.map((k) => k.rank)
+				...kept.flatMap((k) =>
+					settle(k.from, [k.id], out(k) ? positionOf(pos.parent!)!.parent : pos.parent)
 				),
-				...inside.flatMap((k) => settle(k.from, [k.id], pos.parent)),
-				...(lpos === null
-					? []
-					: [
-							...moveTo(
-								out.map((k) => k.id),
-								lpos.parent,
-								lpos.index + 1,
-								out.map((k) => promotedRank(lrank!, k.rank))
-							),
-							...out.flatMap((k) => settle(k.from, [k.id], lpos.parent))
-						]),
 				deleting(root, chunk)
 			];
 		});

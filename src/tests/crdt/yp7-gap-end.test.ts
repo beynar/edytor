@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
-import { undoManagerOf } from './harness/undo.js';
+import { historyOf } from './harness/history.js';
 import { installNodeReads } from './harness/node-reads.js';
 
 /** Red on the reference (no YP7): `it.fails` in the tests-first commit. */
@@ -216,7 +216,8 @@ const program = (E, seed, steps) => {
 	};
 	const a = mk(4242);
 	const b = mk(4343);
-	const um = new (E.UndoManager ?? undoManagerOf(E))(a.get('t'), { captureTimeout: 0 });
+	// The document's own history (the editor's), over this engine's tree: one history on both sides.
+	const um = historyOf(a, { Y: E, scope: a.get('t'), captureTimeout: 0 });
 	const snaps = [];
 	const marks = [
 		['b', true],

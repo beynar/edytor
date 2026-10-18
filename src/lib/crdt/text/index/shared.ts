@@ -6,7 +6,7 @@
 import { cloneJsonSafe } from '../../../utils/json.js';
 import type { EngineNode } from '../../engine-api.js';
 import type { BlockId, BlockRec } from '../../placement/model.js';
-import { AT, CONTENT, DATA, DATA_LEAF_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../../schema.js';
+import { CONTENT, DATA, DATA_LEAF_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../../schema.js';
 import type { ContentRun, DisplayRoles } from '../runs.js';
 import type { SelfChecks } from './state.js';
 
@@ -18,18 +18,27 @@ export const ENTRY_FACET = '';
 
 /** The facet name of a write to a block's `content` attr itself (a streamless block's own text). */
 export const CONTENT_ATTR = '#content';
+/**
+ * The facet name of a write to a block's sequence (fork patch YP22): its
+ * children's home slots, its data arrays' item slots and its move records.
+ */
+export const SEQ_FACET = '#seq';
+/** The facet the fold adds when a sequence write changed the block's data (its arrays' items). */
+export const DATA_SEQ_FACET = '#data';
 
 /**
  * Facets of a block node that can change derived state: `content` (a
  * sequence edit of the block's own text), `structure` (claims, delete marks,
- * the nonce, the `content` attr, unknown attrs), `at` (placement candidates —
- * placements and order only) and `meta` (type/data — metadata only).
+ * the nonce, the `content` attr, unknown attrs), `seq` (its sequence: slots
+ * and records — placements and order, or its arrays' items) and `meta`
+ * (type/data — metadata only).
  */
-export type Facet = 'content' | 'structure' | 'at' | 'meta' | 'ignore';
+export type Facet = 'content' | 'structure' | 'seq' | 'meta' | 'ignore';
 
 export const facetOf = (attr: string): Facet => {
 	if (attr === CONTENT) return 'content';
-	if (attr === AT) return 'at';
+	if (attr === SEQ_FACET) return 'seq';
+	if (attr === DATA_SEQ_FACET) return 'ignore';
 	if (attr === ID || attr === TYPE || attr === DATA || attr.startsWith(DATA_LEAF_PREFIX))
 		return 'meta';
 	// The `l` lastChangedBy stamp is attribution bookkeeping only.

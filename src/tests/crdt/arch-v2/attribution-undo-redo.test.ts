@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -38,13 +39,13 @@ const CLIENT_IDS = [
 ];
 
 const seeded = (text = 'hello'): Uint8Array => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	E.seed(doc, [{ id: 'p', type: 'paragraph', content: [{ text }] }]);
 	return Y.encodeStateAsUpdate(doc);
 };
 
 const replica = (base: Uint8Array | null, clientID: number, actor) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	if (base !== null) Y.applyUpdate(doc, base, REMOTE);
 	else E.seed(doc, []);
@@ -117,7 +118,7 @@ const attributionWrites = (doc: Y.Doc, fn: () => unknown) => {
 };
 
 const reload = (doc: Y.Doc, clientID: number) => {
-	const fresh = new Y.Doc();
+	const fresh = keepingReplaced(new Y.Doc());
 	fresh.clientID = clientID;
 	Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc), REMOTE);
 	return E.create(fresh);
@@ -276,9 +277,9 @@ describe('F7 / O23 — the incarnation is the replicated nonce; an undo/redo kee
 	});
 
 	it('seeded nonces derive from the seed: identical seeds agree, different seeds differ', () => {
-		const one = new Y.Doc();
-		const two = new Y.Doc();
-		const other = new Y.Doc();
+		const one = keepingReplaced(new Y.Doc());
+		const two = keepingReplaced(new Y.Doc());
+		const other = keepingReplaced(new Y.Doc());
 		const value = (text) => [{ id: 'p', type: 'paragraph', content: [{ text }] }];
 		E.seed(one, value('hello'));
 		E.seed(two, value('hello'));

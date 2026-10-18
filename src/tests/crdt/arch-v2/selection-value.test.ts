@@ -28,6 +28,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 
 import * as selection from '$lib/session/selection.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const S = () => selection;
 
@@ -47,13 +48,13 @@ const at = (id: string) => ({ kind: 'inline', id, type: 'mention', data: {} });
 const p = (id: string, ...content) => ({ id, type: 'paragraph', content });
 
 const seedOf = (content) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 1;
 	E.create(doc).init({ content });
 	return Y.encodeStateAsUpdate(doc);
 };
 const replica = (seed: Uint8Array, clientID: number) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, seed, REMOTE);
 	return { doc, ed: E.create(doc, { roleOf: (type: string) => ROLES[type] }) };

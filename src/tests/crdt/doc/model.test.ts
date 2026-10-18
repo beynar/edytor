@@ -13,11 +13,12 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc, SCHEMA_NAME } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
 const newDoc = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 7;
 	return doc;
 };
@@ -110,7 +111,7 @@ describe('bootstrap + schema record', () => {
 	it('a replica reads the version record without ever calling init', () => {
 		const a = newDoc();
 		E.init(a);
-		const replica = new Y.Doc();
+		const replica = keepingReplaced(new Y.Doc());
 		replica.clientID = 8;
 		Y.applyUpdate(replica, Y.encodeStateAsUpdate(a));
 		expect(E.schemaVersion(replica)).toBe(SCHEMA_VERSION);

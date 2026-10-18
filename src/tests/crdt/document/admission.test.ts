@@ -42,6 +42,7 @@ import {
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import type { YDoc } from '../../../lib/crdt/engine-api.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const providers = bindProviders(Y);
@@ -70,14 +71,14 @@ const until = async (cond: () => boolean, timeout = 5000): Promise<void> => {
 
 /** Registry content but no `meta.v` — the classic rogue write. */
 const makeUnversionedDoc = (): YDoc => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.get('blocks').setAttr('b1', { type: 'paragraph' });
 	return doc;
 };
 
 /** A future-schema claim this build cannot speak (`meta.v = 99`). */
 const makeV99Doc = (): YDoc => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.get('meta').setAttr('v', 99);
 	doc.get('meta').setAttr('schema', 'edytor-doc');
 	doc.get('blocks').setAttr('b1', { type: 'paragraph' });
@@ -86,7 +87,7 @@ const makeV99Doc = (): YDoc => {
 
 /** Supported version but a manifest naming another schema. */
 const makeForeignManifestDoc = (): YDoc => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.get('meta').setAttr('v', SCHEMA_VERSION);
 	doc.get('meta').setAttr('schema', 'other-schema');
 	doc.get('blocks').setAttr('b1', { type: 'paragraph' });
@@ -95,7 +96,7 @@ const makeForeignManifestDoc = (): YDoc => {
 
 /** Unrelated roots, no schema claim at all — must admit `pending`. */
 const makeForeignRootsDoc = (): YDoc => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.get('todos').setAttr('t1', { text: 'milk' });
 	return doc;
 };
@@ -104,7 +105,7 @@ const encoded = (doc: YDoc): Uint8Array => Y.encodeStateAsUpdate(doc);
 
 describe('assertAdmission / inspectAdmission', () => {
 	it('verdicts the full state matrix with typed refusals', () => {
-		expect(assertAdmission(engineDoc(new Y.Doc()))).toBe('fresh');
+		expect(assertAdmission(engineDoc(keepingReplaced(new Y.Doc())))).toBe('fresh');
 
 		const seeded = createDocument({ value: docValue() });
 		expect(assertAdmission(engineDoc(seeded.doc))).toBe('initialized');
@@ -151,7 +152,7 @@ describe('loadDocument admission', () => {
 	});
 
 	it('admits an empty update → local bootstrap', () => {
-		const restored = loadDocument(encoded(new Y.Doc()));
+		const restored = loadDocument(encoded(keepingReplaced(new Y.Doc())));
 		expect(restored.readiness).toBe('local');
 		expect(restored.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		restored.destroy();
@@ -167,7 +168,7 @@ describe('loadDocument admission', () => {
 		expect(() => loadDocument(update)).toThrowError(errorType);
 		// Refusal preserved the payload: the same bytes still decode to the
 		// same state on a plain doc.
-		const verify = new Y.Doc();
+		const verify = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(verify, bytes);
 		expect(encoded(verify)).toEqual(bytes);
 	});
@@ -181,7 +182,7 @@ describe('loadDocument admission', () => {
 
 describe('attachDocument admission', () => {
 	it('admits a fresh doc → pending until explicit sync()', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		expect(document.readiness).toBe('pending');
 		expect(document.facade.isInitialized()).toBe(false);
@@ -193,7 +194,7 @@ describe('attachDocument admission', () => {
 
 	it('admits an initialized doc → pending → hydrated on sync()', () => {
 		const source = createDocument({ value: docValue('attached') });
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(doc, source.encode());
 		const document = attachDocument(doc);
 		expect(document.readiness).toBe('pending');
@@ -250,7 +251,7 @@ describe('attachDocument admission', () => {
 
 describe('sync() — the admission re-check', () => {
 	it('refuses readiness when the doc went rogue between attach and sync', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		const before = encoded(doc);
 		// A raw bypass write lands unversioned content (no transport gate
@@ -273,7 +274,7 @@ describe('sync() — the admission re-check', () => {
 
 	it('hydrates on sync() after a remote apply — never enters local undo', () => {
 		const source = createDocument({ value: docValue('remote') });
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		// Originless applyUpdate — the remote-exclusion contract works via
 		// transaction.local, no stamped origin needed.
@@ -296,7 +297,7 @@ describe('sync() — the admission re-check', () => {
 
 describe('pending doc — no bootstrap before sync', () => {
 	it('a stubbed sync that never fires leaves the doc untouched', async () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		// attach() itself publishes the actor's attribution records — that
 		// is the designed pre-readiness write; pin state AFTER it so the
@@ -315,7 +316,7 @@ describe('pending doc — no bootstrap before sync', () => {
 
 	it('IndexeddbPersistence on a pending doc publishes no bootstrap state', async () => {
 		const name = uniqueName('admit-idb');
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		const frames: Uint8Array[] = [];
 		bc.subscribe(generationDbName(name), (data: ArrayBuffer) => {
@@ -391,7 +392,7 @@ describe('IndexedDB hydration → document admission', () => {
 		await seedGeneration(name, source.encode());
 		source.destroy();
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		document.attachSync(providers.createIndexeddbSync(name));
 		await until(() => document.ready);
@@ -409,7 +410,7 @@ describe('IndexedDB hydration → document admission', () => {
 		const v99 = encoded(makeV99Doc());
 		await seedGeneration(name, v99);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		let readyEvents = 0;
 		document.onReady(() => readyEvents++);

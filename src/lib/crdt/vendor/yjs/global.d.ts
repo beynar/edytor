@@ -25,6 +25,8 @@ declare type ContentAny = import('./src/structs/Item.js').ContentAny
 declare type ContentFormat = import('./src/structs/Item.js').ContentFormat
 declare type ContentDeleted = import('./src/structs/Item.js').ContentDeleted
 declare type ContentString = import('./src/structs/Item.js').ContentString
+declare type ContentHold = import('./src/structs/Item.js').ContentHold
+declare type ContentMove = import('./src/structs/Item.js').ContentMove
 
 
 // @todo the below should have a separate Y/[mod] export

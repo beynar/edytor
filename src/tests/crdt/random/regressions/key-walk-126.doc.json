@@ -1,0 +1,168 @@
+{
+	"about": "Wide corpus (seeds 1-1,000, 300 ops), doc adapter, minimized: a key walk under which placing a neighbour dropped a block (a cycle fallback) back into the walked stretch read a stale left neighbour; the maintained order differed from its rebuild.",
+	"seed": 126,
+	"peers": 3,
+	"adapter": "doc",
+	"steps": [
+		{
+			"peer": 1,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 0,
+				"offset": 6,
+				"length": 6,
+				"name": "underline"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 5,
+				"offset": 0,
+				"length": 5
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 2,
+				"parentIndex": 5,
+				"destIndex": 5
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 5,
+				"intoIndex": 3
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s126-7",
+				"type": "quote"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 1,
+				"intoIndex": 4
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "split",
+				"idIndex": 4,
+				"offset": 15,
+				"newId": "sp126-83"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "split",
+				"idIndex": 6,
+				"offset": 2,
+				"newId": "sp126-90"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 1,
+				"parentIndex": 6,
+				"destIndex": 4
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "drop",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 1,
+				"parentIndex": 5,
+				"destIndex": 3
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 4,
+				"intoIndex": 2
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 3,
+				"parentIndex": 1,
+				"destIndex": 2
+			}
+		}
+	],
+	"transcript": "seed 126 — 18 steps\n  0. peer 1: {\"kind\":\"setMark\",\"idIndex\":0,\"offset\":6,\"length\":6,\"name\":\"underline\"}\n  1. peer 2: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":0,\"length\":5}\n  2. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":2,\"parentIndex\":5,\"destIndex\":5}\n  3. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  4. peer 2: {\"kind\":\"net\",\"action\":\"batch\",\"a\":0,\"b\":1}\n  5. peer 2: {\"kind\":\"merge\",\"fromIndex\":5,\"intoIndex\":3}\n  6. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s126-7\",\"type\":\"quote\"}\n  7. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  8. peer 2: {\"kind\":\"merge\",\"fromIndex\":1,\"intoIndex\":4}\n  9. peer 2: {\"kind\":\"split\",\"idIndex\":4,\"offset\":15,\"newId\":\"sp126-83\"}\n  10. peer 0: {\"kind\":\"split\",\"idIndex\":6,\"offset\":2,\"newId\":\"sp126-90\"}\n  11. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":1,\"parentIndex\":6,\"destIndex\":4}\n  12. peer 1: {\"kind\":\"net\",\"action\":\"drop\",\"a\":2,\"b\":1}\n  13. peer 2: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":2}\n  14. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":1,\"parentIndex\":5,\"destIndex\":3}\n  15. peer 1: {\"kind\":\"merge\",\"fromIndex\":4,\"intoIndex\":2}\n  16. peer 1: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":2,\"b\":0}\n  17. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":3,\"parentIndex\":1,\"destIndex\":2}"
+}

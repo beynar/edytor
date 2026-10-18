@@ -11,7 +11,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
-import { UndoManager } from './harness/undo.js';
+import { historyOf } from './harness/history.js';
 
 describe('v14 smoke: document & unified node', () => {
 	test('create Y.Doc and obtain a root Y.Node via doc.get', () => {
@@ -166,11 +166,12 @@ describe('v14 smoke: update encoding roundtrip', () => {
 	});
 });
 
-describe('v14 smoke: UndoManager', () => {
+// The engine has no undo manager (YP18): these rows run the document's history (the editor's) over raw roots.
+describe('v14 smoke: the history over raw roots', () => {
 	test('undo/redo scoped to a Doc', () => {
 		const doc = new Y.Doc();
 		const node = doc.get('content');
-		const um = new UndoManager(doc);
+		const um = historyOf(doc, { scope: doc });
 		doc.transact(() => node.insert(0, 'first'));
 		um.stopCapturing();
 		doc.transact(() => node.insert(5, ' second'));
@@ -189,7 +190,7 @@ describe('v14 smoke: UndoManager', () => {
 		const remote = new Y.Doc();
 		local.get('content').insert(0, 'shared ');
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
-		const um = new UndoManager(local, { trackedOrigins: new Set(['local-origin']) });
+		const um = historyOf(local, { scope: local, trackedOrigins: new Set(['local-origin']) });
 		local.transact(() => local.get('content').insert(7, 'LOCAL'), 'local-origin');
 		remote.get('content').insert(0, 'REMOTE ');
 		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));

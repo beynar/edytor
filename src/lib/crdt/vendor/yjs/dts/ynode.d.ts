@@ -208,6 +208,22 @@ export class YNode {
      */
     hold(ids: Array<number>): void;
     /**
+     * YP22: move the units `ids` (`client, clock, len` ranges, in the order
+     * they will show) to live index `index` of this sequence: one move record
+     * there (`ContentMove`); `side` is its class among the items of its origin
+     * (`0` after, `1` before), `at` the chain it stands at for the sort of two
+     * records at one origin — the units from the root sequence down to the
+     * unit it stands at, outermost first (`null`: the first unit it names) —
+     * and `part` the writer's order among the records standing at that unit.
+     *
+     * @param {number} index
+     * @param {Array<number>} ids
+     * @param {number} [side]
+     * @param {number} [part]
+     * @param {Array<ID>|null} [at]
+     */
+    move(index: number, ids: Array<number>, side?: number, part?: number, at?: Array<ID> | null): void;
+    /**
      * Executes a provided function on once on every key-value pair.
      *
      * @param {(val:any,key:string,ynode:this)=>any} f
@@ -235,11 +251,12 @@ export function readContentAny(decoder: UpdateDecoder): ContentAny;
 export function readContentBinary(decoder: UpdateDecoder): ContentBinary;
 export function readContentDeleted(decoder: UpdateDecoder): ContentDeleted;
 export function readContentHold(decoder: UpdateDecoder): ContentHold;
+export function readContentMove(decoder: UpdateDecoder): ContentMove;
 /**
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
  * writes none, so an update holding one is malformed. YP20: 11 is a hold
- * record.
+ * record. YP22: 12 is a move record.
  *
  * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
@@ -270,3 +287,4 @@ import { ContentAny } from './structs/Item.js';
 import { ContentBinary } from './structs/Item.js';
 import { ContentDeleted } from './structs/Item.js';
 import { ContentHold } from './structs/Item.js';
+import { ContentMove } from './structs/Item.js';

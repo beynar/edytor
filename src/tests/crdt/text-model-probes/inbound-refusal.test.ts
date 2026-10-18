@@ -26,6 +26,7 @@ import { createDocument, SchemaMismatchError } from '../../../lib/crdt/index.js'
 import { checkSchema, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const S = bindSync(Y);
@@ -35,7 +36,7 @@ const BURST = 100;
 
 /** Build a live doc with BLOCKS paragraphs of 40 chars each. */
 const buildLive = () => {
-	const doc = new Y.Doc({ guid: 'staging-bench' });
+	const doc = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 	E.init(doc, {
 		content: Array.from({ length: BLOCKS }, (_, i) => ({
 			id: `b${i}`,
@@ -48,7 +49,7 @@ const buildLive = () => {
 
 /** A remote peer whose update stream we replay against the live doc. */
 const buildRemote = (seedUpdate: Uint8Array) => {
-	const remote = new Y.Doc({ guid: 'staging-bench' });
+	const remote = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 	Y.applyUpdate(remote, seedUpdate);
 	return remote;
 };
@@ -82,7 +83,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	it('a refused update leaves the live doc byte-identical', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		const poison = new Y.Doc({ guid: 'other' });
+		const poison = keepingReplaced(new Y.Doc({ guid: 'other' }));
 		poison.clientID = Number.MAX_SAFE_INTEGER;
 		poison.get('meta').setAttr('v', 99);
 		const res = S.applyRemote(live, Y.encodeStateAsUpdate(poison), 'bench');
@@ -94,7 +95,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	it('a valid-version update carrying a foreign meta.schema is refused', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		const foreign = new Y.Doc({ guid: 'staging-bench' });
+		const foreign = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		Y.applyUpdate(foreign, Y.encodeStateAsUpdate(live));
 		foreign.get('meta').setAttr('schema', 'not-edytor');
 		const diff = Y.encodeStateAsUpdate(foreign, Y.encodeStateVector(live));
@@ -106,7 +107,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	});
 
 	it('a brand-new peer SyncStep2 (full state, our stamp) applies', () => {
-		const live = new Y.Doc({ guid: 'staging-bench' });
+		const live = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		const full = Y.encodeStateAsUpdate(buildLive());
 		const res = S.applyRemote(live, full, 'bench');
 		expect(res).toEqual({ applied: true, problem: null });
@@ -116,7 +117,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	it('a meta.v OVERWRITE (parentless wire item) is caught through its origin chain', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		const peer = new Y.Doc({ guid: 'staging-bench' });
+		const peer = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
@@ -130,7 +131,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 
 	it('a same-value stamp rewrite applies', () => {
 		const live = buildLive();
-		const peer = new Y.Doc({ guid: 'staging-bench' });
+		const peer = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
 		peer.on('update', (u: Uint8Array) => (captured = u));
@@ -142,7 +143,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	it('a meta attr DELETE carried by the delete set is refused', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		const peer = new Y.Doc({ guid: 'staging-bench' });
+		const peer = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
 		peer.on('update', (u: Uint8Array) => (captured = u));
@@ -157,8 +158,8 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 	// ingress; the doc becomes unversioned — read-only — and a versioned
 	// state arriving later makes it writable again.
 	it('a blocks-root write on a clean doc applies; the doc is read-only until a stamp arrives', () => {
-		const live = new Y.Doc({ guid: 'staging-bench' });
-		const rogue = new Y.Doc({ guid: 'other' });
+		const live = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
+		const rogue = keepingReplaced(new Y.Doc({ guid: 'other' }));
 		rogue.get('blocks').setAttr(
 			'rogue',
 			(() => {
@@ -173,7 +174,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 			problem: null
 		});
 		expect(checkSchema(live)?.kind).toBe('unversioned');
-		const stamped = new Y.Doc();
+		const stamped = keepingReplaced(new Y.Doc());
 		E.init(stamped);
 		expect(S.applyRemote(live, Y.encodeStateAsUpdate(stamped), 'bench').applied).toBe(true);
 		expect(checkSchema(live)).toBeNull();
@@ -181,7 +182,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 
 	it('a pending forged rewrite is refused when its own stamp write is forged', () => {
 		const live = buildLive();
-		const peer = new Y.Doc({ guid: 'staging-bench' });
+		const peer = keepingReplaced(new Y.Doc({ guid: 'staging-bench' }));
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];
@@ -208,7 +209,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 			value: { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }] }
 		});
 		const live = document.doc;
-		const peer = new Y.Doc();
+		const peer = keepingReplaced(new Y.Doc());
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];
@@ -238,7 +239,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 			value: { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }] }
 		});
 		const live = document.doc;
-		const peer = new Y.Doc();
+		const peer = keepingReplaced(new Y.Doc());
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];

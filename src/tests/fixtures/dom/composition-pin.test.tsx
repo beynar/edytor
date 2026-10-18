@@ -37,6 +37,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference (`arch-v2/ref-i4`): expected-fail until I4 flips it. */
 const row = it;
@@ -45,7 +46,7 @@ const pin = it;
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

@@ -1,12 +1,13 @@
 /**
- * Schema generation 7: a text delete is its writer's hold record (fork patch
- * YP20), and one update encoding (the engine's columnar one, generation 6) on
- * the wire and in storage. A frame, a container or a state of an earlier
- * generation is refused, never converted. The fixture
+ * Schema generation 8: a merge claim is an item in a backing text (fork patch
+ * YP21, generation 8), a text delete is its writer's hold record (fork patch
+ * YP20, generation 7), and one update encoding (the engine's columnar one,
+ * generation 6) on the wire and in storage. A frame, a container or a state
+ * of an earlier generation is refused, never converted. The fixture
  * `fixtures/generation-4/state.v2.bin` was written by 0.1.0-next.24 (its
  * state in the columnar encoding).
  *
- * - frames and containers of generations 5 and 6 are refused before decode,
+ * - frames and containers of generations 5 to 7 are refused before decode,
  *   as any other generation's;
  * - a state of an earlier generation is never loaded as this one's;
  * - a SyncStep2 and an Update carry the same encoding: what
@@ -32,19 +33,21 @@ const fixture = (name: string) =>
 	new Uint8Array(readFileSync(new URL(`../fixtures/generation-4/${name}`, import.meta.url)));
 const VALUE = JSON.parse(new TextDecoder().decode(fixture('value.json')));
 
-describe('generation 7', () => {
-	it('is schema 7, wire word 14007; no other generation’s record is this one’s', () => {
-		expect(SCHEMA_VERSION).toBe(7);
-		expect(GENERATION).toBe(14007);
+describe('generation 9', () => {
+	it('is schema 9, wire word 14009; no other generation’s record is this one’s', () => {
+		expect(SCHEMA_VERSION).toBe(9);
+		expect(GENERATION).toBe(14009);
 		expect(isGenerationRecord(GENERATION_RECORD)).toBe(true);
+		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 8 })).toBe(false);
+		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 7 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 6 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 5 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 5, storage: 'v2' })).toBe(false);
 		expect(isGenerationRecord({ engine: 'yjs-v14', protocol: 14 })).toBe(false);
 	});
 
-	it('a frame of generation 5 or 6 is refused before anything is decoded', () => {
-		for (const word of [14005, 14006]) {
+	it('a frame of generation 5 to 8 is refused before anything is decoded', () => {
+		for (const word of [14005, 14006, 14007, 14008]) {
 			const old = encoding.encode((e) => {
 				encoding.writeVarUint(e, word);
 				encoding.writeVarUint(e, 0);
@@ -55,11 +58,11 @@ describe('generation 7', () => {
 
 	it('a state of an earlier generation is never loaded as this generation’s', () => {
 		expect(() => loadDocument(fixture('state.v2.bin'))).toThrow(/unsupported schema version 4/);
-		// A generation-6 state: its version record says 6.
+		// A generation-7 state: its version record says 7.
 		const raw = new Y.Doc();
 		Y.applyUpdate(raw, Y.encodeStateAsUpdate(createDocument({ value: VALUE }).doc));
-		raw.get('meta').setAttr('v', 6);
-		expect(() => loadDocument(Y.encodeStateAsUpdate(raw))).toThrow(/unsupported schema version 6/);
+		raw.get('meta').setAttr('v', 7);
+		expect(() => loadDocument(Y.encodeStateAsUpdate(raw))).toThrow(/unsupported schema version 7/);
 	});
 });
 

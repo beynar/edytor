@@ -26,7 +26,7 @@ import { hash32, setDocRand } from '../rand.js';
 import { keepingReplaced } from '../incarnations.js';
 import { asEngineDoc, asYDoc } from '../structs.js';
 import { DOC_DATA_ROOT, SCHEMA } from '../schema.js';
-import { dataLeaves, isObject, writeLeaves } from '../data.js';
+import { dataWrites, isObject, writeData } from '../data.js';
 import {
 	jsonBlockToSpec,
 	sanitizeSpec,
@@ -147,7 +147,7 @@ export const bindSeed = (Y: EngineApi, BA: BlockAttributionApi) => {
 		};
 		scratch.transact(() => {
 			specs.forEach(records);
-			writeLeaves(scratch.get(DOC_DATA_ROOT), dataLeaves(own));
+			writeData(scratch.get(DOC_DATA_ROOT), dataWrites(own));
 		});
 		return Y.encodeStateAsUpdate(raw);
 	};

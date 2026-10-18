@@ -11,7 +11,7 @@
 import type { EngineNode } from '../engine-api.js';
 import { ID, TYPE } from '../schema.js';
 import { readData } from '../data.js';
-import { isBoundary } from './items.js';
+import { isRowMark } from './items.js';
 import type { RangeCursor, RangeItem, RangeReadStats } from './model.js';
 
 /** Canonical JSON key (sorted keys, recursive) — mark-set equality/interning. */
@@ -69,7 +69,7 @@ export const inlineItemOf = (entry: unknown): RangeItem => {
 /**
  * Read `[i0, i1)` through the cursor: text pieces as UTF-16 slices under their
  * folded marks (adjacent equal marks merge), inline atoms one item each.
- * Boundary items are skipped — the one read predicate stream ownership needs.
+ * Boundary and claim items are skipped — the one read predicate stream ownership needs.
  */
 export const readRange = (
 	cur: RangeCursor,
@@ -93,7 +93,7 @@ export const readRange = (
 		} else if (typeof c.getContent === 'function') {
 			const arr = c.getContent();
 			for (let k = piece.offset; k < piece.offset + piece.len; k++) {
-				if (!isBoundary(arr[k])) items.push(inlineItemOf(arr[k]));
+				if (!isRowMark(arr[k])) items.push(inlineItemOf(arr[k]));
 			}
 		}
 	}

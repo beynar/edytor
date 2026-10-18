@@ -11,6 +11,7 @@ import {
   ContentString,
   ContentType,
   ContentHold, // YP20
+  ContentMove, // YP22
   YXmlFragmentRefID,
   YXmlElementRefID,
   YXmlHookRefID
@@ -249,7 +250,7 @@ const insertMarkItem = (transaction, parent, index, side, content) => {
 const markHelper = (transaction, parent, index, length, mark, value, startSide, endSide) => {
   const doc = transaction.doc
   const client = doc.clientID
-  const l = /** @type {any} */ (doc)._markClock + 1
+  const l = /** @type {any} */ (doc)._clock + 1 // YP22: one clock with the move records
   const k = doc.store.getClock(client)
   insertMarkItem(transaction, parent, index, startSide, new ContentFormat(MARK_START + mark, [value, l, client, k, startSide]))
   insertMarkItem(transaction, parent, index + length, endSide, new ContentFormat(MARK_END + mark, [client, k, endSide]))
@@ -1036,6 +1037,35 @@ export class YNode {
     if (ids.length > 0) transact(this.doc, transaction => holdHelper(transaction, this, ids))
   }
 
+  // YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
+  /**
+   * YP22: move the units `ids` (`client, clock, len` ranges, in the order
+   * they will show) to live index `index` of this sequence: one move record
+   * there (`ContentMove`); `side` is its class among the items of its origin
+   * (`0` after, `1` before), `at` the chain it stands at for the sort of two
+   * records at one origin — the units from the root sequence down to the
+   * unit it stands at, outermost first (`null`: the first unit it names) —
+   * and `part` the writer's order among the records standing at that unit.
+   *
+   * @param {number} index
+   * @param {Array<number>} ids
+   * @param {number} [side]
+   * @param {number} [part]
+   * @param {Array<ID>|null} [at]
+   */
+    move (index, ids, side = 0, part = 0, at = null) {
+    if (this.doc == null) throw new Error('move: node is not integrated')
+    if (ids.length === 0) return
+    transact(this.doc, transaction => {
+      // Above every record seen from a peer (`_clock`, raised by remote records
+      // only): this writer's records keep one priority until it sees another's,
+      // so its gestures win or lose together against a concurrent peer's.
+      const priority = /** @type {any} */ (transaction.doc)._clock + 1
+      insertInGapHelper(transaction, this, index, new ContentMove(priority, side, ids, part, at))
+    })
+  }
+  // YP22 end
+
   /**
    * Executes a provided function on once on every key-value pair.
    *
@@ -1185,18 +1215,45 @@ export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
 export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen())
 
 /**
- * YP20: a hold record, one `client, clock, len` per unit.
+ * YP20, YP22: a record's id ranges, a count then one `client, clock, len` each.
  *
  * @param {UpdateDecoder} decoder
- * @return {ContentHold}
+ * @return {Array<number>}
  */
-export const readContentHold = decoder => {
+const readIds = decoder => {
   const ids = []
   for (let n = decoder.readLen(); n > 0; n--) {
     const id = decoder.readLeftID()
     ids.push(id.client, id.clock, decoder.readLen())
   }
-  return new ContentHold(ids)
+  return ids
+}
+
+/**
+ * YP20: a hold record, one `client, clock, len` per unit.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentHold}
+ */
+export const readContentHold = decoder => new ContentHold(readIds(decoder))
+
+/**
+ * YP22: a move record: its priority, side, part and whether an anchor chain
+ * follows in one word, the chain (a count, then its units), then one
+ * `client, clock, len` per range.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentMove}
+ */
+export const readContentMove = decoder => {
+  const word = decoder.readLen()
+  /** @type {Array<ID>|null} */
+  let at = null
+  if (word & 16) {
+    at = []
+    for (let n = decoder.readLen(); n > 0; n--) at.push(decoder.readLeftID())
+  }
+  return new ContentMove(word >> 5, word & 1, readIds(decoder), (word >> 1) & 7, at)
 }
 
 const refused = () => { error.unexpectedCase() }
@@ -1205,7 +1262,7 @@ const refused = () => { error.unexpectedCase() }
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
  * writes none, so an update holding one is malformed. YP20: 11 is a hold
- * record.
+ * record. YP22: 12 is a move record.
  *
  * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
@@ -1221,7 +1278,8 @@ export const contentRefs = [
   readContentAny, // 8
   refused, // 9 - subdocument
   refused, // 10 - Skip is not ItemContent
-  readContentHold // 11 - a hold record (YP20)
+  readContentHold, // 11 - a hold record (YP20)
+  readContentMove // 12 - a move record (YP22)
 ]
 
 /**

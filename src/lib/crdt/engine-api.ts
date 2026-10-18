@@ -52,6 +52,8 @@ export interface EngineTransaction {
 	changed?: Map<unknown, Set<string | null>>;
 	/** The visibility changes hold records made, in order: `client, clock, ±len` per item (`> 0` shown). */
 	holds?: number[];
+	/** The units whose mover changed (the fork's move records), in order: `client, clock, len` per item. */
+	moves?: number[];
 }
 
 /**
@@ -85,6 +87,22 @@ export interface EngineNode {
 	delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
 	/** Append one hold record of `ids` (`client, clock, len` triples) to this records list: they read as deleted while it lives. */
 	hold(ids: number[]): void;
+	/**
+	 * Move the units `ids` names (`client, clock, len` triples, in order) to
+	 * live index `index` of this sequence: one move record there (the fork's
+	 * `ContentMove`); `side` is its class among the items of its origin (`0`
+	 * after, `1` before), `at` the chain it stands at for the sort of two
+	 * records at one origin — the units from the root sequence down to the
+	 * unit it stands at, outermost first (`null`: the first unit it names) —
+	 * and `part` its order among the records standing there.
+	 */
+	move(
+		index: number,
+		ids: number[],
+		side?: number,
+		part?: number,
+		at?: ReadonlyArray<{ client: number; clock: number }> | null
+	): void;
 }
 
 /** Structural minimum of the vendored `Y.Doc`. */

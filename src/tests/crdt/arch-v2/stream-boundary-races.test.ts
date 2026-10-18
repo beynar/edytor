@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { createPeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import * as S_ from '../harness/streams.js';
-import { isBoundary } from '../../../lib/crdt/text/model.js';
+import { isRowMark } from '../../../lib/crdt/text/model.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertAllStructurallyValid, assertConverged } from '../harness/assert/convergence.js';
 import { bool, int, mulberry32, pick } from '../harness/rng.js';
@@ -490,7 +490,6 @@ describe('F-D19: a split-born block whose boundary died is visible and empty; ty
 		]) {
 			row(`A=${a} B=${b}, delivery ${order.join('→')}`, () => {
 				const set = mkSet(SEED, [a, b]);
-				ops.trackHistory(set.A);
 				ops.insertBlock(
 					set.A,
 					{ parent: null, index: 1 },
@@ -506,7 +505,11 @@ describe('F-D19: a split-born block whose boundary died is visible and empty; ty
 				settle(set);
 				expect(text(set.A, 'u')).toBe('Q world');
 				const oldN = S().view(set.A.doc).blocks.get('u').n;
-				expect(undoCounted(set.A)).toBe(1); // undo the paste
+				// A removes P's node outright, its text — u's boundary in it — with it: a
+				// raw engine write (no history does since `hist.undo.withdraw`, which
+				// keeps a created block's text), the state a peer that deletes the node leaves.
+				set.A.doc.transact(() => set.A.doc.get('blocks').deleteAttr('P'), set.A.localOrigin);
+				deliverOrdered(set, order);
 				settle(set);
 				for (const p of set.peers) {
 					expect(ops.positionOf(p, 'P')).toBeNull();
@@ -518,16 +521,11 @@ describe('F-D19: a split-born block whose boundary died is visible and empty; ty
 				const v = S().view(set.B.doc);
 				expect(v.blocks.get('u').content).toBeDefined();
 				expect(v.blocks.get('u').n).not.toBe(oldN);
-				// a late copy of the old boundary (A redoes the paste, concurrently) is inert
-				set.A.undoManager.redo();
 				deliverOrdered(set, order);
 				settle(set);
 				const verify = (s) => {
-					expect(text(s.A, 'u')).toBe('z');
+					for (const p of s.peers) expect(text(p, 'u')).toBe('z');
 					const vv = S().view(s.A.doc);
-					const stale = [...vv.texts.values()].flatMap((t) => t.bounds).filter((x) => x.s === 'u');
-					expect(stale.length).toBe(1); // the redone copy is live …
-					expect(stale[0].n).not.toBe(vv.blocks.get('u').n); // … and inert
 					expect(vv.streams.get('u').text).toBe(vv.blocks.get('u').content);
 				};
 				verify(set);
@@ -649,7 +647,7 @@ const checkRenderOnce = (doc, ctx) => {
 		for (let it = t._start; it !== null && at < i1; it = it.right) {
 			if (it.deleted || !it.countable) continue;
 			for (let j = 0; j < it.length; j++) {
-				if (at + j < i0 || at + j >= i1 || isBoundary(it.content.arr?.[j])) continue;
+				if (at + j < i0 || at + j >= i1 || isRowMark(it.content.arr?.[j])) continue;
 				out.push(`${it.id.client}:${it.id.clock + j}`);
 			}
 			at += it.length;
@@ -696,9 +694,8 @@ const runProgram = (seed, ids) => {
 	const set = mkSet(CORPUS_SEED, ids);
 	const names = set.peers.map((p) => p.name);
 	for (const p of set.peers) ops.trackHistory(p);
+	// The step each undo replayed (`null`: none), as the history returns it.
 	const popped = new Map();
-	const hook = (p) => p.undoManager.on('stack-item-popped', (e) => popped.set(p.name, e.stackItem));
-	set.peers.forEach(hook);
 	let minted = 0;
 	let lastId = null;
 	const ctx = (s) => `seed ${seed} ids ${ids.join('/')} step ${s}`;
@@ -753,7 +750,7 @@ const runProgram = (seed, ids) => {
 		} else if (k < 0.78 && ids_.length > 2) local(p, s, () => ops.deleteBlock(p, id));
 		else if (k < 0.92) {
 			stats.undos++;
-			local(p, s, () => p.undoManager.undo(), true);
+			local(p, s, () => popped.set(p.name, p.undoManager.undo()), true);
 		} else local(p, s, () => p.undoManager.redo());
 	};
 	const randomDelivery = () => {
@@ -791,7 +788,7 @@ const runProgram = (seed, ids) => {
 			let n = 0;
 			const h = () => n++;
 			X.doc.on('update', h);
-			local(X, step, () => X.undoManager.undo(), true);
+			local(X, step, () => popped.set(X.name, X.undoManager.undo()), true);
 			X.doc.off('update', h);
 			expect(n, `${ctx(step)}: undo emitted ${n} updates`).toBe(1);
 		}

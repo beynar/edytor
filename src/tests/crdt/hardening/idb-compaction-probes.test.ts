@@ -43,6 +43,7 @@ import {
 	GENERATION_RECORD
 } from '../../../lib/crdt/protocols/envelope.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -98,7 +99,7 @@ const seedGenerationDb = async (name: string, rows: Uint8Array[]) => {
 };
 
 const validUpdate = (clientID: number, text: string) => {
-	const d = new Y.Doc();
+	const d = keepingReplaced(new Y.Doc());
 	d.clientID = clientID;
 	const ed = E.create(d);
 	ed.init();
@@ -113,7 +114,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		const name = `h-r2-race-${Date.now()}`;
 		// Provider hydrates on an EMPTY store, then a valid row V lands
 		// past the cursor — it is fetched (and applied) inside storeState.
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -183,7 +184,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		const name = `h-r2-refused-writes-${Date.now()}`;
 		// poison row first
 		const poison = (() => {
-			const remote = new Y.Doc();
+			const remote = keepingReplaced(new Y.Doc());
 			remote.clientID = Number.MAX_SAFE_INTEGER;
 			const er = E.create(remote);
 			er.init();
@@ -201,7 +202,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		})();
 		await seedGenerationDb(name, [poison]);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 		expect(checkSchema(doc)).toMatchObject({ kind: 'unsupported', version: 99 });
@@ -213,7 +214,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		doc.transact(() => doc.get('scratch').setAttr('b', 2));
 		await sleep(100);
 		const rows = await readRows(name);
-		const stored = new Y.Doc();
+		const stored = keepingReplaced(new Y.Doc());
 		for (const row of rows) Y.applyUpdate(stored, new Uint8Array(row));
 		expect(stored.get('scratch').getAttr('a')).toBeUndefined();
 		expect(stored.get('scratch').getAttr('b')).toBeUndefined();
@@ -228,7 +229,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 	test('a second live instance on the same DB is read-only too and never compacts', async () => {
 		const name = `h-r2-two-${Date.now()}`;
 		const poison = (() => {
-			const remote = new Y.Doc();
+			const remote = keepingReplaced(new Y.Doc());
 			remote.clientID = Number.MAX_SAFE_INTEGER;
 			const er = E.create(remote);
 			er.init();
@@ -237,10 +238,10 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		})();
 		await seedGenerationDb(name, [poison]);
 
-		const docA = new Y.Doc();
+		const docA = keepingReplaced(new Y.Doc());
 		const pA = new providers.IndexeddbPersistence(name, docA);
 		await pA.whenSynced;
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		const pB = new providers.IndexeddbPersistence(name, docB);
 		await pB.whenSynced;
 		expect(checkSchema(docA)?.version).toBe(99);

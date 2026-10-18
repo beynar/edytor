@@ -20,6 +20,7 @@ import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -48,7 +49,7 @@ const rowCount = async (name) => {
 describe('attack 6: compaction', () => {
 	test('>500 updates → trim → reload → byte-equal doc; ops still work', async () => {
 		const name = uniqueName('compact');
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -68,7 +69,7 @@ describe('attack 6: compaction', () => {
 		expect(rowsAfter).toBeLessThanOrEqual(2); // snapshot (+ in-flight remainder)
 
 		// Fresh open: hydrates from the compacted store.
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		const ed2 = E.create(doc2);
@@ -77,7 +78,7 @@ describe('attack 6: compaction', () => {
 		// State equivalence: the compacted doc reproduces identical content —
 		// state vectors will differ (compaction merges structs), which is fine;
 		// the logical doc must be identical.
-		const doc3 = new Y.Doc();
+		const doc3 = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(doc3, expectedUpdate);
 		expect(JSON.stringify(E.create(doc3).toJSON())).toBe(expectedJSON);
 
@@ -91,7 +92,7 @@ describe('attack 6: compaction', () => {
 
 	test('a compacted snapshot plus later interleaved rows reload in order', async () => {
 		const name = uniqueName('compact-order');
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -105,7 +106,7 @@ describe('attack 6: compaction', () => {
 		await nextTick(60);
 		const expectedJSON = JSON.stringify(ed.toJSON());
 
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		expect(JSON.stringify(E.create(doc2).toJSON())).toBe(expectedJSON);
@@ -118,7 +119,7 @@ describe('attack 8: schema manifest coexistence', () => {
 	test('a peer stamped with another schema never moves the v1 doc off its schema', async () => {
 		const name = uniqueName('schema-coexist');
 		// Doc A: this build's schema (v1).
-		const docA = new Y.Doc();
+		const docA = keepingReplaced(new Y.Doc());
 		const edA = E.create(docA);
 		edA.init();
 		const pA = new providers.IndexeddbPersistence(name, docA);
@@ -126,7 +127,7 @@ describe('attack 8: schema manifest coexistence', () => {
 
 		// Doc B: a "future" schema (v2) written by a different engine build —
 		// same wire protocol, different meta.v.
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		E.create(docB);
 		docB.transact(() => {
 			docB.get('meta').setAttr('v', 2);
@@ -157,9 +158,9 @@ describe('attack 8: schema manifest coexistence', () => {
 	});
 
 	test('init() on a partially-written doc completes without clobbering', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		// A doc that received content via replication but never ran init:
-		const src = new Y.Doc();
+		const src = keepingReplaced(new Y.Doc());
 		const edSrc = E.create(src);
 		edSrc.init();
 		edSrc.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
@@ -181,8 +182,8 @@ describe('attack 8: schema manifest coexistence', () => {
 	test('concurrent init() on two fresh replicas converges to ONE bootstrap', () => {
 		// Both peers init concurrently (same reserved id) → registry attr LWW
 		// keeps exactly one bootstrap — never two fallback paragraphs.
-		const a = new Y.Doc();
-		const b = new Y.Doc();
+		const a = keepingReplaced(new Y.Doc());
+		const b = keepingReplaced(new Y.Doc());
 		E.create(a).init();
 		E.create(b).init();
 		Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
@@ -193,8 +194,8 @@ describe('attack 8: schema manifest coexistence', () => {
 		expect(idsB).toEqual([DEFAULT_SEED_ID]);
 		expect(E.registryEmpty(a)).toBe(false);
 		// Concurrent inits with DIFFERENT caller content union instead.
-		const c = new Y.Doc();
-		const d = new Y.Doc();
+		const c = keepingReplaced(new Y.Doc());
+		const d = keepingReplaced(new Y.Doc());
 		E.create(c).init({ content: [{ id: 'x', type: 'paragraph' }] });
 		E.create(d).init({ content: [{ id: 'y', type: 'paragraph' }] });
 		Y.applyUpdate(c, Y.encodeStateAsUpdate(d));
@@ -207,10 +208,10 @@ describe('attack 8: schema manifest coexistence', () => {
 	});
 
 	test('a replica that only ever applied updates knows the schema version', () => {
-		const src = new Y.Doc();
+		const src = keepingReplaced(new Y.Doc());
 		const edSrc = E.create(src);
 		edSrc.init();
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(src));
 		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
 		expect(E.isInitialized(doc)).toBe(true);

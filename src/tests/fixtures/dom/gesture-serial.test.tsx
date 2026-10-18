@@ -28,10 +28,11 @@ import {
 	textNodeOf
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {
@@ -55,7 +56,7 @@ describe('independent current-branch review', () => {
 				<paragraph>ab|cd</paragraph>
 			</root>
 		);
-		const remoteDoc = new Y.Doc();
+		const remoteDoc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(remoteDoc);
 		const sync = () => {

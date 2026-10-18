@@ -33,7 +33,6 @@ export const layoutOps = (c: OpsContext) => {
 		fitsIn,
 		REFUSED,
 		plan,
-		ranksFor,
 		moveTo,
 		landing,
 		emptied
@@ -99,8 +98,8 @@ export const layoutOps = (c: OpsContext) => {
 	 * an item, a layout or a block holding one, a block that does not
 	 * fit an item, a block or a layout inside an island, and, wrapping,
 	 * when there is no layout kind. The sources are cleaned in the same
-	 * plan (`emptying`, `dissolving`); plain ranks (a move). `ids`: the
-	 * moved blocks.
+	 * plan (`emptying`, `dissolving`); a plain move. `ids`: the moved
+	 * blocks.
 	 */
 	const placeBeside = (
 		ids: readonly BlockId[],
@@ -133,24 +132,19 @@ export const layoutOps = (c: OpsContext) => {
 		if (moved.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
 		if (layout !== null && (isIsland(layout) || insideIsland(layout, v))) return REFUSED;
 		const fresh = spec(item);
-		const into = (parent: BlockId) => moveTo(moved, parent, 0, ranksFor(parent, 0, moved.length));
+		const into = (parent: BlockId) => moveTo(moved, parent, 0);
 		let writes: PlanStep[];
 		let kept: Set<BlockId | null>;
 		if (layout !== null) {
-			const ranks = ranksFor(layout, index, 1);
-			writes = [
-				{ op: 'insertBlocks', parent: layout, index, specs: [fresh], ranks },
-				...into(fresh.id)
-			];
+			writes = [{ op: 'insertBlocks', parent: layout, index, specs: [fresh] }, ...into(fresh.id)];
 			kept = new Set([fresh.id, ...landing(layout)]);
 		} else {
 			const pos = positionOf(at)!;
 			const host = spec(item);
 			const wrapper = { ...spec(wrap), children: right ? [host, fresh] : [fresh, host] };
-			const ranks = ranksFor(pos.parent, pos.index, 1);
 			writes = [
-				{ op: 'insertBlocks', parent: pos.parent, index: pos.index, specs: [wrapper], ranks },
-				...moveTo([at], host.id, 0, ranksFor(host.id, 0, 1)),
+				{ op: 'insertBlocks', parent: pos.parent, index: pos.index, specs: [wrapper] },
+				...moveTo([at], host.id, 0),
 				...into(fresh.id)
 			];
 			kept = new Set([wrapper.id, host.id, fresh.id, ...landing(pos.parent)]);
@@ -169,8 +163,8 @@ export const layoutOps = (c: OpsContext) => {
 	 * fewer items than blocks, blocks of different parents, an item, a
 	 * layout or a block holding one, where the layout does not fit
 	 * (`fits`: in a list, a code block) or lands inside an item or an
-	 * island, and for a block that does not fit an item. Plain ranks (a
-	 * move). `ids`: the new layout.
+	 * island, and for a block that does not fit an item. A plain move.
+	 * `ids`: the new layout.
 	 */
 	const wrapInLayout = (
 		ids: readonly BlockId[],
@@ -199,14 +193,8 @@ export const layoutOps = (c: OpsContext) => {
 		const wrapper = { ...spec(wrap), children: items };
 		const at = positionOf(ordered[0]!)!.index;
 		const writes: PlanStep[] = [
-			{
-				op: 'insertBlocks',
-				parent,
-				index: at,
-				specs: [wrapper],
-				ranks: ranksFor(parent, at, 1)
-			},
-			...ordered.flatMap((id, i) => moveTo([id], items[i]!.id, 0, ranksFor(items[i]!.id, 0, 1)))
+			{ op: 'insertBlocks', parent, index: at, specs: [wrapper] },
+			...ordered.flatMap((id, i) => moveTo([id], items[i]!.id, 0))
 		];
 		const kept = new Set<BlockId | null>([
 			wrapper.id,

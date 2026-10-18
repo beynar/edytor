@@ -7,42 +7,32 @@ import { readData } from '../../data.js';
 import { Y } from '../../engine.js';
 import type { EngineNode } from '../../engine-api.js';
 import { baseIdOf, incarnationNode, incarnationsOf, isIncarnationId } from '../../incarnations.js';
-import { type BlockId, type BlockRec, candidatesOf } from '../../placement/model.js';
+import type { BlockId, BlockRec } from '../../placement/model.js';
 import { engineOps } from '../../structs.js';
-import {
-	CLAIMS,
-	CONTENT,
-	NONCE,
-	hasDeleteMark,
-	hasWithdrawMark,
-	isNodeLike
-} from '../../schema.js';
-import { type Claim, readClaims } from '../model.js';
-import type { IndexAnchored } from './anchored.js';
+import { CONTENT, NONCE, hasDeleteMark, hasWithdrawMark, isNodeLike } from '../../schema.js';
+import type { Claim } from '../model.js';
 import type { IndexClaims } from './claims.js';
 import type { IndexPlacement } from './placement.js';
-import { dropFrom, sameShape, typeAttr } from './shared.js';
+import { sameShape, typeAttr } from './shared.js';
 import type { IndexState } from './state.js';
+import type { IndexStreams } from './streams.js';
 
 /** The block records of one doc's index. */
-export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & IndexPlacement) => {
+export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & IndexPlacement) => {
 	const {
 		registry,
 		blocks,
 		shells,
-		attachOf,
-		foreignOf,
-		retargets,
 		reclaim,
-		byArgParent,
+		rawOrder,
 		placementSeeds,
 		stateSeeds,
 		incarnations,
 		noteClaims,
-		effectiveClaims,
+		claimsOf,
 		noteKind,
-		argParent,
-		noteCands
+		homeFor,
+		reslot
 	} = ix;
 
 	// ── records ──────────────────────────────────────────────────────
@@ -57,10 +47,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	};
 
 	const buildRec = (id: BlockId, node: EngineNode): BlockRec => {
-		const list = node.getAttr(CLAIMS);
-		const claimsNode = isNodeLike(list) ? list : undefined;
 		const content = node.getAttr(CONTENT);
-		const own = readClaims(claimsNode);
 		const derived = isIncarnationId(id);
 		// A losing incarnation lives and dies with its key's block: hidden by its
 		// own delete mark or while that block is deleted (a withdrawn one included).
@@ -71,10 +58,8 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 			? []
 			: incarnationsOf(registry, id, kept).map((x, i) => ({
 					m: x.id,
-					stamp: { c: -1, k: -1 - i },
-					seqIndex: -1
+					stamp: { c: -1, k: -1 - i }
 				}));
-		const listClaims = implicit.length === 0 ? own : [...implicit, ...own];
 		return {
 			id,
 			node,
@@ -83,11 +68,10 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 			n: node.getAttr(NONCE),
 			deleted: hasDeleteMark(node) || keyDeleted,
 			content: isNodeLike(content) ? content : undefined,
-			claimsNode,
-			listClaims,
-			// Until the next retarget pass its own claims stay with it (`merge.claim.anchor`).
-			claims: effectiveClaims(id, listClaims),
-			cands: candidatesOf(node)
+			implicit,
+			// Read from its stream once the record is in (`claimsOf`), again after the fold's texts.
+			claims: [],
+			home: homeFor(id)
 		};
 	};
 
@@ -95,29 +79,30 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	 * Rebuild (or create, or drop) block `id`'s record, and note what the
 	 * maintained facts must re-decide: its owner and the tops of the
 	 * blocks it claims, its placement — and, when its entry came or
-	 * went, the placements of the blocks whose candidate names it.
+	 * went, the placements of the blocks whose display edge it holds.
 	 */
 	const updateBlockRec = (id: BlockId): void => {
 		const old = blocks.get(id);
 		const node = nodeAt(id);
-		// Its list may change: its claims stay its own until the retarget pass.
-		for (const t of attachOf.get(id) ?? []) {
-			if (t === id) continue;
-			dropFrom(foreignOf, t, id);
-			reclaim.add(t);
-		}
-		attachOf.delete(id);
-		retargets.add(id);
 		if (!isNodeLike(node)) blocks.delete(id);
-		else blocks.set(id, buildRec(id, node));
+		else {
+			const rec = buildRec(id, node);
+			blocks.set(id, rec);
+			rec.claims = claimsOf(id);
+			reclaim.add(id);
+		}
 		const rec = blocks.get(id);
+		// Another node now stands for `id` (or none): its sequence's slots change owner.
+		if (old?.node !== rec?.node) {
+			if (old !== undefined) reslot(old.node);
+			if (rec !== undefined) reslot(rec.node);
+		}
 		noteShell(id);
 		noteClaims(id, old?.claims ?? [], rec?.claims ?? []);
-		noteCands(id, argParent(old));
 		placementSeeds.add(id);
 		if ((old === undefined) !== (rec === undefined)) {
 			stateSeeds.add(id);
-			for (const c of byArgParent.get(id) ?? []) placementSeeds.add(c);
+			for (const c of rawOrder.get(id) ?? []) placementSeeds.add(c.id);
 		}
 		if (old?.type !== rec?.type) {
 			noteKind(id);

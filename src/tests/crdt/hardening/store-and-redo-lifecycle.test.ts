@@ -19,6 +19,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const providers = bindIndexeddbProvider(Y);
@@ -43,7 +44,7 @@ const readRows = async (name: string): Promise<ArrayBuffer[]> => {
 describe('gateH-R2 — lifecycle edges', () => {
 	test('destroy() during an in-flight storeState leaves a consistent store', async () => {
 		const name = `h-r2-destroy-${Date.now()}`;
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -58,7 +59,7 @@ describe('gateH-R2 — lifecycle edges', () => {
 		const rows = await readRows(name);
 		console.log(`[r2-destroy] rowsAfter=${rows.length} destroyed=${p._destroyed}`);
 		// Whatever the outcome, a fresh provider must still hydrate cleanly.
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await expect(p2.whenSynced).resolves.toBe(p2);
 		expect(p2.synced).toBe(true);
@@ -67,7 +68,7 @@ describe('gateH-R2 — lifecycle edges', () => {
 
 	test('two concurrent storeState calls on a clean doc keep all content', async () => {
 		const name = `h-r2-dbl-${Date.now()}`;
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -76,7 +77,7 @@ describe('gateH-R2 — lifecycle edges', () => {
 		await sleep(50);
 		await Promise.all([providers.storeState(p), providers.storeState(p)]);
 		// Rehydrate and verify the text survived a double-compaction.
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		const text = doc2.get('blocks').getAttr(DEFAULT_SEED_ID)?.getAttr('content')?.toString();
@@ -89,7 +90,7 @@ describe('gateH-R2 — lifecycle edges', () => {
 
 describe('gateH-R3 — nested redo + post-dispose repair', () => {
 	const seedSplit = () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		const ed = E.create(doc);
 		ed.init({
@@ -147,7 +148,7 @@ describe('gateH-R3 — nested redo + post-dispose repair', () => {
 
 describe('gateH-bonus — rehome rank stress', () => {
 	test('many inserts at index 0 after rehomes stay ordered on both replicas', () => {
-		const docA = new Y.Doc();
+		const docA = keepingReplaced(new Y.Doc());
 		docA.clientID = cid++;
 		const edA = E.create(docA);
 		const spec: { id: string; type: string }[] = [];
@@ -164,7 +165,7 @@ describe('gateH-bonus — rehome rank stress', () => {
 		}
 		const orderA = edA.childrenIds(null);
 		// Converge to a second replica and compare ORDER (not bytes).
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		docB.clientID = cid++;
 		Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
 		const edB = E.create(docB);

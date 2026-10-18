@@ -40,10 +40,8 @@ export const splitMergeOps = (c: OpsContext) => {
 		kindToCopy,
 		REFUSED,
 		plan,
-		ranksFor,
 		moveTo,
 		move,
-		pieceRanks,
 		leaving,
 		settledKind,
 		settle,
@@ -68,7 +66,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		const born = ref(newId);
 		const pos = positionOf(id);
 		const rec = view().blocks.get(id);
-		if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
+		if (pos === null || isVoid(id) || !rendersContent(id) || rec === undefined) return REFUSED;
 		// A table's cell holds its lines as line breaks: it never splits (`table.split`).
 		if (isCellKind(blockTypeOf(id))) return REFUSED;
 		if (isIncarnationId(born) || blockNodeOf(doc, born) !== null) return REFUSED;
@@ -78,7 +76,6 @@ export const splitMergeOps = (c: OpsContext) => {
 		const t = tail
 			? { type, data: tail.data && sanitizeWireJson(tail.data) }
 			: { type, data: readData(rec.node) };
-		const [rank] = pieceRanks(id, at, 1);
 		const length = displayLength(id) - at;
 		const split: PlanStep = {
 			op: 'splitBlock',
@@ -88,7 +85,7 @@ export const splitMergeOps = (c: OpsContext) => {
 			newId: born,
 			tail: t,
 			parent: pos.parent,
-			rank: rank!
+			index: pos.index + 1
 		};
 		return plan([born], [split, ...move(childrenIds(id), born, 0)]);
 	};
@@ -98,11 +95,11 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * children ADOPTED as `into`'s last children — an island's take
 	 * `into`'s default child, like a baseline merge's — and `from` is
 	 * hidden via the claim (undo restores it). The children stay under
-	 * `from`, ranked after `into`'s children, and display under `into`
-	 * through the claim: a concurrent delete of `into` voids the
-	 * claim and `from` comes back with its children, never below them.
-	 * Role rules are `canMerge`'s; a merge that would close a display
-	 * cycle is refused. `ids`: `into`.
+	 * `from` and display under `into` through the claim, after `into`'s
+	 * own children (the display's claim order): a concurrent delete of
+	 * `into` voids the claim and `from` comes back with its children,
+	 * never below them. Role rules are `canMerge`'s; a merge that would
+	 * close a display cycle is refused. `ids`: `into`.
 	 */
 	const mergeBlocks = (fromId: BlockId, intoId: BlockId): Prepared => {
 		const from = ref(fromId);
@@ -112,9 +109,8 @@ export const splitMergeOps = (c: OpsContext) => {
 		if (isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
 		const kids = childrenIds(from);
 		const retype = settle(from, kids, into);
-		const adopt = moveTo(kids, from, kids.length, ranksFor(into, Infinity, kids.length, kids));
 		// A list its only item leaves goes, as with every sibling op.
-		return plan([into], emptied([from], [merge(from, into), ...adopt, ...retype], landing(into)));
+		return plan([into], emptied([from], [merge(from, into), ...retype], landing(into)));
 	};
 
 	/**
@@ -123,7 +119,7 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * NOT adopted into `into` — and take the kind they show there
 	 * (`settledKind`: an island's children its parent's default child, a
 	 * paragraph in a list its item); then `from`'s content claims
-	 * into `into`. Ranked after `from`, not at it: a concurrent delete of
+	 * into `into`. Placed after `from`, not at it: a concurrent delete of
 	 * `into` revives `from` above its former children.
 	 */
 	const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
@@ -131,10 +127,9 @@ export const splitMergeOps = (c: OpsContext) => {
 		if (pos === null || !contentTarget(into)) return REFUSED;
 		const kids = childrenIds(from);
 		const retype = settle(from, kids, pos.parent);
-		const out = leaving(from, true, kids);
 		return plan(
 			[into],
-			[...moveTo(kids, pos.parent, pos.index + 1, out), ...retype, merge(from, into)]
+			[...moveTo(kids, pos.parent, pos.index + 1, leaving(true)), ...retype, merge(from, into)]
 		);
 	};
 
@@ -184,7 +179,7 @@ export const splitMergeOps = (c: OpsContext) => {
 			const slot = positionOf(prev)!;
 			if (!fits(slot.parent, settledKind(prev, id, slot.parent))) return REFUSED;
 			const lift = [
-				...moveTo([id], slot.parent, slot.index, leaving(prev, false, [id])),
+				...moveTo([id], slot.parent, slot.index, leaving(false)),
 				...settle(prev, [id], slot.parent)
 			];
 			return plan([id], emptying(prev, [id], lift, landing(slot.parent)));

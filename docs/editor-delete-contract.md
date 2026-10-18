@@ -500,9 +500,12 @@ one-item list's item, or every item, removes the list (SW8-roles-2).
 
 Promotion is derived when the document is read (UW-08,
 `placement/model.ts` `displaySlotOf`): a block with no delete mark whose
-parent carries one displays in that parent's slot, ranked just after it,
-in its own order, recursively (`promotedRank` — the planned moves above
-write the same rank, so the deleter's own view and a peer's agree).
+parent carries one displays in that parent's slot, right after it, in
+its own order, recursively (`promotedRank`, the read's order key). The
+delete writes no placement: the children keep their home slots in the
+deleted block's sequence, so the deleter's own view and a peer's agree,
+and a block written there since (a peer's child, a split's tail) shows
+among them in that sequence's order.
 Concurrency follows from that rule, not from what the deleter saw: the
 promoted children keep their identity, so a peer's concurrent typing
 inside them survives; a peer's Enter in a promoted child keeps the tail
@@ -678,17 +681,28 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   first item) or Turn into items of one list concurrently, one gesture
   each between syncs, the text keeps its order on every client-id pair
   the sweeps run (`clientPairs`, up to 240 a row) and every replica
-  converges (CW-01): a block leaving a list is ranked by where it came from
-  (`sourceRank`: a base every replica computes alike from the gap, then
-  its side of the gap, then its path down the list), never drawn at
-  random in the gap two peers share. The side keeps sources apart
-  (DR-crdt-6): in the gap `(X, Y)`, a split's pieces of `X` first, then
-  the blocks leaving `X` for the gap after it, then those leaving `Y` for
-  the gap before it, as every serial order puts them — Enter in the
-  paragraph above a list ‖ Backspace or Turn into on its first item reads
-  the paragraph's pieces, then the item. A list the two splits leave with no item shows nothing and the
-  next key next to it removes it (both outdent `b`: each made a `ul'`,
-  one stays empty). Residuals, pinned in `gesture-order-sweep.test.ts`:
+  converges (CW-01): a block leaving a list is placed by where it came
+  from, never by who moved it. Its move record stands in the gap after the
+  block before the list (YATA's origin), and two records at one origin
+  sort by their class — the side of the gap they leave for — then by the
+  block each stands at (`at`: the block leaving, for a head or new blocks
+  the block they stand beside) in the lists' order (fork patch YP22,
+  `sourceOrder`: the chain of home slots each record names, from the root
+  down to that block, compared level by level), then by the writer's part there
+  (a head holding the items before the block, new blocks kept before the
+  block after, a head holding the block too, the block itself, new blocks
+  after it: `PART`), then the stronger record first. The new head list a
+  split makes and the blocks a lift inserts are created in the list at the
+  split and moved out by records standing at the block, so a peer's
+  pieces, heads, lifts and new blocks in one gap read in the serial order.
+  The side keeps sources apart (DR-crdt-6): in the gap `(X, Y)`, a split's
+  pieces of `X` first, then the blocks leaving `X` for the gap after it,
+  then those leaving `Y` for the gap before it, as every serial order
+  puts them — Enter in the paragraph above a list ‖ Backspace or Turn into
+  on its first item reads the paragraph's pieces, then the item. A list
+  the two splits leave with no item shows nothing and the next key next to
+  it removes it (both outdent `b`: each made a `ul'`, one stays empty).
+  Residuals, pinned in `gesture-order-sweep.test.ts`:
   - in a list nested directly in a list, `[ul > [a, ul2 > [b, c, x], d]]`,
     the two splits can move blocks at different levels, so neither
     contests the other's: Ada moves `b` into `ul` (Shift+Tab, or
@@ -732,86 +746,79 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     (`merge.claim.anchor`, below): Backspace joins "world" into "hello" ‖
     Enter after "he" → "he", "lloworld", every serial order's result (it
     read "heworld", "llo").
-- `merge.claim.anchor` (H9's second half, 0.1.0-next.26): a merge claim
-  is anchored to the end of its holder's stream as its writer saw it:
-  `a`, the last unit of that stream (its opening boundary when it is
-  empty; no anchor at the start of an empty own text), and `r`, the item
-  right after it (the next stream's boundary, `null` at the text's end),
-  written in the claim's payload (`{ m, a, r }`, `claimInto`; a split
-  re-inserts the claims it moves with theirs). Its EFFECTIVE claimer is the
-  block of the segment just before `r` (the text's last segment when `r`
-  is `null`) in the row of the holder's stream, when that is the holder's
-  segment or a later one; else the holder. So a split the writer did not
-  see, anywhere in the region between `a` and `r`, moves the claim to the
-  piece that ends that region, as both serial orders do: Backspace joins
-  "world" into "hello" ‖ Enter after "he" → "he", "lloworld"; ‖ Enter at
-  the end → "hello", "world"; ‖ at the start → "", "helloworld"; typing
-  never moves it (only a row's cuts do). The index keeps each record's
-  list (`listClaims`) and its effective claims (`claims`: its own that
-  stay, then those other holders' anchors move to it, by stamp); the claim
-  graph, the display, a split's moved claims (deleted from the list that
-  stores them) and the owners read the effective ones, the purge and a
-  restore delete from the stored lists. Targets are re-decided after each
-  fold's texts, for the holders whose record changed and those anchored in
-  a re-placed row (`applyRetargets` in `text/runs.ts`, checked against a
-  rebuild by `indexChecks`). A claim without an anchor (written before
-  0.1.0-next.26, or an implicit one, `id.same.concurrent`) stays with its
-  holder. A client of 0.1.0-next.25 reads an anchored claim as a plain one
-  (its holder's), so until every client upgrades the two releases can
-  disagree on which block shows a merged text after such a race (each
-  converges with its own release). Pins: `text/merge-claim-anchor.test.ts`
-  (48 client-id pairs), `dr-crdt-order.test.ts` (the matrix excuses no
+- `merge.claim.anchor` (H9's second half, 0.1.0-next.26; schema
+  generation 8): a merge claim is an item `{ m }` in a backing text, written
+  at the end of the gap at the end of its holder's stream (`claimInto`,
+  fork patch YP7's `insertAtGapEnd`), and a block's claims are the claim
+  items of its stream (after its implicit ones, `id.same.concurrent`). Among
+  the items of one origin a claim item sorts after content and boundaries
+  (fork patch YP21), so a split the claim's writer did not see, anywhere in
+  the holder's stream, leaves the claim in the piece that ends that stream,
+  as both serial orders do: Backspace joins "world" into "hello" ‖ Enter
+  after "he" → "he", "lloworld"; ‖ Enter at the end → "hello", "world"; ‖ at
+  the start → "", "helloworld"; text a peer types at the end of the holder
+  stays before the claim ("hello!world"); typing never moves it (only a
+  boundary does). A split the writer saw writes the claims that follow its
+  point again at the end of the new block's stream and deletes their items.
+  The index's rows track claim items as bounds that never delimit (no read
+  shows them): a claim item written or removed rescans its text and the
+  claims of that row's blocks are re-read (`applyReclaims` in
+  `text/index/streams.ts`, checked against a fresh scan by `indexChecks`).
+  The purge and a restore delete claim items by id. Pins:
+  `text/merge-claim-anchor.test.ts` (48 client-id pairs),
+  `yp21-claims.test.ts`, `dr-crdt-order.test.ts` (the matrix excuses no
   merge any more).
 - `order.split.text` (D-18, H9, 0.1.0-next.25): blocks whose streams lie
-  in one backing text and that stand where they were made (their winning
-  placement is their first candidate: no move, outdent or lift since)
-  show, under one parent, in their streams' order in that text — the
-  order of the boundaries that delimit them, replicated — at the ranks
-  they hold between them (`textRanker` in `placement/model.ts`, read by
-  `displaySlotOf`; the index re-reads a text's pieces when its segments
-  or one of their placements change). One client's pieces keep the order
-  it ranked them in (it knew each other's places, `FX-06`); the text
-  decides between different clients' pieces, which concurrent splits make.
-  A moved piece stands where it was moved. Two peers pressing Enter in one
-  block at once read the text's order on every client-id pair, whatever
-  each typed after its split point (`split-text-order.test.ts`,
+  in one backing text and that stand where they were made show, under one
+  parent, in their streams' order in that text — the order of the
+  boundaries that delimit them — by construction: a split-born block's
+  home slot carries the id of its split's boundary item (`BlockSlot.s`,
+  written by `splitBlock` and by a paste's lines at its split, and kept
+  when the slot is collected), and among the slots of one origin the
+  engine sorts the keyed ones by their boundaries' order in the text
+  (boundaries in different texts by the text, a replica-free order), before
+  the slots no split made (a paste of whole blocks, Duplicate, the +
+  button), then the origin writer's own first, then by client id (fork
+  patch YP22, `utils/marks.js`). One client's pieces keep the order it
+  wrote them in (it knew each other's places, `FX-06`); the boundaries
+  decide between different clients' pieces, which concurrent splits make,
+  whatever each typed or deleted after its split point. A moved piece
+  stands where it was moved. Two peers pressing Enter in one block at once
+  read the text's order on every client-id pair (`split-text-order.test.ts`,
   `dr-crdt-order.test.ts`); a container header's Enter ‖ another's keeps
   the text order too (two outcomes before).
 - `order.insert.run` (H1, CRDT study 2026-10): a block inserted right
-  after a block this client ranked — Enter at the end of a block, a
+  after a block this client made — Enter at the end of a block, a
   container header's new first child, Duplicate, the + button, a paste of
   whole lines (`insertBlocks`, `flow.place`), never a move — extends the
-  client's run there (`rankAfter` in `placement/rank.ts`, the rule data
-  arrays use, YATA's origin rule): its rank is the block's rank and one
-  segment in the run band (`(RANK_RUN, RANK_RUN + 2^29)`, `RANK_RUN = -2^30` since P7), or, after a
-  member of the client's run, the next member at that depth. A peer's
-  rank in that gap is never an extension of the block's rank with a digit
-  in the band, so it sorts before or after the whole run, never inside it.
-  Two peers that each press Enter at the end of one block and type
-  several lines keep each one's lines together on every client-id pair
-  (`block-insert-runs.test.ts`: `x a1 a2 a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2
-a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
-  stay together around a peer's split. Which peer's run comes first
-  still follows the client ids (below). The ranks stay inside the EW-02
-  bounds (`rank-growth.test.ts`): a run costs one segment once, its
-  members none.
-- `order.rank.format` (P7, schema generation 5): a rank is a sequence of
-  segments, each a variable-length signed digit (a length character, then
-  base-64 places: small digits are short) and, only where the order needs
-  one, the allocating client's tie (`!` and the client id). The last
-  segment always carries a tie; a copied segment keeps its tie only when
-  two bounds differ by their ties alone, and a run's member
-  (`order.insert.run`) keeps every tie, so a peer's rank of the same digit
-  never sorts between two members. Ranks are still compared as plain
-  strings. Ranks of schema generation 4 are never read: a generation-4
-  document reaches generation 5 through its JSON, which ranks every block
-  again (`reference/migration.mdx`). `rank-growth.test.ts`: 300 Enters
-  256 → 129 characters, 1,000 Enters 576 → 342, an outline 112 → 60 (a
+  client's run there: its home slot's origin is that block's unit (YATA's
+  origin rule, the rule data arrays use too), and among the slots of one
+  origin the origin writer's own sort first (fork patch YP22, `extendsRun`
+  in the engine's `utils/marks.js`), so a peer's slot there sorts before or
+  after the whole run, never inside it. Two peers that each press Enter at
+  the end of one block and type several lines keep each one's lines
+  together on every client-id pair (`block-insert-runs.test.ts`: `x a1 a2
+a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2 a3 q`; before, 34 of 40 pairs
+  interleaved), the lines of one paste stay together around a peer's
+  split, and the lines one types after one's own line stay together around
+  a peer's line inserted there meanwhile. Which peer's run comes first
+  still follows the client ids (below).
+- `order.rank.format` (P7, schema generation 5; retired by schema
+  generation 9, fork patch YP22): there is no rank. A block's place is its
+  home slot `{ b }` in its parent's sequence, an array item's its slot
+  `{ p, i }` in its owner's, and a move a record naming the moved slots in
+  order; the engine orders them (YATA), the index keeps an order key per
+  child in memory. Documents, rooms and stores of generation 8 and earlier
+  are refused, never converted (`reference/migration.mdx`).
   27-bit client id; with a 53-bit one 165, 446 and 72).
 - Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
-  gestures above rank by source (`exitRanks`/`pieceRanks`); every other
-  placement takes a plain rank in the gap (`ranksFor`, `M.ranksAt`), so
-  its order against a peer's concurrent block follows the client ids.
+  gestures above are ordered by source (the engine's sort classes, fork
+  patch YP22: in one gap a split's pieces, then the records of blocks
+  leaving a block for the gap after it, then those leaving one for the gap
+  before it — `moveTo`'s `side`; and `order.split.text`); every other
+  placement is a slot or a record in the gap, ordered among a peer's
+  concurrent ones by client id (YATA), so its order against a peer's
+  concurrent block follows the client ids.
   Both replicas converge and no text is lost. That covers:
   - a block inserted beside one (`insertBlocks`): Enter at the start or
     end of a block (`insertBlocks` before or after it; at the end of
@@ -828,8 +835,9 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
     `insertBlocks` (DR-crdt-1): a whole paste with the caret in X ‖ Enter
     after "hello" in X → " world" can read before the pasted blocks (since
     `order.insert.run`, never between them).
-    Ranking them by source kept the order but grew ranks 5 to 7 times as
-    fast as plain ones under repeated pastes in one place (EW-02);
+    (Ranking them by source, before fork patch YP22, kept the order but grew
+    ranks 5 to 7 times as fast under repeated pastes in one place, EW-02;
+    now nothing grows, and the claim is not made.)
   - several structural gestures by one peer before it syncs (text edits
     before one's split point are fine, DR-crdt-7; one after it is the
     residual above): two Enters ‖ a first-item lift,
@@ -851,18 +859,16 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
     block menu's Move up/down and Tab (`nestBlock` at the parent's end:
     Tab on `y` ‖ Enter at the end of the last child of the block above →
     the new line can read after `y`).
-- One client never mints one source rank twice in a gap: a segment tied
-  by the client's clock follows a source rank's first part segment
-  (DW-05), so a line a peer deleted and restores by undo never ties with
-  the line minted there since, and the lines of one gesture (a paste)
-  sort before what the client mints there later, never among them
-  (FX-06; `order-scope.test.ts`). `rankBetween` stops descending once the
-  emitted prefix is below the right bound (FX-04). `rank-growth.test.ts`
-  bounds the longest rank and the encoded document after 300 and 1,000
-  Enters mid-document, 300 typed outline items and 3,000 reorders of 20
-  lines (EW-02); a ranking change keeps within it. Enters concentrated at
-  one spot still add about one rank level per 32 (a gap halves at each
-  insert there).
+- Nothing is minted (fork patch YP22, schema generation 9): a block's
+  place is its home slot in its parent's sequence, written once at its
+  creation after its left neighbour's unit, and a move is one record at the
+  destination; the index keeps an order key per child in memory only
+  (`placement/keys.ts`), never stored. `slot-growth.test.ts` bounds the
+  encoded document after 300 and 1,000 Enters mid-document, 300 typed
+  outline items and 3,000 reorders of 20 lines (EW-02), and holds one slot
+  per block and one record per move: Enters concentrated at one spot cost
+  what the first did (the retired `rank-growth` rows bounded ranks of 144
+  and 368 characters there).
 - Concurrency (DR-crdt-2): an item a peer adds to a list another peer's
   edit removes (a delete, lift, pull-up or move of its only item, or a
   delete of the list) is promoted into the list's slot as its new parent's
@@ -1268,10 +1274,9 @@ An undo removes only the undoing writer's own contributions. Undoing a step
 that created a block (insert, paste, Enter at a line's end, a split's new
 block) never deletes the block node: the history's `withdraw` hook (fork
 patch YP12, `placement/model.ts` `withdrawOnUndo`) keeps the node, its
-placement and its content and claims nodes, and writes the undoer's
-withdraw mark `wd.<writer>`; what the step wrote inside the content and
-claims nodes (the undoer's text, atoms, boundaries, claims) is deleted as
-before. A withdrawn block without a delete mark is visible while it holds
+placement and its content node, and writes the undoer's
+withdraw mark `wd.<writer>`; what the step wrote inside the content node
+(the undoer's text, atoms, boundaries, claim items) is deleted as before. A withdrawn block without a delete mark is visible while it holds
 content — a live unit in its stream, or a child that is not deleted — and
 hidden otherwise; the index settles it after every fold, as a least
 fixpoint over the withdrawn blocks, so every replica agrees whatever the
@@ -1362,17 +1367,18 @@ undo, converged).
 
 Nothing renders a void block's children, so a void never shows any. A
 retype to a void kind (`setBlockType`, `setBlock` without `children`)
-moves the block's children to its slot, right after it, in their order;
-the island-merge rule resets an island's children to the slot parent's
-default child type (UW-21). A child a peer adds concurrently — nested
-under the block, split off one of its children, moved into it — displays
-in the void's slot too: the rule is derived when the document is read
-(UW-21b, `placement/model.ts` `displaySlotOf`, like `del.blocks.promote`),
-from the document's roles, so every replica with the same roles agrees
-without a repair write, and the retype's own moves write the rank the
-read gives (`promotedRank`), so a split tail stays after its head. Undo
-of the retype (A retypes, B nests Q, A undoes) puts Q back under the
-block: its placement never changed. Pins: `replica-scenarios.test.ts`
+leaves the block's children where they are; they show in its slot, right
+after it, in their order, and the island-merge rule resets an island's
+children to the slot parent's default child type (UW-21). A child a peer
+adds concurrently — nested under the block, split off one of its children,
+moved into it — displays in the void's slot too: the rule is derived when
+the document is read (UW-21b, `placement/model.ts` `displaySlotOf`, like
+`del.blocks.promote`), from the document's roles, so every replica with
+the same roles agrees without a repair write, and the retype writes no
+move (its children's kinds are settled, nothing else), so a split tail
+stays after its head in the children's own order. Undo of the retype (A
+retypes, B nests Q, A undoes) puts Q back under the block: its placement
+never changed. Pins: `replica-scenarios.test.ts`
 ("capabilities under concurrency"), `merge-undo-void.test.ts`
 (UW-21), `replica-fuzz.test.ts` and the `void-children` well-formed check.
 
@@ -1453,7 +1459,7 @@ not stored there.
 ### `conc.merge-adopt` — `mergeBlocks` (`mergeFrom`) keeps the source's children with it
 
 The engine merge adopts `from`'s children as the last children of `into`
-by keeping them under `from`, ranked after `into`'s children: they display
+by keeping them under `from`, shown after `into`'s children (the claim order): they display
 under `into` through the merge claim. A concurrent delete of `into` voids
 the claim (ST02b), and `from` comes back with its children under it,
 never below them (FW-12; `P > [Q]`, `X > [K]`, A `mergeBlocks(X, P)` ‖ B
@@ -1482,7 +1488,7 @@ block. The role is data, read by the index and the operations from the
 document's roles (`roles.layout`), so replicas with the same roles show
 the same thing; no core code names `columns` or `column`. The read-time
 rules own the display; every write that would leave one of their states
-writes the result the rule shows, at the rank it reads (`promotedRank`),
+writes the result the rule shows, right where it reads it (`promotedRank`),
 so a replica that missed the write and one that applied it agree. Pins:
 `src/tests/crdt/arch-v2/layout.test.ts` (each row sequential, concurrent
 with display equality across replicas, and undone), the `layout-shape`
@@ -1506,7 +1512,7 @@ last column (`nestParent`).
 
 Any other child a layout holds — a raw `insertBlocks`, a retype of an
 item, a race — displays in the layout's parent right after the layout, at
-`promotedRank(layout, its rank)`, as the kind it shows there (`typeOf`):
+right after the layout (the read's `promotedRank(layout, …)`), as the kind it shows there (`typeOf`):
 a paragraph stored directly in `C` shows right after it, a code line
 stored there as a paragraph (AW-05).
 
@@ -1517,7 +1523,7 @@ stored there as a paragraph (AW-05).
 ### `layout.single` — a layout displaying one item or none does not display (read)
 
 That item's children display in the layout's slot, at
-`promotedRank(layout, promotedRank(item, rank))` — the rank a delete of
+right after the layout (the read's `promotedRank(layout, promotedRank(item, key))`) — the place a delete of
 both reads (`del.blocks.promote`): `C:columns[K1[A, A2]]` shows `A, A2`
 where `C` was; a layout holding nothing displays nothing. Kinds settle as
 read-time promotion settles them: a paragraph that lands directly in a
@@ -1525,7 +1531,7 @@ list shows as its item.
 
 ### `layout.bare-item` — an item outside a layout does not display (read)
 
-Its children take its slot, at `promotedRank(item, rank)`: a column a peer
+Its children take its slot, right after it (`promotedRank(item, key)`): a column a peer
 adds under a layout another peer deletes, or one a race leaves at the
 root, shows its blocks only.
 
@@ -1536,15 +1542,19 @@ In the plan that causes them, one undo step:
 - `emptying` removes an item left with no child (`del.range.empty-container`),
   like any container;
 - `dissolving` follows: a layout left with one item is deleted with that
-  item, the item's children moved to the layout's slot at the
-  `layout.single` rank and settled there; one left with none is deleted
-  (deleting `B`, the only block of `K2`: `P, A, A2, Z`). The keys, the
-  moves, a text range across columns, `mergeBlocks`, a block delete and
-  `placeBeside`'s sources all run it;
-- deleting an item (a block selection holding it) promotes its blocks
-  right after the layout (the `layout.only-items` rank), then dissolving:
+  item, the item's children settled for the layout's parent (they keep
+  their home slots: the read shows them in the layout's slot,
+  `layout.single`); one left with none is deleted (deleting `B`, the only
+  block of `K2`: `P, A, A2, Z`). The keys, the moves, a text range across
+  columns, `mergeBlocks`, a block delete and `placeBeside`'s sources all
+  run it;
+- deleting an item (a block selection holding it) writes its delete mark
+  and settles its blocks' kinds for the layout's parent; the read shows
+  them right after the layout (`layout.only-items`), then dissolving:
   deleting `K2` gives `P, A, A2, B, Z`; a block a peer adds to `K2`
-  meanwhile follows `B`;
+  meanwhile follows `B`. A reader without the layout role sees those
+  blocks in the layout at the item's place (the write mirrored the read
+  before 3.0);
 - deleting a layout deletes it and its items: their blocks take its slot
   in reading order and keep their kinds (no column is retyped to a
   paragraph holding children): deleting `C` gives `P, A, A2, B, Z`; a

@@ -8,7 +8,9 @@
 import { expect } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { readData } from '../../../lib/crdt/data.js';
-import { candidatesOf, view as modelView } from '../../../lib/crdt/placement/model.js';
+import { view as modelView } from '../../../lib/crdt/placement/model.js';
+import { edgeOf } from '../../oracles/placements.js';
+import { engineOps } from '../../../lib/crdt/structs.js';
 
 export const svEqual = (a: Uint8Array, b: Uint8Array) =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
@@ -48,20 +50,33 @@ export const facts = (ed, doc) => {
 			const a = ed.anchorAt(id, k, 'right');
 			atoms.push(a ? [a.b, a.a.i?.c, a.a.i?.k] : null);
 		}
+		const edge =
+			rec.home === null
+				? null
+				: edgeOf(doc, doc.get('blocks'), engineOps(Y).isKeptReplaced, rec.home);
 		out.set(id, {
 			live,
 			owner: v.own.ownerOf(id),
 			meta: JSON.stringify([rec.node.getAttr('type'), readData(rec.node) ?? null]),
-			at: JSON.stringify(candidatesOf(rec.node).map((c) => c.key)),
+			// Where the block stands: the sequence its display edge is in, and its place there.
+			parent: edge === null ? undefined : JSON.stringify(edge.parent ?? null),
+			rank: v.placements.get(id)?.rank ?? '',
 			text: live ? JSON.stringify([ed.contentItems(id), atoms]) : null
 		});
 	}
 	return out;
 };
 
-/** What changed between two fact snapshots, in the effect summary's vocabulary. */
-export const touched = (before: Map, after: Map) => {
+/**
+ * What changed between two fact snapshots, in the effect summary's
+ * vocabulary. A block moved when its sequence changed, or its order among
+ * the blocks of that sequence the plan did not move (`planned`) changed: a
+ * record written beside it that carries it along (fork patch YP22,
+ * `placeAfter`) relocates nothing.
+ */
+export const touched = (before: Map, after: Map, planned: Iterable<string> = []) => {
 	const t = { creates: [], removes: [], merges: [], moves: [], meta: [], text: [] };
+	const moved = new Set(planned);
 	for (const [id, a] of after) {
 		const b = before.get(id);
 		if (b === undefined) {
@@ -72,9 +87,26 @@ export const touched = (before: Map, after: Map) => {
 			b.live && b.owner === id && typeof a.owner === 'string' && a.owner !== id ? a.owner : null;
 		if (mergedInto !== null) t.merges.push(`${id}>${mergedInto}`);
 		else if (b.live && !a.live) t.removes.push(id);
-		if (b.at !== a.at) t.moves.push(id);
+		if (b.parent !== a.parent || moved.has(id)) t.moves.push(id);
 		if (b.meta !== a.meta) t.meta.push(id);
 		if (b.live && a.live && b.text !== a.text) t.text.push(id);
+	}
+	// The unmoved blocks of each sequence keep their order among themselves.
+	const orderOf = (snap: Map, parent: string, only: Set<string>) =>
+		[...snap]
+			.filter(([id, f]) => f.parent === parent && only.has(id))
+			.sort(([, x], [, y]) => (x.rank < y.rank ? -1 : x.rank > y.rank ? 1 : 0))
+			.map(([id]) => id)
+			.join(' ');
+	const still = new Set(
+		[...after.keys()].filter((id) => before.has(id) && !moved.has(id) && !t.moves.includes(id))
+	);
+	for (const parent of new Set([...after.values()].map((f) => f.parent))) {
+		if (parent === undefined) continue;
+		const was = orderOf(before, parent, still).split(' ').filter(Boolean);
+		const now = orderOf(after, parent, still).split(' ').filter(Boolean);
+		if (was.join(' ') !== now.join(' '))
+			for (const id of now) if (was[now.indexOf(id)] !== id) t.moves.push(id);
 	}
 	return t;
 };
@@ -112,7 +144,7 @@ export const prepareApply = (ed, doc, name: string, prepare: () => unknown, labe
 	const after = facts(ed, doc);
 	const r = applied.result as { status: string; ids: string[] };
 	const want = predicted(plan.effect);
-	const got = touched(before, after);
+	const got = touched(before, after, want.moves);
 	expect(
 		{ creates: set(got.creates), removes: set(got.removes), merges: set(got.merges) },
 		`${label}: structure`

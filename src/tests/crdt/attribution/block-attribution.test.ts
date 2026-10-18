@@ -19,6 +19,7 @@ import {
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
 import type { EngineDoc, EngineNode } from '../../../lib/crdt/engine-api.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const alice: DocumentActor = { id: 'alice', name: 'Alice' };
 const bob: DocumentActor = { id: 'bob', name: 'Bob' };
@@ -481,7 +482,7 @@ describe('block attribution — remote, load, unknown authors', () => {
 
 	it('blocks written without an actor stay unattributed (unknown stays unknown)', () => {
 		// A raw facade without an actor writes no attribution at all.
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const facade = bindEdytorDoc(Y).create(doc as unknown as EngineDoc);
 		facade.init({ content: [{ id: 'raw', type: 'paragraph' }] });
 		expect(facade.blockAttribution('raw')).toBeUndefined();
@@ -500,7 +501,7 @@ describe('block attribution — remote, load, unknown authors', () => {
 	});
 
 	it('init() called directly (import/seed path) writes no attribution', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const binding = bindEdytorDoc(Y);
 		binding.init(doc as unknown as EngineDoc, {
 			content: [{ id: 'seeded', type: 'paragraph' }]

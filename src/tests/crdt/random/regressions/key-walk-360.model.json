@@ -1,0 +1,183 @@
+{
+	"about": "Wide corpus (seeds 1-1,000, 300 ops), model adapter, minimized: a key walk under which placing a neighbour dropped a block (a cycle fallback) back into the walked stretch read a stale left neighbour; the maintained order differed from its rebuild.",
+	"seed": 360,
+	"peers": 3,
+	"adapter": "model",
+	"steps": [
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 1,
+				"offset": 16,
+				"text": "µ360x0",
+				"tag": "µ360x0"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 18,
+				"text": "µ360x1",
+				"tag": "µ360x1"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "heal",
+				"a": 1,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "nest",
+				"idIndex": 1,
+				"parentIndex": 7
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "nest",
+				"idIndex": 7,
+				"parentIndex": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 7,
+				"offset": 0,
+				"atomId": "in360-248"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s360-249",
+				"type": "list"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "heal",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 3,
+				"offset": 7,
+				"text": "µ360x252",
+				"tag": "µ360x252"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 4,
+				"offset": 6,
+				"length": 1,
+				"name": "bold"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 0,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "split",
+				"idIndex": 1,
+				"offset": 11,
+				"newId": "sp360-256"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 0,
+				"offset": 12,
+				"text": "µ360x266",
+				"tag": "µ360x266"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 20,
+				"text": "µ360x269",
+				"tag": "µ360x269"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 20,
+				"text": "µ360x270",
+				"tag": "µ360x270"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s360-271",
+				"type": "list"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 0,
+				"b": 1
+			}
+		}
+	],
+	"transcript": "seed 360 — 19 steps\n  0. peer 1: {\"kind\":\"insertText\",\"idIndex\":1,\"offset\":16,\"text\":\"µ360x0\",\"tag\":\"µ360x0\"}\n  1. peer 1: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":18,\"text\":\"µ360x1\",\"tag\":\"µ360x1\"}\n  2. peer 0: {\"kind\":\"net\",\"action\":\"heal\",\"a\":1,\"b\":0}\n  3. peer 2: {\"kind\":\"nest\",\"idIndex\":1,\"parentIndex\":7}\n  4. peer 1: {\"kind\":\"nest\",\"idIndex\":7,\"parentIndex\":1}\n  5. peer 1: {\"kind\":\"insertInline\",\"idIndex\":7,\"offset\":0,\"atomId\":\"in360-248\"}\n  6. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s360-249\",\"type\":\"list\"}\n  7. peer 0: {\"kind\":\"net\",\"action\":\"heal\",\"a\":1,\"b\":2}\n  8. peer 1: {\"kind\":\"net\",\"action\":\"batch\",\"a\":0,\"b\":1}\n  9. peer 0: {\"kind\":\"insertText\",\"idIndex\":3,\"offset\":7,\"text\":\"µ360x252\",\"tag\":\"µ360x252\"}\n  10. peer 2: {\"kind\":\"setMark\",\"idIndex\":4,\"offset\":6,\"length\":1,\"name\":\"bold\"}\n  11. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":0,\"b\":2}\n  12. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  13. peer 2: {\"kind\":\"split\",\"idIndex\":1,\"offset\":11,\"newId\":\"sp360-256\"}\n  14. peer 0: {\"kind\":\"insertText\",\"idIndex\":0,\"offset\":12,\"text\":\"µ360x266\",\"tag\":\"µ360x266\"}\n  15. peer 0: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":20,\"text\":\"µ360x269\",\"tag\":\"µ360x269\"}\n  16. peer 1: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":20,\"text\":\"µ360x270\",\"tag\":\"µ360x270\"}\n  17. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s360-271\",\"type\":\"list\"}\n  18. peer 1: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":0,\"b\":1}"
+}

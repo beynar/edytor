@@ -29,6 +29,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 500_000;
@@ -38,7 +39,7 @@ const EVIL = 'https://evil.example';
 const ORIG_LABEL = 'orig';
 
 const seed = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = cid++;
 	const ed = E.create(doc);
 	ed.init({
@@ -123,7 +124,7 @@ describe('R4 — mutating a public snapshot must not touch live state', () => {
 
 	test('mutated snapshot does not leak into replicas or later recomputed runs', () => {
 		const { doc, ed } = seed();
-		const peer = new Y.Doc();
+		const peer = keepingReplaced(new Y.Doc());
 		peer.clientID = cid++;
 		const ped = E.create(peer);
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc)); // synced BEFORE mutation
@@ -144,7 +145,7 @@ describe('R4 — mutating a public snapshot must not touch live state', () => {
 
 		// Peer B (synced after, full state): the corrupted bytes must not leave
 		// this doc — today they do.
-		const peer2 = new Y.Doc();
+		const peer2 = keepingReplaced(new Y.Doc());
 		peer2.clientID = cid++;
 		Y.applyUpdate(peer2, Y.encodeStateAsUpdate(doc));
 		const ped2 = E.create(peer2);
@@ -205,7 +206,7 @@ describe('R4 — mutating a public snapshot must not touch live state', () => {
 	});
 
 	test('proxy-backed caller payloads are sanitized on write, frozen on read', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		const ed = E.create(doc);
 		// A caller may hand a reactive proxy as marks/data — the write

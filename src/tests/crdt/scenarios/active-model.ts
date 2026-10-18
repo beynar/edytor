@@ -128,8 +128,8 @@ export const modelScenarios: Scenario[] = [
 			set.deliverAll();
 			assertConverged(set, ops);
 			assertAllStructurallyValid(set, ops);
-			// Winner order (seq,client): b2's cand accepted → b2 under b1;
-			// b1's cand would close the cycle → falls back to previous (root).
+			// Winner order (priority, client, clock): b2's edge accepted → b2 under b1;
+			// b1's edge would close the cycle → falls back to previous (root).
 			expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 0 });
 			expect(ops.positionOf(A, 'b2')).toEqual({ parent: 'b1', index: 0 });
 		}
@@ -313,11 +313,12 @@ export const modelScenarios: Scenario[] = [
 			A.doc.on('commit', (tr: never) => void (changedUnder(tr, [handle]) && deepEvents++));
 			ops.moveBlock(A, 'b1', { parent: 'b3', index: 0 });
 			expect(ops.resolveBlock(A, 'b1')).toBe(handle); // same engine handle
-			expect(deepEvents).toBeGreaterThan(0);
+			// A move is a record in the destination's sequence: nothing is written inside the moved node (YP22).
+			expect(deepEvents).toBe(0);
 			ops.insertText(B, 'b1', 0, 'X');
 			set.deliver('B', 'A');
 			expect(ops.blockText(A, 'b1')).toBe('Xhello world');
-			expect(deepEvents).toBeGreaterThan(1);
+			expect(deepEvents).toBeGreaterThan(0);
 		}
 	}
 ];

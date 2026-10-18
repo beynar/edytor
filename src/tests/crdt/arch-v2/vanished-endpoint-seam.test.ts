@@ -28,6 +28,7 @@
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -43,7 +44,7 @@ const b = (id: string, text: string, children?: unknown[], type = 'paragraph') =
 });
 
 const facadeOf = (content: unknown[], clientID = 20) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	const ed = E.create(doc);
 	ed.init({ content });
@@ -174,7 +175,7 @@ describe('V3 — seam of a vanished endpoint (doc/anchors)', () => {
 		const seam = await seamOf();
 		const content = [b('a', 'aa'), b('bb', 'bb'), b('c', 'cc'), b('d', 'dd')];
 		const one = facadeOf(content, 31);
-		const two = { doc: new Y.Doc() };
+		const two = { doc: keepingReplaced(new Y.Doc()) };
 		two.doc.clientID = 32;
 		Y.applyUpdate(two.doc, Y.encodeStateAsUpdate(one.doc), REMOTE);
 		two.ed = E.create(two.doc);

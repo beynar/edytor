@@ -49,6 +49,7 @@
 import { setMarkEdges } from './text/marks.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
+import { clientsOf } from './structs.js';
 import { SCHEMA } from './schema.js';
 import {
 	bindModel,
@@ -179,6 +180,24 @@ type Layers = {
  * The per-doc facade factory over the engine `Y` (the editor's documents
  * use it directly; {@link bindDocModel} is the public binding around it).
  */
+/**
+ * Give `doc` edytor's rule — a registry value a concurrent creation replaced
+ * keeps its subtree (fork patch YP14, `keepingReplaced`) — or refuse it
+ * loudly when it has integrated updates without it: the engine decides what
+ * a replaced value keeps when it integrates, so a document that took updates
+ * under the engine's default could lose a subtree its peers keep, forever.
+ * Create it with `createDoc()` (or `createDocument`/`loadDocument`), never
+ * `new Y.Doc()`.
+ */
+export const adoptRules = <D extends object>(doc: D): D => {
+	const d = doc as { keepReplaced?: unknown };
+	if (d.keepReplaced == null && clientsOf(doc as never).size > 0)
+		throw new TypeError(
+			"edytor: this document took updates before it carried edytor's rules (create it with createDoc(), createDocument or loadDocument, not new Y.Doc())"
+		);
+	return keepingReplaced(d) as D;
+};
+
 export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	// Compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
@@ -187,7 +206,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	const { init, seed } = bindSeed(Y, BA);
 
 	return (doc: EngineDoc, config: EdytorDocConfig = {}) => {
-		keepingReplaced(doc);
+		adoptRules(doc);
 		setMarkEdges(doc, config.markEdge ?? (() => undefined));
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';

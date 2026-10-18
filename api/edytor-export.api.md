@@ -229,8 +229,8 @@ declare const equationForms: (mathml?: MathML) => {
         equation: {
             itemKind?: string;
             island?: boolean;
-            rendersContent: boolean;
             defaultChild?: string;
+            rendersContent: boolean;
             void: boolean;
             lines?: boolean;
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
@@ -619,6 +619,12 @@ export type DataPatch = {
 };
 ```
 
+#### crdt/data.d.ts#DataWrite
+
+```ts
+export type DataWrite = LeafWrite | SlotWrite;
+```
+
 #### crdt/data.d.ts#LeafWrite
 
 ```ts
@@ -626,6 +632,26 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
+```
+
+#### crdt/data.d.ts#SlotWrite
+
+```ts
+export type SlotWrite = {
+    seq: 'insert';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'move';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'remove';
+    path: string;
+    ids: string[];
+};
 ```
 
 #### crdt/doc/content.d.ts#NewInline
@@ -753,13 +779,15 @@ export type PlanStep = {
     parent: BlockId | null;
     index: number;
     specs: BlockSpec[];
-    ranks: string[];
+    split?: BlockId;
 } | {
     op: 'moveBlocks';
     ids: BlockId[];
     parent: BlockId | null;
     index: number;
-    ranks: string[];
+    side?: 0 | 1;
+    part?: number;
+    at?: BlockId;
 } | {
     op: 'deleteBlock';
     id: BlockId;
@@ -773,7 +801,7 @@ export type PlanStep = {
     newId: BlockId;
     tail: SplitTail;
     parent: BlockId | null;
-    rank: string;
+    index: number;
 } | {
     op: 'mergeBlocks';
     from: BlockId;
@@ -790,7 +818,7 @@ export type PlanStep = {
     inlineId?: string;
     offset?: number;
     ops: DataPatch[];
-    leaves: LeafWrite[];
+    writes: DataWrite[];
 } | {
     op: 'insertText';
     id: BlockId;
@@ -1470,8 +1498,8 @@ declare const bundledRead: () => {
             }[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1485,8 +1513,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1500,8 +1528,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1522,8 +1550,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1541,8 +1569,8 @@ declare const bundledRead: () => {
             }[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1556,8 +1584,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1571,8 +1599,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1586,8 +1614,8 @@ declare const bundledRead: () => {
             presets: {}[];
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild?: string | undefined;
+            rendersContent: boolean;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1600,8 +1628,8 @@ declare const bundledRead: () => {
         'ordered-list': {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild: string;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1614,8 +1642,8 @@ declare const bundledRead: () => {
         'unordered-list': {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild: string;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1636,8 +1664,8 @@ declare const bundledRead: () => {
         table: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild: string;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1651,8 +1679,8 @@ declare const bundledRead: () => {
         tableRow: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild: string;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1665,8 +1693,8 @@ declare const bundledRead: () => {
         tableCell: {
             itemKind?: string | undefined;
             island: boolean;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1679,8 +1707,8 @@ declare const bundledRead: () => {
         image: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1693,8 +1721,8 @@ declare const bundledRead: () => {
         embed: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1707,8 +1735,8 @@ declare const bundledRead: () => {
         bookmark: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1721,8 +1749,8 @@ declare const bundledRead: () => {
         file: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1735,8 +1763,8 @@ declare const bundledRead: () => {
         video: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1749,8 +1777,8 @@ declare const bundledRead: () => {
         audio: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
+            rendersContent?: boolean | undefined;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1763,8 +1791,8 @@ declare const bundledRead: () => {
         page: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild?: string | undefined;
+            rendersContent: boolean;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1777,8 +1805,8 @@ declare const bundledRead: () => {
         toc: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild?: string | undefined;
+            rendersContent: boolean;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1791,8 +1819,8 @@ declare const bundledRead: () => {
         equation: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild?: string | undefined;
+            rendersContent: boolean;
             void: boolean;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1805,8 +1833,8 @@ declare const bundledRead: () => {
         columns: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild: string;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1820,8 +1848,8 @@ declare const bundledRead: () => {
         column: {
             itemKind?: string | undefined;
             island?: boolean | undefined;
-            rendersContent: boolean;
             defaultChild?: string | undefined;
+            rendersContent: boolean;
             void?: boolean | undefined;
             lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;

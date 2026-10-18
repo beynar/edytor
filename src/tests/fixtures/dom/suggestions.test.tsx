@@ -25,6 +25,7 @@ import {
 	suggestionsPlugin,
 	suggestionBarPlugin
 } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -80,7 +81,7 @@ const caretIn = (edytor: Edytor, id: string, offset: number) =>
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

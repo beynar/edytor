@@ -14,6 +14,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate } from './replica-harness.js';
 import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {
@@ -258,14 +259,18 @@ describe('document data', () => {
 		expect(one.facade.toJSON()).toEqual({ ...value, children: [{ id: 'A', type: 'p', data: {} }] });
 		// Two replicas seeding the same value write the same items; another value, other ones.
 		const E = bindEdytorDoc(Y);
-		const [first, late, other] = [new Y.Doc(), new Y.Doc(), new Y.Doc()];
+		const [first, late, other] = [
+			keepingReplaced(new Y.Doc()),
+			keepingReplaced(new Y.Doc()),
+			keepingReplaced(new Y.Doc())
+		];
 		E.seed(first, value.children, 'p', value.data);
 		E.seed(late, value.children, 'p', value.data);
 		E.seed(other, value.children, 'p', { title: 'U' });
 		expect(Y.encodeStateAsUpdate(late)).toEqual(Y.encodeStateAsUpdate(first));
 		expect(Y.encodeStateVector(other)).not.toEqual(Y.encodeStateVector(first));
 		// A seed without data keeps the writer it had before document data existed.
-		const [plain, empty] = [new Y.Doc(), new Y.Doc()];
+		const [plain, empty] = [keepingReplaced(new Y.Doc()), keepingReplaced(new Y.Doc())];
 		E.seed(plain, value.children, 'p');
 		E.seed(empty, value.children, 'p', {});
 		expect(Y.encodeStateAsUpdate(empty)).toEqual(Y.encodeStateAsUpdate(plain));
@@ -279,7 +284,7 @@ describe('document data', () => {
 		const E = bindEdytorDoc(Y);
 		const children = [{ id: 'A', type: 'p', data: { z: 1, m: { y: 2, b: 3 } } }];
 		const reordered = [{ data: { m: { b: 3, y: 2 }, z: 1 }, type: 'p', id: 'A' }];
-		const [a, b] = [new Y.Doc(), new Y.Doc()];
+		const [a, b] = [keepingReplaced(new Y.Doc()), keepingReplaced(new Y.Doc())];
 		E.seed(a, children, 'p', { title: 'Notes', tags: ['x'], meta: { v: 1, k: [{ q: 1, p: 2 }] } });
 		E.seed(b, reordered, 'p', { meta: { k: [{ p: 2, q: 1 }], v: 1 }, tags: ['x'], title: 'Notes' });
 		expect(Y.encodeStateAsUpdate(b)).toEqual(Y.encodeStateAsUpdate(a));

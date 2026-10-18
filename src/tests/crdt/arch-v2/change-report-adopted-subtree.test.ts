@@ -18,6 +18,7 @@ import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const lib = import.meta.glob('../../../lib/surface/cells.ts', { eager: true });
 const { createCells } = Object.values(lib)[0] ?? {};
@@ -35,7 +36,7 @@ const p = (id: string, text: string, children?: unknown[], type = 'paragraph') =
 });
 
 const open = (clientID: number, content?: unknown[], bytes?: Uint8Array) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	let seed = clientID * 7919;
 	setDocRand(doc, () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646);

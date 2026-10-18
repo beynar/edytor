@@ -27,7 +27,7 @@ import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { ArraySearchMarker } from '../../lib/crdt/vendor/yjs/src/ynode.js';
 import { toDelta, applyDelta, nodeItems } from './harness/delta.js';
-import { UndoManager } from './harness/undo.js';
+import { historyOf } from './harness/history.js';
 
 const newDoc = () => {
 	const doc = new Y.Doc();
@@ -270,7 +270,7 @@ describe('RangeCursor — integration scenarios', () => {
 	it('undo/redo-produced items read identically to the reference', () => {
 		const doc = newDoc();
 		const text = RICH_FORMAT(doc);
-		const um = new UndoManager(text);
+		const um = historyOf(doc, { scope: text });
 		apply(doc, text, delta.create().retain(6).insert('NEW', { code: true }));
 		um.undo();
 		expectRangeParity(text, allRanges(text.length));
@@ -328,7 +328,7 @@ describe('RangeCursor — read purity', () => {
 	it('reads produce no updates, no splits, no undo-history change', () => {
 		const doc = newDoc();
 		const text = RICH_FORMAT(doc);
-		const um = new UndoManager(text);
+		const um = historyOf(doc, { scope: text });
 		apply(doc, text, delta.create().retain(2).insert('X'));
 		const updatesBefore = Y.encodeStateAsUpdate(doc);
 		const itemsBefore = nodeItems(text).length;

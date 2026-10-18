@@ -36,6 +36,7 @@ import { assertConverged } from '../harness/assert/convergence.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import * as delta from 'lib0-v14/delta';
 import { applyDelta } from '../harness/delta.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const M = bindModel(Y);
@@ -82,12 +83,12 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		// wire. This raw path is below the facade contract — it exists here
 		// as proof of WHERE the normalization boundary sits and why it must
 		// exist. Facade-level writes never reach the store unnormalized.
-		const a = new Y.Doc();
+		const a = keepingReplaced(new Y.Doc());
 		a.clientID = 1;
 		const ta = a.get('t');
 		a.transact(() => applyDelta(ta, delta.create().insert(`x${HI}y`)));
 		const update = Y.encodeStateAsUpdate(a);
-		const b = new Y.Doc();
+		const b = keepingReplaced(new Y.Doc());
 		b.clientID = 2;
 		Y.applyUpdate(b, update);
 		const tb = b.get('t');
@@ -107,7 +108,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 	});
 
 	it('facade E.init: spec text normalizes at ingress', () => {
-		const a = new Y.Doc();
+		const a = keepingReplaced(new Y.Doc());
 		a.clientID = 1;
 		E.init(a, {
 			content: [
@@ -121,7 +122,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		// Local store holds the normalized form, not the raw payload.
 		expect(blockItemStrs(a, 'b1')).toEqual(['seed � text']);
 		const update = Y.encodeStateAsUpdate(a);
-		const b = new Y.Doc();
+		const b = keepingReplaced(new Y.Doc());
 		b.clientID = 2;
 		Y.applyUpdate(b, update);
 		expect(JSON.stringify(E.create(b).project())).toBe(JSON.stringify(E.create(a).project()));
@@ -207,13 +208,13 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 	});
 
 	it('documented mitigation: pre-sanitized content converges (control)', () => {
-		const a = new Y.Doc();
+		const a = keepingReplaced(new Y.Doc());
 		a.clientID = 1;
 		const ta = a.get('t');
 		// U+FFFD instead of a lone surrogate — wire-stable.
 		a.transact(() => applyDelta(ta, delta.create().insert('x�y')));
 		const update = Y.encodeStateAsUpdate(a);
-		const b = new Y.Doc();
+		const b = keepingReplaced(new Y.Doc());
 		b.clientID = 2;
 		Y.applyUpdate(b, update);
 		expect(allItemStrs(b.get('t'))).toEqual(allItemStrs(ta));

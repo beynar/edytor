@@ -27,6 +27,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 // Resolved lazily so the rows load on the reference, where the module does not exist.
 const lib = import.meta.glob('../../../lib/surface/cells.ts', { eager: true });
@@ -55,7 +56,7 @@ const p = (id: string, text: string, children?: unknown[], type = 'paragraph') =
 });
 
 const open = (clientID: number, content?: unknown[], bytes?: Uint8Array) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	// Ranks and nonces from a stream seeded per client: a run is reproducible.
 	setDocRand(doc, rng(clientID * 7919));

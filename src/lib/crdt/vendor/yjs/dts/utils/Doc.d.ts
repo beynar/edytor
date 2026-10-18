@@ -41,11 +41,12 @@ export class Doc extends ObservableV2<DocEvents> {
     keepReplaced: ((item: import("../structs/Item.js").Item) => boolean) | null;
     clientID: number;
     /**
-     * YP13: the greatest Lamport timestamp of a paired mark this document
-     * integrated (see `utils/marks.js`).
+     * YP13, YP22: the greatest Lamport timestamp of a paired mark or a move
+     * record this document integrated (see `utils/marks.js`,
+     * `structs/Item.js` `ContentMove`); the next one it writes takes `_clock + 1`.
      * @type {number}
      */
-    _markClock: number;
+    _clock: number;
     /**
      * @type {Map<string, YNode>}
      */

@@ -43,6 +43,7 @@ import {
 } from './helpers.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -570,14 +571,14 @@ describe('concurrent first-touch merge (documented LWW residual)', () => {
 	it('one contributor add may lose the `b/` race; convergent, never corrupt, self-heals', () => {
 		// A record-less block — the foreign/migrated shape: init'd WITHOUT
 		// an author, so no `b/` record exists on any replica.
-		const seed = new Y.Doc();
+		const seed = keepingReplaced(new Y.Doc());
 		E.init(seed as unknown as EngineDoc, {
 			content: [{ id: 'shared', type: 'paragraph', content: [{ kind: 'text', text: 's' }] }]
 		});
 		const seedUpdate = Y.encodeStateAsUpdate(seed);
 
 		const mkReplica = (actor: DocumentActor) => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			Y.applyUpdate(doc, seedUpdate);
 			const d = attachDocument(doc, { actor });
 			d.sync();
@@ -637,7 +638,7 @@ describe('upgrade — old record shapes', () => {
 		// Hand-build the pre-U1 shape: authorless init (no b/ records, no l),
 		// then raw a/<nonce>/<seq> records + u//c/ dictionary entries where
 		// the retired capture pipeline wrote them.
-		const old = new Y.Doc();
+		const old = keepingReplaced(new Y.Doc());
 		E.init(old as unknown as EngineDoc, {
 			content: [{ id: 'old-b', type: 'paragraph', content: [{ kind: 'text', text: 'old' }] }]
 		});
@@ -727,7 +728,7 @@ describe('admission gates', () => {
 	});
 
 	it('an UNKNOWN root coexists — preserved through load, never a schema claim', () => {
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		E.init(raw as unknown as EngineDoc, {
 			content: [{ id: 'b1', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }]
 		});
@@ -746,7 +747,7 @@ describe('admission gates', () => {
 
 	it('unknown schema markers are refused — bytes preserved, nothing composed', () => {
 		// unsupported: meta.v=99
-		const v99 = new Y.Doc();
+		const v99 = keepingReplaced(new Y.Doc());
 		v99.clientID = Number.MAX_SAFE_INTEGER - 7;
 		E.create(v99 as unknown as EngineDoc).init();
 		v99.transact(() => v99.get('meta').setAttr('v', 99));
@@ -754,16 +755,16 @@ describe('admission gates', () => {
 		expect(() => loadDocument(v99Update)).toThrow(SchemaMismatchError);
 		expect(() => loadDocument(v99Update)).toThrow(/unsupported schema version 99/);
 		// The caller's bytes are untouched by the refusal.
-		expect(() => Y.applyUpdate(new Y.Doc(), v99Update)).not.toThrow();
+		expect(() => Y.applyUpdate(keepingReplaced(new Y.Doc()), v99Update)).not.toThrow();
 
 		// foreign: supported version, foreign manifest name
-		const foreign = new Y.Doc();
+		const foreign = keepingReplaced(new Y.Doc());
 		E.create(foreign as unknown as EngineDoc).init();
 		foreign.transact(() => foreign.get('meta').setAttr('schema', 'not-edytor'));
 		expect(() => loadDocument(Y.encodeStateAsUpdate(foreign))).toThrow(/foreign schema/);
 
 		// unversioned: registry content, no meta.v
-		const rogue = new Y.Doc();
+		const rogue = keepingReplaced(new Y.Doc());
 		rogue.get('blocks').setAttr('r', new Y.Node('block'));
 		expect(() => loadDocument(Y.encodeStateAsUpdate(rogue))).toThrow(/unversioned schema/);
 

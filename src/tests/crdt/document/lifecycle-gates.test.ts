@@ -29,6 +29,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { whenDocumentReady } from '../../../lib/collaboration/documentSync.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -122,7 +123,7 @@ describe('D14 — post-destroy gates', () => {
 	});
 
 	it('facade.dispose() is terminal for writes; reads stay dead-safe', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const facade = E.create(doc);
 		facade.init();
 		facade.dispose();
@@ -137,7 +138,7 @@ describe('D14 — post-destroy gates', () => {
 	});
 
 	it('attachDocument keeps the borrowed doc writable after destroy', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const document = attachDocument(doc);
 		document.sync();
 		const [block] = document.facade.project().children;

@@ -772,6 +772,10 @@ export interface EngineNode {
     insert(index: number, content: unknown): void;
     delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
     hold(ids: number[]): void;
+    move(index: number, ids: number[], side?: number, part?: number, at?: ReadonlyArray<{
+        client: number;
+        clock: number;
+    }> | null): void;
 }
 ```
 
@@ -782,6 +786,7 @@ export interface EngineNode {
 export interface EngineTransaction {
     changed?: Map<unknown, Set<string | null>>;
     holds?: number[];
+    moves?: number[];
 }
 ```
 
@@ -1167,7 +1172,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 7;
+            readonly version: 9;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -1178,7 +1183,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 7;
+        SCHEMA_VERSION: 9;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -1242,29 +1247,30 @@ declare const bindCrdt: (Y: EngineApi) => {
                 blockNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
                 liveNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
                 isLive: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => boolean;
-                candidatesOf: (node: import("./engine-api.js").EngineNode) => import("./placement/model.js").PlacementCand[];
                 view: (doc: import("./engine-api.js").EngineDoc) => import("./placement/model.js").ModelView;
-                resolvePlacements: (blocks: Map<import("./index.js").BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: import("./index.js").BlockId) => import("./text/model.js").Owner) => Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>;
                 childrenIndex: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<import("./index.js").BlockId | null, import("./placement/model.js").ChildSlot[]>;
                 positionInView: (v: import("./placement/model.js").ModelView, id: import("./index.js").BlockId) => import("./index.js").Destination | null;
                 buildInline: (atom: import("./index.js").InlineSpec) => import("./engine-api.js").EngineNode;
                 isSelfOrDescendant: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: import("./index.js").BlockId, maybeAncestor: import("./index.js").BlockId) => boolean;
-                ranksAt: (siblings: readonly {
-                    rank: string;
-                }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-                writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
+                placeBlocks: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, parent: import("./index.js").BlockId | null, left: import("./index.js").BlockId | null, right: import("./index.js").BlockId | null, slots: readonly import("./placement/slots.js").BlockSlot[] | null, moved?: readonly number[] | null, side?: number, part?: number, at?: import("./placement/slots.js").Unit | null) => void;
+                moveBlocksTo: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, ids: readonly import("./index.js").BlockId[], parent: import("./index.js").BlockId | null, index: number, side?: number, part?: number, at?: import("./index.js").BlockId | null) => void;
+                insertSpecsAt: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, parent: import("./index.js").BlockId | null, index: number, specs: readonly import("./index.js").BlockSpec[], split?: import("./placement/slots.js").Unit | null) => void;
                 withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                     inserts: {
                         has(client: number, clock: number): boolean;
                     };
                 }) => boolean;
-                materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
                 collides: (doc: import("./engine-api.js").EngineDoc, specs: readonly import("./index.js").BlockSpec[]) => boolean;
-                writeSplit: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail: import("./placement/model.js").SplitTail, place: import("./placement/model.js").PlacementValue) => void;
+                writeSplit: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail: import("./placement/model.js").SplitTail, parent: import("./index.js").BlockId | null, index: number) => import("./placement/slots.js").Unit;
                 ownText: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => {
                     from: unknown;
                     to: number;
                 };
+                recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
+                    item: import("./placement/slots.js").SeqItem;
+                    stamp: import("./placement/slots.js").Stamp;
+                    wins: boolean;
+                }[];
                 insertBlocks: (doc: import("./engine-api.js").EngineDoc, dest: import("./index.js").Destination, specs: import("./index.js").BlockSpec[]) => boolean;
                 insertBlock: (doc: import("./engine-api.js").EngineDoc, dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec) => boolean;
                 restoreBlocks: (doc: import("./engine-api.js").EngineDoc, specs: import("./index.js").BlockSpec[]) => void;
@@ -1282,7 +1288,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
                 itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
                 readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-                computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+                computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
                 flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
                 ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
                 contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -1296,8 +1302,8 @@ declare const bindCrdt: (Y: EngineApi) => {
                     at: number;
                     node: import("./engine-api.js").EngineNode;
                 } | null;
-                splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-                claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+                splitAt: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+                claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
                 ownText: (doc: import("./engine-api.js").EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
                     from: unknown;
                     to: number;
@@ -1452,29 +1458,30 @@ declare const bindCrdt: (Y: EngineApi) => {
             blockNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
             liveNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
             isLive: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => boolean;
-            candidatesOf: (node: import("./engine-api.js").EngineNode) => import("./placement/model.js").PlacementCand[];
             view: (doc: import("./engine-api.js").EngineDoc) => import("./placement/model.js").ModelView;
-            resolvePlacements: (blocks: Map<import("./index.js").BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: import("./index.js").BlockId) => import("./text/model.js").Owner) => Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>;
             childrenIndex: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<import("./index.js").BlockId | null, import("./placement/model.js").ChildSlot[]>;
             positionInView: (v: import("./placement/model.js").ModelView, id: import("./index.js").BlockId) => import("./index.js").Destination | null;
             buildInline: (atom: import("./index.js").InlineSpec) => import("./engine-api.js").EngineNode;
             isSelfOrDescendant: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: import("./index.js").BlockId, maybeAncestor: import("./index.js").BlockId) => boolean;
-            ranksAt: (siblings: readonly {
-                rank: string;
-            }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-            writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
+            placeBlocks: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, parent: import("./index.js").BlockId | null, left: import("./index.js").BlockId | null, right: import("./index.js").BlockId | null, slots: readonly import("./placement/slots.js").BlockSlot[] | null, moved?: readonly number[] | null, side?: number, part?: number, at?: import("./placement/slots.js").Unit | null) => void;
+            moveBlocksTo: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, ids: readonly import("./index.js").BlockId[], parent: import("./index.js").BlockId | null, index: number, side?: number, part?: number, at?: import("./index.js").BlockId | null) => void;
+            insertSpecsAt: (doc: import("./engine-api.js").EngineDoc, v: import("./placement/model.js").ModelView, parent: import("./index.js").BlockId | null, index: number, specs: readonly import("./index.js").BlockSpec[], split?: import("./placement/slots.js").Unit | null) => void;
             withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                 inserts: {
                     has(client: number, clock: number): boolean;
                 };
             }) => boolean;
-            materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
             collides: (doc: import("./engine-api.js").EngineDoc, specs: readonly import("./index.js").BlockSpec[]) => boolean;
-            writeSplit: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail: import("./placement/model.js").SplitTail, place: import("./placement/model.js").PlacementValue) => void;
+            writeSplit: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail: import("./placement/model.js").SplitTail, parent: import("./index.js").BlockId | null, index: number) => import("./placement/slots.js").Unit;
             ownText: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => {
                 from: unknown;
                 to: number;
             };
+            recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
+                item: import("./placement/slots.js").SeqItem;
+                stamp: import("./placement/slots.js").Stamp;
+                wins: boolean;
+            }[];
             insertBlocks: (doc: import("./engine-api.js").EngineDoc, dest: import("./index.js").Destination, specs: import("./index.js").BlockSpec[]) => boolean;
             insertBlock: (doc: import("./engine-api.js").EngineDoc, dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec) => boolean;
             restoreBlocks: (doc: import("./engine-api.js").EngineDoc, specs: import("./index.js").BlockSpec[]) => void;
@@ -1492,7 +1499,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
             readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+            computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
             contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -1506,8 +1513,8 @@ declare const bindCrdt: (Y: EngineApi) => {
                 at: number;
                 node: import("./engine-api.js").EngineNode;
             } | null;
-            splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-            claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+            splitAt: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+            claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
             ownText: (doc: import("./engine-api.js").EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
                 from: unknown;
                 to: number;
@@ -2093,6 +2100,12 @@ export declare class TRANSACTION {
 }
 ```
 
+#### crdt/data.d.ts#DataWrite
+
+```ts
+export type DataWrite = LeafWrite | SlotWrite;
+```
+
 #### crdt/data.d.ts#LeafWrite
 
 ```ts
@@ -2100,6 +2113,26 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
+```
+
+#### crdt/data.d.ts#SlotWrite
+
+```ts
+export type SlotWrite = {
+    seq: 'insert';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'move';
+    path: string;
+    after: string | null;
+    ids: string[];
+} | {
+    seq: 'remove';
+    path: string;
+    ids: string[];
+};
 ```
 
 #### crdt/doc/content.d.ts#NewInline
@@ -2165,13 +2198,15 @@ export type PlanStep = {
     parent: BlockId | null;
     index: number;
     specs: BlockSpec[];
-    ranks: string[];
+    split?: BlockId;
 } | {
     op: 'moveBlocks';
     ids: BlockId[];
     parent: BlockId | null;
     index: number;
-    ranks: string[];
+    side?: 0 | 1;
+    part?: number;
+    at?: BlockId;
 } | {
     op: 'deleteBlock';
     id: BlockId;
@@ -2185,7 +2220,7 @@ export type PlanStep = {
     newId: BlockId;
     tail: SplitTail;
     parent: BlockId | null;
-    rank: string;
+    index: number;
 } | {
     op: 'mergeBlocks';
     from: BlockId;
@@ -2202,7 +2237,7 @@ export type PlanStep = {
     inlineId?: string;
     offset?: number;
     ops: DataPatch[];
-    leaves: LeafWrite[];
+    writes: DataWrite[];
 } | {
     op: 'insertText';
     id: BlockId;
@@ -2254,7 +2289,7 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 ```ts
 declare const bindEdytorDoc: (Y: EngineApi) => {
     SCHEMA: {
-        readonly version: 7;
+        readonly version: 9;
         readonly name: "edytor-doc";
         readonly roots: {
             readonly registry: "blocks";
@@ -2265,7 +2300,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             readonly schema: "schema";
         };
     };
-    SCHEMA_VERSION: 7;
+    SCHEMA_VERSION: 9;
     SCHEMA_NAME: "edytor-doc";
     META_KEY: "meta";
     init: (doc: EngineDoc, opts?: {
@@ -2329,29 +2364,30 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             blockNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
             liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
             isLive: (doc: EngineDoc, id: BlockId) => boolean;
-            candidatesOf: (node: EngineNode) => import("./placement/model.js").PlacementCand[];
             view: (doc: EngineDoc) => ModelView;
-            resolvePlacements: (blocks: Map<BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: BlockId) => import("./text/model.js").Owner) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
             childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
             positionInView: (v: ModelView, id: BlockId) => import("./index.js").Destination | null;
             buildInline: (atom: InlineSpec) => EngineNode;
             isSelfOrDescendant: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: BlockId, maybeAncestor: BlockId) => boolean;
-            ranksAt: (siblings: readonly {
-                rank: string;
-            }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-            writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
+            placeBlocks: (doc: EngineDoc, v: ModelView, parent: BlockId | null, left: BlockId | null, right: BlockId | null, slots: readonly import("./placement/slots.js").BlockSlot[] | null, moved?: readonly number[] | null, side?: number, part?: number, at?: import("./placement/slots.js").Unit | null) => void;
+            moveBlocksTo: (doc: EngineDoc, v: ModelView, ids: readonly BlockId[], parent: BlockId | null, index: number, side?: number, part?: number, at?: BlockId | null) => void;
+            insertSpecsAt: (doc: EngineDoc, v: ModelView, parent: BlockId | null, index: number, specs: readonly import("./index.js").BlockSpec[], split?: import("./placement/slots.js").Unit | null) => void;
             withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                 inserts: {
                     has(client: number, clock: number): boolean;
                 };
             }) => boolean;
-            materializeSpec: (doc: EngineDoc, sp: import("./index.js").BlockSpec, parent: BlockId | null, rank: string) => void;
             collides: (doc: EngineDoc, specs: readonly import("./index.js").BlockSpec[]) => boolean;
-            writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, place: import("./placement/model.js").PlacementValue) => void;
+            writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, parent: BlockId | null, index: number) => import("./placement/slots.js").Unit;
             ownText: (doc: EngineDoc, id: BlockId) => {
                 from: unknown;
                 to: number;
             };
+            recordsOf: (doc: EngineDoc, node: EngineNode, v?: ModelView) => {
+                item: import("./placement/slots.js").SeqItem;
+                stamp: import("./placement/slots.js").Stamp;
+                wins: boolean;
+            }[];
             insertBlocks: (doc: EngineDoc, dest: import("./index.js").Destination, specs: import("./index.js").BlockSpec[]) => boolean;
             insertBlock: (doc: EngineDoc, dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec) => boolean;
             restoreBlocks: (doc: EngineDoc, specs: import("./index.js").BlockSpec[]) => void;
@@ -2369,7 +2405,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
             readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+            computeOwnership: (_doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
             contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -2383,8 +2419,8 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                 at: number;
                 node: EngineNode;
             } | null;
-            splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-            claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+            splitAt: (doc: EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+            claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
             ownText: (doc: EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
                 from: unknown;
                 to: number;
@@ -2539,29 +2575,30 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         blockNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
         liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
         isLive: (doc: EngineDoc, id: BlockId) => boolean;
-        candidatesOf: (node: EngineNode) => import("./placement/model.js").PlacementCand[];
         view: (doc: EngineDoc) => ModelView;
-        resolvePlacements: (blocks: Map<BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: BlockId) => import("./text/model.js").Owner) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
         childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
         positionInView: (v: ModelView, id: BlockId) => import("./index.js").Destination | null;
         buildInline: (atom: InlineSpec) => EngineNode;
         isSelfOrDescendant: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: BlockId, maybeAncestor: BlockId) => boolean;
-        ranksAt: (siblings: readonly {
-            rank: string;
-        }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-        writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
+        placeBlocks: (doc: EngineDoc, v: ModelView, parent: BlockId | null, left: BlockId | null, right: BlockId | null, slots: readonly import("./placement/slots.js").BlockSlot[] | null, moved?: readonly number[] | null, side?: number, part?: number, at?: import("./placement/slots.js").Unit | null) => void;
+        moveBlocksTo: (doc: EngineDoc, v: ModelView, ids: readonly BlockId[], parent: BlockId | null, index: number, side?: number, part?: number, at?: BlockId | null) => void;
+        insertSpecsAt: (doc: EngineDoc, v: ModelView, parent: BlockId | null, index: number, specs: readonly import("./index.js").BlockSpec[], split?: import("./placement/slots.js").Unit | null) => void;
         withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
             inserts: {
                 has(client: number, clock: number): boolean;
             };
         }) => boolean;
-        materializeSpec: (doc: EngineDoc, sp: import("./index.js").BlockSpec, parent: BlockId | null, rank: string) => void;
         collides: (doc: EngineDoc, specs: readonly import("./index.js").BlockSpec[]) => boolean;
-        writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, place: import("./placement/model.js").PlacementValue) => void;
+        writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, parent: BlockId | null, index: number) => import("./placement/slots.js").Unit;
         ownText: (doc: EngineDoc, id: BlockId) => {
             from: unknown;
             to: number;
         };
+        recordsOf: (doc: EngineDoc, node: EngineNode, v?: ModelView) => {
+            item: import("./placement/slots.js").SeqItem;
+            stamp: import("./placement/slots.js").Stamp;
+            wins: boolean;
+        }[];
         insertBlocks: (doc: EngineDoc, dest: import("./index.js").Destination, specs: import("./index.js").BlockSpec[]) => boolean;
         insertBlock: (doc: EngineDoc, dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec) => boolean;
         restoreBlocks: (doc: EngineDoc, specs: import("./index.js").BlockSpec[]) => void;
@@ -2579,7 +2616,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
         itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
         readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-        computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+        computeOwnership: (_doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
         flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
         ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
         contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -2593,8 +2630,8 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             at: number;
             node: EngineNode;
         } | null;
-        splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-        claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
+        splitAt: (doc: EngineDoc, blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => void;
+        claimInto: (own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
         ownText: (doc: EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
             from: unknown;
             to: number;
@@ -2651,7 +2688,7 @@ export type FlowTarget = DocPosition | {
 export type BlockRec = TextBlockRec & {
     type: string;
     data: unknown;
-    cands: PlacementCand[];
+    home: SlotRef | null;
 };
 ```
 
@@ -2675,7 +2712,6 @@ export type DisplayOwnership = Ownership & {
     lined?: (b: BlockId) => boolean;
     passes?: (b: BlockId) => boolean;
     sheds?: (owner: BlockId, child: BlockId) => boolean;
-    textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
     slotRank?: (owner: BlockId, id: BlockId, rank: string) => string | undefined;
 };
 ```
@@ -2703,18 +2739,6 @@ export type ModelView = {
 };
 ```
 
-#### crdt/placement/model.d.ts#PlacementCand
-
-```ts
-export type PlacementCand = {
-    key: string;
-    seq: number;
-    client: number;
-    p: BlockId | null;
-    r: string;
-};
-```
-
 #### crdt/placement/model.d.ts#ResolvedPlacement
 
 ```ts
@@ -2730,6 +2754,23 @@ export type ResolvedPlacement = {
 export type SplitTail = {
     type: string;
     data?: Record<string, unknown>;
+};
+```
+
+#### crdt/placement/resolve.d.ts#SlotRef
+
+```ts
+export type SlotRef = Unit & {
+    parent: BlockId | null;
+};
+```
+
+#### crdt/placement/slots.d.ts#Unit
+
+```ts
+export type Unit = {
+    c: number;
+    k: number;
 };
 ```
 
@@ -3015,10 +3056,6 @@ export type BlockId = string;
 export type Claim = {
     m: BlockId;
     stamp: Stamp;
-    seqIndex: number;
-    a?: ItemRef;
-    r?: ItemRef | null;
-    holder?: BlockId;
 };
 ```
 
@@ -3026,15 +3063,6 @@ export type Claim = {
 
 ```ts
 declare const DEAD: unique symbol;
-```
-
-#### crdt/text/model.d.ts#ItemRef
-
-```ts
-export type ItemRef = {
-    c: number;
-    k: number;
-};
 ```
 
 #### crdt/text/model.d.ts#Owner
@@ -3050,11 +3078,11 @@ export type Ownership = {
     ownerOf: (b: BlockId) => Owner;
     hidden: (b: BlockId) => boolean;
     top: (m: BlockId) => BlockId | undefined;
+    claimIndex: (holder: BlockId, m: BlockId) => number;
     streamOf: (b: BlockId) => Stream | undefined;
     streamsIn: (home: BlockId) => readonly Stream[];
     streamAt: (home: BlockId, i: number) => Stream | undefined;
     display: (b: BlockId) => Seg[] | null;
-    claimsOf?: (b: BlockId) => readonly Claim[];
 };
 ```
 
@@ -3105,9 +3133,8 @@ export type TextBlockRec = {
     deleted: boolean;
     n: unknown;
     content: EngineNode | undefined;
-    claimsNode: EngineNode | undefined;
     claims: Claim[];
-    listClaims?: Claim[];
+    implicit?: Claim[];
 };
 ```
 
@@ -3177,6 +3204,7 @@ export type RunView = {
     dissolved: (id: BlockId) => boolean;
     track: () => {
         end: () => Folded;
+        quiet: (write: () => void) => void;
     };
     onReport: (cb: (report: IndexReport, origin: unknown, local: boolean) => void) => () => void;
     debug: RunViewDebug;
@@ -3195,6 +3223,7 @@ export type RunViewDebug = {
     readonly folds: number;
     readonly foldedPairs: number;
     readonly foldedStructs: number;
+    readonly placements: number;
     reset: () => void;
 };
 ```

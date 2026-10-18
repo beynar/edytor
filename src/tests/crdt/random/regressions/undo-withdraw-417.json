@@ -1,0 +1,434 @@
+{
+	"about": "Wide corpus (CRDT_SEEDS=1-1000 CRDT_OPS=300), model adapter: an undo that withdraws a block a peer typed into removed the peer's text (`hist.undo.withdraw`). Minimized schedule.",
+	"seed": 417,
+	"peers": 3,
+	"steps": [
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "drop",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 2,
+				"parentIndex": 5,
+				"destIndex": 5
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 4,
+				"offset": 1,
+				"length": 3,
+				"name": "underline"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "nest",
+				"idIndex": 1,
+				"parentIndex": 6
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 9,
+				"text": "\u00b5417x8",
+				"tag": "\u00b5417x8"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "deliver",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 7,
+				"offset": 12,
+				"text": "\u00b5417x12",
+				"tag": "\u00b5417x12"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "split",
+				"idIndex": 0,
+				"offset": 11,
+				"newId": "sp417-51"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "nest",
+				"idIndex": 2,
+				"parentIndex": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 2,
+				"intoIndex": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 4,
+				"offset": 13,
+				"length": 4,
+				"name": "underline"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "persist",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "split",
+				"idIndex": 2,
+				"offset": 4,
+				"newId": "sp417-56"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 5,
+				"offset": 8,
+				"length": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 1,
+				"offset": 15,
+				"length": 3
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 6,
+				"offset": 4,
+				"length": 2,
+				"name": "italic"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "heal",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 15,
+				"text": "\u00b5417x62",
+				"tag": "\u00b5417x62"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "unsetMark",
+				"idIndex": 4,
+				"offset": 12,
+				"length": 6,
+				"name": "bold"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "unNest",
+				"idIndex": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteBlock",
+				"idIndex": 3
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "heal",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 0,
+				"offset": 15,
+				"text": "\u00b5417x68",
+				"tag": "\u00b5417x68"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 5,
+				"parentIndex": 6,
+				"destIndex": 6
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 5,
+				"parentIndex": 3,
+				"destIndex": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 0,
+				"text": "\u00b5417x71",
+				"tag": "\u00b5417x71"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliver",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 1,
+				"offset": 5,
+				"length": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 16,
+				"text": "\u00b5417x74",
+				"tag": "\u00b5417x74"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "syncFull",
+				"a": 1,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s417-76",
+				"type": "paragraph"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 4,
+				"parentIndex": 0,
+				"destIndex": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 0,
+				"parentIndex": 3,
+				"destIndex": 5
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "deleteBlock",
+				"idIndex": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s417-81",
+				"type": "list"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "split",
+				"idIndex": 7,
+				"offset": 14,
+				"newId": "sp417-88"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "syncFull",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "undo"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 18,
+				"text": "\u00b5417x92",
+				"tag": "\u00b5417x92"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "syncFull",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "undo"
+			}
+		}
+	],
+	"transcript": "seed 417 \u2014 48 steps\n  0. peer 2: {\"kind\":\"net\",\"action\":\"drop\",\"a\":2,\"b\":1}\n  1. peer 1: {\"kind\":\"net\",\"action\":\"batch\",\"a\":2,\"b\":1}\n  2. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":2,\"parentIndex\":5,\"destIndex\":5}\n  3. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  4. peer 0: {\"kind\":\"setMark\",\"idIndex\":4,\"offset\":1,\"length\":3,\"name\":\"underline\"}\n  5. peer 2: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":2,\"b\":1}\n  6. peer 0: {\"kind\":\"nest\",\"idIndex\":1,\"parentIndex\":6}\n  7. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":1}\n  8. peer 2: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":9,\"text\":\"\u00b5417x8\",\"tag\":\"\u00b5417x8\"}\n  9. peer 2: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":0,\"b\":1}\n  10. peer 1: {\"kind\":\"insertText\",\"idIndex\":7,\"offset\":12,\"text\":\"\u00b5417x12\",\"tag\":\"\u00b5417x12\"}\n  11. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":1,\"b\":2}\n  12. peer 2: {\"kind\":\"split\",\"idIndex\":0,\"offset\":11,\"newId\":\"sp417-51\"}\n  13. peer 2: {\"kind\":\"nest\",\"idIndex\":2,\"parentIndex\":2}\n  14. peer 2: {\"kind\":\"merge\",\"fromIndex\":2,\"intoIndex\":1}\n  15. peer 1: {\"kind\":\"setMark\",\"idIndex\":4,\"offset\":13,\"length\":4,\"name\":\"underline\"}\n  16. peer 2: {\"kind\":\"net\",\"action\":\"persist\",\"a\":1,\"b\":2}\n  17. peer 0: {\"kind\":\"split\",\"idIndex\":2,\"offset\":4,\"newId\":\"sp417-56\"}\n  18. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":1,\"b\":2}\n  19. peer 2: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":8,\"length\":1}\n  20. peer 0: {\"kind\":\"deleteText\",\"idIndex\":1,\"offset\":15,\"length\":3}\n  21. peer 1: {\"kind\":\"setMark\",\"idIndex\":6,\"offset\":4,\"length\":2,\"name\":\"italic\"}\n  22. peer 2: {\"kind\":\"net\",\"action\":\"heal\",\"a\":0,\"b\":1}\n  23. peer 1: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":15,\"text\":\"\u00b5417x62\",\"tag\":\"\u00b5417x62\"}\n  24. peer 1: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":2,\"b\":1}\n  25. peer 0: {\"kind\":\"unsetMark\",\"idIndex\":4,\"offset\":12,\"length\":6,\"name\":\"bold\"}\n  26. peer 0: {\"kind\":\"unNest\",\"idIndex\":2}\n  27. peer 2: {\"kind\":\"deleteBlock\",\"idIndex\":3}\n  28. peer 0: {\"kind\":\"net\",\"action\":\"heal\",\"a\":0,\"b\":1}\n  29. peer 0: {\"kind\":\"insertText\",\"idIndex\":0,\"offset\":15,\"text\":\"\u00b5417x68\",\"tag\":\"\u00b5417x68\"}\n  30. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":6,\"destIndex\":6}\n  31. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":3,\"destIndex\":1}\n  32. peer 2: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":0,\"text\":\"\u00b5417x71\",\"tag\":\"\u00b5417x71\"}\n  33. peer 0: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":0,\"b\":1}\n  34. peer 2: {\"kind\":\"deleteText\",\"idIndex\":1,\"offset\":5,\"length\":1}\n  35. peer 1: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":16,\"text\":\"\u00b5417x74\",\"tag\":\"\u00b5417x74\"}\n  36. peer 0: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":1,\"b\":0}\n  37. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s417-76\",\"type\":\"paragraph\"}\n  38. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":4,\"parentIndex\":0,\"destIndex\":1}\n  39. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":0,\"parentIndex\":3,\"destIndex\":5}\n  40. peer 1: {\"kind\":\"deleteBlock\",\"idIndex\":0}\n  41. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s417-81\",\"type\":\"list\"}\n  42. peer 1: {\"kind\":\"split\",\"idIndex\":7,\"offset\":14,\"newId\":\"sp417-88\"}\n  43. peer 2: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":1,\"b\":2}\n  44. peer 2: {\"kind\":\"undo\"}\n  45. peer 1: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":18,\"text\":\"\u00b5417x92\",\"tag\":\"\u00b5417x92\"}\n  46. peer 1: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":2,\"b\":1}\n  47. peer 2: {\"kind\":\"undo\"}"
+}

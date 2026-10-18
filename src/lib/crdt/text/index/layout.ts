@@ -4,7 +4,7 @@
  * they read.
  */
 import type { BlockId, ChildSlot } from '../../placement/model.js';
-import { encodeRank, RANK_VMAX } from '../../placement/rank.js';
+import { cellKey, LAST_CELL, unlistedCellKey } from '../../placement/keys.js';
 import { listedColumns, unlistedRank } from '../../tables.js';
 import type { DisplayRoles } from '../runs.js';
 import type { IndexState } from './state.js';
@@ -85,8 +85,8 @@ export const indexLayout = (ix: IndexState) => {
 	/**
 	 * The rank cell `id` displays at in row `row` (`table.columns`): its
 	 * column's position in the table holding the row, so every row shows its
-	 * cells in the table's column order whatever their placements (a rank
-	 * of one segment, the position, ties by block id); a withdrawn cell of a
+	 * cells in the table's column order whatever their placements (a key of
+	 * the position, ties by block id); a withdrawn cell of a
 	 * column the table no longer lists after them, its column's place among
 	 * those fixed by its id (`unlistedRank`); any other cell of no listed
 	 * column last (it does not display, `table.cell`).
@@ -101,11 +101,8 @@ export const indexLayout = (ix: IndexState) => {
 		const column = columnOf(id);
 		const at = column === undefined ? undefined : index.get(column);
 		if (at === undefined && column !== undefined && ix.shells.has(id))
-			return encodeRank([
-				{ v: RANK_VMAX - 1, t: 0 },
-				{ v: unlistedRank(column), t: 0 }
-			]);
-		return encodeRank([{ v: at ?? RANK_VMAX, t: 0 }]);
+			return unlistedCellKey(unlistedRank(column));
+		return at === undefined ? LAST_CELL : cellKey(at);
 	};
 	/**
 	 * The layout rules over a children index (`layout.*`): the live blocks

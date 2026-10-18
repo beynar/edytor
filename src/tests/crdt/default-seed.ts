@@ -5,9 +5,10 @@
  */
 import { Y } from '../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../lib/crdt/edytor-doc.js';
+import { keepingReplaced } from '../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
-const doc = new Y.Doc();
+const doc = keepingReplaced(new Y.Doc());
 E.seed(doc);
 
 export const DEFAULT_SEED_ID: string = E.create(doc).childrenIds(null)[0]!;

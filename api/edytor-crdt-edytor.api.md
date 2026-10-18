@@ -1248,7 +1248,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 liveNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
                 isLive: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => boolean;
                 view: (doc: import("./engine-api.js").EngineDoc) => import("./placement/model.js").ModelView;
-                resolvePlacements: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./index.js").BlockId, import("./placement/model.js").BlockRec>, ownerOf: (b: import("./index.js").BlockId) => import("./text/model.js").Owner, kept: (item: unknown) => boolean) => Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>;
                 childrenIndex: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<import("./index.js").BlockId | null, import("./placement/model.js").ChildSlot[]>;
                 positionInView: (v: import("./placement/model.js").ModelView, id: import("./index.js").BlockId) => import("./index.js").Destination | null;
                 buildInline: (atom: import("./index.js").InlineSpec) => import("./engine-api.js").EngineNode;
@@ -1460,7 +1459,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             liveNodeOf: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => import("./engine-api.js").EngineNode | null;
             isLive: (doc: import("./engine-api.js").EngineDoc, id: import("./index.js").BlockId) => boolean;
             view: (doc: import("./engine-api.js").EngineDoc) => import("./placement/model.js").ModelView;
-            resolvePlacements: (doc: import("./engine-api.js").EngineDoc, blocks: ReadonlyMap<import("./index.js").BlockId, import("./placement/model.js").BlockRec>, ownerOf: (b: import("./index.js").BlockId) => import("./text/model.js").Owner, kept: (item: unknown) => boolean) => Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>;
             childrenIndex: (placements: Map<import("./index.js").BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<import("./index.js").BlockId | null, import("./placement/model.js").ChildSlot[]>;
             positionInView: (v: import("./placement/model.js").ModelView, id: import("./index.js").BlockId) => import("./index.js").Destination | null;
             buildInline: (atom: import("./index.js").InlineSpec) => import("./engine-api.js").EngineNode;
@@ -2367,7 +2365,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
             isLive: (doc: EngineDoc, id: BlockId) => boolean;
             view: (doc: EngineDoc) => ModelView;
-            resolvePlacements: (doc: EngineDoc, blocks: ReadonlyMap<BlockId, import("./placement/model.js").BlockRec>, ownerOf: (b: BlockId) => import("./text/model.js").Owner, kept: (item: unknown) => boolean) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
             childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
             positionInView: (v: ModelView, id: BlockId) => import("./index.js").Destination | null;
             buildInline: (atom: InlineSpec) => EngineNode;
@@ -2579,7 +2576,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
         isLive: (doc: EngineDoc, id: BlockId) => boolean;
         view: (doc: EngineDoc) => ModelView;
-        resolvePlacements: (doc: EngineDoc, blocks: ReadonlyMap<BlockId, import("./placement/model.js").BlockRec>, ownerOf: (b: BlockId) => import("./text/model.js").Owner, kept: (item: unknown) => boolean) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
         childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
         positionInView: (v: ModelView, id: BlockId) => import("./index.js").Destination | null;
         buildInline: (atom: InlineSpec) => EngineNode;

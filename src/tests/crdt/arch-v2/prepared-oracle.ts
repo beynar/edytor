@@ -9,7 +9,7 @@ import { expect } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { readData } from '../../../lib/crdt/data.js';
 import { view as modelView } from '../../../lib/crdt/placement/model.js';
-import { edgeOf } from '../../../lib/crdt/placement/resolve.js';
+import { edgeOf } from '../../oracles/placements.js';
 import { engineOps } from '../../../lib/crdt/structs.js';
 
 export const svEqual = (a: Uint8Array, b: Uint8Array) =>

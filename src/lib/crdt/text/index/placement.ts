@@ -13,11 +13,14 @@
  * accepted edges (`settle`): the later move wins, and the block whose edge
  * is the oldest of a cycle falls back to its next candidate, back where it
  * stood (its previous record, else home; the root's tail only when every
- * candidate closes a cycle, as `placement/resolve.ts` rebuilds it), so a
- * cycle resolves locally: no global pass. A placed block's order key is
- * found from its sequence neighbours (`placement/keys.ts`), never by
- * walking the parent's sequence. The layout rules re-run only on the
- * layouts a change reaches.
+ * candidate closes a cycle), so a cycle resolves locally: no global pass.
+ * The first build places every block the same way (their unique acyclic
+ * acceptance, whatever the order; the tests' greedy rebuild,
+ * `src/tests/oracles/placements.ts`, is what the self-checks compare). A
+ * placed block's order key is found from its sequence neighbours
+ * (`placement/keys.ts`), never by walking the parent's sequence; a rebuild
+ * keys every list once, in its sequence's order. The layout rules re-run
+ * only on the layouts a change reaches.
  */
 import {
 	type BlockId,
@@ -30,7 +33,7 @@ import {
 	displaySlotOf,
 	documentOrder
 } from '../../placement/model.js';
-import { keyBetween } from '../../placement/keys.js';
+import { denseKey, keyBetween } from '../../placement/keys.js';
 import {
 	NO_SLOT,
 	byTail,
@@ -40,7 +43,6 @@ import {
 	collectSlots,
 	homeOf,
 	registryOwners,
-	resolveAll,
 	ownerOfNode,
 	slotOwner,
 	slotsBefore,
@@ -53,6 +55,7 @@ import {
 	isBlockSlot,
 	isRecord,
 	sameUnit,
+	type BlockSlot,
 	type SeqItem,
 	type Stamp,
 	type Unit
@@ -291,7 +294,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		slotsRead = true;
 		slotsByBlock.clear();
 		// Every registry node, its kept incarnations too (the records may not all be built yet).
-		collected = collectSlots(doc, registryOwners(registry, kept), kept);
+		collected = collectSlots(doc, registryOwners(registry, kept));
 		collectedAt = ix.seqEpoch;
 		for (const [b, refs] of collected.slots) slotsByBlock.set(b, refs);
 	};
@@ -352,11 +355,13 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	};
 	/** Counts the placement writes: a key's walk that saw one happen under it walks again. */
 	let placedEpoch = 0;
+	/** Whether a placement is keyed as it is decided: not while a rebuild places every block (it keys them after, in one pass). */
+	let keyed = true;
 	const setPlacement = (id: BlockId, pl: ResolvedPlacement | undefined): void => {
 		ix.foldStats.placed++;
 		placedEpoch++;
 		const old = placementsMap.get(id);
-		if (old !== undefined) {
+		if (keyed && old !== undefined) {
 			const l = rawList(old.parent);
 			const at = seek(l, { id, rank: old.rank });
 			if (l[at]?.id === id) l.splice(at, 1);
@@ -365,6 +370,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		if (pl === undefined) placementsMap.delete(id);
 		else {
 			placementsMap.set(id, pl);
+			if (!keyed) return;
 			const l = rawList(pl.parent);
 			const slot = { id, rank: pl.rank };
 			l.splice(seek(l, slot), 0, slot);
@@ -436,7 +442,8 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		if (placementsMap.has(id)) setPlacement(id, undefined);
 		fallen.delete(id);
 		rejected.add(id);
-		setPlacement(id, { parent: null, rank: tailKey(id, edge?.stamp ?? NO_SLOT), home: false });
+		const rank = keyed ? tailKey(id, edge?.stamp ?? NO_SLOT) : '';
+		setPlacement(id, { parent: null, rank, home: false });
 	};
 	/** The same display edge: the same sequence, the same record, the same stamp. */
 	const sameEdge = (a: Edge, b: Edge): boolean =>
@@ -472,7 +479,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			// The key first: its walk places the pending neighbours, so the cycle
 			// check reads them placed (a neighbour placed after it could close a
 			// cycle through `id` that no check saw).
-			const rank = keyFor(id, edge, place);
+			const rank = keyed ? keyFor(id, edge, place) : '';
 			const { ok, drop } = admits(id, edge);
 			if (!ok) continue;
 			edges.set(id, edge);
@@ -519,7 +526,13 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			if (!changed) break;
 		}
 	};
-	/** Everything rebuilt from the sequences (the first build, roles). */
+	/**
+	 * Everything rebuilt from the sequences (the first build, roles): every
+	 * block placed as an edit places one (`settle`, then `retryFallen`) —
+	 * the one acyclic acceptance, whatever the order the blocks come in —
+	 * then keyed in one pass over each sequence's places (dense keys in its
+	 * order), the root's tail after the last top-level block.
+	 */
 	const rebuildPlacements = (): void => {
 		ix.placementFull = false;
 		placementSeeds.clear();
@@ -544,32 +557,43 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (const b of blocks.keys()) noteKind(b);
 		for (const line of lineCounts.keys()) lineKinds.add(line);
 		ix.placementFull = false;
-		// The first read's slots while no sequence changed since (one scan), and the homes the records keep.
-		const reuse = collected !== null && collectedAt === ix.seqEpoch ? collected : null;
-		// The resolution writes the index's own maps (no copy).
+		// The first read's slots while no sequence changed since (one scan).
+		const { slots, places } =
+			collected !== null && collectedAt === ix.seqEpoch
+				? collected
+				: collectSlots(doc, blocks.values());
+		collected = null;
+		slotsByBlock.clear();
+		for (const [b, refs] of slots) slotsByBlock.set(b, refs);
+		slotsRead = true;
 		placementsMap.clear();
 		edges.clear();
-		const resolved = resolveAll(
-			doc,
-			blocks,
-			ownerOf,
-			kept,
-			reuse ?? collectSlots(doc, blocks.values(), kept),
-			true,
-			{ placements: placementsMap, edges }
-		);
-		collected = null;
 		rawOrder.clear();
 		fallen.clear();
 		rejected.clear();
-		slotsByBlock.clear();
-		for (const [b, refs] of resolved.slots) slotsByBlock.set(b, refs);
-		slotsRead = true;
-		// The lists come in key order: no insert sorts them.
-		for (const [parent, list] of resolved.order) rawOrder.set(parent, list as ChildSlot[]);
-		ix.foldStats.placed += resolved.placements.size;
-		for (const id of resolved.fallen) fallen.add(id);
-		for (const id of resolved.rejected) rejected.add(id);
+		keyed = false;
+		for (const id of blocks.keys()) settle(id, () => {});
+		if (fallen.size + rejected.size > 0) retryFallen(new Set());
+		keyed = true;
+		// The lists in key order: a block where its edge shows it, in its sequence's order.
+		for (const [owner, list] of places)
+			for (const e of list) {
+				const b = slotOwner(registry, kept, (e.value as BlockSlot).b, e.unit.c);
+				const pl = placementsMap.get(b);
+				const h = blocks.get(b)?.home;
+				if (pl?.parent !== owner || rejected.has(b) || !h || !sameUnit(h, e.unit)) continue;
+				if (edges.get(b)?.via !== e.via) continue;
+				const l = rawList(owner);
+				pl.rank = denseKey(l.length);
+				l.push({ id: b, rank: pl.rank });
+			}
+		const tail = [...rejected].map((x) => ({ id: x, stamp: edges.get(x)?.stamp ?? NO_SLOT }));
+		for (const { id } of tail.sort(byTail)) {
+			const l = rawList(null);
+			const pl = placementsMap.get(id)!;
+			pl.rank = keyBetween(l[l.length - 1]?.rank, undefined);
+			l.push({ id, rank: pl.rank });
+		}
 		layoutMode = layoutBlocks + itemBlocks + tableBlocks > 0;
 		ix.dissolved = new Set();
 		const index = (map: Map<BlockId | null, ChildSlot[]>) => {

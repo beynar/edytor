@@ -14,7 +14,8 @@ import {
 	type BlockRec,
 	type ModelView
 } from '../../lib/crdt/placement/model.js';
-import { resolveAll, resolvePlacements, type Edge } from '../../lib/crdt/placement/resolve.js';
+import type { Edge } from '../../lib/crdt/placement/resolve.js';
+import { resolveAll } from './placements.js';
 import { displayIndex } from './index-checks.js';
 import {
 	bindText,

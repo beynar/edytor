@@ -22,7 +22,9 @@
  *                   `collectBlocks` — since arch-v2 D9 no read pays it;
  *                   kept as the rebuild reference)
  *      `ownMs`      ownership computation (`T.computeOwnership`)
- *      `placeMs`    placement resolution (`M.resolvePlacements`)
+ *      `placeMs`    placement resolution from scratch (the test oracle's
+ *                   greedy `resolvePlacements`; the index decides
+ *                   placements one block at a time)
  *      `runsMs`     maintained-runs reconcile for the touched block
  *      `changeMs`   onChange subscriber cost (differential lane — the
  *                   per-commit skeleton snapshot + diff + callback)
@@ -54,6 +56,7 @@ const { bindSync } = await jiti.import(`${here}../../src/lib/crdt/protocols/sync
 // arch-v2 D9: production has no fresh collect (the doc's index is the owner);
 // the from-scratch stages below measure the test oracle's rebuild.
 const { collectBlocks } = await jiti.import(`${here}../../src/tests/oracles/fresh-view.ts`);
+const { resolvePlacements } = await jiti.import(`${here}../../src/tests/oracles/placements.ts`);
 const { engineOps } = await jiti.import(`${here}../../src/lib/crdt/structs.ts`);
 
 const E = bindEdytorDoc(Y14);
@@ -293,7 +296,7 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 	const own = T.computeOwnership(doc, blocks);
 	const ownMs = performance.now() - o0;
 	const p0 = performance.now();
-	M.resolvePlacements(doc, blocks, own.ownerOf, kept);
+	resolvePlacements(doc, blocks, own.ownerOf, kept);
 	const placeMs = performance.now() - p0;
 
 	// WU7 counter: the shared model-state read the next command/anchor/

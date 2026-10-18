@@ -55,7 +55,7 @@
  * types, `engine-api.ts`): this file never imports vendor `.js` (which
  * `pnpm check` must not traverse).
  *
- * Placement resolution is `placement/resolve.ts`, the sequences
+ * The placement reads are `placement/resolve.ts` (the index decides), the sequences
  * `placement/slots.ts`, the order keys `placement/keys.ts`, where a block
  * displays `placement/display.ts` (re-exported here); this module declares
  * the model's types and its write and read primitives, each a function
@@ -111,7 +111,7 @@ import {
 	type SeqItem,
 	type Stamp
 } from './slots.js';
-import { ownerOfNode, resolvePlacements, slotOwner, type Edge, type SlotRef } from './resolve.js';
+import { ownerOfNode, slotOwner, type Edge, type SlotRef } from './resolve.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -152,7 +152,7 @@ export type ProjectedBlock = {
 export type ProjectedDoc = { children: ProjectedBlock[] };
 
 export { REGISTRY_KEY };
-export { resolvePlacements, type SlotRef, type Edge } from './resolve.js';
+export type { SlotRef, Edge } from './resolve.js';
 export { promotedRank } from './keys.js';
 export {
 	bySlot,
@@ -382,7 +382,7 @@ export const buildInline = (atom: InlineSpec): EngineNode => {
  * (`displayParentOf`), not the raw placement chain. A merge claim can
  * place a block inside another's display subtree without appearing in
  * its raw ancestry, so the merge refusal must see through the claim
- * redirect — this is exactly the relation `resolvePlacements` keeps
+ * redirect — this is exactly the relation the index's placements keep
  * acyclic: a merge that would close a cycle is refused without mutation.
  */
 export const isSelfOrDescendant = (
@@ -906,7 +906,6 @@ export const bindModel = (_Y: EngineApi) => ({
 	isLive,
 	/** The doc's index as a `ModelView`. */
 	view,
-	resolvePlacements,
 	childrenIndex,
 	positionInView,
 	// write primitives (the document's prepared plans apply these)

@@ -14,7 +14,7 @@
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import { bindModel as bindPlacement } from '../../lib/crdt/placement/model.js';
 import { isLiveIn } from '../../lib/crdt/placement/model.js';
-import { resolvePlacements as resolveOver } from '../../lib/crdt/placement/resolve.js';
+import { resolvePlacements as resolveOver } from './placements.js';
 import { bindText, computeOwners, DEAD } from '../../lib/crdt/text/model.js';
 import { engineOps } from '../../lib/crdt/structs.js';
 import { DEL_PREFIX, TYPE } from '../../lib/crdt/schema.js';

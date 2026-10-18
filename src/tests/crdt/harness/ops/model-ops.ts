@@ -25,7 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
-import { edgeOf } from '../../../../lib/crdt/placement/resolve.js';
+import { edgeOf } from '../../../oracles/placements.js';
 import { engineOps } from '../../../../lib/crdt/structs.js';
 import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
 import { readData } from '../../../../lib/crdt/data.js';

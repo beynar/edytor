@@ -12,7 +12,7 @@ import {
 	type ResolvedPlacement,
 	childrenIndex
 } from '../../lib/crdt/placement/model.js';
-import { resolveAll } from '../../lib/crdt/placement/resolve.js';
+import { resolveAll } from './placements.js';
 import { engineOps } from '../../lib/crdt/structs.js';
 import { Y } from '../../lib/crdt/engine.js';
 import {

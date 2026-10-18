@@ -10,6 +10,12 @@ export class IdSetDecoder {
     restDecoder: decoding.Decoder<ArrayBufferLike>;
     resetDsCurVal(): void;
     /**
+     * YP26: the client of a delete set's ranges.
+     *
+     * @return {number}
+     */
+    readDsClient(): number;
+    /**
      * @return {number}
      */
     readDsClock(): number;
@@ -36,6 +42,10 @@ export class UpdateDecoder extends IdSetDecoder {
     typeRefDecoder: decoding.UintOptRleDecoder;
     lenDecoder: decoding.UintOptRleDecoder;
     /**
+     * @type {Array<number>}
+     */
+    clients: Array<number>;
+    /**
      * @return {ID}
      */
     readLeftID(): ID;
@@ -46,6 +56,9 @@ export class UpdateDecoder extends IdSetDecoder {
     /**
      * Read the next client id.
      * Use this in favor of readID whenever possible to reduce the number of objects created.
+     * YP26: an index in the update's client table (a new one's id follows it).
+     *
+     * @return {number}
      */
     readClient(): number;
     /**

@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update) and YP25 (paired marks written in parts)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts) and YP26 (a client table per update)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1373,6 +1373,43 @@ values, plain formats, values of another shape — read back through
 `applyUpdate`, `decodeUpdate`, `mergeUpdates` and `diffUpdate`, the same
 store giving the same bytes; a mark's cost), the mark rows (`mark.*`), the
 random corpus (every adapter).
+
+### YP26 — one client table per update (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/ids.js`)
+
+Reason: a client id (53 bits since v14: an 8-byte varint) was written in
+full wherever an update names it — each client's struct section, every
+origin, right origin and parent id, the delete set — and the client
+column's run-length code only helps while consecutive structs name one
+client. A document edited over many sessions (each page load is a client)
+names another session's text at most of its origins: 10 to 12 % of its
+bytes were client ids. Design and measurements:
+`docs/archive/storage-diet/design.md`. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP26 begin` / `// YP26 end`, edits marked `// YP26`):
+
+- `UpdateEncoder` keeps a client table: `clientIndex(client)` writes a
+  client's index in it, in first-use order, to the client column, and a new
+  client's index (the table's size) is followed there by its id, once;
+  `writeClient`, `writeLeftID` and `writeRightID` write through it.
+- `UpdateDecoder#readClient` (and `readLeftID`, `readRightID`) reads an
+  index: the table's size is a new client, whose id follows; one past the
+  table is refused (`an unknown client`).
+- The delete set's client goes through the same table: `writeIdSet` writes
+  it with `writeDsClient`, `readIdSet` and `readAndApplyDeleteSet` read it
+  with `readDsClient` (an `IdSetEncoder`/`IdSetDecoder` alone keeps the
+  plain varint).
+
+Every path that writes an update writes its clients through these methods
+(the struct sections, `writeStructs`, the lazy writer of `mergeUpdates` and
+`diffUpdate`, a block set's re-write, the room's stripped frames, the
+delete-only updates), in the order a reader reads them, so an update stays
+a function of the store. The state vector keeps its own encoding.
+
+Oracle: `src/tests/crdt/yp26-clients.test.ts` (twelve 53-bit sessions
+typing, deleting and syncing: their store reads back through `applyUpdate`,
+`decodeUpdate`, `mergeUpdates` and `diffUpdate`; two interleaved writers
+cost their ids once; an index past the table is refused), the upstream
+suite, the random corpus (every adapter).
 
 ## Generated declarations (`dts/`)
 

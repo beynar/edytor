@@ -328,7 +328,7 @@ export const columnsOf = (update) => {
 	};
 	varUint(); // feature flag
 	const out = {};
-	for (const name of COLUMNS.slice(0, 9)) {
+	for (const name of COLUMNS.slice(0, -1)) {
 		const start = pos;
 		const len = varUint();
 		pos += len;

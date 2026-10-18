@@ -55,6 +55,15 @@ export class IdSetEncoder {
   }
 
   /**
+   * YP26: the client of a delete set's ranges.
+   *
+   * @param {number} client
+   */
+  writeDsClient (client) {
+    encoding.writeVarUint(this.restEncoder, client)
+  }
+
+  /**
    * @param {number} clock
    */
   writeIdSetClock (clock) {
@@ -98,6 +107,33 @@ export class UpdateEncoder extends IdSetEncoder {
     this.parentInfoEncoder = new encoding.RleEncoder(encoding.writeUint8)
     this.typeRefEncoder = new encoding.UintOptRleEncoder()
     this.lenEncoder = new encoding.UintOptRleEncoder()
+    // YP26 begin: one client table per update
+    /**
+     * Each client's index, in first-use order.
+     *
+     * @type {Map<number,number>}
+     */
+    this.clientTable = new Map()
+    // YP26 end
+  }
+
+  /**
+   * YP26: write `client` to the client column as its index in the update's
+   * client table, in first-use order: a new client's index (the table's
+   * size) is followed by its id, once.
+   *
+   * @param {number} client
+   */
+  clientIndex (client) {
+    const index = this.clientTable.get(client)
+    if (index === undefined) {
+      const next = this.clientTable.size
+      this.clientTable.set(client, next)
+      this.clientEncoder.write(next)
+      this.clientEncoder.write(client)
+    } else {
+      this.clientEncoder.write(index)
+    }
   }
 
   toUint8Array () {
@@ -121,7 +157,7 @@ export class UpdateEncoder extends IdSetEncoder {
    * @param {ID} id
    */
   writeLeftID (id) {
-    this.clientEncoder.write(id.client)
+    this.clientIndex(id.client) // YP26
     this.leftClockEncoder.write(id.clock)
   }
 
@@ -129,7 +165,7 @@ export class UpdateEncoder extends IdSetEncoder {
    * @param {ID} id
    */
   writeRightID (id) {
-    this.clientEncoder.write(id.client)
+    this.clientIndex(id.client) // YP26
     this.rightClockEncoder.write(id.clock)
   }
 
@@ -137,7 +173,16 @@ export class UpdateEncoder extends IdSetEncoder {
    * @param {number} client
    */
   writeClient (client) {
-    this.clientEncoder.write(client)
+    this.clientIndex(client) // YP26
+  }
+
+  /**
+   * YP26: a delete set's client goes through the client table too.
+   *
+   * @param {number} client
+   */
+  writeDsClient (client) {
+    this.writeClient(client)
   }
 
   /**

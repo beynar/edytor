@@ -9,6 +9,12 @@ export class IdSetEncoder {
     toUint8Array(): Uint8Array<ArrayBuffer>;
     resetIdSetCurVal(): void;
     /**
+     * YP26: the client of a delete set's ranges.
+     *
+     * @param {number} client
+     */
+    writeDsClient(client: number): void;
+    /**
      * @param {number} clock
      */
     writeIdSetClock(clock: number): void;
@@ -38,6 +44,20 @@ export class UpdateEncoder extends IdSetEncoder {
     parentInfoEncoder: encoding.RleEncoder<number>;
     typeRefEncoder: encoding.UintOptRleEncoder;
     lenEncoder: encoding.UintOptRleEncoder;
+    /**
+     * Each client's index, in first-use order.
+     *
+     * @type {Map<number,number>}
+     */
+    clientTable: Map<number, number>;
+    /**
+     * YP26: write `client` to the client column as its index in the update's
+     * client table, in first-use order: a new client's index (the table's
+     * size) is followed by its id, once.
+     *
+     * @param {number} client
+     */
+    clientIndex(client: number): void;
     /**
      * @param {ID} id
      */

@@ -57,6 +57,15 @@ export class IdSetDecoder {
   }
 
   /**
+   * YP26: the client of a delete set's ranges.
+   *
+   * @return {number}
+   */
+  readDsClient () {
+    return decoding.readVarUint(this.restDecoder)
+  }
+
+  /**
    * @return {number}
    */
   readDsClock () {
@@ -98,28 +107,50 @@ export class UpdateDecoder extends IdSetDecoder {
     this.parentInfoDecoder = new decoding.RleDecoder(decoding.readVarUint8Array(decoder), decoding.readUint8)
     this.typeRefDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder))
     this.lenDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder))
+    // YP26 begin: the update's client table, read as its indices are
+    /**
+     * @type {Array<number>}
+     */
+    this.clients = []
+    // YP26 end
   }
 
   /**
    * @return {ID}
    */
   readLeftID () {
-    return new ID(this.clientDecoder.read(), this.leftClockDecoder.read())
+    return new ID(this.readClient(), this.leftClockDecoder.read())
   }
 
   /**
    * @return {ID}
    */
   readRightID () {
-    return new ID(this.clientDecoder.read(), this.rightClockDecoder.read())
+    return new ID(this.readClient(), this.rightClockDecoder.read())
   }
 
   /**
    * Read the next client id.
    * Use this in favor of readID whenever possible to reduce the number of objects created.
+   * YP26: an index in the update's client table (a new one's id follows it).
+   *
+   * @return {number}
    */
   readClient () {
-    return this.clientDecoder.read()
+    const index = this.clientDecoder.read()
+    const clients = this.clients
+    if (index === clients.length) clients.push(this.clientDecoder.read())
+    else if (index > clients.length) throw error.create('an unknown client')
+    return clients[index]
+  }
+
+  /**
+   * YP26: a delete set's client, from the client table.
+   *
+   * @return {number}
+   */
+  readDsClient () {
+    return this.readClient()
   }
 
   /**

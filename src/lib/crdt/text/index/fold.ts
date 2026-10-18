@@ -7,7 +7,7 @@ import { readData } from '../../data.js';
 import { Y } from '../../engine.js';
 import type { EngineNode } from '../../engine-api.js';
 import { LIVE_WRITERS, baseIdOf, incarnationId } from '../../incarnations.js';
-import type { BlockId, SlotRef } from '../../placement/model.js';
+import type { BlockId } from '../../placement/model.js';
 import { ownerOfNode, slotOwner } from '../../placement/resolve.js';
 import { isBlockSlot, isDataSlot, isRecord, unitOf, type SeqItem } from '../../placement/slots.js';
 import { CONTENT, CONTENT_NODE, NONCE, hasDeleteMark, isNodeLike } from '../../schema.js';
@@ -119,13 +119,8 @@ export const indexFold = (
 	/** The struct holding id `client:clock` (unsplit), `null` when the store holds none. */
 	const structOf = (client: number, clock: number): StoreStruct | null =>
 		structAt(Y, clientsOf(doc).get(client) ?? [], clock);
-	/** What a fold changed in one sequence (fork patch YP22): the blocks whose slot, record or mover it touched, its data slots, the block slots it wrote and removed (by the id they name). */
-	type SeqChange = {
-		blocks: Set<BlockId>;
-		data: boolean;
-		slotsIn: { b: BlockId; ref: SlotRef }[];
-		slotsOut: { b: BlockId; c: number; k: number }[];
-	};
+	/** What a fold changed in one sequence (fork patch YP22): the blocks whose slot, record or mover it touched, and its data slots. */
+	type SeqChange = { blocks: Set<BlockId>; data: boolean };
 	/**
 	 * The edits the id sets `ins`/`del`, the hold log `log` and the move log
 	 * `moves` (what the fold has not folded yet) hold: per text, its edits
@@ -133,6 +128,9 @@ export const indexFold = (
 	 * `client, clock, ±len`, in order); per sequence, what changed in it
 	 * (`seq`): the slots written and removed, the records written and
 	 * removed and the units whose mover changed name the blocks to re-place.
+	 * Reading the sequences writes the slot map (the slots written and
+	 * removed, `putSlot`) and lists the ids whose home to read again
+	 * (`rehome`).
 	 */
 	const makeEditIndex = (
 		ins: IdSetLike | undefined,
@@ -141,10 +139,10 @@ export const indexFold = (
 		moves: readonly number[] = []
 	) => {
 		let seqs: Map<EngineNode, SeqChange> | undefined;
+		const rehome = new Set<BlockId>();
 		const seqOf = (node: EngineNode): SeqChange => {
 			let e = seqs!.get(node);
-			if (e === undefined)
-				seqs!.set(node, (e = { blocks: new Set(), data: false, slotsIn: [], slotsOut: [] }));
+			if (e === undefined) seqs!.set(node, (e = { blocks: new Set(), data: false }));
 			return e;
 		};
 		/** Note unit `c:k` (`value`) of the sequence of `node`: a block slot names its block, a data slot its data. */
@@ -158,9 +156,9 @@ export const indexFold = (
 		): void => {
 			if (isBlockSlot(value)) {
 				e.blocks.add(slotOwner(registry, kept, value.b, c));
-				if (inserted === true && owner !== undefined)
-					e.slotsIn.push({ b: value.b, ref: { parent: owner, c, k } });
-				else if (inserted === false) e.slotsOut.push({ b: value.b, c, k });
+				if (inserted === null || (inserted && owner === undefined)) return;
+				putSlot(value.b, { c, k }, inserted ? { parent: owner as BlockId | null, c, k } : null);
+				rehome.add(value.b);
 			} else if (isDataSlot(value)) e.data = true;
 		};
 		const visitSeq = (s: StoreStruct, from: number, to: number, inserted: boolean | null): void => {
@@ -241,7 +239,9 @@ export const indexFold = (
 			/** What changed in `node`'s sequence (`undefined`: nothing). */
 			seq: (node: EngineNode): SeqChange | undefined => buildSeqs().get(node),
 			/** The sequences the fold changed. */
-			seqNodes: (): Iterable<EngineNode> => buildSeqs().keys()
+			seqNodes: (): Iterable<EngineNode> => buildSeqs().keys(),
+			/** The ids whose home to read again (their slots changed). */
+			rehome
 		};
 	};
 	type EditLookup = ReturnType<typeof makeEditIndex>;
@@ -529,18 +529,9 @@ export const indexFold = (
 			parents: new Set()
 		};
 		// The sequences (the root's, the blocks'): their slots index the blocks' homes, their changes seed the placements.
-		const rehome = new Set<BlockId>();
 		for (const node of editsOf.seqNodes()) {
 			const ch = editsOf.seq(node)!;
 			ix.seqEpoch++;
-			for (const { b, ref } of ch.slotsIn) {
-				putSlot(b, ref, ref);
-				rehome.add(b);
-			}
-			for (const { b, c, k } of ch.slotsOut) {
-				putSlot(b, { c, k }, null);
-				rehome.add(b);
-			}
 			for (const b of ch.blocks) placementSeeds.add(b);
 			if (ch.blocks.size > 0 || ch.data) derived = true;
 			const owner = ownerOfNode(registry, kept, node);
@@ -552,7 +543,7 @@ export const indexFold = (
 			}
 		}
 		// A slot's block, and its losing incarnations, re-read their home (which slot is whose).
-		for (const b of rehome)
+		for (const b of editsOf.rehome)
 			for (const id of [b, ...(incarnations.get(b) ?? [])]) {
 				const rec = blocks.get(id);
 				if (rec === undefined) continue;
@@ -642,17 +633,15 @@ export const indexFold = (
 		};
 		walkIdSet(Y, doc, ins, note);
 		walkIdSet(Y, doc, del, note);
-		for (let i = 0; i < log.length; i += 3) {
-			const s = structOf(log[i], log[i + 1]);
-			if (s !== null) note(s);
-		}
-		for (let i = 0; i < moves.length; i += 3) {
-			const s = structOf(moves[i], moves[i + 1]);
-			if (s === null) continue;
-			note(s);
-			const mover = (s as SeqItem).mover;
-			if (mover) note(mover as unknown as StoreStruct);
-		}
+		for (const l of [log, moves])
+			for (let i = 0; i < l.length; i += 3) {
+				const s = structOf(l[i]!, l[i + 1]!);
+				if (s === null) continue;
+				note(s);
+				// A unit a record moved: where it shows now changed too (a held unit has no mover).
+				const mover = (s as SeqItem).mover;
+				if (mover) note(mover as unknown as StoreStruct);
+			}
 		fold(changed, makeEditIndex(ins, del, log, moves));
 		return true;
 	};

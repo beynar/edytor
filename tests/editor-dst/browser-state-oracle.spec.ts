@@ -23,10 +23,13 @@ import {
 	type EndpointSpot,
 	type PassiveEndpoint
 } from './selectionOracle.js';
+import { startOpaqueRelay } from '../editor-dom/ws-relay.js';
 import {
 	assertDumpSelectionSane,
 	assertPassiveSelectionExact,
+	awaitDeliveries,
 	CollabRunError,
+	installSocketCounter,
 	seamExpectation,
 	type DocumentDump,
 	type SlotFacts
@@ -2166,5 +2169,68 @@ test.describe('collab seam expectation (the replicated slot, BW-04)', () => {
 			textId: 't:b0',
 			offset: 0
 		});
+	});
+});
+
+test.describe('collab deliveries (the post-op gate reads a peer once its frames arrived)', () => {
+	// A frame the relay delays is still on its way when `release` returns:
+	// the gate read the peer's caret before it landed and the anchors after
+	// it (seed 20). `awaitDeliveries` resolves only once the page counted it.
+	test('a delayed frame has reached its page when awaitDeliveries resolves', async ({
+		browser,
+		baseURL
+	}) => {
+		const relay = await startOpaqueRelay();
+		const contexts = [await browser.newContext({ baseURL }), await browser.newContext({ baseURL })];
+		try {
+			const pages = await Promise.all(
+				contexts.map(async (context, index) => {
+					const page = await context.newPage();
+					await installSocketCounter(page, relay.url, `peer-${index}`);
+					await page.goto('/');
+					await page.evaluate(
+						(url) =>
+							new Promise<void>((resolve) => {
+								const socket = new WebSocket(`${url}/room`);
+								socket.binaryType = 'arraybuffer';
+								(window as Window & { __socket__?: WebSocket }).__socket__ = socket;
+								socket.onopen = () => resolve();
+							}),
+						relay.url
+					);
+					return page;
+				})
+			);
+			const received = () =>
+				pages[1].evaluate(
+					() =>
+						Object.values(
+							(
+								window as Window & {
+									__DST_SOCKETS__?: Record<string, { sent: number; received: number }>;
+								}
+							).__DST_SOCKETS__ ?? {}
+						)[0]?.received ?? 0
+				);
+			relay.setLatency('room', 300);
+			await pages[0].evaluate(() =>
+				(window as Window & { __socket__?: WebSocket }).__socket__?.send(new Uint8Array([1]))
+			);
+			await awaitDeliveries(
+				relay,
+				'room',
+				pages.map((page) => ({ page }))
+			);
+			expect(await received()).toBe(1);
+			expect(
+				relay
+					.traffic('room')
+					.sockets.map((socket) => socket.id)
+					.sort()
+			).toEqual(['peer-0.0', 'peer-1.0']);
+		} finally {
+			for (const context of contexts) await context.close();
+			await relay.close();
+		}
 	});
 });

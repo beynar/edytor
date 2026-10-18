@@ -237,6 +237,96 @@ const collabRoute = (
 	return `/test/dom?${query}`;
 };
 
+/**
+ * Names each of the page's sockets to the relay (`dstsock`, read by the
+ * relay) and counts the data messages it sends and receives, the page's
+ * side of the relay's `traffic` (`awaitDeliveries`). The count is taken in
+ * the socket's own `message` dispatch, the task the provider applies the
+ * frame in, so a later evaluate reads a count whose frames are applied.
+ */
+export const installSocketCounter = (page: Page, relayUrl: string, actorId: string) =>
+	page.addInitScript(
+		({ relayUrl, actorId }) => {
+			const Native = window.WebSocket;
+			const traffic: Record<string, { sent: number; received: number }> = {};
+			(window as Window & { __DST_SOCKETS__?: typeof traffic }).__DST_SOCKETS__ = traffic;
+			// No class fields or private names: the page runs this function's
+			// source alone, without the helpers a transpiler would lower them to.
+			const countsOf = new WeakMap<WebSocket, { sent: number; received: number }>();
+			let next = 0;
+			class Counted extends Native {
+				constructor(url: string | URL, protocols?: string | string[]) {
+					const target = new URL(url);
+					const id = String(target).startsWith(relayUrl) ? `${actorId}.${next++}` : null;
+					if (id) target.searchParams.set('dstsock', id);
+					super(target, protocols);
+					if (!id) return;
+					const counts = (traffic[id] = { sent: 0, received: 0 });
+					countsOf.set(this, counts);
+					this.addEventListener('message', () => {
+						counts.received++;
+					});
+				}
+				send(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+					const counts = countsOf.get(this);
+					if (counts) counts.sent++;
+					super.send(data);
+				}
+			}
+			window.WebSocket = Counted;
+		},
+		{ relayUrl, actorId }
+	);
+
+/**
+ * Waits until the relay has delivered everything it took: every open socket
+ * of the room has received each frame the relay wrote to it, the relay has
+ * read each frame its page sent, and no delayed write is pending. A held
+ * frame is not in flight (the relay holds it). The post-op gate reads a peer
+ * only then: a frame still on its way when the peer is dumped would land
+ * before its update count or its anchors are read, and the gate would compare
+ * a caret from before the delivery with the anchors after it.
+ */
+export const awaitDeliveries = async (
+	relay: OpaqueRelay,
+	room: string,
+	peers: readonly { page: Page }[]
+) => {
+	await expect
+		.poll(
+			async () => {
+				const counted: Record<string, { sent: number; received: number }> = {};
+				for (const peer of peers) {
+					Object.assign(
+						counted,
+						await peer.page
+							.evaluate(
+								() =>
+									(
+										window as Window & {
+											__DST_SOCKETS__?: Record<string, { sent: number; received: number }>;
+										}
+									).__DST_SOCKETS__ ?? {}
+							)
+							.catch(() => ({}))
+					);
+				}
+				const { inFlight, sockets } = relay.traffic(room);
+				return (
+					inFlight === 0 &&
+					sockets.every(
+						(socket) =>
+							socket.id !== null &&
+							counted[socket.id]?.sent === socket.fromClient &&
+							counted[socket.id]?.received === socket.toClient
+					)
+				);
+			},
+			{ timeout: 15_000 }
+		)
+		.toBe(true);
+};
+
 const openPeer = async (
 	browser: Browser,
 	baseURL: string,
@@ -255,6 +345,7 @@ const openPeer = async (
 		if (message.type() === 'error') consoleErrors.push(message.text());
 	});
 	await installEventRecorder(page);
+	await installSocketCounter(page, relayUrl, actorId);
 	await page.goto(collabRoute(schedule, room, relayUrl, actorId), {
 		waitUntil: 'domcontentloaded'
 	});
@@ -1870,7 +1961,9 @@ export const runCollabSchedule = async (
 				// delivered frame, and "no delivery ⇒ no movement" when the
 				// peer's provider log didn't advance. Peers skipped at
 				// capture (the `reload` target) have no baseline to compare
-				// and are intentionally absent here.
+				// and are intentionally absent here. Each peer is read once
+				// the relay's frames reached it (`awaitDeliveries`).
+				await awaitDeliveries(relay, room, peers);
 				for (const peer of peers) {
 					const before = netBefore.get(peer.index);
 					if (!before) continue;
@@ -2147,8 +2240,8 @@ export const runCollabSchedule = async (
 			// their selection can't have moved and isn't re-read (a per-peer
 			// dump each step would also cost one evaluate per peer for no new
 			// information). Selection movement from `release`/`reconnect`/
-			// `killRoom` net ops is caught at the next converge point — the
-			// generated episodes always end in a `healBarrier`.
+			// `killRoom` net ops is checked by the net step's own post-op gate,
+			// once the relay's frames reached every peer.
 			if (!held) {
 				const targets = peers.filter((peer) => peer.connected);
 				const stepDumps = await expectConverged(peers, targets);

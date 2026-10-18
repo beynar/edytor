@@ -3194,6 +3194,9 @@ engine collects the content everywhere (`crdt.doc.purge`):
 - any other block deleted before the horizon keeps its node: its own
   stream's text is deleted (per stream, boundaries kept, so the stream
   still delimits and stays hidden), with its data leaves and claims;
+- the paired marks whose start and end lie in a stream the purge empties
+  (of a block kept or removed alone) are deleted: they format nothing a
+  reader shows (collected, each keeps only its sort class);
 - a text hold record older than the horizon is deleted with what it
   holds (the text removed and collected everywhere; a newer record holding
   the same text has nothing to show again); a record whose text the room

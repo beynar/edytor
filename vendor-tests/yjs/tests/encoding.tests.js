@@ -9,7 +9,8 @@ import {
   readContentFormat,
   readContentAny,
   readContentHold,
-  readContentMove
+  readContentMove,
+  readContentClass
 } from '../../../src/lib/crdt/vendor/yjs/src/ynode.js'
 
 
@@ -17,7 +18,7 @@ import {
  * @param {t.TestCase} _tc
  */
 export const testStructReferences = _tc => {
-  t.assert(contentRefs.length === 13) // YP20: 11, a hold record; YP22: 12, a move record
+  t.assert(contentRefs.length === 14) // YP20: 11, a hold record; YP22: 12, a move record; YP29: 13, a collected mark's class
   t.assert(contentRefs[1] === readContentDeleted)
   // YP19: JSON (2), embed (5) and subdocument (9) contents are refused
   t.assert(contentRefs[2] === contentRefs[0] && contentRefs[5] === contentRefs[0] && contentRefs[9] === contentRefs[0])
@@ -29,5 +30,6 @@ export const testStructReferences = _tc => {
   // contentRefs[10] is reserved for Skip structs
   t.assert(contentRefs[11] === readContentHold) // YP20
   t.assert(contentRefs[12] === readContentMove) // YP22
+  t.assert(contentRefs[13] === readContentClass) // YP29
 }
 

@@ -1261,6 +1261,17 @@ export const readContentMove = decoder => {
   return new ContentMove(word >> 5, word & 1, readIds(decoder), (word >> 1) & 7, at)
 }
 
+/**
+ * YP29: a collected mark or claim, its length and class.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentDeleted}
+ */
+export const readContentClass = decoder => {
+  const word = decoder.readLen()
+  return new ContentDeleted(Math.floor(word / 4), word % 4)
+}
+
 const refused = () => { error.unexpectedCase() }
 
 /**
@@ -1284,7 +1295,8 @@ export const contentRefs = [
   refused, // 9 - subdocument
   refused, // 10 - Skip is not ItemContent
   readContentHold, // 11 - a hold record (YP20)
-  readContentMove // 12 - a move record (YP22)
+  readContentMove, // 12 - a move record (YP22)
+  readContentClass // 13 - a collected mark or claim, its class (YP29)
 ]
 
 /**

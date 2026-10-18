@@ -428,13 +428,22 @@ export class Item extends AbstractStruct {
     this.content.gc(tr)
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
-    } else if (markClass(this) === 1) {
-      // YP13, YP21, YP22: a paired mark item, a claim item or a move record
-      // keeps its content: its class orders concurrent inserts (`markClass`)
-      // on every replica, collected or not. A block slot a split made keeps
-      // its split key the same way (`splitKey`), trimmed to it.
-      const keys = /** @type {any} */ (this.content).arr?.map((/** @type {any} */ v) => (Array.isArray(v?.s) ? { s: v.s } : null))
-      this.content = keys?.some((/** @type {any} */ k) => k !== null) ? new ContentAny(keys) : new ContentDeleted(this.length)
+    } else {
+      // YP13, YP21, YP22, YP29: an item of another class than content keeps
+      // what orders concurrent inserts at its origin (`markClass`) on every
+      // replica, collected or not: a paired mark item or a claim item its
+      // class, a move record its content (its sort reads its chain). A block
+      // slot a split made keeps its split key the same way (`splitKey`),
+      // trimmed to it.
+      const cls = markClass(this)
+      const arr = /** @type {any} */ (this.content).arr
+      if (cls === 1) {
+        const keys = arr?.map((/** @type {any} */ v) => (Array.isArray(v?.s) ? { s: v.s } : null))
+        this.content = keys?.some((/** @type {any} */ k) => k !== null) ? new ContentAny(keys) : new ContentDeleted(this.length)
+      } else if (cls < 3 || (cls === 3 && arr?.every((/** @type {any} */ v) => typeof v?.m === 'string'))) {
+        // every unit of the item has its class (a mark is one unit; merged claims all are claims)
+        this.content = new ContentDeleted(this.length, cls)
+      }
     }
   }
 
@@ -635,9 +644,9 @@ export class AbstractContent {
   }
 
   /**
-   * @return {1|2|3|4|5|6|7|8|9|11|12}
+   * @return {1|2|3|4|5|6|7|8|9|11|12|13}
    */
-  getRef () { // YP20: 11, a hold record; YP22: 12, a move record
+  getRef () { // YP20: 11, a hold record; YP22: 12, a move record; YP29: 13, a collected mark's class
     throw error.methodUnimplemented()
   }
 }
@@ -821,9 +830,19 @@ export class ContentBinary {
 export class ContentDeleted {
   /**
    * @param {number} len
+   * @param {number} [cls] YP29: a collected mark's or claim's sort class
    */
-  constructor (len) {
+  constructor (len, cls) {
     this.len = len
+    /**
+     * YP29: what a collected paired mark item or claim item keeps, for each
+     * of its units: its sort class (`markClass`: `0` a left-side mark, `2` a
+     * right-side one, `3` a claim), which orders concurrent inserts at its
+     * origin on every replica (`undefined`: none, any other deleted content).
+     *
+     * @type {number|undefined}
+     */
+    this.cls = cls
   }
 
   /**
@@ -844,14 +863,14 @@ export class ContentDeleted {
    * @return {boolean}
    */
   isCountable () {
-    return false
+    return this.cls === 3 // YP29: a claim is a unit of its text
   }
 
   /**
    * @return {ContentDeleted}
    */
   copy () {
-    return new ContentDeleted(this.len)
+    return new ContentDeleted(this.len, this.cls)
   }
 
   /**
@@ -859,7 +878,7 @@ export class ContentDeleted {
    * @return {ContentDeleted}
    */
   splice (offset) {
-    const right = new ContentDeleted(this.len - offset)
+    const right = new ContentDeleted(this.len - offset, this.cls)
     this.len = offset
     return right
   }
@@ -869,6 +888,7 @@ export class ContentDeleted {
    * @return {boolean}
    */
   mergeWith (right) {
+    if (right.cls !== this.cls) return false // YP29
     this.len += right.len
     return true
   }
@@ -896,14 +916,15 @@ export class ContentDeleted {
    * @param {number} offsetEnd
    */
   write (encoder, offset, offsetEnd) {
-    encoder.writeLen(this.len - offset - offsetEnd)
+    const len = this.len - offset - offsetEnd
+    encoder.writeLen(this.cls === undefined ? len : len * 4 + this.cls) // YP29
   }
 
   /**
-   * @return {1}
+   * @return {1|13}
    */
   getRef () {
-    return 1
+    return this.cls === undefined ? 1 : 13 // YP29: 13, a collected mark or claim
   }
 }
 

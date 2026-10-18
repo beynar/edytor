@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte) and YP28 (large integers in content values)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values) and YP29 (a collected mark or claim keeps its class)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1091,6 +1091,7 @@ For that to give the serial outcome the engine only needs one sort rule:
   mark items, YP13, and claim items): the class orders concurrent inserts on
   every replica, collected or not. The check was YP13's paired-mark test; it
   is now `markClass(this) === 1`, the same answer for every format item.
+  (YP29: a collected mark or claim keeps only its class.)
 
 Plain items (every upstream test) are untouched: a sequence of strings,
 nodes or JSON values without an `m` key, and every map value, read class `1`.
@@ -1453,6 +1454,44 @@ nested objects and arrays, integers either side of 31 bits and of the safe
 range, floats, booleans, `null`, binary, pairs of every kind — reads back
 through `applyUpdate`, `mergeUpdates` and `diffUpdate`; a repeated string
 costs one table entry), the random corpus (every adapter).
+
+### YP29 — a collected mark or claim keeps only its class (`src/structs/Item.js`, `src/utils/marks.js`, `src/ynode.js`)
+
+Reason: YP13, YP21 and YP22 keep the content of every collected item whose
+sort class (`markClass`) is not content's: the class orders concurrent
+inserts at the item's origin on every replica, collected or not. A paired
+mark item's or a claim item's class is all a sort reads of it (two marks or
+two claims of one class at one origin sort by client id), yet each kept its
+key and value. Edytor's purge now deletes the marks of the streams it
+empties (`room.purge.what`), and an undone format operation's marks are
+collected too. A move record still keeps its content: the sort of two
+records at one origin reads their chains. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP29 begin` / `// YP29 end`, edits marked `// YP29`):
+
+- **A collected item's class** (`Item.js`): `ContentDeleted` takes an
+  optional `cls` (`0` a left-side mark, `2` a right-side one, `3` a claim)
+  for each of its units; with one it is content ref 13
+  (`readContentClass` in `ynode.js`'s `contentRefs`, its length and class
+  in one length word: `len · 4 + cls`), countable as the claim it was, not
+  as a mark; it splits and merges with its class, and integrates deleted as
+  any `ContentDeleted`.
+- `Item#gc` (an item of a live parent) gives a collected item of class 0 or
+  2, or a claim item every unit of which is a claim, a `ContentDeleted` of
+  its class; class 1 (content, a block slot's split key) and the move
+  records (4, 5) keep what they kept.
+- `markClass` reads a collected item's class first.
+
+Every reader of a mark or a claim reads live items only (`forward`,
+`findMarker`'s walk, `RangeCursor#_foldItem`, edytor's rows and scans), so
+a collected one's content was never read but by the sort.
+
+Oracle: `src/tests/crdt/yp21-claims.test.ts` (a collected claim item keeps
+its class, and a replica that receives it integrates it deleted, with its
+class), `purge-before-horizon.test.ts` (the marks of a stream the purge
+empties go; a live block keeps its own), the upstream suite
+(`encoding.tests.js` pins ref 13), the mark rows, the random corpus (every
+adapter).
 
 ## Generated declarations (`dts/`)
 

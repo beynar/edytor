@@ -252,6 +252,7 @@ export function readContentBinary(decoder: UpdateDecoder): ContentBinary;
 export function readContentDeleted(decoder: UpdateDecoder): ContentDeleted;
 export function readContentHold(decoder: UpdateDecoder): ContentHold;
 export function readContentMove(decoder: UpdateDecoder): ContentMove;
+export function readContentClass(decoder: UpdateDecoder): ContentDeleted;
 /**
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor

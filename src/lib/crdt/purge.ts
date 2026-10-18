@@ -211,6 +211,31 @@ export const bindPurge = (Y: EngineApi) => {
 			}
 			return out;
 		};
+		/** The paired mark items of `s`'s region whose start and end both lie in it. */
+		const regionMarks = (s: Stream): Item[] => {
+			const opened = new Map<string, Item>();
+			const out: Item[] = [];
+			let at = 0;
+			let inside = s.start === 0;
+			for (let it = firstItem<Item>(s.text); it !== null; it = it.right) {
+				const live = !it.deleted && it.countable !== false;
+				if (live && at >= s.end) break;
+				const { key, value } = it.content as { key?: unknown; value?: unknown };
+				if (inside && !it.deleted && typeof key === 'string' && Array.isArray(value)) {
+					const role = key.charCodeAt(0);
+					if (role === 1) opened.set(`${value[2]}:${value[3]}`, it);
+					else if (role === 2) {
+						const start = opened.get(`${value[0]}:${value[1]}`);
+						if (start !== undefined) out.push(start, it);
+					}
+				}
+				if (live) {
+					at += it.length;
+					if (at === s.start) inside = true;
+				}
+			}
+			return out;
+		};
 		const dead = new Set<BlockId>();
 		const shells: BlockId[] = [];
 		for (const [id, rec] of blocks) {
@@ -328,12 +353,15 @@ export const bindPurge = (Y: EngineApi) => {
 		// data leaves and its claims; a block that goes alone: its stream's
 		// text and its claims (the rest goes with its node).
 		const emptied = [...dead].filter((id) => !removable.has(id));
-		purgeStreams(
-			[...emptied, ...lone].flatMap((id) => {
-				const s = own.streamOf(id);
-				return s === undefined || s.end - s.start <= s.inert.length ? [] : [s];
-			})
-		);
+		const purged = [...emptied, ...lone].flatMap((id) => {
+			const s = own.streamOf(id);
+			return s === undefined ? [] : [s];
+		});
+		// Their marks format nothing any reader shows: each pair whose start and
+		// end lie in one of these streams goes (collected, it keeps its class).
+		const tr = (doc as { _transaction?: unknown })._transaction;
+		for (const s of purged) for (const item of regionMarks(s)) item.delete(tr);
+		purgeStreams(purged.filter((s) => s.end - s.start > s.inert.length));
 		for (const id of lone) deleteClaims(doc, blocks.get(id)!.claims);
 		for (const id of emptied) {
 			const rec = blocks.get(id)!;

@@ -217,6 +217,34 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ada.destroy();
 	});
 
+	it('the marks of a stream the purge empties go; a live block keeps its own', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
+		ok(ada.ed.formatRange('p1b', 0, 4, { bold: true }));
+		ok(ada.ed.formatRange('p1', 0, 4, { italic: true }));
+		ok(ada.ed.deleteBlocks(['p1b']));
+		syncAll([room, ada]);
+		const marks = (r) => {
+			const out: string[] = [];
+			for (let it = blockNodeOf(r.doc, 'p1').getAttr('content')._start; it !== null; it = it.right)
+				if (!it.deleted && typeof it.content.key === 'string') out.push(it.content.key.slice(1));
+			return out.sort();
+		};
+		expect(marks(room)).toEqual(['bold', 'bold', 'italic', 'italic']);
+		const before = room.canonical();
+		purge(room, epoch(room));
+		syncAll([room, ada]);
+		for (const r of [room, ada]) {
+			expect(r.canonical()).toBe(before);
+			expect(marks(r)).toEqual(['italic', 'italic']);
+		}
+		expect(room.ed.runs('p1').some((run) => run.marks?.italic)).toBe(true);
+		healthy(room, ada);
+		room.destroy();
+		ada.destroy();
+	});
+
 	it('a deleted split-born block with a live child keeps its node; its text, data and claims go', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);

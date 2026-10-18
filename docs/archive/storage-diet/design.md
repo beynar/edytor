@@ -1,8 +1,9 @@
 # A smaller stored document — design
 
-Status: plan written before the prototype (2026-10-18, branch
-`storage-diet`). The prototype's measurements are recorded at the end of
-this file. The method is the one of
+Status: built (2026-10-18, branch `storage-diet`): fork patches YP24–YP29,
+two edytor schema cuts and two purge rules, schema generation 10. The plan
+below is as written before the prototype; what was built, kept and measured
+is in ["Prototype: measured"](#prototype-measured) at the end. The method is the one of
 [`engine-delete/design.md`](../engine-delete/design.md) (YP20) and
 [`engine-move/design.md`](../engine-move/design.md) (YP22): measure, survey,
 rank the cuts by measured gain against risk, prototype, keep what the
@@ -319,4 +320,185 @@ Each is measured in the prototype section; none is built.
 
 ## Prototype: measured
 
-(After the prototype.)
+Built on branch `storage-diet` (2026-10-18), one cut a commit, each
+measured with `bench/stored-size.mjs` on every workload and followed by the
+fast lanes (`check`, `lint`, `check:deps`, `check:worker`, `api:report`
+then `check:api`, unit, `test:crdt`, `test:dom`, `test:do`). The base is
+`master` at `8b0e11aa` with the purge fix below applied (a fresh export,
+the same bench script); the bundle is `node scripts/bundle-size.mjs --only
+minimal,all,export`, edytor's own minified bytes.
+
+### The cuts
+
+| Commit | Cut | `history` raw | `history` gzip | `churn` raw | `churn` after its purge, raw / gzip | Bundle `minimal` own |
+| --- | --- | --- | --- | --- | --- | --- |
+| base | | 686,932 | 213,942 | 2,012,668 | 1,287,543 / 320,083 | 422.83 KB |
+| `b540f7ff` | **YP24 string table** (E1): keys, root and node names, string values and object keys through one table per update; the key column absolute (`0` new, else index + 1), which gzip finds | 561,512 (−18.3 %) | 194,179 (−9.2 %) | 1,652,355 (−17.9 %) | 930,431 / 273,411 | +0.63 |
+| `166426ee` | **YP25 marks in parts** (E3) | 528,982 (−4.7 pts) | 186,552 (−3.6 pts) | 1,567,275 | 844,441 / 255,889 | +0.91 |
+| `eb193b3b` | **Records keyed by the block id** (S2) | 512,094 (−2.5 pts) | 184,586 (−0.9 pts) | 1,524,837 | 800,367 / 252,263 | −0.02 |
+| `d8ea2bfb` | **YP26 client table** (E2), a new client's id inline in the client column after its index | 502,625 (−1.4 pts) | 183,980 (−0.3 pts) | 1,353,393 (−8.5 pts) | 666,449 / 250,296 | +0.48 |
+| `6927fd21` | **No block `id` attr** (S1) | 496,642 (−0.9 pts) | 181,899 (−1.0 pts) | 1,338,266 | 651,327 / 242,157 | −0.03 |
+| `de934b2c` | **YP27 parent kind in the info byte** (E5) | 487,023 (−1.4 pts) | 181,693 (−0.1 pts) | 1,314,062 | 627,123 / 241,606 | −0.31 |
+| `d2133119` | **YP28 large integers** (E4, built after all: the nonces are past 2³¹ half the time, and the split key's client went through the client table) | 468,079 (−2.8 pts) | 179,034 (−1.2 pts) | 1,266,957 | 580,189 / 235,726 | +0.27 |
+| `88de8a17` | **Dead streams go alone at the purge** (T1) | — | — | — | 486,353 / 213,707 | +0.25 |
+| `4993e1db` | **YP29 a collected mark keeps its class; the purge deletes the marks of the streams it empties** (T2) | — | — | — | 461,077 / 198,928 | +0.32 |
+| | **Total** | **468,079 (−31.9 %)** | **179,034 (−16.3 %)** | **1,266,957 (−37.1 %)** | **461,077 (−64.2 %) / 198,928 (−37.9 %)** | **425.33 (+2.50)** |
+
+"pts" are points of the base. Every cut kept its gain above 1 % of a
+realistic document (`history`, raw or gzip, or the purged `churn` for the
+purge cuts). Not built: E6 (typed contents for slots, boundaries and
+claims): after YP24 and YP28 a slot and a boundary cost about 17 B each,
+so typing them would save about 5 B each, about 2.5 % raw and 1 % gzip of
+`history`, for the widest change of the encoding cuts (the sort rules and
+every reader of `content.arr[0]`); the info column as `UintOptRle` (−0.2 %).
+C1 (the actor binding with the first write) is a behaviour change, listed
+below.
+
+What changed against the plan:
+
+- **The key column.** YP24 as planned (upstream's running difference of key
+  indices) gave −17.0 % raw but only −3.1 % gzip: the differences are noise
+  to gzip. Absolute indices (`0` a new string, else its index plus one,
+  `UintOptRle`) repeat block after block: −18.3 % raw, −9.2 % gzip.
+- **The client table** first had a column of its own: a keystroke's update
+  grew by 3 bytes. A new client's id written inline after its index in the
+  client column costs 1 byte more than before per client an update names
+  (a keystroke 42 → 43 bytes), for the same stored size.
+- **An earlier encoding is refused before it is decoded.** The update's
+  feature flag (upstream's `0`) is the encoding (`1`): a state of
+  generation 6 to 9 handed to `loadDocument` is an `UndecodableUpdateError`
+  where it was a `SchemaMismatchError`, and an upstream (or `yjs@13`)
+  update inside a v14 frame no longer integrates (it used to, on roots
+  edytor does not read: `boundary-attacks/envelope.test.ts`).
+- **The differentials compare stores.** `yp16-writes` and the baseline leg
+  of `search-marker-format` compare the stores each engine reads back from
+  its own encoding (`src/tests/crdt/harness/stored.js`): byte equality
+  with upstream's v2 ended. `bench/lib/interop.mjs` and its weekly step
+  are removed: there is no wire interop with upstream left.
+- **T1's index rule** needed two fixes the purge rows found: a row's
+  re-placing compared cuts by boundary only, so a cut whose block was
+  removed kept its stream entry (now by boundary and block); and a
+  delimiter that stays when its block goes must re-place its row.
+- **YP29's class needs a length.** A collected claim item can be a merge of
+  several claims: the first version kept one unit and misaligned every
+  later struct of the update (the replica fuzz and the stream races caught
+  it). The class is a `ContentDeleted` that carries it (one class for a
+  merged run whose units all are claims; a mixed run keeps its content as
+  before), written as `len · 4 + cls`.
+
+**A bug found on the way** (before the cuts, `d0272cfc`): the purge deleted
+old hold records in a walk over their writer's structs while each deletion
+split that writer's items, so it deleted the structs beside the records: 52
+deleted blocks of `churn` came back, empty, after its purge. Fixed and
+pinned (`purge-before-horizon.test.ts`); the base numbers above include
+the fix.
+
+### Totals
+
+| Workload | Raw before → after | Gzip before → after | Raw B / block | Gzip B / block | Fresh seed of the same JSON, raw |
+| --- | --- | --- | --- | --- | --- |
+| `typed` | 611,226 → 431,110 (−29.5 %) | 190,259 → 158,844 (−16.5 %) | 611.2 → 431.1 | 190.3 → 158.8 | 525,123 → 392,837 |
+| `history` | 686,932 → 468,079 (−31.9 %) | 213,942 → 179,034 (−16.3 %) | 597.9 → 407.4 | 186.2 → 155.8 | 541,638 → 394,057 |
+| `typed5k` | 3,058,186 → 2,150,857 (−29.7 %) | 926,660 → 771,084 (−16.8 %) | 611.6 → 430.2 | 185.3 → 154.2 | 2,624,738 → 1,959,081 |
+| `history5k` | 3,440,284 → 2,350,251 (−31.7 %) | 1,044,907 → 864,933 (−17.2 %) | 598.2 → 408.7 | 181.7 → 150.4 | 2,708,574 → 1,967,068 |
+| `views` (200 view-only loads) | 621,330 → 438,223 (−29.5 %) | 194,577 → 164,979 (−15.2 %) | 50.5 → 35.6 B a load | | |
+| `churn` | 2,012,668 → 1,266,957 (−37.1 %) | 576,237 → 478,795 (−16.9 %) | 3,762 → 2,368 | 1,077 → 895 | 246,209 → 177,529 |
+| `churn` after its purge | 1,287,543 → 461,077 (−64.2 %) | 320,083 → 198,928 (−37.9 %) | 2,407 → 862 | 598 → 372 | |
+
+One operation's update (median of 20): a keystroke 42 → 43 B, an Enter
+294 → 201, bold on a word 92 → 63, a word delete 41 → 42, an undo 25 → 25,
+a block move 48 → 50, a block delete 60 → 61. The soak's mix
+(`bench/soak/size.mjs`): 8 writers 173.1 → 70.3 KiB (36.6 → 14.4 B an edit
+over the seed), 50 writers 240.4 → 97.3 KiB (54.7 → 21.6 B an edit).
+
+What `history` is made of now (raw / gzip): text 69 % / 64 %, marks 4.8 /
+5.2, home slots 4.4 / 6.7, boundaries 4.3 / 2.6, nonces (`n`, `i`) 4.1 /
+2.4, registry and record entries 3.0 / 2.7, `type`, `l`, `c`, `k/` 4.1 /
+1.0, the rest under 1 % each. What a removed block leaves after the purge:
+a block with its own text 27.8 B raw, 6.0 gzip (its two keys and a GC
+range); a line removed alone 73 B raw, 37 gzip (its boundary, its slot's
+split key, its text's tombstones and its keys), where it kept its whole
+structure, about 320 B raw and 80 gzip, before.
+
+### Timings, heap, the room's memory
+
+`pnpm bench:crdt`, the base export and this tree alternating, three runs
+each, medians; started at a 1-minute load of 2.86, between 2.7 and 5.2
+during the runs:
+
+| Measure (ms) | Before | After |
+| --- | --- | --- |
+| Keystroke on a long-lived document, 1,000 / 5,000 blocks (scale) | 0.04 / 0.03 | 0.05 / 0.04 |
+| Remote keystroke, 5,000 blocks | 0.02 | 0.02 |
+| Enter, 1,000 / 5,000 blocks | 0.17 / 0.14 | 0.17 / 0.28 |
+| Backspace, 1,000 / 5,000 blocks | 0.06 / 0.06 | 0.06 / 0.14 |
+| Range delete of 40 blocks, 1,000 / 5,000 blocks | 1.56 / 1.14 | 1.51 / 1.48 |
+| Delete of 1,000 blocks, range / selected blocks | 12.5 / 12.7 | 12.0 / 12.4 |
+| Load 1,000 / 5,000 blocks (scale) | 11.3 / 44.7 | 11.3 / 37.5 |
+| Construct 1,000 / 5,000 blocks (scale) | 39.5 / 139 | 37.4 / 125 |
+| Move / Tab / outdent, 5,000 blocks (scale) | 0.12 / 0.09 / 0.12 | 0.13 / 0.07 / 0.11 |
+| Encode 1,000 blocks (p50) | 0.79 | 0.59 |
+| Encode / load after 5,000 history steps | 0.63 / 2.73 | 0.50 / 2.67 |
+| Undo, last of 10 / after 5,000 history steps | 0.05 / 0.21 | 0.05 / 0.20 |
+| First keystroke after a load, 1,000 blocks (facade lane) | 1.29 | 1.27 |
+| First move after a load, same parent / a group of 5 | 0.12 / 0.14 | 0.11 / 0.13 |
+| First block delete after a load, 1,000 blocks | 1.19 | 1.20 |
+| Load 1,000 blocks (workload p50) | 1.92 | 1.70 |
+
+The rows that read worse at 5,000 blocks (Enter, Backspace, the 40-block
+range delete) are bimodal: the branch's first run read 0.13 / 0.06 / 1.08,
+its second and third 0.28 / 0.14 / 1.5, five cold samples each. Timed
+alone, warm, 200 samples a row, three rounds alternating: Enter 0.102 /
+0.101 ms (base / branch), Backspace 0.054 / 0.053, the range delete 0.849 /
+0.864 at 5,000 blocks, the same at 1,000. Not real.
+
+Heap retained by a fresh load (three documents held, Node, `--expose-gc`),
+its load and encode (medians): `typed` 11.1 → 10.0 MB, 23.3 → 21.1 ms,
+2.79 → 2.36 ms; `history` 13.6 → 12.2 MB, 29.1 → 25.9, 3.35 → 2.72;
+`history5k` 64.8 → 58.4 MB, 423 → 379, 22.2 → 17.7; `churn` 32.7 → 29.9 MB,
+64.7 → 56.4, 11.9 → 9.6. The decoder's string table hands one string to
+every key it names, so the live document holds fewer strings: about a tenth
+less heap, a tenth faster to load, a fifth faster to encode. The heap per
+stored byte rises, since the bytes fall more: `bench/room-memory.mjs`
+(with the index), 10,000 one-line blocks 1.86 MB / 71.6 MB (39 B a byte) →
+0.91 MB / 64.8 MB (73), 2,000 typed paragraphs 0.71 / 16.9 (24) → 0.29 /
+15.0 (53), 2,000 marked paragraphs 1.33 / 21.2 (16) → 1.00 / 19.7 (20),
+5,000 prose paragraphs 2.75 / 35.4 (13) → 2.28 / 32.4 (15).
+
+### Behaviour changes for the user's decision
+
+None of these is built.
+
+1. **The room's default quota.** `maxDocumentBytes` stays 2 MiB. Every
+   document admitted before is admitted, smaller; but the quota was sized
+   by memory (`room.quota`: "near 100 MB at worst"), and 2 MiB of one-line
+   blocks (about 20,000) now takes about 150 MB in Node (the row and the
+   docs say so now). A default of 1.25 MiB keeps that worst case near
+   100 MB; it would refuse prose documents between about 2,900 and 3,800
+   paragraphs that 2 MiB admits today.
+2. **Purge sooner.** `churn` stores 1,266,957 B (478,795 gzip) until its
+   deletes pass `purgeAfterDays` (30 by default) and 461,077 (198,928)
+   after: −64 % raw, −58 % gzip. A shorter horizon shortens how long a stale
+   replica's undo or a version restore can bring deleted content back.
+3. **Release a session's deletes when its history ends** (at `pagehide`):
+   the text of the blocks a writer deleted and the text its records hold
+   can come back only through that writer's history until the purge.
+   Releasing them at once would give most of 2. without the horizon; a
+   write at unload is not reliable, and a tab that only lost its network
+   keeps its history.
+4. **Drop tombstones below the horizon** (Loro's shallow snapshot): in
+   `churn` after its purge, removed text and units (73 KB), removed slots'
+   split keys (38 KB), removed blocks' keys (29 KB), the boundaries of
+   removed lines (about 45 KB), GC ranges (21 KB) and removed records (5 KB)
+   are about 46 % of the raw bytes. A stale replica's insert next to a
+   dropped tombstone would be dropped where `room.purge.stale` keeps it, and
+   a recycled id written after the purge would diverge between replicas.
+5. **The actor binding with the replica's first write** (C1): a page opened
+   without being edited still writes its `c/<client>` binding, 35.6 B a
+   load (50.5 before). Publishing it with the first write would make it 0,
+   and `document.attribution.actors` would no longer list a viewer who
+   never wrote.
+6. **Marks over deleted text in live streams**: the purge deletes only the
+   marks of the streams it empties; deleting those around deleted words in
+   live blocks too would change the formatting of a stale replica's late
+   insert there.

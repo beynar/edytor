@@ -9,6 +9,14 @@ import * as encoding from 'lib0-v14/encoding'
 export const UPDATE_ENCODING = 1
 
 /**
+ * YP28: whether `x` is an integer past 31 bits a varint holds exactly.
+ *
+ * @param {any} x
+ * @return {boolean}
+ */
+const large = x => Number.isInteger(x) && x > 0x7fffffff && x <= Number.MAX_SAFE_INTEGER
+
+/**
  * Write a content value in lib0's `writeAny` layout, its strings and object
  * keys through the update's string table (`writeKey`).
  *
@@ -20,8 +28,18 @@ const writeValue = (encoder, data) => {
   if (typeof data === 'string') {
     encoding.write(rest, 119)
     encoder.writeKey(data)
+  } else if (large(data)) {
+    // YP28: an integer past lib0's 31 bits (a float64 there) as a varint
+    encoding.write(rest, 115)
+    encoding.writeVarUint(rest, data)
   } else if (data !== null && typeof data === 'object' && !(data instanceof Uint8Array)) {
-    if (Array.isArray(data)) {
+    if (Array.isArray(data) && data.length === 2 && large(data[0]) && Number.isInteger(data[1]) && data[1] >= 0) {
+      // YP28: a pair of a large integer and a clock (an item id, a block
+      // slot's split key) names its first through the client table
+      encoding.write(rest, 114)
+      encoder.clientIndex(data[0])
+      encoding.writeVarUint(rest, data[1])
+    } else if (Array.isArray(data)) {
       encoding.write(rest, 117)
       encoding.writeVarUint(rest, data.length)
       for (let i = 0; i < data.length; i++) writeValue(encoder, data[i])

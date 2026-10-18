@@ -15,6 +15,12 @@ import { UPDATE_ENCODING } from './UpdateEncoder.js' // YP24
 const readValue = decoder => {
   const rest = decoder.restDecoder
   switch (rest.arr[rest.pos]) {
+    case 115: // YP28: a large integer
+      rest.pos++
+      return decoding.readVarUint(rest)
+    case 114: // YP28: a large integer, through the client table, and a clock
+      rest.pos++
+      return [decoder.readClient(), decoding.readVarUint(rest)]
     case 119:
       rest.pos++
       return decoder.readKey()

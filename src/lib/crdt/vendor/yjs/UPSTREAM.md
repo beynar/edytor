@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update) and YP27 (the parent kind in the info byte)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte) and YP28 (large integers in content values)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1332,7 +1332,7 @@ bytes differ from upstream's.
 Measured: see `docs/archive/storage-diet/design.md` ("Prototype: measured").
 
 Oracle: the upstream suite (`updates.tests.js` merges, diffs and re-encodes
-every program), `src/tests/crdt/yp16-writes.test.ts` and the baseline leg
+every program), `src/tests/crdt/yp24-values.test.ts` (every value shape), `src/tests/crdt/yp16-writes.test.ts` and the baseline leg
 of `search-marker-format.test.ts` (the stores each engine reads back from
 its own encoding, `src/tests/crdt/harness/stored.js`, after every
 operation), `generation.test.ts` (an earlier encoding is refused before
@@ -1432,6 +1432,27 @@ the differential updates' edge case) and masks the content ref with
 Oracle: the upstream suite, every engine row reading stores back
 (`yp16-writes`, `yp25-marks`, `yp26-clients`), the random corpus (every
 adapter).
+
+### YP28 — large integers in content values (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`)
+
+Reason: lib0's `writeAny` writes an integer past 31 bits as a float64 (9
+bytes). Edytor's values hold two kinds of them: a block's incarnation nonce
+(32 bits, written three times a block: the node's `n`, its record's `i`, the
+`n` of the boundary of the split that made it; past 2³¹ half the time) and
+a block slot's split key (`s: [client, clock]`, the id of that boundary: a
+53-bit client). Schema generation 10 (YP24's).
+
+Patch (edits marked `// YP28`, in YP24's value codec): an integer past 31
+bits a varint holds exactly is tag `115` and a varint; a two-element array
+of such an integer and a non-negative integer (an item id) is tag `114`,
+its first through the client table (YP26) and its second a varint. Both
+read back as the same number and the same array, whatever the value means.
+
+Oracle: `src/tests/crdt/yp24-values.test.ts` (every value shape — strings,
+nested objects and arrays, integers either side of 31 bits and of the safe
+range, floats, booleans, `null`, binary, pairs of every kind — reads back
+through `applyUpdate`, `mergeUpdates` and `diffUpdate`; a repeated string
+costs one table entry), the random corpus (every adapter).
 
 ## Generated declarations (`dts/`)
 

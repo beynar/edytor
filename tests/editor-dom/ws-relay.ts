@@ -48,6 +48,8 @@ type Connection = {
 	fromClient: number;
 	/** Data messages written to the client. */
 	toClient: number;
+	/** Latency-delayed writes to the client not yet made (written then, or dropped if it closed). */
+	pending: number;
 };
 
 type HeldFrame = { from: Connection; data: Buffer };
@@ -87,13 +89,14 @@ export type OpaqueRelay = {
 	dropNext: (room: string, count: number) => void;
 	/**
 	 * A room's traffic: per open socket, the data messages read from its
-	 * client and written to it, and the delayed writes still pending. A page
-	 * that counts the same on its side has received every frame the relay
-	 * delivered, and the relay has read every frame the page sent.
+	 * client, written to it, and the delayed writes to it still pending; and
+	 * the room's delayed writes. A page whose socket received `toClient +
+	 * pending` has every frame the relay took for it so far; the relay has
+	 * read every frame a page sent once `fromClient` reaches the page's count.
 	 */
 	traffic: (room: string) => {
 		inFlight: number;
-		sockets: { id: string | null; fromClient: number; toClient: number }[];
+		sockets: { id: string | null; fromClient: number; toClient: number; pending: number }[];
 	};
 	/** Destroy every socket in a room — a severed-connection partition. */
 	killRoom: (room: string) => void;
@@ -163,8 +166,10 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 				if (state.latencyMs > 0) {
 					const target = peer;
 					state.inFlight++;
+					target.pending++;
 					setTimeout(() => {
 						state.inFlight--;
+						target.pending--;
 						if (!target.closed && !target.socket.destroyed) {
 							target.toClient++;
 							target.socket.write(frame);
@@ -291,7 +296,8 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 			closed: false,
 			id: requested.searchParams.get('dstsock'),
 			fromClient: 0,
-			toClient: 0
+			toClient: 0,
+			pending: 0
 		};
 		connections.add(conn);
 		socket.on('data', (chunk) => {
@@ -371,7 +377,7 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 			inFlight: roomState(room).inFlight,
 			sockets: [...connections]
 				.filter((conn) => conn.room === room && !conn.closed)
-				.map(({ id, fromClient, toClient }) => ({ id, fromClient, toClient }))
+				.map(({ id, fromClient, toClient, pending }) => ({ id, fromClient, toClient, pending }))
 		}),
 		setLatency: (room, ms) => {
 			roomState(room).latencyMs = ms;

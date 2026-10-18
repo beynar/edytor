@@ -49,7 +49,7 @@ export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';
 export const INLINE_NODE = 'inline';
 
-/** Attr keys on a block node (`SCHEMA.blockAttrs`). */
+/** Attr keys on a block node (`SCHEMA.blockAttrs`); `id` is an atom's own (a block's id is its registry key). */
 export const ID = 'id';
 export const TYPE = 'type';
 /** A block's or atom's whole data, as documents before 0.1.0-next.6 stored it: no longer read; the room's purge deletes it. */

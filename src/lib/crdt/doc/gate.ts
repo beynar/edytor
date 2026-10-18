@@ -17,8 +17,8 @@
  *
  * ```
  * doc.get('blocks')                      registry — flat map, blockId → node('block')
- *   └ <blockId>                           id/n/type/data/del + content/claims/at
- *                                         (n: incarnation nonce)
+ *   └ <blockId>                           n/type/d/…/del./wd./l + content
+ *                                         (n: incarnation nonce; the id is the key)
  * doc.get('meta')                        version record root
  *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
  *   └ schema : 'edytor-doc'               SCHEMA_NAME

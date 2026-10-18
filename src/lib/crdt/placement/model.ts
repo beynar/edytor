@@ -596,8 +596,8 @@ const createBlock = (
 	items: readonly ContentItem[] | null,
 	n: number = nonceOf(doc)
 ): void => {
+	// The block's id is its registry key: the node writes none of its own.
 	const node = newNode(BLOCK_NODE);
-	node.setAttr(ID, sp.id);
 	node.setAttr(NONCE, n);
 	node.setAttr(TYPE, sp.type);
 	writeData(node, dataWrites(sp.data));

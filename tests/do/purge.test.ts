@@ -214,7 +214,12 @@ describe('H7 · the purge, on the room’s clock', () => {
 			`H7 room size: full ${full} B, 1000 deleted ${deleted} B, purged ${purged.stored} B stored (${purged.snapshot} B v2)`
 		);
 		expect(purged.removed).toBe(1000);
-		expect(purged.stored * 4).toBeLessThan(deleted);
+		// What stays of a removed block is its keys' tombstones: a few bytes
+		// each once compressed. The deleted document is leaner since the
+		// update writes each string once, so they weigh more against it: under
+		// a third of it, where they were under a quarter.
+		expect(purged.stored).toBeLessThan(1000 * 8);
+		expect(purged.stored * 3).toBeLessThan(deleted);
 		ada.client.close();
 		ada.document.destroy();
 	});

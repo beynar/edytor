@@ -204,6 +204,36 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ada.destroy();
 	});
 
+	it('deleting old hold records never deletes the structs their writer wrote beside them: a deleted block stays deleted', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.insertText('p1', 9, ' abcdefghijklmnopqrstuvwxyz'));
+		ok(ada.ed.splitBlock('p1', 36, 'p1b')); // p1b streams in p1's text
+		ok(ada.ed.insertText('p1b', 0, 'gone'));
+		ok(ada.ed.deleteBlocks(['p1b'])); // ada's delete mark, right before her records
+		// Three deletes of ada's own text, the middle one first: one record item
+		// of three, holding one run of ada's text that a load merges back into
+		// one item, so releasing the record splits that item twice.
+		ok(ada.ed.deleteText('p1', 18, 3));
+		ok(ada.ed.deleteText('p1', 15, 3));
+		ok(ada.ed.deleteText('p1', 15, 3));
+		syncAll([room, ada]);
+		const reloaded = replica('reloaded', Y.encodeStateAsUpdate(room.doc), LIVE + 3, {
+			semantics: defaultSemantics
+		});
+		const before = reloaded.canonical();
+		expect(reloaded.ed.isVisibleBlock('p1b')).toBe(false);
+		const report = purge(reloaded, epoch(reloaded));
+		expect(report.marks).toBe(3);
+		expect(reloaded.canonical()).toBe(before);
+		expect(reloaded.ed.isVisibleBlock('p1b')).toBe(false);
+		expect(reloaded.ed.blockText('p1')).toBe('live text abcdeopqrstuvwxyz');
+		healthy(reloaded);
+		room.destroy();
+		ada.destroy();
+		reloaded.destroy();
+	});
+
 	it('a withdrawn creation goes; an old move record no block shows at goes', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);

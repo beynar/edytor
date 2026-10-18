@@ -153,9 +153,15 @@ export const bindPurge = (Y: EngineApi) => {
 			it.delete(tr);
 			dropSearchMarkers(it.parent);
 		});
-		ops.iterate<Item>(tr, ids(doomed.map((h) => ({ c: h.client, k: h.clock, n: 1 }))), (it) =>
-			it.delete(tr)
-		);
+		// The records are read first and deleted after: deleting one releases
+		// its holds, which can split items of the store the walk is reading
+		// (its writer's own text), and the walk would then visit the structs
+		// written before the record (a delete mark beside it) as if they were it.
+		const records: Item[] = [];
+		ops.iterate<Item>(tr, ids(doomed.map((h) => ({ c: h.client, k: h.clock, n: 1 }))), (it) => {
+			records.push(it);
+		});
+		for (const it of records) it.delete(tr);
 		return doomed.length;
 	};
 

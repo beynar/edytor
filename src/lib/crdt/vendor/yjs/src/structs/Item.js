@@ -1245,7 +1245,7 @@ export class ContentMove {
    * @return {Array<any>}
    */
   getContent () {
-    return [{ priority: this.priority, side: this.side, part: this.part, at: this.at, ids: this.ids }]
+    return [this]
   }
 
   /**

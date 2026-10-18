@@ -178,14 +178,12 @@ export type BlockRec = TextBlockRec & {
 
 /**
  * Resolved placement after acyclic acceptance: the owner of the sequence
- * that shows the block (`null`: the root), its order key there (an in-memory
- * key, `placement/keys.ts`: never stored), and whether it shows at its home
- * slot (`home`: no move since it was made).
+ * that shows the block (`null`: the root) and its order key there (an
+ * in-memory key, `placement/keys.ts`: never stored).
  */
 export type ResolvedPlacement = {
 	parent: BlockId | null;
 	rank: string;
-	home?: boolean;
 };
 
 /**

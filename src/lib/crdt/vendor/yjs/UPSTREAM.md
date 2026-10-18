@@ -1135,7 +1135,8 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   outermost first — for a block, the home slots of its ancestors, then its
   own; `null`: the first unit it names alone) and its `part` there (0–7,
   the writer's order among the records standing at one unit); `copy` keeps
-  them all (a redo copies the record, never the units); `write` puts
+  them all (a redo copies the record, never the units); its one unit's
+  value (`getContent`) is the record itself; `write` puts
   priority, whether a chain follows, part and side in one varint
   (`priority · 32 + 16 · anchored + part · 2 + side`), then the chain (its
   length, then its ids), then the ranges as a hold record's (one writer,

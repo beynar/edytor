@@ -171,11 +171,16 @@ export const indexSelfChecks = (
 				list.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 			return out;
 		};
+		/** Whether `b` shows at its home slot: placed (not at the root's tail) through no record. */
+		const atHome = (
+			r: { rejected: ReadonlySet<BlockId>; edges: ReadonlyMap<BlockId, { via: unknown } | null> },
+			b: BlockId
+		) => !r.rejected.has(b) && r.edges.get(b)?.via === null;
 		const wantOrder = byParent(resolved);
 		const haveOrder = byParent(placementsMap);
 		for (const [b, pl] of resolved) {
 			const mine = placementsMap.get(b);
-			if (mine?.parent !== pl.parent || mine.home !== pl.home)
+			if (mine?.parent !== pl.parent || atHome(ix, b) !== atHome(all, b))
 				fail(
 					`placement of ${b} (kept ${JSON.stringify(mine ?? null)} | rebuild ${JSON.stringify(pl)}; ${slotsOf(b)})`
 				);

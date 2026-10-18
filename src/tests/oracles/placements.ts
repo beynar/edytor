@@ -99,7 +99,7 @@ export const resolveAll = (
 		const parent = edge.parent;
 		if (parent === undefined || (parent !== null && !blocks.has(parent))) continue;
 		if (closes(placements, ownerOf, id, parent)) continue;
-		placements.set(id, { parent, rank: '', home: edge.via === null });
+		placements.set(id, { parent, rank: '' });
 		edges.set(id, edge);
 		if (n > 0) fallen.add(id);
 	}
@@ -124,7 +124,7 @@ export const resolveAll = (
 		.sort((a, b) => cmpStamp(a.stamp, b.stamp) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 	for (const { id } of tail) {
 		last = keyBetween(last, undefined);
-		placements.set(id, { parent: null, rank: last, home: false });
+		placements.set(id, { parent: null, rank: last });
 	}
 	for (const id of blocks.keys()) if (!edges.has(id)) edges.set(id, null);
 	return { placements, edges, homes, slots, fallen, rejected };

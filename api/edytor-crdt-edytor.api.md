@@ -2745,7 +2745,6 @@ export type ModelView = {
 export type ResolvedPlacement = {
     parent: BlockId | null;
     rank: string;
-    home?: boolean;
 };
 ```
 

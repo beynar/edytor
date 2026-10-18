@@ -437,7 +437,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		fallen.delete(id);
 		rejected.add(id);
 		const rank = keyed ? tailKey(id, edge?.stamp ?? NO_SLOT) : '';
-		setPlacement(id, { parent: null, rank, home: false });
+		setPlacement(id, { parent: null, rank });
 	};
 	/** The same display edge: the same sequence, the same record, the same stamp. */
 	const sameEdge = (a: Edge, b: Edge): boolean =>
@@ -481,7 +481,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			if (n > 0) fallen.add(id);
 			else fallen.delete(id);
 			if (placementsMap.has(id)) setPlacement(id, undefined);
-			setPlacement(id, { parent: edge.parent as BlockId | null, rank, home: edge.via === null });
+			setPlacement(id, { parent: edge.parent as BlockId | null, rank });
 			if (drop !== null) {
 				const now = edges.get(drop);
 				const at = now ? candidatesFor(drop).findIndex((c) => sameEdge(c, now)) : -1;

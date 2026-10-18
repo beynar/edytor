@@ -317,7 +317,7 @@ export const sortsBefore = (o, item, tr) => {
         const py = /** @type {YNode} */ (y.item.parent)._item
         if (x.item.parent !== y.item.parent) {
           if (px === null || py === null) return px === null
-          return px.id.client !== py.id.client ? px.id.client < py.id.client : px.id.clock < py.id.clock
+          return (px.id.client - py.id.client || px.id.clock - py.id.clock) < 0
         }
         const d = unitOrder(x, y)
         if (d !== 0) return d < 0

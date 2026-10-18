@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts) and YP26 (a client table per update)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update) and YP27 (the parent kind in the info byte)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1410,6 +1410,28 @@ typing, deleting and syncing: their store reads back through `applyUpdate`,
 `decodeUpdate`, `mergeUpdates` and `diffUpdate`; two interleaved writers
 cost their ids once; an index past the table is refused), the upstream
 suite, the random corpus (every adapter).
+
+### YP27 — the parent kind in the info byte (`src/structs/Item.js`, `src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`, `src/ynode.js`)
+
+Reason: an item written with its parent (no origin, no right origin: a map
+entry's first value, a list's first item) said in a column of its own,
+`parentInfo` (a run-length code of a flag), whether the parent is a root
+(its name follows) or an item (its id follows). In an edytor document the
+flag alternates block after block (a registry entry under a root, then its
+attrs under the block's node), so the run-length code wrote two bytes a
+change: 8 bytes a block. Content refs fit four bits (0 to 12), so the
+info byte has room. Schema generation 10 (YP24's).
+
+Patch (edits marked `// YP27`): `Item#write` sets bit 5 (`BIT5`) of the
+info byte when the parent it writes is a root's name (or a string parent,
+the differential updates' edge case) and masks the content ref with
+`BITS4`; both struct readers read the bit instead of the column, and
+`readItemContent` masks with `BITS4`. `UpdateEncoder#writeParentInfo`,
+`UpdateDecoder#readParentInfo` and the `parentInfo` column are removed.
+
+Oracle: the upstream suite, every engine row reading stores back
+(`yp16-writes`, `yp25-marks`, `yp26-clients`), the random corpus (every
+adapter).
 
 ## Generated declarations (`dts/`)
 

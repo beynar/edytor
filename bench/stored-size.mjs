@@ -307,7 +307,6 @@ const COLUMNS = [
 	'rightClock',
 	'info',
 	'string',
-	'parentInfo',
 	'typeRef',
 	'len',
 	'rest'

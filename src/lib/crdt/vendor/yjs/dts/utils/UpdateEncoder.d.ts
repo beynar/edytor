@@ -41,7 +41,6 @@ export class UpdateEncoder extends IdSetEncoder {
     rightClockEncoder: encoding.IntDiffOptRleEncoder;
     infoEncoder: encoding.RleEncoder<number>;
     stringEncoder: encoding.StringEncoder;
-    parentInfoEncoder: encoding.RleEncoder<number>;
     typeRefEncoder: encoding.UintOptRleEncoder;
     lenEncoder: encoding.UintOptRleEncoder;
     /**
@@ -78,10 +77,6 @@ export class UpdateEncoder extends IdSetEncoder {
      * @param {string} s
      */
     writeString(s: string): void;
-    /**
-     * @param {boolean} isYKey
-     */
-    writeParentInfo(isYKey: boolean): void;
     /**
      * @param {number} info An unsigned 8-bit integer
      */

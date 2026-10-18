@@ -104,7 +104,6 @@ export class UpdateEncoder extends IdSetEncoder {
     this.rightClockEncoder = new encoding.IntDiffOptRleEncoder()
     this.infoEncoder = new encoding.RleEncoder(encoding.writeUint8)
     this.stringEncoder = new encoding.StringEncoder()
-    this.parentInfoEncoder = new encoding.RleEncoder(encoding.writeUint8)
     this.typeRefEncoder = new encoding.UintOptRleEncoder()
     this.lenEncoder = new encoding.UintOptRleEncoder()
     // YP26 begin: one client table per update
@@ -145,7 +144,6 @@ export class UpdateEncoder extends IdSetEncoder {
     encoding.writeVarUint8Array(encoder, this.rightClockEncoder.toUint8Array())
     encoding.writeVarUint8Array(encoder, encoding.toUint8Array(this.infoEncoder))
     encoding.writeVarUint8Array(encoder, this.stringEncoder.toUint8Array())
-    encoding.writeVarUint8Array(encoder, encoding.toUint8Array(this.parentInfoEncoder))
     encoding.writeVarUint8Array(encoder, this.typeRefEncoder.toUint8Array())
     encoding.writeVarUint8Array(encoder, this.lenEncoder.toUint8Array())
     // @note The rest encoder is appended! (note the missing var)
@@ -197,13 +195,6 @@ export class UpdateEncoder extends IdSetEncoder {
    */
   writeString (s) {
     this.stringEncoder.write(s)
-  }
-
-  /**
-   * @param {boolean} isYKey
-   */
-  writeParentInfo (isYKey) {
-    this.parentInfoEncoder.write(isYKey ? 1 : 0)
   }
 
   /**

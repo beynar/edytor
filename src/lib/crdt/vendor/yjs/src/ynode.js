@@ -1292,7 +1292,7 @@ export const contentRefs = [
  * @param {number} info
  * @param {import('./utils/ID.js').ID} id YP25: the item's id (a format item reads it)
  */
-export const readItemContent = (decoder, info, id) => contentRefs[info & binary.BITS5](decoder, id)
+export const readItemContent = (decoder, info, id) => contentRefs[info & binary.BITS4](decoder, id) // YP27: four bits
 
 /**
  * @param {UpdateDecoder} decoder

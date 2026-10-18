@@ -503,10 +503,15 @@ export class Item extends AbstractStruct {
     const origin = offset > 0 ? createID(this.id.client, this.id.clock + offset - 1) : this.origin
     const rightOrigin = this.rightOrigin
     const parentSub = this.parentSub
-    const info = (this.content.getRef() & binary.BITS5) |
+    const parent = /** @type {any} */ (this.parent)
+    // YP27: an item written with its parent says in bit 5 whether the parent is
+    // a root (its name follows) or an item (its id follows): no parentInfo column
+    const named = origin === null && rightOrigin === null && (parent.constructor === String || parent._item === null)
+    const info = (this.content.getRef() & binary.BITS4) | // YP27: content refs fit four bits
       (origin === null ? 0 : binary.BIT8) | // origin is defined
       (rightOrigin === null ? 0 : binary.BIT7) | // right origin is defined
-      (parentSub === null ? 0 : binary.BIT6) // parentSub is non-null
+      (parentSub === null ? 0 : binary.BIT6) | // parentSub is non-null
+      (named ? binary.BIT5 : 0) // YP27: the parent is a root, by name
     encoder.writeInfo(info)
     if (origin !== null) {
       encoder.writeLeftID(origin)
@@ -515,25 +520,13 @@ export class Item extends AbstractStruct {
       encoder.writeRightID(rightOrigin)
     }
     if (origin === null && rightOrigin === null) {
-      const parent = /** @type {YNode} */ (this.parent)
-      if (parent._item !== undefined) {
-        const parentItem = parent._item
-        if (parentItem === null) {
-          // parent type on y._map
-          // find the correct key
-          const ykey = findRootTypeKey(parent)
-          encoder.writeParentInfo(true) // write parentYKey
-          encoder.writeKey(ykey) // YP24
-        } else {
-          encoder.writeParentInfo(false) // write parent id
-          encoder.writeLeftID(parentItem.id)
-        }
-      } else if (parent.constructor === String) { // this edge case was added by differential updates
-        encoder.writeParentInfo(true) // write parentYKey
-        encoder.writeKey(parent) // YP24
+      if (named) {
+        // a root's name (a string parent: an edge case of differential updates)
+        encoder.writeKey(parent.constructor === String ? /** @type {string} */ (parent) : findRootTypeKey(parent)) // YP24
       } else if (parent.constructor === ID) {
-        encoder.writeParentInfo(false) // write parent id
         encoder.writeLeftID(parent)
+      } else if (parent._item) {
+        encoder.writeLeftID(parent._item.id)
       } else {
         error.unexpectedCase()
       }

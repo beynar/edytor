@@ -38,7 +38,6 @@ export class UpdateDecoder extends IdSetDecoder {
     rightClockDecoder: decoding.IntDiffOptRleDecoder;
     infoDecoder: decoding.RleDecoder<number>;
     stringDecoder: decoding.StringDecoder;
-    parentInfoDecoder: decoding.RleDecoder<number>;
     typeRefDecoder: decoding.UintOptRleDecoder;
     lenDecoder: decoding.UintOptRleDecoder;
     /**
@@ -69,10 +68,6 @@ export class UpdateDecoder extends IdSetDecoder {
      * @return {string}
      */
     readString(): string;
-    /**
-     * @return {boolean}
-     */
-    readParentInfo(): boolean;
     /**
      * @return {number} An unsigned 8-bit integer
      */

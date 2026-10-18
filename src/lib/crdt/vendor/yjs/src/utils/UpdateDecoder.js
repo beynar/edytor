@@ -104,7 +104,6 @@ export class UpdateDecoder extends IdSetDecoder {
     this.rightClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder))
     this.infoDecoder = new decoding.RleDecoder(decoding.readVarUint8Array(decoder), decoding.readUint8)
     this.stringDecoder = new decoding.StringDecoder(decoding.readVarUint8Array(decoder))
-    this.parentInfoDecoder = new decoding.RleDecoder(decoding.readVarUint8Array(decoder), decoding.readUint8)
     this.typeRefDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder))
     this.lenDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder))
     // YP26 begin: the update's client table, read as its indices are
@@ -165,13 +164,6 @@ export class UpdateDecoder extends IdSetDecoder {
    */
   readString () {
     return this.stringDecoder.read()
-  }
-
-  /**
-   * @return {boolean}
-   */
-  readParentInfo () {
-    return this.parentInfoDecoder.read() === 1
   }
 
   /**

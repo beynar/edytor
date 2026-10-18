@@ -138,12 +138,12 @@ describe('a lost socket drops remote presences for its own tab only', () => {
 
 	it("A's tab closes: B still sees C, and A is gone", async () => {
 		const { a, b, c } = await room();
-		// The socket's provider, then the store.
+		// The socket's provider, then the store; the page's one departure
+		// listener (`onPageLeave`), which both leave by.
 		expect(leaves.get(a).map(([type]) => type)).toEqual([
 			'beforeunload',
 			'pagehide',
-			'beforeunload',
-			'pagehide'
+			'beforeunload'
 		]);
 		fire(a, 'pagehide', { persisted: false });
 		await until(() => !sees(b, a));

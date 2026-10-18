@@ -21,6 +21,7 @@ import { YNode } from '../ynode.js'
  * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.update
  * @property {function(Doc):void} DocEvents.beforeAllTransactions
  * @property {function(Transaction, Doc):void} DocEvents.beforeTransaction
+ * @property {function(Transaction, Doc):void} DocEvents.beforeCommit
  * @property {function(Transaction, Doc):void} DocEvents.commit
  * @property {function(Transaction, Doc):void} DocEvents.afterTransaction
  * @property {function(Doc, Array<Transaction>):void} DocEvents.afterAllTransactions

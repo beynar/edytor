@@ -38,10 +38,11 @@ const live = (r: Room) => ({
 const FAIL_APPEND =
 	"CREATE TRIGGER fail_append BEFORE INSERT ON rows WHEN NEW.kind = 'update' BEGIN SELECT RAISE(ABORT, 'injected append failure'); END";
 
-/** A client whose `hello` the room stored and acknowledged. */
+/** A client whose `hello`, its first write, the room stored and acknowledged. */
 const connect = async (room: string) => {
-	const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
+	const document = E.createDocument({ value: { children: [para('p', '')] } });
 	const author = await RawClient.connect(room, document.doc, { user: 'ada' });
+	document.transact(() => document.facade.insertText('p', 0, 'hello'));
 	await vi.waitFor(async () => expect((await inRoom(room, stored)).text).toBe('hello'));
 	const own = document.doc.clientID;
 	await vi.waitFor(() => expect(author.acks.at(-1)?.get(own)).toBeGreaterThan(0));

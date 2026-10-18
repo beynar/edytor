@@ -58,9 +58,10 @@ copy.toJSON(); // same JSON as the source
 | Operations and reads | The document's own: `insertBlocks`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
 | `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
 | `clearHistory()` | Empty the undo and redo stacks. Otherwise they keep the newest `history.limit` steps (200 by default). |
+| `endHistory()` | End this session's history (a view calls it when its page leaves for good): its steps are released, and what it deleted goes at the room's next purge. See [history](/docs/editor/history#when-the-page-closes). |
+| `attribution` | Per-block authorship: `block(id)` returns `createdBy`, `contributors` and `lastChangedBy`; `actorOf(clientID)` the actor of a client id that wrote (a replica's binding goes with its first write, so a page that is only read writes nothing). |
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
 | `actor` | The local author identity. |
-| `attribution` | Per-block authorship: `block(id)` returns `createdBy`, `contributors` and `lastChangedBy`. |
 | `transact(fn)` | Run several edits as one transaction and one undo step. A throw from `fn` does not undo the writes made before it: they are kept and synced. |
 | `encode()` | The full state as bytes, for `loadDocument`. |
 | `attachSync(sync, { value? })` | Attach a provider to the document. Returns its cleanup. |

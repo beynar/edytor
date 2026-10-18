@@ -661,11 +661,11 @@ describe('upgrade — old record shapes', () => {
 		const restored = loadDocument(update, { actor: bob });
 		// The a/ record arrives byte for byte.
 		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
-		// The replicated dictionary survived; the new replica adds only its
-		// own c/<clientID> binding.
+		// The replicated dictionary survived; the new replica adds its own
+		// c/<clientID> binding with its first write, not before.
 		expect(restored.attribution.actors.get('alice')).toEqual({ name: 'Alice', color: '#a11' });
 		expect(restored.attribution.actorOf(old.clientID)).toBe('alice');
-		expect(restored.attribution.actorOf(restored.clientID)).toBe('bob');
+		expect(restored.attribution.actorOf(restored.clientID)).toBeUndefined();
 
 		// Block attribution reads coexist: old-b carries no record (reads
 		// undefined) until bob's first edit creates one — the old a/ records
@@ -673,6 +673,7 @@ describe('upgrade — old record shapes', () => {
 		expect(restored.attribution.block('old-b')).toBeUndefined();
 		const keysBefore = recordKeys(restored).sort();
 		restored.transact(() => restored.facade.insertText('old-b', 0, 'B'));
+		expect(restored.attribution.actorOf(restored.clientID)).toBe('bob');
 		expect(restored.attribution.block('old-b')).toEqual({
 			createdBy: undefined,
 			contributors: new Set(['bob']),

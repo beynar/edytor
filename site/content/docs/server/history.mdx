@@ -241,6 +241,8 @@ The purge is the room's own edit: one transaction, stored and sent to every clie
 
 The room learns when content was deleted from when it stored the deletion. Once a day while the document changes, its alarm records an epoch, the room's state at that time; content whose deletion the room stored before the newest epoch at least `purgeAfterDays` old is purged. A deletion is purged within two days of passing `purgeAfterDays`. The ticks stop once every epoch has passed the horizon, and start again at the next change.
 
+A session whose page closed does not wait. When a page leaves for good, its view ends its history ([`endHistory()`](/docs/editor/history#when-the-page-closes)): the text it deleted is removed at once, and a release record says that nobody can undo its other deletes any more. The next daily tick purges the blocks that session deleted, whatever their age (the report's and log's `horizon` is then `null`, and no horizon is written). Its moves and merges still wait for the horizon, and so do the deletes of every session still open, whose undo still works. A version restore brings released content back from the version, as for anything purged. On a page heavily edited and deleted over four sessions, closing each session's page takes the stored document from 1.27 MB to 1.17 MB at once, and to 0.46 MB at the next tick, where it waited a month for that before.
+
 ### Undo and clients offline for long
 
 - The purge writes its horizon into the document. Every client's undo history then drops the steps the room stored before it: an undo of such a step restores nothing (`dispatcher.last` is `noop` when nothing newer is left to undo), and an undo of a newer step works as before.
@@ -254,7 +256,7 @@ A Durable Object has one alarm. The room runs its tasks on it: [`onSave`](/docs/
 
 ## Metrics and log
 
-[`metrics()`](/docs/server/room#metrics-and-log) has two more fields: `history` (`{ written, skipped, lastKey }`) and `purge` (`{ runs, horizon, removed, emptied, marks, records, candidates, claims, merged }`: purges run, the last horizon purged, and what they deleted; `merged` counts the attribution records of merged blocks). The room logs one JSON line per version written (`{ "edytor": "history", "key", "bytes", "editors" }`), restore and undo (`{ "edytor": "restore", "key", "user", "undo" }`) and purge (`{ "edytor": "purge", "horizon", "bytes", "removed", … }`).
+[`metrics()`](/docs/server/room#metrics-and-log) has two more fields: `history` (`{ written, skipped, lastKey }`) and `purge` (`{ runs, horizon, removed, emptied, marks, records, claims, merged, released }`: purges run, the last horizon purged, and what they deleted; `merged` counts the attribution records of merged blocks, `released` the release records the horizon covered). The room logs one JSON line per version written (`{ "edytor": "history", "key", "bytes", "editors" }`), restore and undo (`{ "edytor": "restore", "key", "user", "undo" }`) and purge (`{ "edytor": "purge", "horizon", "bytes", "removed", … }`).
 
 ## Storage
 

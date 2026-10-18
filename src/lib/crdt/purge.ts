@@ -10,7 +10,10 @@
  * stored by the room before the horizon's time (`room.purge.timing`). A
  * deletion's time is the struct that made it: a block's oldest live delete
  * mark (a withdrawn block: its withdraw mark, and the records of what it last
- * held), a text hold record, a move record.
+ * held), a text hold record, a move record. A delete of a session whose
+ * history ended (a release record, `hist.release.end`) is past the horizon
+ * whatever its time: a delete or withdraw mark, a text hold record of that
+ * writer below the record's clock. A move or a merge waits for the horizon.
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
 import {
@@ -37,6 +40,7 @@ import {
 	HORIZON_ATTR,
 	HORIZON_ROOT,
 	REGISTRY_KEY,
+	RELEASE_ROOT,
 	TEXT_DELETES_ROOT,
 	WITHDRAW_PREFIX
 } from './schema.js';
@@ -67,6 +71,8 @@ export type PurgeReport = {
 	 * contributors at the merge): deleted, their registry entries kept.
 	 */
 	merged: number;
+	/** Release records the horizon covers (`hist.release.end`): deleted. */
+	released: number;
 };
 
 type Item = {
@@ -82,6 +88,21 @@ type Item = {
 };
 
 const mapOf = (node: EngineNode): Map<string, Item> => attrItems<Item>(node);
+
+/**
+ * The ended histories a document holds (`hist.release.end`): per writer,
+ * the clock its latest live release record ended at (what it wrote below
+ * it is released).
+ */
+export const releasesOf = (doc: EngineDoc): Map<number, number> => {
+	const out = new Map<number, number>();
+	for (let it = firstItem<Item>(doc.get(RELEASE_ROOT)); it; it = it.right) {
+		if (it.deleted) continue;
+		const { client, clock } = it.id;
+		out.set(client, Math.max(out.get(client) ?? 0, clock + it.length - 1));
+	}
+	return out;
+};
 
 /** The horizon a document holds (`null`: never purged). */
 export const readHorizon = (doc: EngineDoc): Horizon | null => {
@@ -167,13 +188,16 @@ export const bindPurge = (Y: EngineApi) => {
 
 	/**
 	 * Purge from `doc` (through `facade`, the facade over it) what was
-	 * deleted before `horizon`, and write the horizon record. Runs inside the
-	 * caller's transaction.
+	 * deleted before `horizon`, and what the sessions whose history ended
+	 * deleted (`hist.release.end`), and write the horizon record. With no
+	 * horizon (`null`: the room's tick found none due), only the ended
+	 * sessions' deletes go, and the horizon record is left as it is. Runs
+	 * inside the caller's transaction.
 	 */
 	const purge = (
 		doc: EngineDoc,
 		facade: { model: PlacementModel; text: TextEngine },
-		horizon: Horizon
+		horizon: Horizon | null
 	): PurgeReport => {
 		const report: PurgeReport = {
 			removed: 0,
@@ -181,12 +205,20 @@ export const bindPurge = (Y: EngineApi) => {
 			marks: 0,
 			records: 0,
 			claims: 0,
-			merged: 0
+			merged: 0,
+			released: 0
 		};
-		const vector = Y.decodeStateVector(horizon.sv) as Map<number, number>;
+		const vector =
+			horizon === null
+				? new Map<number, number>()
+				: (Y.decodeStateVector(horizon.sv) as Map<number, number>);
 		const old = (client: number, clock: number) => clock < (vector.get(client) ?? 0);
+		// A delete of an ended session is past the horizon (`hist.release.end`).
+		const releases = releasesOf(doc);
+		const freed = (client: number, clock: number) =>
+			old(client, clock) || clock < (releases.get(client) ?? 0);
 		const oldItem = (item: Item | undefined) =>
-			item !== undefined && !item.deleted && old(item.id.client, item.id.clock);
+			item !== undefined && !item.deleted && freed(item.id.client, item.id.clock);
 		const view = modelView(doc);
 		const { blocks, own, placements } = view;
 		const marks = (node: EngineNode, prefix: string) =>
@@ -273,7 +305,7 @@ export const bindPurge = (Y: EngineApi) => {
 			for (const id of shells) {
 				if (dead.has(id)) continue;
 				const s = own.streamOf(id);
-				if (s !== undefined && !heldBefore(holds, regionSpans(s), old)) continue;
+				if (s !== undefined && !heldBefore(holds, regionSpans(s), freed)) continue;
 				const left = (children.get(id) ?? []).every((child) =>
 					placements.get(child)?.parent === id ? dead.has(child) : edgeOld(child)
 				);
@@ -442,9 +474,19 @@ export const bindPurge = (Y: EngineApi) => {
 				}
 		});
 		// Text hold records past the horizon, with what they hold.
-		report.marks = purgeText(doc, old);
+		report.marks = purgeText(doc, freed);
+		// Release records the horizon covers: what they released is past it.
+		{
+			const tr = (doc as { _transaction?: unknown })._transaction;
+			for (let it = firstItem<Item>(doc.get(RELEASE_ROOT)); it; it = it.right) {
+				if (it.deleted || !old(it.id.client, it.id.clock + it.length - 1)) continue;
+				it.delete(tr);
+				report.released++;
+			}
+		}
 		// The horizon record, last.
-		doc.get(HORIZON_ROOT).setAttr(HORIZON_ATTR, { at: horizon.at, sv: horizon.sv });
+		if (horizon !== null)
+			doc.get(HORIZON_ROOT).setAttr(HORIZON_ATTR, { at: horizon.at, sv: horizon.sv });
 		return report;
 	};
 

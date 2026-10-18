@@ -2,11 +2,13 @@
  * WU-04 (production-readiness plan, R2 and R4) — memory limits that hold
  * (`room.quota`, `net.chunk.inbound` in `docs/editor-delete-contract.md`).
  *
- * - the default document quota fits a 128 MB isolate: measured, a live
- *   room document takes up to about 47 bytes of heap per stored byte
- *   (`bench/room-memory.mjs`), so the default is 2 MiB, and the default
- *   frame quota a few MiB; a document past the default is refused `4413`
- *   while the room keeps serving;
+ * - the default document quota is measured against the isolate's 128 MB:
+ *   a live room document takes up to about 77 bytes of heap per stored
+ *   byte since schema generation 10 (`bench/room-memory.mjs`, Node: a long
+ *   list of short blocks with its index), so the 2 MiB default takes up to
+ *   about 160 MB there (a Worker, with pointer compression, less), and the
+ *   default frame quota a few MiB; a document past the default is refused
+ *   `4413` while the room keeps serving;
  * - chunk sequences are bounded room-wide: a sequence is buffered into
  *   one buffer of its announced size, allocated at its start (`buffered`
  *   in `metrics()`); the sequences in flight on every socket share
@@ -95,10 +97,12 @@ const buffered = (stub: DurableObjectStub<QuotaRoom>) =>
 	runInDurableObject(stub, (r: QuotaRoom) => r.metrics().buffered);
 
 describe('WU-04 · memory limits that hold', () => {
-	it('the defaults fit a 128 MB isolate: a 2 MiB document, frames of a few MiB', () => {
-		// 47 heap bytes per stored byte at worst (short blocks, with the index).
-		expect(DEFAULT_MAX_DOCUMENT_BYTES * 47).toBeLessThanOrEqual(100 * MiB);
-		expect(DEFAULT_MAX_DOCUMENT_BYTES).toBeGreaterThanOrEqual(2 * MiB);
+	it('the defaults are the measured ones: a 2 MiB document, frames of a few MiB', () => {
+		// 77 heap bytes per stored byte at worst in Node (short blocks, with the
+		// index): the 2 MiB default stays (every document admitted before is), at
+		// about 160 MB there.
+		expect(DEFAULT_MAX_DOCUMENT_BYTES * 77).toBeLessThanOrEqual(162_000_000);
+		expect(DEFAULT_MAX_DOCUMENT_BYTES).toBe(2 * MiB);
 		// A frame may carry a whole document (a client seeding an empty room).
 		expect(DEFAULT_MAX_INBOUND_FRAME_BYTES).toBeGreaterThanOrEqual(DEFAULT_MAX_DOCUMENT_BYTES);
 		expect(DEFAULT_MAX_INBOUND_FRAME_BYTES).toBeLessThanOrEqual(4 * MiB);

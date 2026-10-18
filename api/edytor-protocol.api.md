@@ -166,6 +166,8 @@ export interface EngineDoc {
     off(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;
     on(name: 'commit', f: (transaction: never) => void): void;
     off(name: 'commit', f: (transaction: never) => void): void;
+    on(name: 'beforeCommit', f: (transaction: never) => void): void;
+    off(name: 'beforeCommit', f: (transaction: never) => void): void;
     on(name: 'destroy', f: () => void): void;
     off(name: 'destroy', f: () => void): void;
     readonly store?: {
@@ -807,7 +809,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         purge: (doc: import("./engine-api.js").EngineDoc, facade: {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
-        }, horizon: import("./purge.js").Horizon) => import("./purge.js").PurgeReport;
+        }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
         restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
         model: {

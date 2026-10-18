@@ -2,7 +2,7 @@
 /**
  * What a stored edytor document is made of (the storage diet). Dev-only.
  *
- *   node bench/stored-size.mjs [--only typed,history,typed5k,history5k,churn]
+ *   node bench/stored-size.mjs [--only typed,history,typed5k,history5k,views,updates,churn,closed]
  *     [--json bench/results/stored-size.json] [--kinds 18]
  *
  * Builds seeded, deterministic documents through the document's own
@@ -26,6 +26,10 @@
  *   deleting half of the document (block deletes, cross-block range deletes
  *   and word deletes), a session each; read before and after the room's
  *   purge at a horizon of now.
+ * - `closed`: `churn`, each session's page closing for good at its end (its
+ *   history ended, `document.endHistory()`); read before the purge and after
+ *   the room's purge at the default horizon (no epoch due: the ended
+ *   sessions' deletes alone).
  *
  * For each document: raw and gzip bytes, per block; the update's columns
  * (the engine's one encoding: nine column encoders and the rest, YP17); the
@@ -90,7 +94,9 @@ const option = (name, fallback) => {
 	const at = args.indexOf(`--${name}`);
 	return at === -1 ? fallback : args[at + 1];
 };
-const only = option('only', 'typed,history,typed5k,history5k,views,updates,churn').split(',');
+const only = option('only', 'typed,history,typed5k,history5k,views,updates,churn,closed').split(
+	','
+);
 const topKinds = Number(option('kinds', 24));
 const timing = args.includes('--time');
 const heapToo = args.includes('--heap') && typeof globalThis.gc === 'function';
@@ -172,8 +178,13 @@ const typeInto = (doc, w, id, text) => {
 	}
 };
 
-/** A fresh replica of `doc` (a page load), in its own session. */
-const reload = (doc, user) => {
+/**
+ * A fresh replica of `doc` (a page load), in its own session; with `close`,
+ * the previous page closed for good first (its history ended,
+ * `document.endHistory()`, as the view does at `pagehide`).
+ */
+const reload = (doc, user, close = false) => {
+	if (close) doc.endHistory();
 	const update = doc.encode();
 	doc.destroy();
 	const next = E.loadDocument(update, { actor: { id: user } });
@@ -248,11 +259,15 @@ export const editHistory = (doc, scale = 1, seed = 11) => {
 	return doc;
 };
 
-/** Write and delete half of the document, `rounds` times, a session each. */
-export const churn = (doc, rounds = 4, seed = 13) => {
+/**
+ * Write and delete half of the document, `rounds` times, a session each;
+ * with `close`, each session's page closes for good at its end (the last
+ * one too).
+ */
+export const churn = (doc, rounds = 4, seed = 13, close = false) => {
 	const w = new Writer(seed);
 	for (let r = 0; r < rounds; r++) {
-		doc = reload(doc, r % 2 ? 'bob' : 'alice');
+		doc = reload(doc, r % 2 ? 'bob' : 'alice', close);
 		const f = doc.facade;
 		// Write about 500 paragraphs, in runs of 5–20 after random blocks.
 		for (let written = 0; written < 500; ) {
@@ -296,6 +311,7 @@ export const churn = (doc, rounds = 4, seed = 13) => {
 			}
 		}
 	}
+	if (close) doc.endHistory();
 	return doc;
 };
 
@@ -516,13 +532,15 @@ export const analyze = async (doc, label) => {
 const round = (x) => Math.round(x * 10) / 10;
 const round2 = (x) => Math.round(x * 100) / 100;
 
-export const purgeNow = (doc) => {
+/**
+ * The room's purge of `doc`: at a horizon of now (every delete past it), or,
+ * with `horizon: null`, its tick when no epoch is due (the default horizon of
+ * 30 days, a day after the edits): what ended sessions deleted, alone.
+ */
+export const purgeNow = (doc, horizon = { at: Date.now(), sv: Y.encodeStateVector(doc.doc) }) => {
 	let report;
 	doc.facade.transact(() => {
-		report = crdt.doc.purge(doc.doc, doc.facade, {
-			at: Date.now(),
-			sv: Y.encodeStateVector(doc.doc)
-		});
+		report = crdt.doc.purge(doc.doc, doc.facade, horizon);
 	}, PURGE);
 	// What the room stores after the purge: the state as a fresh load reads it.
 	const purged = E.loadDocument(doc.encode());
@@ -608,12 +626,21 @@ export const updateSizes = (seed = 17) => {
 	return Object.fromEntries(Object.entries(sizes).map(([k, v]) => [k, med(v)]));
 };
 
-/** What view-only page loads add: `n` sessions that attach a replica and write nothing. */
+/**
+ * What view-only page loads add: `n` sessions that attach a replica and
+ * write nothing. `first` is the size after the first load (a loaded
+ * document's encoding of the same store can differ from its writer's by a
+ * few bytes, once).
+ */
 export const viewOnly = (n = 200) => {
 	let doc = typedDocument(1000);
 	const before = doc.encode().length;
-	for (let i = 0; i < n; i++) doc = reload(doc, `viewer${i % 20}`);
-	return { doc, before };
+	let first = before;
+	for (let i = 0; i < n; i++) {
+		doc = reload(doc, `viewer${i % 20}`);
+		if (i === 0) first = doc.encode().length;
+	}
+	return { doc, before, first };
 };
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
@@ -650,9 +677,10 @@ if (isMain) {
 		);
 	}
 	await run('views', () => {
-		const { doc, before } = viewOnly();
+		const { doc, before, first } = viewOnly();
+		const after = doc.encode().length;
 		console.log(
-			`(views: 200 view-only page loads added ${doc.encode().length - before} B, ${round((doc.encode().length - before) / 200)} B a load)`
+			`(views: 200 view-only page loads added ${after - before} B, ${round((after - before) / 200)} B a load; ${after - first} B over the 199 loads after the first, ${round((after - first) / 199)} B a load)`
 		);
 		return [['views: typed, then 200 view-only page loads', doc]];
 	});
@@ -675,6 +703,19 @@ if (isMain) {
 		return [
 			['churn: typed, then four rounds of writing and deleting half', before],
 			['churn, after the purge at a horizon of now', purged]
+		];
+	});
+	await run('closed', () => {
+		const before = churn(typedDocument(1000), 4, 13, true);
+		const copy = E.loadDocument(before.encode());
+		const shown = JSON.stringify(copy.facade.toJSON());
+		const { purged, report } = purgeNow(copy, null);
+		if (JSON.stringify(purged.facade.toJSON()) !== shown)
+			console.log('WARNING: the purge of the closed sessions changed the visible document');
+		console.log(`(closed: the purge at the default horizon: ${JSON.stringify(report)})`);
+		return [
+			['closed: churn, each session closing its page (its history ended)', before],
+			['closed, after the purge at the default horizon (no epoch due)', purged]
 		];
 	});
 

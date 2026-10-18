@@ -73,8 +73,10 @@ describe('GX-09 · one failed direct facade write drops only that write', () => 
 	])(
 		"a subscriber that %s while a frame's append fails heals nothing: the sender is faulted, not acknowledged",
 		async (_, room, react) => {
-			const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
+			const document = E.createDocument({ value: { children: [para('p', '')] } });
 			const author = await RawClient.connect(room, document.doc, { user: 'ada' });
+			// Its first write: the room acknowledges its own clock.
+			document.transact(() => document.facade.insertText('p', 0, 'hello'));
 			await vi.waitFor(async () =>
 				expect(await inRoom(room, (r) => storedText(r, 'p'))).toBe('hello')
 			);

@@ -2342,9 +2342,9 @@ export type DocumentAttribution = {
 };
 ```
 
-- `actors`: actorId → profile — the replicated actor dictionary (`u/` records).
+- `actors`: actorId → profile — the replicated actor dictionary (`u/` records): the actors whose replicas wrote, each published with its replica's first write (or `setProfile`).
 - `actorOf`: Resolve an item's inserting replica (clientID) to an actor id (`c/` records).
-- `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW).
+- `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW), a write of this replica (its binding goes with it, as with any first write).
 - `block`: Compact per-block attribution for `blockId` (`{createdBy, contributors, lastChangedBy}` — durable actor ids, never replica clientIDs), or `undefined` for system/foreign blocks that carry no record.
 
 ## DocumentDestroyedError
@@ -2698,6 +2698,7 @@ export declare class EdytorDocument {
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
     clearHistory: () => void;
+    endHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;
@@ -2735,6 +2736,7 @@ export declare class EdytorDocument {
 - `trackOrigin`: Track a local-edit transaction origin for history capture — the seam views use to enroll their own `TRANSACTION` instance in this document's history.
 - `untrackOrigin`: Release a previously-tracked origin — the view-teardown counterpart of `trackOrigin`.
 - `clearHistory`: Drop the undo/redo stacks.
+- `endHistory`: End this session's history: the page it was edited in left for good.
 - `transact`: Local document transaction — headless edits, one undo step per call (`origin`: another origin, which the document's history tracks only when it is tracked).
 - `onReady`: Subscribe to the readiness transition — fires once, synchronously, inside `sync` when `_readiness` leaves `'pending'` (every decision path goes through `sync()`: provider `synced`, local seed, explicit call).
 - `syncPending`: Whether an attached provider has neither settled nor reached its bound.

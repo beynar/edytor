@@ -5,7 +5,8 @@ export const generateNewClientId: typeof random.uint53;
  * minimize the number of messages sent.
  *
  * YP19: a commit is told through the document's events (`commit`, then
- * `afterTransaction`); nodes have no observers.
+ * `afterTransaction`); nodes have no observers. YP30: `beforeCommit` runs
+ * before them, inside the transaction.
  *
  * @public
  */

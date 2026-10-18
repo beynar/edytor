@@ -1,11 +1,13 @@
 /**
  * The purge (`room.purge.*`): the daily tick records an epoch (the state
  * vector) when the document changed, and purges what was deleted before
- * the horizon — the newest epoch at least `purgeAfterDays` old — as the
- * room's own transaction (`crdt/purge.ts`), then compacts.
+ * the horizon — the newest epoch at least `purgeAfterDays` old — and what
+ * the sessions whose history ended deleted (`hist.release.end`), as the
+ * room's own transaction (`crdt/purge.ts`), then compacts. With no epoch
+ * due, a tick still purges the ended sessions' deletes.
  */
 import { Y } from '../../crdt/engine.js';
-import type { PurgeReport } from '../../crdt/purge.js';
+import { releasesOf, type PurgeReport } from '../../crdt/purge.js';
 import { asEngineDoc } from '../../crdt/structs.js';
 import { PURGE_ORIGIN, noTimers } from './shared.js';
 import { DEFAULT_RETENTION_DAYS } from '../history.js';
@@ -27,8 +29,11 @@ export class RoomPurge {
 		if (this.days !== null) this.room.scheduler.schedule('purge', at + DAY, 'earlier');
 	}
 
-	/** The purge task (`AttachedDocument.purge`). */
-	tick(): (PurgeReport & { horizon: number }) | null {
+	/**
+	 * The purge task (`AttachedDocument.purge`): its report, `horizon` the
+	 * epoch it purged to (`null`: only ended sessions' deletes).
+	 */
+	tick(): (PurgeReport & { horizon: number | null }) | null {
 		const room = this.room;
 		const { scheduler, sql, tables } = room;
 		return noTimers(() => {
@@ -66,9 +71,12 @@ export class RoomPurge {
 					now - days * DAY
 				)
 				.toArray()[0];
-			let result: (PurgeReport & { horizon: number }) | null = null;
+			let result: (PurgeReport & { horizon: number | null }) | null = null;
 			if (horizon !== undefined && horizon.at > purged) {
 				result = this.#purgeTo({ at: horizon.at, sv: new Uint8Array(horizon.sv) });
+			} else if (releasesOf(asEngineDoc(doc)).size > 0) {
+				// No epoch is due: the ended sessions' deletes go all the same.
+				result = this.#purgeTo(null);
 			}
 			// The next epoch to pass the horizon, or the next change, arms it again.
 			const next = sql
@@ -85,18 +93,31 @@ export class RoomPurge {
 		});
 	}
 
-	/** Purge what was deleted before `horizon`, as the room's own transaction, then compact. */
-	#purgeTo(horizon: { at: number; sv: Uint8Array }): PurgeReport & { horizon: number } {
+	/**
+	 * Purge what was deleted before `horizon` and what ended sessions deleted
+	 * (`null`: only those), as the room's own transaction, then compact. A
+	 * purge of ended sessions' deletes that finds none left compacts nothing
+	 * and reports `null`.
+	 */
+	#purgeTo(
+		horizon: { at: number; sv: Uint8Array } | null
+	): (PurgeReport & { horizon: number | null }) | null {
 		const room = this.room;
 		const doc = room.requireDoc();
 		// A restore past the horizon can no longer be undone (`room.history.undo`).
-		room.history.expireRestore(horizon.at);
+		if (horizon !== null) room.history.expireRestore(horizon.at);
 		room.history.closeSlotIfPast();
 		let report!: PurgeReport;
+		let wrote = true;
 		room.transacting = true;
 		try {
 			room.facade.transact(() => {
 				report = crdt.doc.purge(asEngineDoc(doc), room.facade, horizon);
+				const tr = asEngineDoc(doc)._transaction as unknown as Record<
+					'insertSet' | 'deleteSet',
+					{ isEmpty(): boolean }
+				>;
+				wrote = !tr.insertSet.isEmpty() || !tr.deleteSet.isEmpty();
 			}, PURGE_ORIGIN);
 		} finally {
 			room.transacting = false;
@@ -106,25 +127,36 @@ export class RoomPurge {
 			room.storage.heal();
 			throw error;
 		}
-		room.ctx.storage.transactionSync(() => {
-			room.sql.exec(
-				`INSERT OR REPLACE INTO ${room.tables.meta} (key, value) VALUES ('purged', ?)`,
-				horizon.at
-			);
-			room.sql.exec(`DELETE FROM ${room.tables.epochs} WHERE at < ?`, horizon.at);
-		});
+		if (horizon !== null)
+			room.ctx.storage.transactionSync(() => {
+				room.sql.exec(
+					`INSERT OR REPLACE INTO ${room.tables.meta} (key, value) VALUES ('purged', ?)`,
+					horizon.at
+				);
+				room.sql.exec(`DELETE FROM ${room.tables.epochs} WHERE at < ?`, horizon.at);
+			});
+		const keys = [
+			'removed',
+			'emptied',
+			'marks',
+			'records',
+			'claims',
+			'merged',
+			'released'
+		] as const;
+		// Nothing an ended session deleted was left: no compaction, no run.
+		if (horizon === null && !wrote) return null;
 		room.storage.compact();
 		const counters = room.counters.purge;
 		counters.runs++;
-		counters.horizon = horizon.at;
-		for (const key of ['removed', 'emptied', 'marks', 'records', 'claims', 'merged'] as const)
-			counters[key] += report[key];
+		if (horizon !== null) counters.horizon = horizon.at;
+		for (const key of keys) counters[key] += report[key];
 		room.log({
 			edytor: 'purge',
-			horizon: horizon.at,
+			horizon: horizon?.at ?? null,
 			bytes: room.counters.compaction.lastBytes,
 			...report
 		});
-		return { ...report, horizon: horizon.at };
+		return { ...report, horizon: horizon?.at ?? null };
 	}
 }

@@ -1243,6 +1243,30 @@ peer's undo of the same delete then shows nothing. A record a captured
 remote frame wrote (the room's validation history) is its writer's and
 stays (`history-limit.test.ts`).
 
+### `hist.release.end` — a session's end releases its deletes
+
+When the page a document was edited in leaves for good (a `pagehide` the
+back/forward cache keeps nothing of: the view's `document.endHistory()`,
+through the page-leave `write` phase, before the providers' `transport`
+teardown), the document's history ends (`UndoManager.end()`): every step
+is dropped and released as `hist.delete-marks.release` says, in one
+transaction of the history's own (`edytor.history.trim`) that, when a
+captured step wrote a block's delete or withdraw mark, also appends one
+release record to the root `released`. A release record's id names its
+writer and the clock its history ended at: that writer's live delete and
+withdraw marks and text hold records below it are past the horizon for the
+purge (`room.purge.what`), whatever their time, since only that writer's
+history could take them back and a version restore writes a block's content
+again from the version. Its moves and merges, and a withdrawn block's
+children, still wait for the horizon. The history then stops capturing; a
+history that captured nothing writes nothing. A page the back/forward cache
+keeps, a tab that only lost its connection, and another tab of the same
+user (its own client id, its own history) release nothing. A release that
+never reaches the room (an unload write lost: Firefox closes a page's
+sockets before `pagehide`) changes nothing: the deletes wait for the
+horizon, as before (`history-release.test.ts`, `page-leave.test.tsx`, the
+hosted `releases its deletes` row, `purge.test.ts`).
+
 ### `sel.presence.wire` — one presence entry per view
 
 `selections[viewKey] = serialize(value) + t`: a text value is
@@ -2666,13 +2690,14 @@ message counts, a Step1 too, and a chunk sequence's start) and
 `maxInboundFrameBytes` (4 MiB, one frame reassembled; a chunk sequence
 announcing more is refused at its start). The defaults are the room's
 memory (WU-04): an isolate has 128 MB and the live document, its index
-included, takes 15 to 73 bytes of heap per stored byte since schema
+included, takes 15 to 77 bytes of heap per stored byte since schema
 generation 10 wrote each string once (`bench/room-memory.mjs`, Node;
-prose to one short line per block; 18 to 46 before), so the default
-document takes about 150 MB at worst in Node, a list of 20,000 short
+prose to one short line per block; 18 to 46 before). The default stays
+2 MiB (a user decision: every document admitted before is admitted), so
+it takes about 150 to 160 MB at worst in Node, a list of some 23,000 short
 blocks (near 100 MB before generation 10; a Worker, with pointer
-compression, takes less), and the frame quota holds a whole document at
-it (a client seeding an empty room). A frame past one is not applied, logged `quota`
+compression, takes less; 1.25 MiB keeps it near 100 MB), and the frame
+quota holds a whole document at it (a client seeding an empty room). A frame past one is not applied, logged `quota`
 (`{ user, quota, … }`), and its socket closed `4413` (`quota: <name>`,
 `CLOSE.quota`, a refusal by `isRefusal`): the provider emits `refused`,
 the document records `syncRefusal`, and nothing redials. Not a drop on a
@@ -2796,6 +2821,25 @@ names the socket's user as its `actor.id` (`verifiedPresence`). Block records' a
 request with another `Origin` before `authorize` (`4403` `origin not
 allowed`, `403` over HTTP); no `Origin` passes
 (`attribution-trust.test.ts`).
+
+### `attr.binding.first-write` — a replica's binding goes with its first write
+
+A replica's actor binding, `c/<clientID>` (and its actor's profile
+`u/<actorId>` when the stored one differs), is written inside the first
+local transaction that writes under its client id (the engine's
+`beforeCommit`, fork patch YP30), never at attach. A replica that only reads
+(loads, syncs, shares presence, ends its history) writes nothing: the stored
+document stays byte-identical, and the room stores no record for its socket.
+The one update of its first write carries the binding, so every struct it
+writes resolves to its actor on every replica that holds the struct; a later
+write, a reconnect and a remote update write none. A profile the same
+transaction wrote (`setProfile`, itself a write) stands. Before the first
+write, `actorOf(clientID)` is `undefined` and `actors` does not list the
+actor; the provider's `saved` reads the actor the document attached
+(`writerOf`). For writers the room's rules hold as before
+(`room.attribution.trust`): a binding to another actor is rebound to the
+verified user after that first frame, a denied first frame is undone and its
+binding stands (`first-write-binding.test.ts`, both lanes).
 
 ### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
 
@@ -3170,7 +3214,11 @@ A deletion's time is the room's storing of the struct that made it: a
 block's oldest live delete (or withdraw) mark, a text hold record, a
 placement candidate. Content deleted before the horizon is purged, so
 deleted content goes within two days of passing `purgeAfterDays`; epochs
-older than the horizon are dropped.
+older than the horizon are dropped. A delete of a session whose history
+ended (`hist.release.end`) is past the horizon at once: a tick with no
+epoch due still purges what release records free (`purge(…, null)`, its
+report's and log's `horizon` `null`, no horizon record written), and one
+that finds nothing left writes and compacts nothing.
 
 ### `room.purge.what` — real deletes, written by the room (H7)
 
@@ -3216,8 +3264,10 @@ engine collects the content everywhere (`crdt.doc.purge`):
   out again. A merged-away block that shows again after the purge (a
   stale replica's edit, its claimer deleted) has no `createdBy` until its
   next write records one (`ensureRecord`);
+- a release record (root `released`, `hist.release.end`) the horizon
+  covers is deleted: what it released is past the horizon anyway;
 - the horizon record, root `horizon`, attr `h` = `{ at, sv }`, written
-  last.
+  last (not by a purge with no epoch due).
 
 The room then collects what it kept (a restore step past the horizon
 released) and compacts. Only the room writes the `horizon` root: a client

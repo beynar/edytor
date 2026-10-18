@@ -50,10 +50,9 @@
  * bootstrap-shaped is written or broadcast, so writes made raw against a
  * pending doc produce unversioned state that `sync()` then refuses (see
  * below). `local`/`hydrated` — the full surface is legal; the only
- * difference is WHO decided the content. (One exception to "nothing
- * broadcast": the actor dictionary attach publishes this replica's
- * `c/<clientID>`/`u/<actorId>` records on ANY constructed document —
- * identity metadata, not content, and outside every admission gate.)
+ * difference is WHO decided the content. (The actor dictionary's
+ * `c/<clientID>`/`u/<actorId>` records go with the replica's first write,
+ * whatever it is: a document that is only read publishes nothing.)
  *
  * ── Admission boundary ────────────────────────────────────────────
  *
@@ -552,9 +551,10 @@ export class EdytorDocument {
 		if (Object.keys(user).length) this.awareness.setLocalStateField('user', user);
 		// Attribution service — attaches after the facade (which gates
 		// foreign docs) and after the actor is fixed. Publishes this
-		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary
-		// edits perform no attribution work and per-block records are
-		// written inside the owning op's transaction by the facade.
+		// replica's actor dictionary entries (`c/`+`u/`) inside its first
+		// write's transaction; ordinary edits perform no attribution work
+		// and per-block records are written inside the owning op's
+		// transaction by the facade.
 		this.#attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
 			actor: this.actor
 		});
@@ -865,6 +865,22 @@ export class EdytorDocument {
 	clearHistory = (): void => {
 		alive(this, 'clearHistory');
 		this.#_history?.clear();
+	};
+
+	/**
+	 * End this session's history: the page it was edited in left for good.
+	 * Every step is dropped, and what this replica deleted is released: the
+	 * text its deletes hid is deleted for good now, and the room's purge
+	 * removes the blocks it deleted at its next run, without waiting for the
+	 * purge horizon (one small write, sent if the connection still can). A
+	 * view calls it at a `pagehide` the back/forward cache keeps nothing of;
+	 * a page kept there, or one that lost its connection, keeps its history.
+	 * Undo starts empty afterwards. No-op while history has not attached, and
+	 * on a destroyed document.
+	 */
+	endHistory = (): void => {
+		if (this._destroyed) return;
+		this.#_history?.end();
 	};
 
 	/**

@@ -181,11 +181,11 @@ export const DEFAULT_SAVE_AFTER = 2000;
  * Room quotas, each refused with `4413` (`quota: <name>`). The
  * document's size: what its records hold (uncompressed) and the updates the
  * engine holds waiting. An isolate has 128 MB, and the live document takes
- * 15 to 73 bytes of heap per stored byte in Node (prose to one short line
+ * 15 to 77 bytes of heap per stored byte in Node (prose to one short line
  * per block, its index included; `bench/room-memory.mjs`; a Worker takes
- * less): 2 MiB is about 150 MB at worst, a list of 20,000 short blocks.
- * Raise it for documents of long text, lower it for long lists of short
- * blocks.
+ * less): 2 MiB is about 150 to 160 MB at worst, a list of some 23,000 short
+ * blocks (1.25 MiB keeps that near 100 MB). Raise it for documents of long
+ * text, lower it for long lists of short blocks.
  */
 export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 /** The share of the document quota past which the room logs its size, by default. */
@@ -442,7 +442,8 @@ export type RoomLogEntry =
 	| { edytor: 'history'; key: string; bytes: number; editors: number }
 	| { edytor: 'restore'; key: string; user: string | null; undo: boolean }
 	| { edytor: 'comment'; type: CommentChange['type']; thread: string; user: string }
-	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
+	// `horizon`: the epoch purged to; `null` for a purge of ended sessions' deletes alone.
+	| ({ edytor: 'purge'; horizon: number | null; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	// The stored document passed `documentWarning` of its quota (once per crossing).
 	| { edytor: 'size'; bytes: number; limit: number; share: number }
@@ -1009,11 +1010,13 @@ export class AttachedDocument {
 	 * The purge task, also over RPC (`room.purge.timing`): record an epoch
 	 * (the state vector, now) when the document changed since the last one,
 	 * purge what was deleted before the horizon — the newest epoch at least
-	 * `purgeAfterDays` old — when it is newer than the last purged, and
-	 * re-arm for the next epoch to pass it. Returns what the purge wrote, or
-	 * `null` when nothing was past the horizon.
+	 * `purgeAfterDays` old — when it is newer than the last purged, with what
+	 * the sessions whose history ended deleted (`hist.release.end`; with no
+	 * epoch due, those alone, `horizon: null`), and re-arm for the next epoch
+	 * to pass it. Returns what the purge wrote, or `null` when nothing was
+	 * past the horizon and no session had ended.
 	 */
-	purge(): (PurgeReport & { horizon: number }) | null {
+	purge(): (PurgeReport & { horizon: number | null }) | null {
 		return this.room.purge.tick();
 	}
 
@@ -1387,7 +1390,7 @@ export class DocumentRoom<
 		return this.room.applyLateEdits(batch);
 	}
 	/** Run the purge task now, also over RPC — see {@link AttachedDocument.purge}. */
-	purge(): (PurgeReport & { horizon: number }) | null {
+	purge(): (PurgeReport & { horizon: number | null }) | null {
 		return this.room.purge();
 	}
 

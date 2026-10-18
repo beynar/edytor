@@ -84,7 +84,7 @@ export declare class AttachedDocument {
         skipped: string[];
     };
     purge(): (PurgeReport & {
-        horizon: number;
+        horizon: number | null;
     }) | null;
     metrics(): RoomMetrics;
     dropWaitingDeletes(): {
@@ -133,7 +133,7 @@ export declare class AttachedDocument {
 - `lateEdits`: The late edits waiting to reach their destination (`room.move.late`), oldest first.
 - `ackLateEdits`: The destination applied a move's late edits through `seq`: they are dropped here.
 - `applyLateEdits`: Apply a batch of late edits of a move this room imported (`room.move.late`): each block's content and data merged three ways into what it holds now (what was written here since stays), as one room transaction.
-- `purge`: The purge task, also over RPC (`room.purge.timing`): record an epoch (the state vector, now) when the document changed since the last one, purge what was deleted before the horizon — the newest epoch at least `purgeAfterDays` old — when it is newer than the last purged, and re-arm for the next epoch to pass it.
+- `purge`: The purge task, also over RPC (`room.purge.timing`): record an epoch (the state vector, now) when the document changed since the last one, purge what was deleted before the horizon — the newest epoch at least `purgeAfterDays` old — when it is newer than the last purged, with what the sessions whose history ended deleted (`hist.release.end`; with no epoch due, those alone, `horizon: null`), and re-arm for the next epoch to pass it.
 - `metrics`: The room's counters, also over RPC — see `RoomMetrics`.
 - `dropWaitingDeletes`: Drop every waiting delete, stored or in memory (callable over RPC): the way out when a writer filled `MAX_WAITING_DELETES` with deletes of registered ids' items, which compaction keeps.
 - `closeUser`: Revoke: close every socket of `userId` (also over RPC), `4403` (`access revoked`, final for the provider) unless you pass another `code` (`4401` redials with fresh `params`; `1011` redials too).
@@ -523,11 +523,11 @@ declare const DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND = 2;
 Room quotas, each refused with `4413` (`quota: <name>`). The
 document's size: what its records hold (uncompressed) and the updates the
 engine holds waiting. An isolate has 128 MB, and the live document takes
-15 to 73 bytes of heap per stored byte in Node (prose to one short line
+15 to 77 bytes of heap per stored byte in Node (prose to one short line
 per block, its index included; `bench/room-memory.mjs`; a Worker takes
-less): 2 MiB is about 150 MB at worst, a list of 20,000 short blocks.
-Raise it for documents of long text, lower it for long lists of short
-blocks.
+less): 2 MiB is about 150 to 160 MB at worst, a list of some 23,000 short
+blocks (1.25 MiB keeps that near 100 MB). Raise it for documents of long
+text, lower it for long lists of short blocks.
 
 ```ts
 declare const DEFAULT_MAX_DOCUMENT_BYTES: number;
@@ -702,7 +702,7 @@ export declare class DocumentRoom<Env = DocumentRoomEnv> extends DurableObject<E
         skipped: string[];
     };
     purge(): (PurgeReport & {
-        horizon: number;
+        horizon: number | null;
     }) | null;
     listComments(): CommentSnapshot;
     comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome>;
@@ -1314,6 +1314,7 @@ export type PurgeReport = {
     records: number;
     claims: number;
     merged: number;
+    released: number;
 };
 ```
 
@@ -1323,6 +1324,7 @@ export type PurgeReport = {
 - `records`: Move records dropped: old ones no block shows at any more (a lost move, a move of removed blocks).
 - `claims`: Claims naming a removed block, deleted from the blocks that hold them.
 - `merged`: Attribution records of blocks merged away before the horizon (their text shows in the block that claimed them, which unioned their contributors at the merge): deleted, their registry entries kept.
+- `released`: Release records the horizon covers (`hist.release.end`): deleted.
 
 ## R2_HISTORY_MAX_VALUE_BYTES
 
@@ -1499,7 +1501,7 @@ export type RoomLogEntry = {
     user: string;
 } | ({
     edytor: 'purge';
-    horizon: number;
+    horizon: number | null;
     bytes: number;
 } & PurgeReport) | {
     edytor: 'quota';

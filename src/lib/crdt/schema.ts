@@ -43,6 +43,16 @@ export const DOC_DATA_ROOT = 'docdata';
  */
 export const HORIZON_ROOT = 'horizon';
 export const HORIZON_ATTR = 'h';
+/**
+ * The ended histories (`hist.release.end`): a list of release records, one
+ * item per session whose history ended (its page left for good). A
+ * record's engine id names its writer and the clock it ended at: what that
+ * writer deleted before it (its delete and withdraw marks, its text hold
+ * records) no history can bring back, so the room's purge removes it at
+ * its next tick, past the horizon or not. The purge drops a record the
+ * horizon covers.
+ */
+export const RELEASE_ROOT = 'released';
 
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';

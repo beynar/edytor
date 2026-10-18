@@ -1,9 +1,13 @@
 # A smaller stored document — design
 
 Status: built (2026-10-18, branch `storage-diet`): fork patches YP24–YP29,
-two edytor schema cuts and two purge rules, schema generation 10. The plan
-below is as written before the prototype; what was built, kept and measured
-is in ["Prototype: measured"](#prototype-measured) at the end. The method is the one of
+two edytor schema cuts and two purge rules, schema generation 10; then the
+user's decisions on §5 (2026-10-19): the quota stays, C1 and the release of
+a closed session's deletes built (fork patch YP30), the other three
+declined. The plan below is as written before the prototype; what was
+built, kept and measured is in ["Prototype: measured"](#prototype-measured)
+and ["The user's decisions"](#the-users-decisions-built-and-measured) at the
+end. The method is the one of
 [`engine-delete/design.md`](../engine-delete/design.md) (YP20) and
 [`engine-move/design.md`](../engine-move/design.md) (YP22): measure, survey,
 rank the cuts by measured gain against risk, prototype, keep what the
@@ -269,7 +273,13 @@ upstream suite, and stops claiming wire interop.
 
 ## 5. Behaviour changes not to make (for the user's decision)
 
-Each is measured in the prototype section; none is built.
+Each is measured in the prototype section; none was built by the
+prototype. The user's decisions (2026-10-19), each in
+["The user's decisions"](#the-users-decisions-built-and-measured): purging
+sooner, dropping tombstones below the horizon and deleting the marks over
+deleted text in live streams are **declined**; releasing a session's deletes
+when its page closes is **built**; the quota **stays 2 MiB**, its measured
+memory bound documented.
 
 - **Purge sooner.** `churn` stores 2.01 MB until its deletes pass
   `purgeAfterDays` (30 by default) and 1.29 MB after (−36 % raw, −44 %
@@ -467,7 +477,7 @@ stored byte rises, since the bytes fall more: `bench/room-memory.mjs`
 
 ### Behaviour changes for the user's decision
 
-None of these is built.
+None of these was built by the prototype; the user's decisions follow.
 
 1. **The room's default quota.** `maxDocumentBytes` stays 2 MiB. Every
    document admitted before is admitted, smaller; but the quota was sized
@@ -502,3 +512,136 @@ None of these is built.
    marks of the streams it empties; deleting those around deleted words in
    live blocks too would change the formatting of a stale replica's late
    insert there.
+
+## The user's decisions: built and measured
+
+Decided 2026-10-19, built on the same branch.
+
+### 1. The quota stays 2 MiB (decided, documented)
+
+`maxDocumentBytes` keeps its default. `bench/room-memory.mjs` (Node, the
+index included; two runs): short blocks 71.6–77.1 heap bytes per stored
+byte (10,000 blocks: 0.91 MB stored, 63.7–64.8 MB), typed paragraphs 53–55,
+marked 20, prose 14.5–15.3. So 2 MiB of one-line blocks (about 23,000)
+takes about 150 to 160 MB in Node, where it took about 100 MB before
+generation 10 (a Worker, with pointer compression, takes less); 1.25 MiB
+keeps it near 100 MB. The site's quotas section, `DEFAULT_MAX_DOCUMENT_BYTES`'s
+JSDoc, the `room.quota` row, `docs/agents/room-and-protocol.md`,
+`memory-limits.test.ts` and the changelog say so.
+
+### 2. C1: the actor binding with the replica's first write (built)
+
+`attribution.ts` `bind` writes `c/<clientID>` (and `u/<actorId>` when the
+stored profile differs, unless the transaction wrote it: `setProfile`)
+inside the first local transaction that inserts under the client id. No
+engine event ran there: fork patch YP30 adds `beforeCommit`, emitted by the
+outermost `transact` after its function, while the transaction is open (a
+listener's writes join its one update; nested calls emit nothing).
+
+Readers checked:
+
+- the room's rules (`room.attribution.trust`, `rebind`, orphans): they read
+  the binding in the frame that writes it, which is now the writer's first
+  frame; unchanged for writers. The rows that waited for an attach-time
+  binding (`attribution-trust`, `room-reads-mid-frame`,
+  `transact-inside-transaction`, `failed-facade-write`, `lifecycle`'s relay
+  row, `room.test.ts`'s large update, the viewer-tab rows) now make the
+  writer's first write, or exchange the viewers' records through
+  `setProfile`;
+- `actorOf` and `actors`: a client that never wrote resolves to nothing (it
+  wrote no struct to resolve);
+- the provider's `saved` (`ownerOf`): it read the binding of the doc's own
+  id to find the actor; before the first write there is none, and "owns
+  all" would count another user's stripped content as unsaved for good. It
+  now reads `writerOf(doc)`: the binding, else the actor the document
+  attached;
+- history versions and their diff (blocks by id, editors by the room's
+  socket users), comments (users from `authorize`), presence (the awareness
+  `actor` field): no reader of `c/`.
+
+Measured (`node bench/stored-size.mjs --only views`): 200 view-only page
+loads added 7,113 B (35.6 B a load) before, 25 B after, all of it the first
+load's re-encoding of the writer's document (0 B over the 199 loads after
+it); 202 clients in the stored document before, 2 after.
+
+Rows: `first-write-binding.test.ts` (crdt: byte-identical after reads, the
+first edit's one update binds, a later edit and a remote update write none,
+`setProfile`; room: a reader's socket stores nothing, a first frame carries
+the binding, a reconnect writes none, a reload binds its own id with `saved`
+counting the earlier session's offline edit, a denied first frame keeps its
+binding), `page-leave.test.tsx` P-L4 (a mounted view's carets and arrow keys
+leave the document byte-identical).
+
+### 3. Release a session's deletes when its page closes (built)
+
+Correctness, checked before building:
+
+- **Version history.** `restoreTo` revives a block (its marks removed) and
+  rewrites its content from the version (step 4, `rewriteContent`), and
+  creates a block the registry lost: it needs nothing a closed session
+  released. Pinned: `history-release.test.ts` (a restore after the release
+  and the purge brings the block back with its text) and the room row
+  (the morning version restores a closed session's purged block).
+- **Two tabs of one user.** Each has its own client id and history; a
+  release record names its writer (the item's id), and the purge frees
+  that writer's marks and records only. Pinned (crdt).
+- **A tab that only lost its network.** Nothing but a page leaving for good
+  ends a history. Pinned (`page-leave.test.tsx` P-L3).
+- **bfcache.** A `pagehide` with `persisted: true` releases nothing (P-L2).
+- **A failed unload write.** The release is one update; lost, the deletes
+  wait for the horizon as before.
+
+What it is: `UndoManager.end()` (`document.endHistory()`) drops every step
+through `#release` (the dropped-step path: kept items collected, the text
+this writer's records hold deleted for good) and, when a captured step wrote
+a delete or withdraw mark, appends one release record to the root
+`released` in the same transaction; the manager stops capturing. The purge
+counts a release record's writer's marks and hold records below its clock
+as past the horizon (moves, merges and a withdrawn block's children still
+wait for it), and drops a record the horizon covers; the room's tick purges
+them with no epoch due (`purge(…, null)`: no horizon record, `horizon: null`
+in the report and log, nothing compacted when nothing was left).
+
+Page lifecycle: the providers already left at `pagehide` (each its own
+window listener). A view's listener registered after them runs after them
+in Chromium even when capturing (measured: Chromium runs a window's
+`pagehide` listeners in registration order; Firefox and WebKit run the
+capturing one first), so the release would be written after the sockets
+closed. The page's lifecycle is now one coordinator in the sync layer
+(`onPageLeave`, `providers/room.ts`): one listener, `write` subscribers (the
+view's `endHistory`, `events/onPageHide.ts`) before `transport` ones (each
+provider's teardown). In Firefox the socket closes before `pagehide`
+(measured: its `close` event comes after `beforeunload` and before
+`pagehide`), and the local store's write there did not persist: from
+Firefox the release reaches the room only through another open tab of the
+document; the hosted row pins both outcomes.
+
+Measured (`node bench/stored-size.mjs --only churn,closed`; `closed` is
+`churn` with each session's page closing at its end):
+
+| | Raw | Gzip |
+| --- | --- | --- |
+| `churn`, sessions not closing | 1,266,956 | 478,805 |
+| `churn`, each session closing, before the purge | 1,171,199 (−7.6 %) | 443,303 (−7.4 %) |
+| `churn`, each session closing, after the next tick at the default horizon (no epoch due) | 462,272 (−63.5 %) | 198,754 (−58.5 %) |
+| `churn`, after a purge at a horizon of now (for comparison) | 461,006 | 198,897 |
+
+So a document whose sessions close their pages gets, a day after, what it
+got a month after before; the purge's report for `closed`: 2,365 blocks
+removed, no text hold record left to it (the release had deleted them).
+
+Rows: `history-release.test.ts` (crdt: the held text at once and the blocks
+at the next purge; another session's deletes wait and its undo restores;
+two tabs of one actor; a reader and a typist release nothing; a restore;
+the horizon drops a covered record), `page-leave.test.tsx` (P-L1 the
+release before the providers' teardown, P-L2 bfcache, P-L3 offline),
+`purge.test.ts` (room: purged at the next tick, an open session keeps its
+own, a later tick writes nothing, a version restores), the hosted
+`releases its deletes` row (three engines).
+
+### 4. Declined
+
+Purging sooner (a shorter default horizon), dropping tombstones and removed
+keys below the horizon, and deleting the marks over deleted text in live
+streams: declined by the user, not built.
+

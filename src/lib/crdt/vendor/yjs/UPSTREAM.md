@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values) and YP29 (a collected mark or claim keeps its class)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values), YP29 (a collected mark or claim keeps its class) and YP30 (a transaction's `beforeCommit`)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1492,6 +1492,28 @@ class), `purge-before-horizon.test.ts` (the marks of a stream the purge
 empties go; a live block keeps its own), the upstream suite
 (`encoding.tests.js` pins ref 13), the mark rows, the random corpus (every
 adapter).
+
+### YP30 — a transaction's `beforeCommit` (`src/utils/Transaction.js`, `src/utils/Doc.js`)
+
+Reason: edytor writes a replica's actor binding (`c/<clientID>`,
+`attr.binding.first-write`) with the replica's first write, inside that
+write's transaction, so a replica that only reads writes nothing and every
+struct a replica writes travels in the update that binds it. No event ran
+inside a transaction after its function: `beforeTransaction` comes before
+anything is written, `commit` after the transaction closed (a write there is
+a transaction of its own, a second update).
+
+Patch (new code delimited by `// YP30 begin` / `// YP30 end`): `transact`,
+for the outermost call, emits `beforeCommit` (transaction, doc) after the
+function returned or threw, while `doc._transaction` is still set, so a
+listener's writes join the transaction (its insert and delete sets, its one
+update, the `commit` fold); then the cleanup runs as before, also when a
+listener throws. Emitted only when the document has a listener. Not
+emitted for a nested call.
+
+Oracle: `src/tests/crdt/attribution/first-write-binding.test.ts` (the first
+local edit's one update carries the binding; a remote update writes none),
+the upstream suite.
 
 ## Generated declarations (`dts/`)
 

@@ -52,6 +52,7 @@ import {
 	type AwarenessUpdate
 } from '../protocols/awareness.js';
 import type { SyncProtocol } from '../protocols/sync.js';
+import { callEach } from '../protocols/observable.js';
 import {
 	BARE_REPLY_LENGTH,
 	frame,
@@ -271,13 +272,75 @@ type PageEvents = {
 	removeEventListener?(e: string, f: (event: { persisted?: boolean }) => void): void;
 };
 
+/** When a subscriber of {@link onPageLeave} runs: a session's last writes, then the transports. */
+export type PageLeavePhase = 'write' | 'transport';
+
+/** One page's departure: its subscribers by phase, and the listener's removal. */
+type Departure = { leaving: Record<PageLeavePhase, Set<() => void>>; uninstall: () => void };
+/**
+ * The departures installed, by the page's `addEventListener` (one per realm
+ * in a browser; a harness simulating several pages in one realm gives each
+ * its own) or, in Node, by the process.
+ */
+const departures = new WeakMap<object, Departure>();
+
+/** The page (Node: the process) leaves for good: the writes first, then the transports, each isolated. */
+const leave = (departure: Departure) => {
+	for (const phase of ['write', 'transport'] as const)
+		callEach(`[edytor] page leave (${phase})`, [...departure.leaving[phase]]);
+};
+
+/**
+ * Be told when the page leaves for good: a `pagehide` of a page the
+ * back/forward cache keeps nothing of (a kept page may come back as it was),
+ * or, in Node, the process's `exit`. One listener for the page; its
+ * subscribers run in two phases whatever order they subscribed in — a
+ * session's last writes (`write`: a history's release, `hist.release.end`)
+ * before the transports' teardown (`transport`: each provider), so those
+ * writes go out while the sockets and stores are still open (listener order
+ * on the window is registration order in Chromium, capturing or not).
+ * Returns the unsubscribe.
+ */
+export const onPageLeave = (fn: () => void, phase: PageLeavePhase): (() => void) => {
+	const page = globalThis as PageEvents;
+	const proc = (globalThis as { process?: Listeners }).process ?? {};
+	const key: object = page.addEventListener ?? proc;
+	let departure = departures.get(key);
+	if (departure === undefined) {
+		const created: Departure = {
+			leaving: { write: new Set(), transport: new Set() },
+			uninstall: () => {}
+		};
+		if (page.addEventListener) {
+			const hide = (event: { persisted?: boolean }) => void (event.persisted || leave(created));
+			const remove = page.removeEventListener;
+			page.addEventListener('pagehide', hide);
+			created.uninstall = () => remove?.call(page, 'pagehide', hide);
+		} else {
+			const exit = () => leave(created);
+			proc.on?.('exit', exit);
+			created.uninstall = () => proc.off?.('exit', exit);
+		}
+		departures.set(key, (departure = created));
+	}
+	const own = departure;
+	own.leaving[phase].add(fn);
+	return () => {
+		own.leaving[phase].delete(fn);
+		if (own.leaving.write.size + own.leaving.transport.size === 0 && departures.get(key) === own) {
+			own.uninstall();
+			departures.delete(key);
+		}
+	};
+};
+
 /**
  * Install the lifecycle on a provider: `hasSynced`, `whenSynced`, and the
  * departure announcement. `beforeunload` only announces it (`depart`): an
  * app's unsaved-changes prompt fires it and the user may stay, so the
  * provider keeps running and its presence returns at the next renewal.
- * Leaving the page (`pagehide` of a page not kept in the back/forward
- * cache; Node: `exit`) destroys the provider, whose teardown announces it.
+ * Leaving the page for good ({@link onPageLeave}'s `transport` phase)
+ * destroys the provider, whose teardown announces it.
  */
 export const initLifecycle = (
 	host: LifecycleHost,
@@ -292,20 +355,12 @@ export const initLifecycle = (
 	// A consumer that never attaches a catch must not crash the process.
 	host.whenSynced.catch(() => {});
 	const page = globalThis as PageEvents;
-	if (page.addEventListener) {
-		const leave = (event: { persisted?: boolean }) => void (event.persisted || destroy());
-		page.addEventListener('beforeunload', depart);
-		page.addEventListener('pagehide', leave);
-		host._leave = () => {
-			page.removeEventListener?.('beforeunload', depart);
-			page.removeEventListener?.('pagehide', leave);
-		};
-	} else {
-		const leave = () => void destroy();
-		const proc = (globalThis as { process?: Listeners }).process ?? {};
-		proc.on?.('exit', leave);
-		host._leave = () => proc.off?.('exit', leave);
-	}
+	page.addEventListener?.('beforeunload', depart);
+	const off = onPageLeave(() => void destroy(), 'transport');
+	host._leave = () => {
+		page.removeEventListener?.('beforeunload', depart);
+		off();
+	};
 };
 
 /** The first sync — lifetime. Returns `true` only the first time. */

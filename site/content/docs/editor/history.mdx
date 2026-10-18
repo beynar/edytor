@@ -99,11 +99,16 @@ const document = createDocument({ history: { captureTimeout: 300 } });
 
 The undo stack keeps the newest 200 steps (`history: { limit }`; `Infinity` keeps every step). An older step is dropped, and what it kept to undo is released: the text it deleted, kept hidden until then so the undo could show it again, is removed for good, so a long session does not keep every deleted character in memory and in the stored document. A new edit after an undo drops the redo steps the same way. Call `document.clearHistory()` to drop both stacks at points where undo no longer makes sense, such as after a save.
 
+
 ```ts title="limit.ts" check
 import { createDocument } from 'edytor';
 
 const document = createDocument({ history: { limit: 500 } });
 ```
+
+### When the page closes
+
+When the page leaves for good, its session's history ends: the view calls `document.endHistory()` at a `pagehide` the browser's back/forward cache keeps nothing of. Every step is released as above, and the blocks this session deleted become the purge's at once: the room removes them at its next daily run instead of after `purgeAfterDays` (see [the purge](/docs/server/history#the-purge)). Nothing else changes for anyone: only this session's undo could have brought them back, and a [version restore](/docs/server/history) still can, from the version. A page the back/forward cache keeps, a tab that only lost its connection and your other tabs keep their history. The release is one small write at unload: when it is lost (Firefox closes a page's sockets before `pagehide`, so from Firefox it reaches the room only through another open tab of the document), the deletes wait for the purge horizon, as before. Without a view, call `document.endHistory()` yourself when the session ends; undo starts empty afterwards.
 
 ## Undo with collaborators
 

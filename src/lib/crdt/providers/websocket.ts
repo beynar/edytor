@@ -93,7 +93,7 @@ import {
 import type { EngineApi, YDoc } from '../engine-api.js';
 import { asEngineDoc } from '../structs.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
-import { ATTRIBUTION_ORIGIN } from '../attribution/attribution.js';
+import { ATTRIBUTION_ORIGIN, writerOf } from '../attribution/attribution.js';
 
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
@@ -411,10 +411,12 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	 * reload, its other tabs), and a seed writer (content any replica may
 	 * write, never stripped). Another actor's structs are not this replica's
 	 * to save: a room restored from a lagging snapshot strips them for good.
-	 * A doc without a binding for its own id (a raw doc) owns all.
+	 * The actor is the binding of the doc's own id, written with its first
+	 * write, and before it the actor the document attached (`writerOf`). A
+	 * raw doc, with neither, owns all.
 	 */
 	const ownerOf = (doc: YDoc) => {
-		const actor = actorOf(doc, doc.clientID);
+		const actor = writerOf(asEngineDoc(doc));
 		return (client: number) =>
 			actor === undefined ||
 			client === doc.clientID ||

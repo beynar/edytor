@@ -91,7 +91,10 @@ describe('XW-02 · a read-only socket reaches saved', () => {
 		await vi.waitFor(() => expect(first.synced).toBe(true));
 		const second = viewerProvider(room, two.doc, { disableBc: false });
 		await vi.waitFor(() => expect(second.synced).toBe(true));
-		// Each tab heard the other's actor record over the channel.
+		// A viewer writes nothing until it writes: each tab's profile (its
+		// actor records) reaches the other over the channel.
+		one.attribution.setProfile({ name: 'Viv' });
+		two.attribution.setProfile({ name: 'Viv' });
 		await vi.waitFor(() =>
 			expect([
 				one.doc.store.clients.has(two.doc.clientID),

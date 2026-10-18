@@ -122,7 +122,8 @@ const counters = () => ({
 		marks: 0,
 		records: 0,
 		claims: 0,
-		merged: 0
+		merged: 0,
+		released: 0
 	},
 	since: Date.now()
 });

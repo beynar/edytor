@@ -13,7 +13,10 @@
  * - the stored size drops (1,000 of 1,001 blocks deleted);
  * - a replica offline for 40 days reconnects and converges, its edits to
  *   live content kept; two clients connected across a purge converge;
- * - only the room writes the horizon: a client's write of it is stripped.
+ * - only the room writes the horizon: a client's write of it is stripped;
+ * - a session whose page closed (its history ended, `hist.release.end`)
+ *   has its deletes purged at the next tick, whatever the horizon; an open
+ *   session's wait, its undo intact, and a version still restores them.
  */
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
@@ -311,6 +314,66 @@ describe('H7 · the purge, on the room’s clock', () => {
 		expect(await inRoom(room, (r) => r.undoRestore())).toEqual({ status: 'noop' });
 		ada.client.close();
 		ada.document.destroy();
+	});
+});
+
+describe('hist.release.end · a closed session’s deletes go at the next tick', () => {
+	it('purged at the tick after its page closed, past the horizon or not; an open session keeps its own', async () => {
+		const room = 'timed-utc-release';
+		await clockTo(room, T0);
+		const ada = await writer(room, 'ada');
+		const bob = await writer(room, 'bob');
+		await advance(room, T0 + 4 * 3600_000); // the morning version holds every block
+		await clockTo(room, T0 + 5 * 3600_000);
+		ada.document.transact(() => ada.document.facade.deleteBlocks(['p2']));
+		ada.document.transact(() => ada.document.facade.deleteText('p1', 4, 5)); // ' this'
+		bob.document.transact(() => bob.document.facade.deleteBlocks(['p3']));
+		await converged(room, ada.document.doc, bob.document.doc);
+		// Ada's page closes for good: her history ends, its release reaches the room.
+		ada.document.endHistory();
+		await converged(room, ada.document.doc, bob.document.doc);
+		ada.client.close();
+		ada.document.destroy();
+		await inRoom(room, (r) => r.compact());
+		await inRoom(room, (r) => r.compressed());
+		expect(await storedText(room)).not.toContain(' this'); // held text: deleted for good at once
+		expect(await storedText(room)).toContain('secret'); // a block's delete: the purge's
+		// The next tick, a day later, thirty days before any horizon.
+		await advance(room, T0 + DAY);
+		const metrics = await inRoom(room, (r) => r.metrics().purge);
+		expect(metrics).toMatchObject({ runs: 1, horizon: null, removed: 1 });
+		const logged = await inRoom(room, (r) => r.logged.filter((e) => e.edytor === 'purge'));
+		expect(logged).toEqual([
+			expect.objectContaining({ edytor: 'purge', horizon: null, removed: 1 })
+		]);
+		await inRoom(room, (r) => r.compressed());
+		expect(await storedText(room)).not.toContain('secret');
+		// Bob's session is open: his delete waits, and his undo brings it back.
+		expect(await storedText(room)).toContain('tail');
+		bob.document.history.undo();
+		let json = await converged(room, bob.document.doc);
+		expect(json.children.map((b) => b.id)).toEqual(['p1', 'p3']);
+		expect(json.children[1].content).toEqual([{ text: 'tail' }]);
+		// A later tick finds nothing more to purge, and writes nothing.
+		const rows = await inRoom(room, (_r, state) =>
+			state.storage.sql.exec('SELECT seq FROM rows').toArray()
+		);
+		await advance(room, T0 + 2 * DAY);
+		expect((await inRoom(room, (r) => r.metrics().purge)).runs).toBe(1);
+		expect(
+			await inRoom(room, (_r, state) => state.storage.sql.exec('SELECT seq FROM rows').toArray())
+		).toEqual(rows);
+		// The morning version still restores what Ada's closed session deleted, from the version.
+		const key = `history/${room}/2026-10-06-am`;
+		expect(await inRoom(room, (r) => r.restoreHistory(key, { user: 'bob' }))).toMatchObject({
+			status: 'applied'
+		});
+		json = await converged(room, bob.document.doc);
+		expect(json.children.map((b) => b.id)).toEqual(['p1', 'p2', 'p3']);
+		expect(json.children[0].content).toEqual([{ text: 'keep this' }]);
+		expect(json.children[1].content).toEqual([{ text: 'secret words' }]);
+		bob.client.close();
+		bob.document.destroy();
 	});
 });
 

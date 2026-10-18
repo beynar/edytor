@@ -137,6 +137,13 @@ export interface EngineDoc {
 	 */
 	on(name: 'commit', f: (transaction: never) => void): void;
 	off(name: 'commit', f: (transaction: never) => void): void;
+	/**
+	 * Doc-level `beforeCommit` channel (the fork's) — fires once per
+	 * outermost transaction, after its function returned and while the
+	 * transaction is still open: a listener's writes join it.
+	 */
+	on(name: 'beforeCommit', f: (transaction: never) => void): void;
+	off(name: 'beforeCommit', f: (transaction: never) => void): void;
 	/** Doc destruction event — doc-scoped state must release on destroy. */
 	on(name: 'destroy', f: () => void): void;
 	off(name: 'destroy', f: () => void): void;

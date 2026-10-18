@@ -541,7 +541,7 @@ export class Item extends AbstractStruct {
         encoder.writeKey(parentSub) // YP24
       }
     }
-    this.content.write(encoder, offset, offsetEnd)
+    this.content.write(encoder, offset, offsetEnd, this) // YP25: a format item reads its own id
   }
 
   get ref () {
@@ -635,8 +635,9 @@ export class AbstractContent {
    * @param {UpdateEncoder} _encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
+   * @param {Item} [_item] the item written (YP25: a format item reads its id)
    */
-  write (_encoder, _offset, _offsetEnd) {
+  write (_encoder, _offset, _offsetEnd, _item) {
     throw error.methodUnimplemented()
   }
 
@@ -1329,6 +1330,74 @@ export class ContentMove {
 /**
  * @private
  */
+// YP25 begin (edytor fork: paired marks written natively — see UPSTREAM.md YP25)
+/**
+ * Whether `x` is a non-negative integer (a clock, a client id, a stamp).
+ *
+ * @param {any} x
+ * @return {boolean}
+ */
+const natural = x => Number.isInteger(x) && x >= 0
+
+/**
+ * Write a format item's value. A paired mark's (YP13) is written in parts: a
+ * flags length — bit 0 its side; bit 1 a start's operation id is the item's
+ * own, an end's start is the item's own client (its clock follows as a
+ * distance); bit 2 a start's value is `true`, bit 3 `null` — then a start's
+ * Lamport stamp, the operation id where the flags do not imply it, and a
+ * start's value where it is neither `true` nor `null`. Any other value (a
+ * plain format, a value of another shape) is flagged `16` and written whole.
+ *
+ * @param {UpdateEncoder} encoder
+ * @param {ContentFormat} content
+ * @param {Item} [item]
+ */
+const writeFormatValue = (encoder, content, item) => {
+  const v = /** @type {any} */ (content.value)
+  const role = pairedRole(content)
+  if (role === 0 && Array.isArray(v) && v.length === 5 && natural(v[1]) && natural(v[2]) && natural(v[3]) && (v[4] === 0 || v[4] === 1)) {
+    const own = item !== undefined && v[2] === item.id.client && v[3] === item.id.clock
+    const tail = v[0] === true ? 4 : v[0] === null ? 8 : 0
+    encoder.writeLen(v[4] | (own ? 2 : 0) | tail)
+    encoder.writeLen(v[1])
+    if (!own) encoder.writeLeftID(createID(v[2], v[3]))
+    if (tail === 0) encoder.writeJSON(v[0])
+  } else if (role === 1 && Array.isArray(v) && v.length === 3 && natural(v[0]) && natural(v[1]) && (v[2] === 0 || v[2] === 1)) {
+    const near = item !== undefined && v[0] === item.id.client && v[1] <= item.id.clock
+    encoder.writeLen(v[2] | (near ? 2 : 0))
+    if (near) encoder.writeLen(/** @type {Item} */ (item).id.clock - v[1])
+    else encoder.writeLeftID(createID(v[0], v[1]))
+  } else {
+    encoder.writeLen(16)
+    encoder.writeJSON(v)
+  }
+}
+
+/**
+ * Read a format item's value (`writeFormatValue`): `id` is the item's.
+ *
+ * @param {UpdateDecoder} decoder
+ * @param {string} key
+ * @param {ID} id
+ * @return {any}
+ */
+export const readFormatValue = (decoder, key, id) => {
+  const flags = decoder.readLen()
+  if ((flags & 16) !== 0) return decoder.readJSON()
+  const side = flags & 1
+  const role = pairedRole({ key })
+  if (role === 0) {
+    const l = decoder.readLen()
+    const at = (flags & 2) !== 0 ? id : decoder.readLeftID()
+    const v = (flags & 4) !== 0 ? true : (flags & 8) !== 0 ? null : decoder.readJSON()
+    return [v, l, at.client, at.clock, side]
+  }
+  if (role !== 1) error.unexpectedCase()
+  const at = (flags & 2) !== 0 ? createID(id.client, id.clock - decoder.readLen()) : decoder.readLeftID()
+  return [at.client, at.clock, side]
+}
+// YP25 end
+
 export class ContentFormat {
   /**
    * @param {string} key
@@ -1411,10 +1480,11 @@ export class ContentFormat {
    * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
+   * @param {Item} [item] YP25: the item, whose id a mark's operation id usually is
    */
-  write (encoder, _offset, _offsetEnd) {
+  write (encoder, _offset, _offsetEnd, item) {
     encoder.writeKey(this.key)
-    encoder.writeJSON(this.value)
+    writeFormatValue(encoder, this, item) // YP25
   }
 
   /**

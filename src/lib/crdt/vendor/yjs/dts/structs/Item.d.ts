@@ -197,8 +197,9 @@ export class AbstractContent {
      * @param {UpdateEncoder} _encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
+     * @param {Item} [_item] the item written (YP25: a format item reads its id)
      */
-    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
+    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number, _item?: Item): void;
     /**
      * @return {1|2|3|4|5|6|7|8|9|11|12}
      */
@@ -521,9 +522,7 @@ export class ContentMove {
      */
     getRef(): 12;
 }
-/**
- * @private
- */
+export function readFormatValue(decoder: UpdateDecoder, key: string, id: ID): any;
 export class ContentFormat {
     /**
      * @param {string} key
@@ -575,8 +574,9 @@ export class ContentFormat {
      * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
+     * @param {Item} [item] YP25: the item, whose id a mark's operation id usually is
      */
-    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number, item?: Item): void;
     /**
      * @return {6}
      */

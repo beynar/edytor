@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim) and YP24 (a string table per update)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update) and YP25 (paired marks written in parts)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1338,6 +1338,41 @@ its own encoding, `src/tests/crdt/harness/stored.js`, after every
 operation), `generation.test.ts` (an earlier encoding is refused before
 decode), `boundary-attacks/envelope.test.ts` (a v13 update inside a v14
 frame no longer integrates), the random corpus (every adapter).
+
+### YP25 — a paired mark's value is written in parts (`src/structs/Item.js`, `src/ynode.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`)
+
+Reason: a paired mark (YP13) is a format item whose value is a JSON array —
+a start's `[v, l, c, k, side]` (its value, Lamport stamp, operation id and
+side), an end's `[c, k, side]` (its start's id) — written through
+`writeAny`, so a 53-bit client was a 9-byte float64 in every one, a start's
+operation id repeated the item's own id, and an end's repeated its start's,
+right before it: 33 bytes an item, 66 a mark. Design and measurements:
+`docs/archive/storage-diet/design.md`. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP25 begin` / `// YP25 end`, edits marked `// YP25`):
+
+- `ContentFormat#write` takes the item (`Item#write` passes itself to its
+  content's `write`) and writes, after its key, `writeFormatValue`: a flags
+  length — bit 0 the side; bit 1, for a start, its operation id is the
+  item's own (a redo's copy keeps the original's: then the id follows), for
+  an end, its start is the item's client's (the distance back to its clock
+  follows), else the start's id; bit 2 a start's value is `true`, bit 3
+  `null` — then a start's stamp (a length) and, unless implied, its id and
+  value. Any other value (a plain format, YP19's inert one; a value of
+  another shape) is flagged `16` and written whole.
+- `readContentFormat(decoder, id)` reads it back (`readFormatValue`, given
+  the item's id): both struct readers pass `readItemContent` the id they
+  create the item with.
+
+The value read back is the array written, so the mark rules (`foldPaired`,
+`markClass`) see what they saw. Plain programs keep their stores.
+
+Oracle: `src/tests/crdt/yp25-marks.test.ts` (every shape — own and copied
+ids, an end of another writer's start, `true`, `null`, string and object
+values, plain formats, values of another shape — read back through
+`applyUpdate`, `decodeUpdate`, `mergeUpdates` and `diffUpdate`, the same
+store giving the same bytes; a mark's cost), the mark rows (`mark.*`), the
+random corpus (every adapter).
 
 ## Generated declarations (`dts/`)
 

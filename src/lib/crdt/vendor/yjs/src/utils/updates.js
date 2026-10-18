@@ -44,7 +44,7 @@ function * lazyStructReaderGenerator (decoder) {
           // @ts-ignore Force writing a string here.
           cantCopyParentInfo ? (decoder.readParentInfo() ? decoder.readKey() : decoder.readLeftID()) : null, // parent (YP24: a key)
           cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readKey() : null, // parentSub (YP24: a key)
-          readItemContent(decoder, info) // item content
+          readItemContent(decoder, info, createID(client, clock)) // item content (YP25: with its id)
         )
         yield struct
         clock += struct.length

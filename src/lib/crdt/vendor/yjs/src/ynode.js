@@ -12,6 +12,7 @@ import {
   ContentType,
   ContentHold, // YP20
   ContentMove, // YP22
+  readFormatValue, // YP25
   YXmlFragmentRefID,
   YXmlElementRefID,
   YXmlHookRefID
@@ -1183,9 +1184,13 @@ export const readContentString = decoder => new ContentString(decoder.readString
 
 /**
  * @param {UpdateDecoder} decoder
+ * @param {import('./utils/ID.js').ID} id YP25: the item's id (a paired mark's operation id is usually it)
  * @return {ContentFormat}
  */
-export const readContentFormat = decoder => new ContentFormat(decoder.readKey(), decoder.readJSON())
+export const readContentFormat = (decoder, id) => {
+  const key = decoder.readKey()
+  return new ContentFormat(key, readFormatValue(decoder, key, id)) // YP25
+}
 
 /**
  * @param {UpdateDecoder} decoder
@@ -1264,7 +1269,7 @@ const refused = () => { error.unexpectedCase() }
  * writes none, so an update holding one is malformed. YP20: 11 is a hold
  * record. YP22: 12 is a move record.
  *
- * @type {Array<function(UpdateDecoder):AbstractContent>}
+ * @type {Array<function(UpdateDecoder, import('./utils/ID.js').ID):AbstractContent>}
  */
 export const contentRefs = [
   refused, // 0 - GC is not ItemContent
@@ -1285,8 +1290,9 @@ export const contentRefs = [
 /**
  * @param {UpdateDecoder} decoder
  * @param {number} info
+ * @param {import('./utils/ID.js').ID} id YP25: the item's id (a format item reads it)
  */
-export const readItemContent = (decoder, info) => contentRefs[info & binary.BITS5](decoder)
+export const readItemContent = (decoder, info, id) => contentRefs[info & binary.BITS5](decoder, id)
 
 /**
  * @param {UpdateDecoder} decoder

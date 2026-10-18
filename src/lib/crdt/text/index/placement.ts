@@ -331,10 +331,12 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 				}
 			}
 	};
+	/** The slot items a rebuild collected (its homes' items, read once), while it places every block. */
+	let known: Map<SlotRef, SeqItem> | null = null;
 	/** `id`'s candidate edges, read from the engine: its live records, strongest first, then home (`[]`: no slot, or gone). */
 	const candidatesFor = (id: BlockId): Edge[] => {
 		const home = blocks.get(id)?.home ?? homeFor(id);
-		return home === null ? [] : candidatesOf(doc, registry, kept, home);
+		return home === null ? [] : candidatesOf(doc, registry, kept, home, known?.get(home));
 	};
 	/** The owner of the sequence `id`'s slot shows in as the engine stands (its mover's, else home's; `null`: the root). */
 	const edgeParent = (id: BlockId): BlockId | null | undefined => {
@@ -552,7 +554,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (const line of lineCounts.keys()) lineKinds.add(line);
 		ix.placementFull = false;
 		// The first read's slots while no sequence changed since (one scan).
-		const { slots, places } =
+		const { slots, items, places } =
 			collected !== null && collectedAt === ix.seqEpoch
 				? collected
 				: collectSlots(doc, blocks.values());
@@ -565,10 +567,10 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		rawOrder.clear();
 		fallen.clear();
 		rejected.clear();
-		keyed = false;
+		[keyed, known] = [false, items];
 		for (const id of blocks.keys()) settle(id, () => {});
 		if (fallen.size + rejected.size > 0) retryFallen(new Set());
-		keyed = true;
+		[keyed, known] = [true, null];
 		// The lists in key order: a block where its edge shows it, in its sequence's order.
 		for (const [owner, list] of places)
 			for (const e of list) {

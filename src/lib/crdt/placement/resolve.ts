@@ -124,14 +124,17 @@ export const edgeParentOf = (
  * first one that closes no cycle (the later move wins); when that is not the
  * first, it is back where it stood before the move a cycle dropped: the
  * record before it, else home. `[]` when the slot is gone or has not arrived.
+ * `at`: the slot's item when the caller read it already (a rebuild's
+ * collection: no store lookup).
  */
 export const candidatesOf = (
 	doc: EngineDoc,
 	registry: EngineNode,
 	kept: (item: unknown) => boolean,
-	home: SlotRef
+	home: SlotRef,
+	at?: SeqItem
 ): Edge[] => {
-	const item = itemAt(doc, home);
+	const item = at ?? itemAt(doc, home);
 	if (item === null || item.gone === true) return [];
 	const out: Edge[] =
 		(item.movers as SeqItem[] | null | undefined)
@@ -229,9 +232,10 @@ export const homeOf = (
 	return best;
 };
 
-/** The block slots of every sequence: by the id they name, and each sequence's places in order. */
+/** The block slots of every sequence: by the id they name (with each one's item), and each sequence's places in order. */
 export type Slots = {
 	slots: Map<BlockId, SlotRef[]>;
+	items: Map<SlotRef, SeqItem>;
 	places: Map<BlockId | null, Entry[]>;
 };
 
@@ -262,6 +266,7 @@ export const collectSlots = (
 	owners: Iterable<{ id: BlockId; node: EngineNode }>
 ): Slots => {
 	const slots = new Map<BlockId, SlotRef[]>();
+	const items = new Map<SlotRef, SeqItem>();
 	const places = new Map<BlockId | null, Entry[]>();
 	const read = (owner: BlockId | null, node: EngineNode): void => {
 		let list: Entry[] | undefined;
@@ -277,12 +282,13 @@ export const collectSlots = (
 				const named = slots.get(b);
 				if (named === undefined) slots.set(b, [ref]);
 				else named.push(ref);
+				items.set(ref, it);
 			}
 		}
 	};
 	read(null, doc.get(REGISTRY_KEY));
 	for (const { id, node } of owners) read(id, node);
-	return { slots, places };
+	return { slots, items, places };
 };
 
 export { isRecord, type Stamp };

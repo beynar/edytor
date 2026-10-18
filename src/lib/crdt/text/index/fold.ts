@@ -283,7 +283,8 @@ export const indexFold = (
 	): void => {
 		const kinds = new Set<Facet | 'entry'>();
 		for (const f of facets) kinds.add(f === ENTRY_FACET ? 'entry' : facetOf(f));
-		const parentBefore = parentOf(id);
+		// The display parents a shell may flip by (`settle`): read while there are shells.
+		const parentBefore = shells.size > 0 ? parentOf(id) : undefined;
 		if (typeof parentBefore === 'string') ctx.parents.add(parentBefore);
 		if (kinds.has('entry') || kinds.has('structure')) {
 			const [claimsBefore, typeBefore] = [blocks.get(id)?.claims, blocks.get(id)?.type];
@@ -325,7 +326,7 @@ export const indexFold = (
 				if (ix.roles !== null && !sameShape(ix.roles, was, rec.type)) stateSeeds.add(id);
 			}
 		}
-		const parentAfter = parentOf(id);
+		const parentAfter = shells.size > 0 ? parentOf(id) : undefined;
 		if (typeof parentAfter === 'string') ctx.parents.add(parentAfter);
 		if (kinds.has('content')) for (const e of edits) noteText(ctx, id, e);
 	};

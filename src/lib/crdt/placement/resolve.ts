@@ -16,8 +16,10 @@ import {
 	isBlockSlot,
 	isRecord,
 	itemAt,
+	sameUnit,
 	stampOf,
 	unitOf,
+	unitsOf,
 	type BlockSlot,
 	type Entry,
 	type SeqItem,
@@ -200,28 +202,8 @@ export const candidatesOf = (
  * block a cycle sends back to an older record shows at it). Which block shows
  * at a position is the index's acceptance; these are the places.
  */
-export const positionsOfItem = (doc: EngineDoc, it: SeqItem): Entry[] => {
-	if (isRecord(it)) {
-		if (it.deleted) return [];
-		const out: Entry[] = [];
-		const ids = it.content.ids!;
-		for (let i = 0; i < ids.length; i += 3)
-			for (let k = 0; k < ids[i + 2]!; k++) {
-				const unit = { c: ids[i]!, k: ids[i + 1]! + k };
-				const u = unitOf(doc, unit);
-				if (u !== null && u.item.gone !== true && isBlockSlot(u.value))
-					out.push({ value: u.value, unit, via: it, at: out.length });
-			}
-		return out;
-	}
-	const arr = it.content.arr;
-	if (it.gone === true || arr === undefined) return [];
-	const out: Entry[] = [];
-	for (let j = 0; j < arr.length; j++)
-		if (isBlockSlot(arr[j]))
-			out.push({ value: arr[j], unit: { c: it.id.client, k: it.id.clock + j }, via: null, at: 0 });
-	return out;
-};
+export const positionsOfItem = (doc: EngineDoc, it: SeqItem): Entry[] =>
+	unitsOf(doc, it, (_, value) => isBlockSlot(value));
 
 /**
  * The places before unit `home` shown at `edge`, nearest first: the units its
@@ -231,7 +213,7 @@ export const positionsOfItem = (doc: EngineDoc, it: SeqItem): Entry[] => {
  */
 export function* slotsBefore(doc: EngineDoc, edge: Edge, home: Unit): Generator<Entry> {
 	const own = positionsOfItem(doc, edge.item);
-	let at = own.findIndex((e) => e.unit.c === home.c && e.unit.k === home.k);
+	let at = own.findIndex((e) => sameUnit(e.unit, home));
 	if (at < 0) at = edge.via === null ? 0 : own.length;
 	for (let j = at - 1; j >= 0; j--) yield own[j]!;
 	for (let p = edge.item.left; p !== null; p = p.left) {
@@ -465,7 +447,7 @@ export const resolveAll = (
 			if (pl === undefined || pl.parent !== owner) continue;
 			const edge = edges.get(b)!;
 			const home = homes.get(b)!;
-			if (edge.via !== e.via || home.c !== e.unit.c || home.k !== e.unit.k) continue;
+			if (edge.via !== e.via || !sameUnit(home, e.unit)) continue;
 			pl.rank = denseKey(i++);
 			if (kids === undefined) order.set(owner, (kids = []));
 			kids.push({ id: b, rank: pl.rank });

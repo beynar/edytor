@@ -89,20 +89,13 @@ export type Stamp = readonly [priority: number, client: number, clock: number];
 export const stampOf = (r: SeqItem): Stamp => [r.content.priority!, r.id.client, r.id.clock];
 export const cmpStamp = (a: Stamp, b: Stamp): number => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 
-/** One displayed entry of a sequence: its value, its unit, and the record it shows through (`at`: its place in the record's display). */
+/** One displayed entry of a sequence: its value, its unit, and the record it shows through (`null`: at home; `at`: its place among the units read with it). */
 export type Entry = { value: unknown; unit: Unit; via: SeqItem | null; at: number };
 
-const ops = engineOps(Y);
+/** Whether `a` and `b` are one unit. */
+export const sameUnit = (a: Unit, b: Unit): boolean => a.c === b.c && a.k === b.k;
 
-/** The item holding unit `u` and the value at it, or `null` when `doc` lacks it (a GC struct, not arrived). */
-export const unitOf = (doc: EngineDoc, u: Unit): { item: SeqItem; value: unknown } | null => {
-	const structs = clientsOf(doc).get(u.c);
-	if (structs === undefined || u.k >= storeOf(doc).getClock(u.c)) return null;
-	const item = structAt(Y, structs, u.k) as SeqItem | null;
-	if (item === null || !ops.isItem(item)) return null;
-	const arr = item.content.arr;
-	return { item, value: arr === undefined ? undefined : arr[u.k - item.id.clock] };
-};
+const ops = engineOps(Y);
 
 /** The item holding unit `u`, or `null` when `doc` lacks it (no value read: the fold's hot path). */
 export const itemAt = (doc: EngineDoc, u: Unit): SeqItem | null => {
@@ -112,39 +105,57 @@ export const itemAt = (doc: EngineDoc, u: Unit): SeqItem | null => {
 	return item === null || !ops.isItem(item) ? null : item;
 };
 
-/** The units record `r` shows, in order: those it wins (`mover === r`) and that are not gone. */
-export const displayedUnits = (doc: EngineDoc, r: SeqItem): Entry[] => {
+/** The item holding unit `u` and the value at it, or `null` when `doc` lacks it (a GC struct, not arrived). */
+export const unitOf = (doc: EngineDoc, u: Unit): { item: SeqItem; value: unknown } | null => {
+	const item = itemAt(doc, u);
+	return item === null ? null : { item, value: item.content.arr?.[u.k - item.id.clock] };
+};
+
+/**
+ * The units item `it` can show, in order, those `keep` takes: a live
+ * record's named units (present, not gone; `via` the record), a slot item's
+ * units, moved away or not (none when it is gone; `via` `null`). THE walk
+ * every reader of a sequence's units takes: the engine's (`shownBy`), the
+ * index's places (`placement/resolve.ts`) and the writers' view of them
+ * (`placement/model.ts`).
+ */
+export const unitsOf = (
+	doc: EngineDoc,
+	it: SeqItem,
+	keep: (item: SeqItem, value: unknown, unit: Unit) => boolean
+): Entry[] => {
 	const out: Entry[] = [];
-	const ids = r.content.ids!;
-	for (let i = 0; i < ids.length; i += 3)
-		for (let k = 0; k < ids[i + 2]!; k++) {
-			const unit = { c: ids[i]!, k: ids[i + 1]! + k };
-			const u = unitOf(doc, unit);
-			if (u !== null && u.item.mover === r && u.item.gone !== true)
-				out.push({ value: u.value, unit, via: r, at: out.length });
-		}
+	const add = (item: SeqItem, value: unknown, unit: Unit, via: SeqItem | null): void => {
+		if (item.gone !== true && keep(item, value, unit))
+			out.push({ value, unit, via, at: out.length });
+	};
+	if (!isRecord(it))
+		it.content.arr?.forEach((value, j) =>
+			add(it, value, { c: it.id.client, k: it.id.clock + j }, null)
+		);
+	else if (!it.deleted) {
+		const ids = it.content.ids!;
+		for (let i = 0; i < ids.length; i += 3)
+			for (let k = 0; k < ids[i + 2]!; k++) {
+				const unit = { c: ids[i]!, k: ids[i + 1]! + k };
+				const u = unitOf(doc, unit);
+				if (u !== null) add(u.item, u.value, unit, it);
+			}
+	}
 	return out;
 };
 
-/** The entries of `it` (a live slot item, or a record expanded), `[]` when it shows nothing. */
-const entriesOfItem = (doc: EngineDoc, it: SeqItem): Entry[] => {
-	if (it.deleted) return [];
-	if (isRecord(it)) return displayedUnits(doc, it);
-	const arr = it.content.arr;
-	if (arr === undefined) return [];
-	return arr.map((value, j) => ({
-		value,
-		unit: { c: it.id.client, k: it.id.clock + j },
-		via: null,
-		at: 0
-	}));
+/** The units the engine shows at item `it`, in order: a live record's, those it wins; a live slot item's, all. */
+export const shownBy = (doc: EngineDoc, it: SeqItem): Entry[] => {
+	const via = isRecord(it) ? it : null;
+	return it.deleted ? [] : unitsOf(doc, it, (item) => item.mover === via);
 };
 
 /** The displayed entries of `node`'s sequence, in order. */
 export const entriesOf = (doc: EngineDoc, node: EngineNode): Entry[] => {
 	const out: Entry[] = [];
 	for (let it = firstItem<SeqItem>(node); it !== null; it = it.right)
-		for (const e of entriesOfItem(doc, it)) out.push(e);
+		for (const e of shownBy(doc, it)) out.push(e);
 	return out;
 };
 
@@ -157,9 +168,7 @@ export const anchorOf = (doc: EngineDoc, home: Unit): Entry | null => {
 	if (u === null || u.item.gone === true) return null;
 	const r = u.item.mover ?? null;
 	if (r === null || r.deleted) return { value: u.value, unit: home, via: null, at: 0 };
-	const shown = displayedUnits(doc, r);
-	const at = shown.findIndex((e) => e.unit.c === home.c && e.unit.k === home.k);
-	return at < 0 ? null : shown[at]!;
+	return shownBy(doc, r).find((e) => sameUnit(e.unit, home)) ?? null;
 };
 
 /** The sequence node that holds `e`'s displaying item (its record's, or its slot's). */
@@ -201,7 +210,7 @@ export const placeAfter = (
 	side = 0,
 	part = 0,
 	chain: ((first: Unit) => readonly Unit[]) | null = null,
-	shown: (r: SeqItem) => Entry[] = (r) => displayedUnits(doc, r)
+	shown: (r: SeqItem) => Entry[] = (r) => shownBy(doc, r)
 ): Unit | null => {
 	let index: number;
 	let carry: number[] = [];

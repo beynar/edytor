@@ -101,22 +101,17 @@ import {
 	isRecord,
 	nodeOf,
 	placeAfter,
+	sameUnit,
 	triples,
 	unitOf,
+	unitsOf,
 	type BlockSlot,
 	type Entry,
 	type Unit,
 	type SeqItem,
 	type Stamp
 } from './slots.js';
-import {
-	ownerOfNode,
-	positionsOfItem,
-	resolvePlacements,
-	slotOwner,
-	type Edge,
-	type SlotRef
-} from './resolve.js';
+import { ownerOfNode, resolvePlacements, slotOwner, type Edge, type SlotRef } from './resolve.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -418,29 +413,19 @@ export const isSelfOrDescendant = (
 const sequenceOf = (doc: EngineDoc, parent: BlockId | null): EngineNode =>
 	parent === null ? registryOf(doc) : blockNodeOf(doc, parent)!;
 
-/** The block slots record `r` shows as `v` reads it: the units whose block's accepted edge is `r`, in the order it names them. */
-const shownAt = (doc: EngineDoc, v: ModelView, r: SeqItem): Entry[] => {
+/**
+ * The block slots item `it` shows as `v` reads it: a record's, the units
+ * whose block's accepted edge is it, in the order it names them; a slot
+ * item's, those shown at home (moved away or not: a cycle may send one back).
+ */
+const shownIn = (doc: EngineDoc, v: ModelView, it: SeqItem): Entry[] => {
 	const registry = registryOf(doc);
-	const out: Entry[] = [];
-	for (const e of positionsOfItem(doc, r)) {
-		const b = slotOwner(registry, isKeptReplaced, (e.value as BlockSlot).b, e.unit.c);
+	const via = isRecord(it) ? it : null;
+	return unitsOf(doc, it, (_, value, unit) => {
+		if (!isBlockSlot(value)) return false;
+		const b = slotOwner(registry, isKeptReplaced, value.b, unit.c);
 		const home = v.blocks.get(b)?.home;
-		if (!home || home.c !== e.unit.c || home.k !== e.unit.k || v.accepted(b)?.via !== r) continue;
-		out.push({ ...e, at: out.length });
-	}
-	return out;
-};
-
-/** The block slots slot item `it` shows at home as `v` reads it (moved away or not: a cycle may send one back). */
-const homeShownAt = (doc: EngineDoc, v: ModelView, it: SeqItem): Entry[] => {
-	const registry = registryOf(doc);
-	return positionsOfItem(doc, it).filter((e) => {
-		const b = slotOwner(registry, isKeptReplaced, (e.value as BlockSlot).b, e.unit.c);
-		const home = v.blocks.get(b)?.home;
-		const edge = v.accepted(b);
-		return (
-			!!home && home.c === e.unit.c && home.k === e.unit.k && edge !== null && edge.via === null
-		);
+		return !!home && sameUnit(home, unit) && v.accepted(b)?.via === via;
 	});
 };
 
@@ -455,23 +440,23 @@ const anchorIn = (doc: EngineDoc, v: ModelView, id: BlockId): Entry | null => {
 		const u = unitOf(doc, home);
 		return u === null ? null : { value: u.value, unit: home, via: null, at: 0 };
 	}
-	return shownAt(doc, v, edge.via).find((e) => e.unit.c === home.c && e.unit.k === home.k) ?? null;
+	return shownIn(doc, v, edge.via).find((e) => sameUnit(e.unit, home)) ?? null;
 };
 
 /** The entry right before `e` in its sequence as `v` reads it (`e`'s record's previous unit, else the nearest shown to the left). */
 const beforeIn = (doc: EngineDoc, v: ModelView, e: Entry): Entry | null => {
-	let start: SeqItem;
-	if (e.via !== null) {
-		if (e.at > 0) return shownAt(doc, v, e.via)[e.at - 1] ?? null;
-		start = e.via;
-	} else {
-		const u = unitOf(doc, e.unit)!;
-		start = u.item;
-		const own = homeShownAt(doc, v, start).filter((x) => x.unit.k < e.unit.k);
-		if (own.length > 0) return own[own.length - 1]!;
-	}
+	const start = e.via ?? unitOf(doc, e.unit)!.item;
+	const own = shownIn(doc, v, start);
+	// A record's unit before `e`'s place; a slot item's last unit before `e`.
+	const before =
+		e.via === null
+			? own.findLast((x) => x.unit.k < e.unit.k)
+			: e.at > 0
+				? (own[e.at - 1] ?? null)
+				: undefined;
+	if (before !== undefined) return before;
 	for (let p = start.left; p !== null; p = p.left) {
-		const list = isRecord(p) ? shownAt(doc, v, p) : homeShownAt(doc, v, p);
+		const list = shownIn(doc, v, p);
 		if (list.length > 0) return list[list.length - 1]!;
 	}
 	return null;
@@ -499,7 +484,7 @@ export const placeBlocks = (
 	at: Unit | null = null
 ): void => {
 	// Where `v` shows its blocks: a unit a cycle sent back elsewhere is neither an anchor nor carried.
-	const shown = (r: SeqItem) => shownAt(doc, v, r);
+	const shown = (r: SeqItem) => shownIn(doc, v, r);
 	// The record stands at `at` (else its first unit), named with the home slots above it.
 	const chain = (first: Unit) => unitChain(doc, v, at ?? first);
 	const l = left === null ? null : anchorIn(doc, v, left);
@@ -544,10 +529,21 @@ const unitChain = (doc: EngineDoc, v: ModelView, u: Unit): Unit[] => {
 	return out;
 };
 
-/** The displayed children of `parent` in `v`, the `exclude`d left out. */
-const kidsWithout = (v: ModelView, parent: BlockId | null, exclude: readonly BlockId[]) => {
-	const list = v.kids.get(parent) ?? [];
-	return exclude.length === 0 ? list : list.filter((k) => !exclude.includes(k.id));
+/**
+ * The displayed children of `parent` in `v` around display index `index`
+ * (the `exclude`d left out): the one before it and the one at it, the
+ * neighbours {@link placeBlocks} writes between.
+ */
+const around = (
+	v: ModelView,
+	parent: BlockId | null,
+	index: number,
+	exclude: readonly BlockId[] = []
+): [BlockId | null, BlockId | null] => {
+	const all = v.kids.get(parent) ?? [];
+	const list = exclude.length === 0 ? all : all.filter((k) => !exclude.includes(k.id));
+	const i = Math.max(0, Math.min(index, list.length));
+	return [list[i - 1]?.id ?? null, list[i]?.id ?? null];
 };
 
 /**
@@ -572,15 +568,12 @@ export const moveBlocksTo = (
 		return home ? [home] : [];
 	});
 	if (units.length === 0) return;
-	const list = kidsWithout(v, parent, ids);
-	const i = Math.max(0, Math.min(index, list.length));
 	const anchor = at === null ? null : (v.blocks.get(at)?.home ?? null);
 	placeBlocks(
 		doc,
 		v,
 		parent,
-		list[i - 1]?.id ?? null,
-		list[i]?.id ?? null,
+		...around(v, parent, index, ids),
 		null,
 		triples(units),
 		side,
@@ -665,15 +658,14 @@ export const insertSpecsAt = (
 	split: Unit | null = null
 ): void => {
 	if (specs.length === 0) return;
-	const list = v.kids.get(parent) ?? [];
-	const at = Math.max(0, Math.min(index, list.length));
+	const [left, right] = around(v, parent, index);
 	for (const sp of specs) createBlock(doc, sp, sp.content ?? []);
 	placeBlocks(
 		doc,
 		v,
 		parent,
-		list[at - 1]?.id ?? null,
-		list[at]?.id ?? null,
+		left,
+		right,
 		specs.map(
 			(sp): BlockSlot => (split === null ? { b: sp.id } : { b: sp.id, s: [split.c, split.k] })
 		)
@@ -801,13 +793,9 @@ export const writeSplit = (
 	splitAt(doc, v.blocks, v.own, id, offset, newId, n);
 	const data = tail.data === undefined ? undefined : cloneJsonSafe(tail.data);
 	createBlock(doc, { id: newId, type: tail.type, data }, null, n);
-	const list = v.kids.get(parent) ?? [];
-	const at = Math.max(0, Math.min(index, list.length));
 	// The tail's slot carries its boundary (`BlockSlot.s`): two peers' splits of
 	// one block sort by their boundaries' order in the text, in the gap after it.
-	placeBlocks(doc, v, parent, list[at - 1]?.id ?? null, list[at]?.id ?? null, [
-		{ b: newId, s: [bound.c, bound.k] }
-	]);
+	placeBlocks(doc, v, parent, ...around(v, parent, index), [{ b: newId, s: [bound.c, bound.k] }]);
 	return bound;
 };
 
@@ -895,7 +883,7 @@ export const recordsOf = (
 	for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
 		if (it.deleted || it.content.priority === undefined || it.content.ids === undefined) continue;
 		const ids = it.content.ids;
-		let wins = v !== undefined && shownAt(doc, v, it).length > 0;
+		let wins = v !== undefined && shownIn(doc, v, it).length > 0;
 		for (let i = 0; i < ids.length && !wins; i += 3)
 			for (let k = 0; k < ids[i + 2]! && !wins; k++)
 				wins = anchorOf(doc, { c: ids[i]!, k: ids[i + 1]! + k })?.via === it;

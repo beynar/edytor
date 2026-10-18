@@ -45,14 +45,17 @@ import {
 	slotOwner,
 	slotsBefore,
 	type Edge,
+	type SlotRef,
 	type Slots
 } from '../../placement/resolve.js';
 import {
 	cmpStamp,
 	isBlockSlot,
 	isRecord,
+	sameUnit,
 	type SeqItem,
-	type Stamp
+	type Stamp,
+	type Unit
 } from '../../placement/slots.js';
 import type { EngineNode } from '../../engine-api.js';
 import { Y } from '../../engine.js';
@@ -292,6 +295,13 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		collectedAt = ix.seqEpoch;
 		for (const [b, refs] of collected.slots) slotsByBlock.set(b, refs);
 	};
+	/** Put `ref` (`null`: none) where the slot map holds unit `u` of the slots naming id `b`. */
+	const putSlot = (b: BlockId, u: Unit, ref: SlotRef | null): void => {
+		const list = (slotsByBlock.get(b) ?? []).filter((x) => !sameUnit(x, u));
+		if (ref !== null) list.push(ref);
+		if (list.length === 0) slotsByBlock.delete(b);
+		else slotsByBlock.set(b, list);
+	};
 	/** `id`'s home slot among the slots naming its registry id (`null`: none). */
 	const homeFor = (id: BlockId): ReturnType<typeof homeOf> => {
 		if (!slotsRead) readSlots();
@@ -314,10 +324,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 				const v = arr[j];
 				if (!isBlockSlot(v)) continue;
 				const [c, k] = [it.id.client, it.id.clock + j];
-				const kept0 = (slotsByBlock.get(v.b) ?? []).filter((x) => x.c !== c || x.k !== k);
-				const next = owner === undefined ? kept0 : [...kept0, { parent: owner, c, k }];
-				if (next.length === 0) slotsByBlock.delete(v.b);
-				else slotsByBlock.set(v.b, next);
+				putSlot(v.b, { c, k }, owner === undefined ? null : { parent: owner, c, k });
 				const b = slotOwner(registry, kept, v.b, c);
 				for (const id of new Set([v.b, b])) {
 					const rec = blocks.get(id);
@@ -391,7 +398,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			if (b === id) continue;
 			// A slot that is not its block's home (a second creation of one id) places nothing.
 			const h = blocks.get(b)?.home ?? homeFor(b);
-			if (h === null || h.c !== e.unit.c || h.k !== e.unit.k) continue;
+			if (h === null || !sameUnit(h, e.unit)) continue;
 			place(b);
 			const pl = placementsMap.get(b);
 			const shows = edges.get(b);
@@ -724,6 +731,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		own0,
 		noteKind,
 		homeFor,
+		putSlot,
 		edgeParent,
 		noteFollowing,
 		ensurePlacements,

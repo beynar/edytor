@@ -78,7 +78,6 @@ export const indexFold = (
 		placementSeeds,
 		stateSeeds,
 		incarnations,
-		slotsByBlock,
 		cache,
 		dirty,
 		foldStats,
@@ -95,6 +94,7 @@ export const indexFold = (
 		applyReclaims,
 		noteKind,
 		homeFor,
+		putSlot,
 		edgeParent,
 		kept,
 		updateBlockRec,
@@ -534,16 +534,11 @@ export const indexFold = (
 			const ch = editsOf.seq(node)!;
 			ix.seqEpoch++;
 			for (const { b, ref } of ch.slotsIn) {
-				const list = slotsByBlock.get(b);
-				if (list === undefined) slotsByBlock.set(b, [ref]);
-				else if (!list.some((x) => x.c === ref.c && x.k === ref.k)) list.push(ref);
+				putSlot(b, ref, ref);
 				rehome.add(b);
 			}
 			for (const { b, c, k } of ch.slotsOut) {
-				const list = slotsByBlock.get(b)?.filter((x) => x.c !== c || x.k !== k);
-				if (list === undefined) continue;
-				if (list.length === 0) slotsByBlock.delete(b);
-				else slotsByBlock.set(b, list);
+				putSlot(b, { c, k }, null);
 				rehome.add(b);
 			}
 			for (const b of ch.blocks) placementSeeds.add(b);

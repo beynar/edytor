@@ -1188,7 +1188,7 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   — the order every serial run of the gestures gives, DR-crdt-6); two
   records of one class sort by the chains they stand at (`sourceOrder`),
   level by level from the root: two units of one sequence by
-  `sequenceOrder` (exported: the walk from each item leftward until one
+  `sequenceOrder` (the walk from each item leftward until one
   meets the other, the distance between them; one item: by clock), a unit
   before the units inside its block (the shorter chain first); chains that
   meet in no sequence (or reach a unit a GC struct replaced) order nothing,

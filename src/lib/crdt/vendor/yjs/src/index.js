@@ -48,4 +48,3 @@ if (glo[importIdentifier] === true) {
   console.error('Yjs was already imported. This breaks constructor checks and will lead to issues! - https://github.com/yjs/yjs/issues/438')
 }
 glo[importIdentifier] = true
-export { sequenceOrder } from './utils/marks.js' // YP22

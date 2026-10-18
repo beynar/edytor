@@ -9,7 +9,6 @@ export { YNode as Node } from "./ynode.js";
 export { AbstractStruct } from "./structs/AbstractStruct.js";
 export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";
-export { sequenceOrder } from "./utils/marks.js";
 export type ContentIds = import("./utils/ids.js").ContentIds;
 export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
 export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from "./utils/encoding.js";

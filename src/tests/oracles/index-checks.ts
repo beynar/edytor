@@ -25,6 +25,7 @@ import {
 	claimsIn,
 	delimiters,
 	placeText,
+	removedKeys,
 	scanText
 } from '../../lib/crdt/text/model.js';
 import { boundAt, rowLength, type LiveRow } from '../../lib/crdt/text/rows.js';
@@ -113,7 +114,7 @@ export const indexSelfChecks = (
 			const row = rows.get(home);
 			if (row === undefined || row.text !== scan.text || !sameRow(row, scan)) fail(`row ${home}`);
 		}
-		const want = delimiters(blocks, scans.values());
+		const want = delimiters(blocks, scans.values(), removedKeys(ix.registry));
 		if (want.size !== ix.delim.size || [...want].some(([b, k]) => ix.delim.get(b) !== k))
 			fail('delimiters');
 		const streamSig = (st: Stream | undefined) =>
@@ -122,7 +123,7 @@ export const indexSelfChecks = (
 		// Each record's claims: its implicit ones, then the claim items of its stream.
 		const items = new Map<BlockId, Claim[]>();
 		for (const [home, scan] of scans)
-			for (const st of placeText(scan, want)) {
+			for (const st of placeText(scan, want, (s) => !blocks.has(s))) {
 				placed.add(st.block);
 				items.set(st.block, claimsIn(scan, st));
 				if (streamSig(streamOf(st.block)) !== streamSig(st))

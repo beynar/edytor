@@ -63,6 +63,13 @@ const healthy = (...reps) => {
 };
 
 const registryHas = (r, id: string) => blockNodeOf(r.doc, id) !== null;
+/** The live units of `id`'s own backing text whose value `match` takes. */
+const unitsOf = (r, id: string, match: (v: unknown) => boolean) => {
+	let n = 0;
+	for (let it = blockNodeOf(r.doc, id).getAttr('content')._start; it !== null; it = it.right)
+		if (!it.deleted && it.content.arr?.some(match)) n++;
+	return n;
+};
 /** Whether `text` appears in the bytes a replica would store. */
 const holdsText = (r, text: string) =>
 	new TextDecoder('utf-8', { fatal: false }).decode(Y.encodeStateAsUpdate(r.doc)).includes(text);
@@ -182,23 +189,52 @@ describe('H7: purge what was deleted before the horizon', () => {
 		for (const r of [room, ada, bob]) r.destroy();
 	});
 
-	it('a deleted split-born block keeps its node (its boundary delimits a live text); its text, data and claims go', () => {
+	it('a deleted split-born block goes alone: its boundary stays, delimiting the stream it emptied, which nobody shows', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
 		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
 		ok(ada.ed.mergeBlocks('p4', 'p1b')); // p1b claims p4
-		ok(ada.ed.deleteBlocks(['p1b']));
+		ok(ada.ed.deleteBlocks(['p1b'])); // p4, shown in it, with it
 		syncAll([room, ada]);
 		const before = room.canonical();
-		purge(room, epoch(room));
+		const report = purge(room, epoch(room));
+		expect(report).toMatchObject({ removed: 2, emptied: 0 });
+		syncAll([room, ada]);
+		expect(room.canonical()).toBe(before);
+		expect(ada.canonical()).toBe(before);
+		for (const r of [room, ada]) {
+			expect(registryHas(r, 'p1b')).toBe(false);
+			expect(registryHas(r, 'p4')).toBe(false);
+			// Its boundary stays in p1's text; the claim item it held on p4 goes.
+			expect(unitsOf(r, 'p1', (v) => v?.s === 'p1b')).toBe(1);
+			expect(unitsOf(r, 'p1', (v) => v?.m === 'p4')).toBe(0);
+		}
+		expect(holdsText(room, 'text')).toBe(false);
+		expect(ada.ed.blockText('p1')).toBe('live ');
+		healthy(room, ada);
+		room.destroy();
+		ada.destroy();
+	});
+
+	it('a deleted split-born block with a live child keeps its node; its text, data and claims go', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
+		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
+		ok(ada.ed.moveBlocks(['p4'], { parent: 'p1b', index: 0 })); // p4 stays, under p1b
+		ok(ada.ed.deleteBlock('p1b'));
+		syncAll([room, ada]);
+		const before = room.canonical();
+		const report = purge(room, epoch(room));
+		expect(report).toMatchObject({ removed: 0, emptied: 1 });
 		syncAll([room, ada]);
 		expect(room.canonical()).toBe(before);
 		const node = blockNodeOf(room.doc, 'p1b');
 		expect(node).not.toBe(null);
 		expect([...node.attrKeys()].filter((k) => k.startsWith('d/') || k === 'data')).toEqual([]);
-		expect(modelView(room.doc).blocks.get('p1b').claims).toEqual([]);
-		expect(ada.ed.blockText('p1')).toBe('live ');
+		expect(holdsText(room, 'text')).toBe(false);
+		expect(ada.ed.blockText('p4')).toBe('mover');
 		healthy(room, ada);
 		room.destroy();
 		ada.destroy();

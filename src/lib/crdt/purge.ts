@@ -24,6 +24,7 @@ import { removeUnit, unitOf } from './placement/slots.js';
 import {
 	deleteClaims,
 	purgeStreams,
+	scanText,
 	type Claim,
 	type Stream,
 	type TextEngine
@@ -52,7 +53,7 @@ export type Horizon = { at: number; sv: Uint8Array };
 export type PurgeReport = {
 	/** Blocks removed: registry entry deleted, node collected. */
 	removed: number;
-	/** Deleted blocks kept (they delimit a live text, or a block is placed under them) whose stream, data and claims were deleted. */
+	/** Deleted blocks kept (a live block streams in their text, two boundaries name them, or a block is placed under them) whose stream, data and claims were deleted. */
 	emptied: number;
 	/** Text hold records deleted (what they held deleted with them). */
 	marks: number;
@@ -261,8 +262,11 @@ export const bindPurge = (Y: EngineApi) => {
 
 		// ── Which of them go whole ────────────────────────────────────────
 		// A text family: the blocks with a stream in one backing text, and the
-		// block owning it. It goes whole or not at all: a stream whose
-		// delimiting block went would join the stream before it.
+		// block owning it. The block owning a text goes only with every block
+		// streaming in it (its text goes with its node). A block streaming in
+		// another's text, owning none, goes alone when one boundary names it:
+		// that boundary stays and delimits the stream the purge empties, which
+		// nobody shows (a removed key's, `text/streams.ts` `removedKeys`).
 		const parent = new Map<BlockId, BlockId>();
 		const root = (id: BlockId): BlockId => {
 			let r = id;
@@ -285,6 +289,23 @@ export const bindPurge = (Y: EngineApi) => {
 		const removable = new Set<BlockId>();
 		for (const family of families.values())
 			if (family.every((id) => dead.has(id))) for (const id of family) removable.add(id);
+		// The live boundaries naming each block, and the keys with losing incarnations.
+		const naming = new Map<BlockId, number>();
+		for (const rec of blocks.values())
+			if (rec.content)
+				for (const b of scanText(rec.id, rec.content).bounds)
+					if (b.m === undefined) naming.set(b.s, (naming.get(b.s) ?? 0) + 1);
+		const incarnated = new Set<BlockId>();
+		for (const id of blocks.keys()) if (isIncarnationId(id)) incarnated.add(baseIdOf(id));
+		const lone = new Set<BlockId>();
+		for (const id of dead) {
+			if (removable.has(id) || isIncarnationId(id) || incarnated.has(id)) continue;
+			const s = own.streamOf(id);
+			if (s === undefined || s.home === id || blocks.get(id)!.content !== undefined) continue;
+			if (naming.get(id) !== 1) continue;
+			lone.add(id);
+			removable.add(id);
+		}
 		// Nothing that stays may be placed under a block that goes, or keep its
 		// home slot in the sequence of one (the slot goes with the node).
 		for (let shrank = true; shrank; ) {
@@ -293,7 +314,10 @@ export const bindPurge = (Y: EngineApi) => {
 				if (removable.has(id)) continue;
 				for (const p of [placements.get(id)?.parent, rec.home?.parent]) {
 					if (typeof p !== 'string' || !removable.has(p)) continue;
-					for (const member of families.get(root(p)) ?? []) removable.delete(member);
+					for (const member of lone.has(p) ? [p] : (families.get(root(p)) ?? [])) {
+						removable.delete(member);
+						lone.delete(member);
+					}
 					shrank = true;
 				}
 			}
@@ -301,14 +325,16 @@ export const bindPurge = (Y: EngineApi) => {
 
 		// ── The writes ────────────────────────────────────────────────────
 		// A deleted block that stays: its stream's text (boundaries kept), its
-		// data leaves and its claims.
+		// data leaves and its claims; a block that goes alone: its stream's
+		// text and its claims (the rest goes with its node).
 		const emptied = [...dead].filter((id) => !removable.has(id));
 		purgeStreams(
-			emptied.flatMap((id) => {
+			[...emptied, ...lone].flatMap((id) => {
 				const s = own.streamOf(id);
 				return s === undefined || s.end - s.start <= s.inert.length ? [] : [s];
 			})
 		);
+		for (const id of lone) deleteClaims(doc, blocks.get(id)!.claims);
 		for (const id of emptied) {
 			const rec = blocks.get(id)!;
 			for (const key of [...rec.node.attrKeys()])

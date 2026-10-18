@@ -1316,7 +1316,7 @@ export type PurgeReport = {
 ```
 
 - `removed`: Blocks removed: registry entry deleted, node collected.
-- `emptied`: Deleted blocks kept (they delimit a live text, or a block is placed under them) whose stream, data and claims were deleted.
+- `emptied`: Deleted blocks kept (a live block streams in their text, two boundaries name them, or a block is placed under them) whose stream, data and claims were deleted.
 - `marks`: Text hold records deleted (what they held deleted with them).
 - `records`: Move records dropped: old ones no block shows at any more (a lost move, a move of removed blocks).
 - `claims`: Claims naming a removed block, deleted from the blocks that hold them.

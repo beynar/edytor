@@ -285,7 +285,9 @@ describe('H7 · the purge, on the room’s clock', () => {
 		const json = await converged(room, ada.document.doc, bob.document.doc);
 		expect(json.children.map((b) => b.id)).toEqual(['p1', 'p3']);
 		expect(json.children[1].content).toEqual([{ text: 'tail end' }]);
-		expect(await inRoom(room, (r) => r.metrics().purge)).toMatchObject({ removed: 1, emptied: 1 });
+		// p2 goes whole; p1b, which streams in p1's text, goes alone: its
+		// boundary stays and delimits the stretch the purge emptied.
+		expect(await inRoom(room, (r) => r.metrics().purge)).toMatchObject({ removed: 2, emptied: 0 });
 		for (const tab of [ada, bob]) {
 			expect(holds(tab.document.doc, 'secret')).toBe(false);
 			tab.client.close();

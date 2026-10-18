@@ -4,6 +4,8 @@
  * pieces of streams (its stream, then each claim's display).
  */
 import type { EngineNode } from '../engine-api.js';
+import { isIncarnationId } from '../incarnations.js';
+import { attrItems } from '../structs.js';
 import { isBoundary, isClaimItem, nodeStart } from './items.js';
 import type {
 	BlockId,
@@ -43,15 +45,33 @@ export const byId = (a: string, b: string): number => {
 	return ac - bc || ak - bk;
 };
 
-/** Each block's delimiting boundary: the lowest-id live boundary whose nonce matches its record. */
+/**
+ * Whether `s` names a removed block of `registry` (`room.purge.what`): its
+ * entry was deleted — only the purge deletes one — and holds no value. The
+ * purge removes a block that streams in another block's text alone, and its
+ * boundary keeps delimiting the stream it emptied, which nobody shows.
+ */
+export const removedKeys =
+	(registry: EngineNode) =>
+	(s: BlockId): boolean =>
+		attrItems<{ deleted: boolean }>(registry).get(s)?.deleted === true && !isIncarnationId(s);
+
+/**
+ * Each block's delimiting boundary: the lowest-id live boundary whose nonce
+ * matches its record; for a removed block (`removed`, no record), the
+ * lowest-id live boundary naming it.
+ */
 export const delimiters = (
 	blocks: ReadonlyMap<BlockId, Pick<TextBlockRec, 'n'>>,
-	rows: Iterable<TextRow>
+	rows: Iterable<TextRow>,
+	removed: (s: BlockId) => boolean = () => false
 ): Map<BlockId, string> => {
 	const out = new Map<BlockId, string>();
 	for (const row of rows) {
 		for (const b of row.bounds) {
-			if (b.m !== undefined || blocks.get(b.s)?.n !== b.n) continue;
+			if (b.m !== undefined) continue;
+			const rec = blocks.get(b.s);
+			if (rec === undefined ? !removed(b.s) : rec.n !== b.n) continue;
 			const cur = out.get(b.s);
 			if (cur === undefined || byId(b.key, cur) < 0) out.set(b.s, b.key);
 		}
@@ -63,9 +83,14 @@ export const delimiters = (
  * The streams of one text, in text order: the home's head (unless delimited
  * elsewhere), then one per delimiting boundary — one sweep over the
  * boundaries (each non-delimiting one, and each claim item, is an inert unit
- * of the stream it sits in).
+ * of the stream it sits in). A boundary of a block `nobody` names (a
+ * removed one) opens a stretch that is no block's stream.
  */
-export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): Stream[] => {
+export const placeText = (
+	row: TextRow,
+	delim: ReadonlyMap<BlockId, string>,
+	nobody: (s: BlockId) => boolean = () => false
+): Stream[] => {
 	const out: Stream[] = [];
 	let block: BlockId | null = delim.has(row.home) ? null : row.home;
 	let start = 0;
@@ -79,7 +104,7 @@ export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): St
 			continue;
 		}
 		close(b.at);
-		[block, start, inert] = [b.s, b.at + 1, []];
+		[block, start, inert] = [nobody(b.s) ? null : b.s, b.at + 1, []];
 	}
 	close(row.len);
 	return out;

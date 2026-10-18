@@ -50,7 +50,7 @@ export type FoldCtx = {
 export type Slot = { parent: BlockId | null; rank: string; reset?: BlockId };
 
 /** Each row's segments at its last placement: segment 0's block, then each cut's key and block. */
-export type Placed = { head: BlockId | null; keys: string[]; blocks: BlockId[] };
+export type Placed = { head: BlockId | null; keys: string[]; blocks: (BlockId | null)[] };
 
 /** The tree the change report last published. */
 export type Published = {

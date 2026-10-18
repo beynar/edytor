@@ -3183,6 +3183,14 @@ engine collects the content everywhere (`crdt.doc.purge`):
   removable and no remaining block is placed under it; the engine then
   collects its node: attrs, data leaves, placement candidates, claims,
   backing text;
+- a block deleted before the horizon that streams in another block's text
+  and owns none, named by one boundary, with no losing incarnation and
+  nothing remaining placed under it, is removed alone: its stream's text
+  and the claims it holds are deleted, its registry entry, attribution
+  record and home slot go, and its boundary stays — a boundary naming a
+  removed block (a registry key whose value is deleted) delimits a stretch
+  that is no block's stream (`removedKeys`), so the text around it shows as
+  before and an item a stale replica inserts there stays hidden;
 - any other block deleted before the horizon keeps its node: its own
   stream's text is deleted (per stream, boundaries kept, so the stream
   still delimits and stays hidden), with its data leaves and claims;

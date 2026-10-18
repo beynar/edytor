@@ -35,7 +35,6 @@ import {
 	DEL_PREFIX,
 	HORIZON_ATTR,
 	HORIZON_ROOT,
-	REC_PREFIX,
 	REGISTRY_KEY,
 	TEXT_DELETES_ROOT,
 	WITHDRAW_PREFIX
@@ -345,8 +344,7 @@ export const bindPurge = (Y: EngineApi) => {
 				continue;
 			}
 			registry.deleteAttr(id);
-			if (attribution.getAttr(`${REC_PREFIX}${id}`) !== undefined)
-				attribution.deleteAttr(`${REC_PREFIX}${id}`);
+			if (attribution.getAttr(id) !== undefined) attribution.deleteAttr(id);
 			report.removed++;
 		}
 		// Blocks merged away before the horizon (`room.purge.merged`): live,
@@ -368,8 +366,8 @@ export const bindPurge = (Y: EngineApi) => {
 			if (rec.deleted || removable.has(id) || dead.has(id) || isIncarnationId(id)) continue;
 			const owner = own.ownerOf(id);
 			if (owner === id || typeof owner !== 'string' || !claimedOld(id)) continue;
-			if (attribution.getAttr(`${REC_PREFIX}${id}`) === undefined) continue;
-			attribution.deleteAttr(`${REC_PREFIX}${id}`);
+			if (attribution.getAttr(id) === undefined) continue;
+			attribution.deleteAttr(id);
 			report.merged++;
 		}
 		// Old move records no block shows at (lost to a newer move, or their blocks

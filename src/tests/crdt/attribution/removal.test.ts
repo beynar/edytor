@@ -58,7 +58,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 				d.transact(() => d.facade.insertText(block.id, i, typed[i]!));
 			}
 		});
-		// One engine transaction per keystroke — the `l` stamp + `b/`
+		// One engine transaction per keystroke — the `l` stamp + the block record
 		// contributor write ride inside it; no attribution follow-up update.
 		expect(updates).toBe(typed.length);
 		expect(recordKeys(d)).toHaveLength(0);

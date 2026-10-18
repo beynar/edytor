@@ -38,7 +38,7 @@ const countUpdates = (document: EdytorDocument, fn: () => void): number => {
 };
 
 /**
- * The review found an undone creation freed its id and the stale `b/` record
+ * The review found an undone creation freed its id and the stale block record
  * poisoned a re-creation. Since `hist.undo.withdraw` (2026-09-28) an undo
  * withdraws the block instead of deleting it: the id stays taken (like a
  * deleted block's), so a re-creation is refused and the record stays the
@@ -58,7 +58,7 @@ describe('review — an undone creation keeps its id and its record (hist.undo.w
 		expect(b.facade.hasBlock('shared')).toBe(true);
 
 		// Undo propagates: the block is withdrawn (hidden, it holds nothing) on
-		// every replica; its node and `b/shared` record stay.
+		// every replica; its node and `shared` record stay.
 		a.history.undo();
 		expect(b.facade.isVisibleBlock('shared')).toBe(false);
 		expect(b.facade.hasBlock('shared')).toBe(true);

@@ -347,7 +347,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ok(bob.ed.mergeBlocks('p4b', 'p4'));
 		syncAll([room, ada, bob]);
 		const before = room.canonical();
-		const record = (r, id) => r.doc.get('blockattr').getAttr(`b/${id}`);
+		const record = (r, id) => r.doc.get('blockattr').getAttr(id);
 		expect(record(room, 'p1b')).toBeDefined();
 		const report = purge(room, horizon);
 		expect(report.merged).toBe(1);

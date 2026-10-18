@@ -231,7 +231,7 @@ export {
 	type AttributionController
 } from './attribution/index.js';
 
-// Compact per-BLOCK attribution read vocabulary (`b/<blockId>`
+// Compact per-BLOCK attribution read vocabulary (`blockattr` `<blockId>`
 // records + the block-node `l` attr — see `attribution/block.ts`).
 // `document.attribution.block(id)` / `document.blockAttribution(id)`
 // are the read entry points.

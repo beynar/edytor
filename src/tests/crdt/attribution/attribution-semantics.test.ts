@@ -3,7 +3,7 @@
  *
  * The contract under test (`attribution/block.ts` + U1/U2 ledger entries):
  *
- *   - `b/<blockId>` records on the `blockattr` root carry `c` (createdBy)
+ *   - block records (keyed by the block id) on the `blockattr` root carry `c` (createdBy)
  *     and `k/<actor>` contributor union — OUTSIDE undo scope, monotonic.
  *   - `l` (lastChangedBy) is a block-node attr — INSIDE undo scope: undo
  *     restores the previous author, never touches the contributor union.
@@ -131,7 +131,7 @@ const commitsDuring = (
 };
 
 /**
- * Byte-level snapshot of the durable attribution state: every `b/` record's
+ * Byte-level snapshot of the durable attribution state: every block record's
  * full attr map plus every block node's surviving `l` value. Used to prove
  * encode/load/persist round-trips are verbatim.
  */
@@ -237,7 +237,7 @@ describe('local undo/redo', () => {
 		// Undo alice's INSERT (a's local op): the block is withdrawn
 		// (hist.undo.withdraw) — alice's text goes, bob's edit is already
 		// undone, so it holds nothing and hides. Its node and `l` item stay;
-		// the `b/` record keeps createdBy AND the full contributor union (bob
+		// the block record keeps createdBy AND the full contributor union (bob
 		// contributed while it lived).
 		a.history.undo();
 		expect(a.facade.isVisibleBlock('b2')).toBe(false);
@@ -568,9 +568,9 @@ describe('remote edits vs local history', () => {
 // ──────────────────────────────────────────────────────────────────────
 
 describe('concurrent first-touch merge (documented LWW residual)', () => {
-	it('one contributor add may lose the `b/` race; convergent, never corrupt, self-heals', () => {
+	it('one contributor add may lose the record race; convergent, never corrupt, self-heals', () => {
 		// A record-less block — the foreign/migrated shape: init'd WITHOUT
-		// an author, so no `b/` record exists on any replica.
+		// an author, so no block record exists on any replica.
 		const seed = keepingReplaced(new Y.Doc());
 		E.init(seed as unknown as EngineDoc, {
 			content: [{ id: 'shared', type: 'paragraph', content: [{ kind: 'text', text: 's' }] }]
@@ -589,7 +589,7 @@ describe('concurrent first-touch merge (documented LWW residual)', () => {
 		expect(a.attribution.block('shared')).toBeUndefined();
 		expect(b.attribution.block('shared')).toBeUndefined();
 
-		// Concurrent FIRST touches — unwired, so both mint `b/shared` nodes
+		// Concurrent FIRST touches — unwired, so both mint `shared` record nodes
 		// that race under map-attr LWW.
 		a.transact(() => a.facade.insertText('shared', 0, 'A'));
 		b.transact(() => b.facade.insertText('shared', 0, 'B'));

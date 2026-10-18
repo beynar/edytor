@@ -430,7 +430,7 @@ export class EdytorDocument {
 	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings).
 	 * Ordinary edits perform no attribution
 	 * writes — authorship lands inside the owning op's transaction as the
-	 * block-level `b/<id>` record/`l` stamp. See
+	 * block-level record (`blockattr` `<id>`)/`l` stamp. See
 	 * `src/lib/crdt/attribution/attribution.ts` for the full contract.
 	 * Access after teardown throws {@link DocumentDestroyedError} — same
 	 * lifecycle contract as {@link history}.

@@ -16,7 +16,11 @@ export const REGISTRY_KEY = 'blocks';
 export const META_ROOT_KEY = 'meta';
 /** Attribution metadata root (`SCHEMA.roots.attribution`). */
 export const ATTRIBUTION_ROOT = 'attribution';
-/** The per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
+/**
+ * The per-block attribution root — one record per block, keyed by the block's
+ * id (`SCHEMA.roots.blockAttribution`): the string table writes the id once
+ * for its registry entry and its record (fork patch YP24).
+ */
 export const BLOCK_ATTR_ROOT = 'blockattr';
 /**
  * The text hold records (fork patch YP20): a text delete appends one record
@@ -80,9 +84,6 @@ export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }):
 /** The per-block `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
-
-/** `b/<blockId>` record-key prefix on the `blockattr` root. */
-export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {

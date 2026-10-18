@@ -2,7 +2,7 @@
  * U1 — compact per-BLOCK attribution contract.
  *
  * Every block-level change records durable actor ids — never replica
- * clientIDs — under `b/<blockId>` records on the `blockattr` root
+ * clientIDs — under block records (keyed by the block id) on the `blockattr` root
  * (`c` createdBy, `k/<actor>` contributor union) plus the `l`
  * lastChangedBy attr on the block node itself. All writes commit INSIDE
  * the owning op's transaction — one update carries content+metadata.
@@ -285,7 +285,7 @@ describe('block attribution — content and metadata edits', () => {
 });
 
 describe('block attribution — structure', () => {
-	it('pure moves write no attribution (no `b/` or `l` writes in the commit)', () => {
+	it('pure moves write no attribution (no record or `l` writes in the commit)', () => {
 		const a = authoredDocument(
 			{
 				children: [

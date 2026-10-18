@@ -169,7 +169,7 @@ export const bindAttribution = (_Y: EngineApi) => {
 				return typeof value === 'string' && value.length > 0 ? value : undefined;
 			},
 			setProfile,
-			// `b/<id>` records live on the `blockattr` root and `l` on
+			// block records live on the `blockattr` root and `l` on
 			// the block node — plain replicated reads, no observer needed.
 			block: (blockId) => blockAttributionOf(doc, blockId)
 		};

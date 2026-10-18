@@ -119,7 +119,8 @@ export const edgeParentOf = (
 /**
  * The display edges block `home`'s slot can take, the strongest first: one per
  * live move record naming it, by descending `(priority, client, clock)` (the
- * first is the engine's mover), then its home slot. A block shows at the
+ * engine keeps a unit's movers in that order; the first is its mover), then
+ * its home slot. A block shows at the
  * first one that closes no cycle (the later move wins); when that is not the
  * first, it is back where it stood before the move a cycle dropped: the
  * record before it, else home. `[]` when the slot is gone or has not arrived.
@@ -140,8 +141,7 @@ export const candidatesOf = (
 				via: r,
 				stamp: stampOf(r),
 				item: r
-			}))
-			.sort((a, b) => cmpStamp(b.stamp, a.stamp)) ?? [];
+			})) ?? [];
 	out.push({ parent: home.parent, via: null, stamp: [HOME, home.c, home.k], item });
 	return out;
 };

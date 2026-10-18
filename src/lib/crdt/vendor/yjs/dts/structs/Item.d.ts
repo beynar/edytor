@@ -75,9 +75,10 @@ export class Item extends AbstractStruct {
      */
     holds: number;
     /**
-     * YP22: the live move records (`ContentMove`) naming this item, or
-     * `null`. Its mover is the argmax of `(priority, client, clock)` over
-     * them: the item shows there, hidden at home. Local, never encoded.
+     * YP22: the live move records (`ContentMove`) naming this item, the
+     * strongest first — the greatest `(priority, client, clock)` — or `null`.
+     * The first is its mover: the item shows there, hidden at home. Local,
+     * never encoded.
      * @type {Array<Item>|null}
      */
     movers: Array<Item> | null;
@@ -101,8 +102,8 @@ export class Item extends AbstractStruct {
      */
     get gone(): boolean;
     /**
-     * YP22: the live move record this item shows at (the argmax of
-     * `(priority, client, clock)` over `movers`), or `null` at home.
+     * YP22: the live move record this item shows at (the strongest of
+     * `movers`), or `null` at home.
      * @type {Item|null}
      */
     get mover(): Item | null;

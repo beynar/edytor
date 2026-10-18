@@ -1149,7 +1149,8 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   in any order — no cleanup message, no replay (what sank upstream's
   `ContentMove`, PR #357).
 - **`Item`**: `movers` (local, never encoded: the live records naming the
-  item), `mover` (their argmax by `(priority, client, clock)`), `deleted` =
+  item, kept strongest first by `(priority, client, clock)`), `mover` (the
+  first of them), `deleted` =
   `removed || holds > 0 || movers !== null` (hidden at home), `gone` =
   `removed || holds > 0` (shown nowhere: a delete or a hold beats a move,
   Collabs' and Liveblocks' rule, not Loro's resurrection). `Item#delete`

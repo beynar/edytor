@@ -119,9 +119,10 @@ export class Item extends AbstractStruct {
      */
     this.holds = 0
     /**
-     * YP22: the live move records (`ContentMove`) naming this item, or
-     * `null`. Its mover is the argmax of `(priority, client, clock)` over
-     * them: the item shows there, hidden at home. Local, never encoded.
+     * YP22: the live move records (`ContentMove`) naming this item, the
+     * strongest first — the greatest `(priority, client, clock)` — or `null`.
+     * The first is its mover: the item shows there, hidden at home. Local,
+     * never encoded.
      * @type {Array<Item>|null}
      */
     this.movers = null
@@ -178,12 +179,12 @@ export class Item extends AbstractStruct {
   }
 
   /**
-   * YP22: the live move record this item shows at (the argmax of
-   * `(priority, client, clock)` over `movers`), or `null` at home.
+   * YP22: the live move record this item shows at (the strongest of
+   * `movers`), or `null` at home.
    * @type {Item|null}
    */
   get mover () {
-    return moverOf(this.movers)
+    return this.movers === null ? null : this.movers[0]
   }
 
   /**
@@ -944,7 +945,11 @@ const holdItem = (tr, item, delta, record) => {
   const before = item.mover
   if (record === null) item.holds += delta
   else if (item.content.constructor === ContentMove) return
-  else if (delta > 0) (item.movers ??= []).push(record)
+  else if (delta > 0) {
+    const m = (item.movers ??= [])
+    const i = m.findIndex(r => stronger(record, r))
+    m.splice(i < 0 ? m.length : i, 0, record)
+  }
   else if (item.movers !== null) {
     const i = item.movers.indexOf(record)
     if (i >= 0) item.movers.splice(i, 1)
@@ -1152,21 +1157,15 @@ export class ContentHold {
 
 // YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
 /**
- * The record that wins `movers`: the greatest `(priority, client, clock)`,
- * or `null` for none.
+ * Whether move record `a` beats `b`: the greater `(priority, client, clock)`
+ * (a unit's `movers` are kept in that order, the strongest first).
  *
- * @param {Array<Item>|null} movers
- * @return {Item|null}
+ * @param {Item} a
+ * @param {Item} b
+ * @return {boolean}
  */
-const moverOf = movers => {
-  if (movers === null) return null
-  let best = movers[0]
-  for (const m of movers) {
-    const d = /** @type {ContentMove} */ (m.content).priority - /** @type {ContentMove} */ (best.content).priority
-    if ((d || m.id.client - best.id.client || m.id.clock - best.id.clock) > 0) best = m
-  }
-  return best
-}
+const stronger = (a, b) =>
+  (/** @type {ContentMove} */ (a.content).priority - /** @type {ContentMove} */ (b.content).priority || a.id.client - b.id.client || a.id.clock - b.id.clock) > 0
 
 /**
  * Log that `item`'s mover changed (or it left its mover: removed) in

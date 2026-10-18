@@ -2666,10 +2666,13 @@ message counts, a Step1 too, and a chunk sequence's start) and
 `maxInboundFrameBytes` (4 MiB, one frame reassembled; a chunk sequence
 announcing more is refused at its start). The defaults are the room's
 memory (WU-04): an isolate has 128 MB and the live document, its index
-included, takes 18 to 46 bytes of heap per stored byte
-(`bench/room-memory.mjs`, Node; prose to one short line per block), so
-the default document stays near 100 MB at worst, and the frame quota
-holds a whole document at it (a client seeding an empty room). A frame past one is not applied, logged `quota`
+included, takes 15 to 73 bytes of heap per stored byte since schema
+generation 10 wrote each string once (`bench/room-memory.mjs`, Node;
+prose to one short line per block; 18 to 46 before), so the default
+document takes about 150 MB at worst in Node, a list of 20,000 short
+blocks (near 100 MB before generation 10; a Worker, with pointer
+compression, takes less), and the frame quota holds a whole document at
+it (a client seeding an empty room). A frame past one is not applied, logged `quota`
 (`{ user, quota, … }`), and its socket closed `4413` (`quota: <name>`,
 `CLOSE.quota`, a refusal by `isRefusal`): the provider emits `refused`,
 the document records `syncRefusal`, and nothing redials. Not a drop on a

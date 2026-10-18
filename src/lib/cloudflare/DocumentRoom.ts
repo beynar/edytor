@@ -181,9 +181,11 @@ export const DEFAULT_SAVE_AFTER = 2000;
  * Room quotas, each refused with `4413` (`quota: <name>`). The
  * document's size: what its records hold (uncompressed) and the updates the
  * engine holds waiting. An isolate has 128 MB, and the live document takes
- * 18 to 46 bytes of heap per stored byte (prose to one short line per
- * block, its index included; `bench/room-memory.mjs`): 2 MiB is
- * about 100 MB at worst. Raise it for documents of long text.
+ * 15 to 73 bytes of heap per stored byte in Node (prose to one short line
+ * per block, its index included; `bench/room-memory.mjs`; a Worker takes
+ * less): 2 MiB is about 150 MB at worst, a list of 20,000 short blocks.
+ * Raise it for documents of long text, lower it for long lists of short
+ * blocks.
  */
 export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 /** The share of the document quota past which the room logs its size, by default. */

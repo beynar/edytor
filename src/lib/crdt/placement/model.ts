@@ -102,6 +102,8 @@ import {
 	nodeOf,
 	placeAfter,
 	sameUnit,
+	shownBy,
+	stampOf,
 	triples,
 	unitOf,
 	unitsOf,
@@ -881,13 +883,9 @@ export const recordsOf = (
 ): { item: SeqItem; stamp: Stamp; wins: boolean }[] => {
 	const out: { item: SeqItem; stamp: Stamp; wins: boolean }[] = [];
 	for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
-		if (it.deleted || it.content.priority === undefined || it.content.ids === undefined) continue;
-		const ids = it.content.ids;
-		let wins = v !== undefined && shownIn(doc, v, it).length > 0;
-		for (let i = 0; i < ids.length && !wins; i += 3)
-			for (let k = 0; k < ids[i + 2]! && !wins; k++)
-				wins = anchorOf(doc, { c: ids[i]!, k: ids[i + 1]! + k })?.via === it;
-		out.push({ item: it, stamp: [it.content.priority, it.id.client, it.id.clock], wins });
+		if (it.deleted || !isRecord(it)) continue;
+		const wins = (v !== undefined && shownIn(doc, v, it).length > 0) || shownBy(doc, it).length > 0;
+		out.push({ item: it, stamp: stampOf(it), wins });
 	}
 	return out;
 };

@@ -197,8 +197,7 @@ export const triples = (units: readonly Unit[]): number[] => units.flatMap((u) =
  * sequence down to the unit it stands at (`null`: the first unit alone) — and
  * `part` its order among the records standing there. `shown` reads the units
  * a record shows, as the reader sees them (the index's: a unit a cycle sent
- * back elsewhere is not carried). Returns the first new slot's unit (`null`
- * without slots).
+ * back elsewhere is not carried).
  */
 export const placeAfter = (
 	doc: EngineDoc,
@@ -211,37 +210,37 @@ export const placeAfter = (
 	part = 0,
 	chain: ((first: Unit) => readonly Unit[]) | null = null,
 	shown: (r: SeqItem) => Entry[] = (r) => shownBy(doc, r)
-): Unit | null => {
+): void => {
 	let index: number;
-	let carry: number[] = [];
+	let carry: Unit[] = [];
 	if (left === null) index = right === null ? node.length : liveIndexOf(doc, right);
 	else {
-		if (left.via !== null) {
-			const there = shown(left.via);
-			carry = triples(there.slice(left.at + 1).map((e) => e.unit));
-		}
+		if (left.via !== null)
+			carry = shown(left.via)
+				.slice(left.at + 1)
+				.map((e) => e.unit);
 		// A unit shown at home though its item moved away (a cycle sent it back)
 		// is no live unit: the gap after it starts at its live index.
 		const live = left.via !== null || unitOf(doc, left.unit)?.item.deleted !== true;
 		index = liveIndexOf(doc, left) + (live ? 1 : 0);
 	}
-	let first: Unit | null = null;
 	const units: number[] = moved === null ? [] : [...moved];
 	if (payloads !== null && payloads.length > 0) {
-		first = { c: doc.clientID, k: storeOf(doc).getClock(doc.clientID) };
+		// The new slots' first unit is this writer's next clock.
+		if (carry.length > 0)
+			units.push(doc.clientID, storeOf(doc).getClock(doc.clientID), payloads.length);
 		node.insert(index, payloads as unknown[]);
-		if (carry.length > 0) units.push(first.c, first.k, payloads.length);
 	}
 	// A carried unit that moves here anyway is named once.
 	const named = new Set<string>();
 	for (let i = 0; i < units.length; i += 3)
 		for (let k = 0; k < units[i + 2]!; k++) named.add(`${units[i]}:${units[i + 1]! + k}`);
-	for (let i = 0; i < carry.length; i += 3)
-		if (!named.has(`${carry[i]}:${carry[i + 1]}`)) units.push(carry[i]!, carry[i + 1]!, 1);
+	for (const u of carry) if (!named.has(`${u.c}:${u.k}`)) units.push(u.c, u.k, 1);
 	if (units.length > 0 && (moved !== null || carry.length > 0)) {
-		const at = chain === null ? null : chain({ c: units[0]!, k: units[1]! });
+		const first = { c: units[0]!, k: units[1]! };
+		const at = chain === null ? null : chain(first);
 		// A chain of the first unit alone is the engine's default: not written.
-		const own = at !== null && at.length === 1 && at[0]!.c === units[0] && at[0]!.k === units[1];
+		const own = at !== null && at.length === 1 && sameUnit(at[0]!, first);
 		node.move(
 			index,
 			units,
@@ -250,7 +249,6 @@ export const placeAfter = (
 			at === null || own ? null : at.map((u) => Y.createID(u.c, u.k))
 		);
 	}
-	return first;
 };
 
 /** Remove unit `u` from its sequence (the engine's delete: it shows nowhere any more). */

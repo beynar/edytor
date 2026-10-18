@@ -44,6 +44,7 @@ import {
 	homeOf,
 	registryOwners,
 	ownerOfNode,
+	positionsOfItem,
 	slotOwner,
 	slotsBefore,
 	type Edge,
@@ -52,8 +53,6 @@ import {
 } from '../../placement/resolve.js';
 import {
 	cmpStamp,
-	isBlockSlot,
-	isRecord,
 	sameUnit,
 	type BlockSlot,
 	type SeqItem,
@@ -320,22 +319,17 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	const reslot = (node: EngineNode): void => {
 		if (!slotsRead) return; // the first read collects them as they are
 		const owner = ownerOfNode(registry, kept, node);
-		for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
-			const arr = it.content.arr;
-			if (isRecord(it) || arr === undefined || it.gone === true) continue;
-			for (let j = 0; j < arr.length; j++) {
-				const v = arr[j];
-				if (!isBlockSlot(v)) continue;
-				const [c, k] = [it.id.client, it.id.clock + j];
-				putSlot(v.b, { c, k }, owner === undefined ? null : { parent: owner, c, k });
-				const b = slotOwner(registry, kept, v.b, c);
-				for (const id of new Set([v.b, b])) {
+		for (let it = firstItem<SeqItem>(node); it !== null; it = it.right)
+			for (const { value, unit, via } of positionsOfItem(doc, it)) {
+				if (via !== null) continue; // a record's unit is another sequence's slot
+				const b = (value as BlockSlot).b;
+				putSlot(b, unit, owner === undefined ? null : { parent: owner, ...unit });
+				for (const id of new Set([b, slotOwner(registry, kept, b, unit.c)])) {
 					const rec = blocks.get(id);
 					if (rec !== undefined) rec.home = homeOf(registry, kept, slotsByBlock, id);
 					placementSeeds.add(id);
 				}
 			}
-		}
 	};
 	/** `id`'s candidate edges, read from the engine: its live records, strongest first, then home (`[]`: no slot, or gone). */
 	const candidatesFor = (id: BlockId): Edge[] => {
@@ -587,13 +581,10 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 				pl.rank = denseKey(l.length);
 				l.push({ id: b, rank: pl.rank });
 			}
+		// The root's tail, keyed as an edit keys a rejected block, in its order.
 		const tail = [...rejected].map((x) => ({ id: x, stamp: edges.get(x)?.stamp ?? NO_SLOT }));
-		for (const { id } of tail.sort(byTail)) {
-			const l = rawList(null);
-			const pl = placementsMap.get(id)!;
-			pl.rank = keyBetween(l[l.length - 1]?.rank, undefined);
-			l.push({ id, rank: pl.rank });
-		}
+		rejected.clear();
+		for (const { id } of tail.sort(byTail)) reject(id, edges.get(id) ?? null);
 		layoutMode = layoutBlocks + itemBlocks + tableBlocks > 0;
 		ix.dissolved = new Set();
 		const index = (map: Map<BlockId | null, ChildSlot[]>) => {

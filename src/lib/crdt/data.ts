@@ -542,20 +542,6 @@ export const patchWrites = (
  */
 export const writeData = (node: EngineNode, writes: Iterable<DataWrite>): void => {
 	let appended = 0;
-	let read: ReturnType<typeof slotsOf> | null = null;
-	/** Every displayed slot of item `id` of the array at `p` (two peers may have written one). */
-	const entriesFor = (p: string, id: string): Entry[] => {
-		read ??= slotsOf(node);
-		return read.entries.get(`${p}\u0000${id}`) ?? [];
-	};
-	const entryOf = (p: string, id: string | null): Entry | null => {
-		read ??= slotsOf(node);
-		if (id === null) {
-			const first = read.slots.get(p)?.[0];
-			return first === undefined ? null : entriesFor(p, first)[0]!;
-		}
-		return entriesFor(p, id)[0] ?? null;
-	};
 	for (const w of writes) {
 		if (Array.isArray(w)) {
 			const [key, value] = w as LeafWrite;
@@ -563,34 +549,41 @@ export const writeData = (node: EngineNode, writes: Iterable<DataWrite>): void =
 			else node.setAttr(key, value);
 			continue;
 		}
-		const write = w as SlotWrite;
-		const payloads = write.ids.map((i): DataSlot => ({ p: write.path, i }));
+		const { seq, path, ids } = w as SlotWrite;
+		const payloads = ids.map((i): DataSlot => ({ p: path, i }));
 		if (node.doc == null) {
 			// A new node: its items in order, none to move or remove yet.
-			if (write.seq === 'insert') {
+			if (seq === 'insert') {
 				node.insert(appended, payloads);
 				appended += payloads.length;
 			}
 			continue;
 		}
 		const doc = asEngineDoc(node.doc as never);
-		if (write.seq === 'remove') {
-			for (const id of write.ids)
-				for (const e of entriesFor(write.path, id)) removeUnit(doc, e.unit);
-			read = null;
+		const { slots, entries } = slotsOf(node);
+		/** Every displayed slot of item `id` of the array (two peers may have written one). */
+		const of = (id: string | undefined): Entry[] => entries.get(`${path}\u0000${id}`) ?? [];
+		if (seq === 'remove') {
+			for (const id of ids) for (const e of of(id)) removeUnit(doc, e.unit);
 			continue;
 		}
 		// After the item named; at the array's start: before its first item.
-		const left = write.after === null ? null : entryOf(write.path, write.after);
-		const right = write.after === null ? entryOf(write.path, null) : null;
-		if (write.seq === 'insert') placeAfter(doc, node, left, right, payloads);
-		else {
-			const units = write.ids.flatMap((id) => {
-				const e = entryOf(write.path, id);
-				return e === null ? [] : [e.unit];
-			});
-			placeAfter(doc, node, left, right, null, triples(units));
-		}
-		read = null;
+		const { after } = w as SlotWrite & { after: string | null };
+		placeAfter(
+			doc,
+			node,
+			after === null ? null : (of(after)[0] ?? null),
+			after === null ? (of(slots.get(path)?.[0])[0] ?? null) : null,
+			seq === 'insert' ? payloads : null,
+			seq === 'move'
+				? triples(
+						ids.flatMap((id) =>
+							of(id)
+								.slice(0, 1)
+								.map((e) => e.unit)
+						)
+					)
+				: null
+		);
 	}
 };

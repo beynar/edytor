@@ -42,6 +42,12 @@ type Connection = {
 	fragments: Buffer[];
 	fragmented: boolean;
 	closed: boolean;
+	/** The client's `dstsock` query parameter: its socket's name in its page. */
+	id: string | null;
+	/** Data messages read from the client. */
+	fromClient: number;
+	/** Data messages written to the client. */
+	toClient: number;
 };
 
 type HeldFrame = { from: Connection; data: Buffer };
@@ -51,6 +57,8 @@ type RoomState = {
 	queue: HeldFrame[];
 	latencyMs: number;
 	dropBudget: number;
+	/** Latency-delayed writes not yet made. */
+	inFlight: number;
 };
 
 export type ReleaseOptions = {
@@ -77,6 +85,16 @@ export type OpaqueRelay = {
 	setLatency: (room: string, ms: number) => void;
 	/** Deliberately drop the next `count` forwarded frames (harness loss). */
 	dropNext: (room: string, count: number) => void;
+	/**
+	 * A room's traffic: per open socket, the data messages read from its
+	 * client and written to it, and the delayed writes still pending. A page
+	 * that counts the same on its side has received every frame the relay
+	 * delivered, and the relay has read every frame the page sent.
+	 */
+	traffic: (room: string) => {
+		inFlight: number;
+		sockets: { id: string | null; fromClient: number; toClient: number }[];
+	};
 	/** Destroy every socket in a room — a severed-connection partition. */
 	killRoom: (room: string) => void;
 	/** Kill the relay entirely: sockets destroyed, listener closed. */
@@ -119,7 +137,7 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 	const roomState = (room: string): RoomState => {
 		let state = rooms.get(room);
 		if (!state) {
-			state = { held: false, queue: [], latencyMs: 0, dropBudget: 0 };
+			state = { held: false, queue: [], latencyMs: 0, dropBudget: 0, inFlight: 0 };
 			rooms.set(room, state);
 		}
 		return state;
@@ -144,10 +162,16 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 				forwarded.push(new Uint8Array(data));
 				if (state.latencyMs > 0) {
 					const target = peer;
+					state.inFlight++;
 					setTimeout(() => {
-						if (!target.closed && !target.socket.destroyed) target.socket.write(frame);
+						state.inFlight--;
+						if (!target.closed && !target.socket.destroyed) {
+							target.toClient++;
+							target.socket.write(frame);
+						}
 					}, state.latencyMs);
 				} else {
+					peer.toClient++;
 					peer.socket.write(frame);
 				}
 			}
@@ -197,6 +221,7 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 				conn.fragments.length === 1 ? conn.fragments[0] : Buffer.concat(conn.fragments);
 			conn.fragments = [];
 			conn.fragmented = false;
+			conn.fromClient++;
 			routeMessage(conn, message);
 		}
 	};
@@ -244,7 +269,8 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 		}
 		// Provider URL is `serverUrl + '/' + roomname` → path `/roomname`;
 		// normalize to the bare room name so `hold('room')` etc. match.
-		const room = new URL(req.url ?? '/', 'ws://relay.invalid').pathname.replace(/^\//, '');
+		const requested = new URL(req.url ?? '/', 'ws://relay.invalid');
+		const room = requested.pathname.replace(/^\//, '');
 		const offered = (req.headers['sec-websocket-protocol'] ?? '').split(',')[0]?.trim();
 		socket.write(
 			'HTTP/1.1 101 Switching Protocols\r\n' +
@@ -262,7 +288,10 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 			buffer: head?.length ? Buffer.from(head) : Buffer.alloc(0),
 			fragments: [],
 			fragmented: false,
-			closed: false
+			closed: false,
+			id: requested.searchParams.get('dstsock'),
+			fromClient: 0,
+			toClient: 0
 		};
 		connections.add(conn);
 		socket.on('data', (chunk) => {
@@ -338,6 +367,12 @@ export const startOpaqueRelay = async (): Promise<OpaqueRelay> => {
 			return delivered;
 		},
 		pendingCount: (room) => roomState(room).queue.length,
+		traffic: (room) => ({
+			inFlight: roomState(room).inFlight,
+			sockets: [...connections]
+				.filter((conn) => conn.room === room && !conn.closed)
+				.map(({ id, fromClient, toClient }) => ({ id, fromClient, toClient }))
+		}),
 		setLatency: (room, ms) => {
 			roomState(room).latencyMs = ms;
 		},

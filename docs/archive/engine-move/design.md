@@ -4,7 +4,9 @@ Status: prototyped (2026-10-17, branch `engine-move-proto`, fork patch
 YP22, stages 1 and 2 together, schema generation 9, with fork patch YP23
 for an upstream crash the wide corpus reached; the measured numbers
 and what the build changed against this design are in
-["Prototype: measured"](#prototype-measured) at the end). The sections
+["Prototype: measured"](#prototype-measured) at the end; the bundle
+cost the build added was then cut from 12.1 to 8.2 KB,
+["Cutting the move's bundle cost"](#cutting-the-moves-bundle-cost)). The sections
 below are the design as written on 2026-10-15: every number in them is
 either measured then (said so) or an estimate (with its confidence). The
 model followed is
@@ -1338,7 +1340,8 @@ to "where it stood", FX-06 stands):
 - A document built from a value is 5 % slower to construct (13 % in the
   scale workload at 5,000 blocks), and a 1,000-block range delete 35 %
   slower (above).
-- The bundle is 12.1 KB larger than the base (above), where the design
+- The bundle is 12.1 KB larger than the base (above; 8.2 KB after the
+  cuts of the last section), where the design
   expected it smaller.
 
 ### The review of PR #29: what its decisions changed
@@ -1521,5 +1524,203 @@ Run on the final tree, 2026-10-18 (after every fix above):
   review item 5). `test:dst:extensive`: 178 passed, 16 failed — exactly the
   known solo seeds 17, 18, 25, 34, 43, 45, 52, 53, 61, 67, 70, 88, 90, 97, 98
   and collab seed 20 (fixed in PR #28).
+- `test:hosted --project=chromium`: 11 passed. `tests/packed-consumer/run.sh`:
+  all checks passed.
+
+## Cutting the move's bundle cost
+
+Done 2026-10-18 on the same branch, after the review's follow-up: the move
+stays, but what it added to the bare editor is cut first. Same method as
+above: `node scripts/bundle-size.mjs --only minimal,all,export` on this tree
+against the fresh export of `origin/engine-cuts`, one coherent cut per
+commit, each measured before and after and followed by the fast lanes
+(`check`, `lint`, `check:deps`, `check:worker`, `api:report` then
+`check:api`, unit, `test:crdt`, `test:dom`: the same counts after every
+cut — unit 4,410 passed, `test:crdt` 3,869, `test:dom` 2,890 — and only the
+known local-only `search-marker-format` row failing). No behaviour test's
+expected value changed; the test-side changes are listed below.
+
+### The cuts
+
+Edytor's own minified bytes (`own`, without the Svelte runtime), minimal and
+every-plugin probes; `edytor/export` stays 51.00 KB throughout.
+
+| Commit | Cut | `minimal` KB | `all` KB |
+| --- | --- | --- | --- |
+| `f419ddb8` | **One record walk in the engine.** A move record rides YP20's hold walk: `holdRange`, `holdIds` and `holdItem` take the record (`null` for a hold), so `moveRange`, `moveIds` and `moveItem` go; one range writer (`writeIds`) and one reader (`readIds`) for both records; `Item#delete` hands its content the item, so a move record keeps no item; the sort rule reads a unit (`unitAt`) and orders two units (`unitOrder`) one way for split keys and record chains | 426.73 → 425.96 (−0.77) | 656.15 → 655.41 (−0.74) |
+| `aaf21496` | **One walk over a sequence item's units** (`unitsOf`): the engine's display (`shownBy`, was `displayedUnits` and `entriesOfItem`), the index's places (`positionsOfItem`) and the writers' view of what the index shows (`shownIn`, was `shownAt` for a record and `homeShownAt` for a slot item); `unitOf` reads through `itemAt`; one unit equality (`sameUnit`); one write of the slot map (`putSlot`: the fold's slots in and out, `reslot`); one neighbour lookup for the writes at a display index (`around`: `moveBlocksTo`, `insertSpecsAt`, `writeSplit`) | 425.96 → 424.86 (−1.10) | 655.41 → 654.33 (−1.08) |
+| `82a5724d` | **One placement resolution.** The first build places every block with the edit's own `settle` (unkeyed, `retryFallen`, then one dense keying pass over each sequence's places, the root's tail after it) instead of `resolveAll`'s greedy pass: the greedy result is stable under `settle`'s rules, and two stable states agree on every edge from the strongest down, so the order the blocks come in decides nothing. The greedy rebuild moved to the tests (`src/tests/oracles/placements.ts`, with the test-only `edgeOf`): the self-checks, the fresh view and the model oracles compare the index with it, independent of production's acceptance. `candidatesOf` reads its unit itself, `Edge.offset` (never read) and `collectSlots`' unit map go, and the public binding's `model.resolvePlacements` is removed (changelog) | 424.86 → 423.43 (−1.43) | 654.33 → 652.90 (−1.43) |
+| `9d8d8328` | **The remaining copies of the walks and the tail key**: `recordsOf` reads a record's engine display with `shownBy` (it walked each unit through `anchorOf`), `reslot` reads a sequence's home slots with `positionsOfItem`, the rebuild keys the root's tail with `reject` (the edit's own tail key), `placeAfter` returns nothing (no caller read its result), `writeData` reads a node's data slots once per slot write | 423.43 → 423.04 (−0.39) | 652.90 → 652.50 (−0.40) |
+| `b1ef6209` | **The fold writes the slot map as it reads the sequences** (no `slotsIn`/`slotsOut` lists for a second loop); one loop reads the open transaction's hold and move logs | 423.04 → 422.87 (−0.17) | 652.50 → 652.33 (−0.17) |
+| `638217c1` | **Values nothing reads**: `ResolvedPlacement.home` (the self-check compares the same fact from the accepted edges), a move record's unit value is the record itself, the split key's text order in one expression | 422.87 → 422.75 (−0.12) | 652.33 → 652.21 (−0.12) |
+| `777982c2` | **The engine symbol nothing calls**: `sequenceOrder` leaves edytor's engine object and the fork's namespace (the prototype's ordering hook, gone with the review, was its only caller) | 422.75 → 422.74 (−0.01) | 652.21 → 652.19 (−0.02) |
+| `27a29e00` | **A unit's movers are kept strongest first**: `mover` is the first of them, `candidatesOf` sorts nothing (the engine's argmax, `moverOf`, and edytor's sort computed one order twice) | 422.74 → 422.71 (−0.03) | 652.19 → 652.17 (−0.02) |
+| `9482668e` | Timing fixes (below): the first build hands each block's candidates the slot item the rebuild collected; the fold reads display parents only while there are shells | 422.71 → 422.83 (+0.12) | 652.17 → 652.28 (+0.11) |
+| | **Total** | 426.73 → 422.83 (**−3.90**) | 656.15 → 652.28 (**−3.87**) |
+
+Against the base, `minimal` 414.62 → 422.83 KB own (+8.21, was +12.11),
+461.4 → 469.6 KB total, 158.67 → 161.35 KB gzip (+2.68, was +3.90); `all`
+643.98 → 652.28 own (+8.30, was +12.17), 241.59 → 244.35 gzip; `export`
+51.00 → 51.00. Where the 8.2 KB still is (`minimal`, minified, against the
+base): the index's placement half +2.9 (`text/index/placement.js`: the local
+cycle resolution — `settle`, `admits`, `canRise`, `retryFallen`, the tail
+key — the order keys from neighbours, the slot map and its re-owning),
+`placement/slots.js` +2.3 (new: the walk, `placeAfter`, `anchorOf`,
+`removeUnit`), the fork +3.1 (`Item.js` +1.6: `ContentMove`, the movers, the
+GC key rule; `marks.js` +1.5: the sort classes, the chains, the split keys;
+`ynode.js`, `encoding.js` +0.6), the fold +1.6 (the sequences' changes and
+the move log), `placement/model.js` +1.4 (writes that anchor where the
+index shows a block, the chains), `data.js` +1.1 (the arrays' slots: insert,
+move, remove), `placement/resolve.js` +0.7, `placement/keys.js` +0.5;
+against `rank.js` −2.7, `display.js` −1.3, `doc/steps.js` −1.1 and smaller
+cuts elsewhere.
+
+Checked and not done:
+
+- **Holds and moves as one record kind** (one pending set, one log). They
+  share the walk now. The rest differs in kind: a hold record integrates at
+  once and what it names that has not arrived waits in `pendingHolds` (a
+  delete of text a room lost is stored at once), while a move record waits
+  for its units and its chain like an item for its origin (`getMissing`),
+  because its sort reads them — so moves have no pending set; a hold is
+  counted (`holds`, and an item merges with an equally held neighbour),
+  moves are an ordered list of records (`movers`); a hold record splits and
+  merges with its writer's next one, a move record is one indivisible unit.
+  One kind would need a new content ref and a schema generation for little
+  code.
+- **One log for holds and moves.** The open transaction's fold reads both
+  in one loop now; past that the hold log feeds the texts' edits and the
+  move log the sequences' changes, and one engine log would make each
+  reader filter out the other's entries again (an atom's data arrays are a
+  sequence a text reader would then see).
+- **`data.ts`**: the rank-era paths are all gone (no `~id#`/`~id>` keys,
+  rank pattern or `rankAfter`); what it added is the arrays' slot writes.
+  The detached node's slot counter stays: a detached node's `length` is 0,
+  so writing at `node.length` would reverse the slots of several arrays.
+- **The setup guard's message** (the long `TypeError`): a behaviour row pins
+  its words.
+- **`deleted` as `gone || movers !== null`**: the engine's hottest getter,
+  not traded for about 20 bytes.
+- No DEV-only check or long error string came with the move besides the
+  guard and `move: node is not integrated` (the same guard as `hold`'s).
+
+Test-side changes, none of them an expected value: the greedy rebuild in
+`src/tests/oracles/placements.ts` (production's `resolveAll` as it was, with
+its own cycle walk), imported by `index-checks.ts`, `fresh-view.ts`, the
+model oracles, `arch-v2/prepared-oracle.ts` and the harness's model ops;
+`index-checks.ts` compares whether a block shows at home from the accepted
+edges (`atHome`) where it read `ResolvedPlacement.home`; the surface pins
+`engine-surface.test.ts` and `yp8-surface.test.ts` drop `sequenceOrder`; the
+bench's from-scratch placement stage times the test oracle's greedy
+rebuild, as its collection stage times the oracle's `collectBlocks`.
+
+### Sizes (final tree)
+
+Re-measured with `scratchpad/measure.mjs` on the final tree: the stored
+format did not change, so the stored rows of the prototype's table hold
+(seed 166,554 B; 300 Enters 81,594 B, 54-character longest in-memory key;
+200 moves 2,500 B; heap 7.17 / 29.78 MB at 1,000 / 5,000 blocks, within
+noise of 7.12 / 29.71). The bundle rows:
+
+| Measure | Base | Prototype | After the cuts |
+| --- | --- | --- | --- |
+| Bundle `minimal`, own / total / gzip / brotli (KB) | 414.6 / 461.4 / 158.7 / 137.7 | 426.7 / 473.5 / 162.6 / 140.7 | 422.8 / 469.6 / 161.4 / 139.9 |
+| Bundle `all`, own / total / gzip / brotli (KB) | 644.0 / 692.6 / 241.6 / 205.4 | 656.2 / 704.8 / 245.5 / 208.5 | 652.3 / 700.9 / 244.4 / 207.7 |
+| Bundle `export`, own / total / gzip (KB) | 51.0 / 76.6 / 28.9 | 51.0 / 76.6 / 28.9 | 51.0 / 76.6 / 28.9 |
+| Cycle race, placements decided at 1,000 / 5,000 blocks | 1,001 / 5,001 | 2–4 / 2 | 2–4 / 2–4 |
+
+### Timings (idle machine)
+
+`pnpm bench:crdt` (`bench/run.js`, which runs the scale workload too), the
+fresh `origin/engine-cuts` export (before) and this tree (after,
+`9482668e`), alternating, three runs each, medians. The runs started once
+the 1-minute load average was under 4 (3.81; it had been 9–14 while the
+lanes ran) and stayed between 3.3 and 4.9. The base's bench copy runs its
+undo and memory lanes on the document's history, as this tree's does.
+
+| Measure (ms) | Before | After |
+| --- | --- | --- |
+| Keystroke on a long-lived document, 1,000 / 5,000 blocks (scale) | 0.05 / 0.03 | 0.04 / 0.03 |
+| Remote keystroke, 5,000 blocks | 0.02 | 0.02 |
+| Enter, 1,000 / 5,000 blocks | 0.13 / 0.13 | 0.17 / 0.13 |
+| Backspace, 1,000 / 5,000 blocks | 0.05 / 0.07 | 0.07 / 0.08 |
+| Range delete of 40 blocks, 1,000 / 5,000 blocks | 1.68 / 1.21 | 1.59 / 1.25 |
+| Delete of 1,000 blocks, range / selected blocks | 11.0 / 14.3 | 9.9 / 14.4 |
+| Load 1,000 / 5,000 blocks (scale) | 12.3 / 57.7 | 11.3 / 43.7 |
+| Construct 1,000 / 5,000 blocks (scale) | 42.6 / 142 | 38.4 / 136 |
+| Encode 1,000 blocks (p50) | 1.04 | 0.79 |
+| Encode / load after 5,000 history steps | 0.53 / 2.86 | 0.60 / 2.65 |
+| Undo, last of 10 (p50, the document's history) | 0.06 | 0.06 |
+| Undo after 5,000 history steps | 0.17 | 0.19 |
+| First keystroke after a load, 1,000 blocks (facade lane) | 1.21 | 1.27 |
+| First move after a load, same parent / a group of 5 (facade lane) | 0.10 / 0.13 | 0.12 / 0.14 |
+| First block delete after a load, 1,000 blocks (facade lane) | 1.13 | 1.22 |
+| Load 1,000 blocks (workload p50) | 1.73 | 1.90 |
+| Move / Tab / outdent, 5,000 blocks (scale; new rows, no base) | — | 0.12 / 0.09 / 0.12 |
+
+Each row that read worse, checked alone (A/B scripts alternating the two
+trees, warm, many samples):
+
+- **Delete of 1,000 blocks as a range** (+35 % on the loaded machine, +27 %
+  on the idle one before the fix): real. The fold read the display parent
+  of every block a commit touched (the shells' affected set) through the
+  engine — since the move a store lookup per block (`edgeParent` →
+  `itemAt`), where the base read a field — and a 1,000-block delete touches
+  every block, with no shell in the document. Fixed in the fold: it reads
+  them only while the document holds shells (`9482668e`). Range / block
+  delete 11.3 → 9.1 / 13.6 → 11.6 ms (base 9.8 / 14.2).
+- **Construction at 5,000 blocks** (+13 % loaded): real, the same cause;
+  `createDocument` of 5,000 blocks and a first read: 121–125 ms on the
+  prototype, 106 ms now (base 112). Fixed by the same change.
+- **The first operation after a load** (facade lanes, +9 to +40 % loaded):
+  partly mine. The one-resolution cut had dropped the review's item-3
+  optimization (the rebuild handed each block its slot's item): a store
+  lookup per block made the first build 25 % slower than the prototype's
+  (1,000 blocks: 1.31 → 1.67 ms). Fixed (`collectSlots` keeps each slot's
+  item, `candidatesOf`'s `at`): 1.30 ms. What remains, 1.11 → 1.30 ms at
+  1,000 blocks (+0.2 ms: every sequence's slots and each block's home), is
+  the prototype's, and the load is faster (5.85 → 5.44 ms), so load plus
+  first keystroke is not slower (7.1 → 6.9 ms). The rows above: +5 to +8 %.
+- **Enter at 5,000 blocks** (0.20 → 0.26 loaded): equal on the idle machine
+  (0.13 / 0.13). Enter and Backspace at 1,000 blocks read +0.02–0.04 in the
+  scale workload (five samples each, its first, coldest size); warm, a
+  hundred samples each: Enter 0.052–0.055 / 0.052–0.054 ms, Backspace
+  0.033 / 0.036 ms at 1,000 blocks, 0.076 / 0.064 ms at 5,000. Not real.
+- **The 40-block range delete at 5,000 blocks** (+22 % loaded): equal (1.21
+  / 1.25).
+- **Encode after 5,000 history steps** (+28 % loaded, +13 % idle): one
+  sample of a cold encode. Encoding that document 300 times: 0.33 ms on
+  both trees (5,119 / 5,100 structs, 67.3 / 67.0 KB). Not real.
+- **Undo after 5,000 history steps** (+0.02 ms): one sample. Over eleven
+  fresh documents: 0.043–0.048 ms on both. Not real.
+- **Load 1,000 blocks (workload p50)** (+10 %): the engine-only workload
+  (`applyUpdate` of one 1,000-block engine document, identical bytes) run
+  alone reads 1.42–1.43 ms on the base, the prototype and the final tree.
+  Not real: the state of the long bench process.
+
+### Lanes (after the cuts)
+
+Run on the final tree (`9482668e`), 2026-10-18, one lane at a time after
+the benches:
+
+- After every cut: `check` (0 errors, 0 warnings), `lint`, `check:deps`,
+  `check:worker`, `api:report` then `check:api` (current), unit 4,410
+  passed, 1 failed, 3 skipped, 11 todo; `test:crdt` 3,869 passed, 1 failed,
+  9 skipped; `test:dom` 2,890 passed, 1 expected fail, 34 skipped. The
+  failure in both is the known local-only `search-marker-format` row
+  "patched engine vs pre-P4 vendored baseline".
+- `test:typecheck`, `test:dom:typecheck`, `test:do:typecheck`: pass;
+  `check:docs`: 292 examples. `test:do`: 313 passed.
+- `random/key-walk-regressions`, `random/undo-withdraw-regressions`,
+  `arch-v2/same-id-order`, `arch-v2/cycle-fallback`, `arch-v2/cycle-scale`,
+  `yp22-moves`: 43 passed.
+- Wide corpus, `CRDT_SEEDS=1-1000 CRDT_OPS=300`, every adapter (raw, model,
+  doc, roles, tables; 1,011 rows each, 5,055 in all): 0 failures.
+- `test:dst` (`DST_PORT=5072`): 80 passed. `test:dst:extensive`: 179
+  passed, 15 failed — the known solo seeds 17, 18, 25, 34, 43, 45, 52, 53,
+  61, 67, 70, 88, 90, 97, 98 (collab seed 20, known to fail, passed).
+- Playwright (`PW_PORT=5071`), full suites, one project at a time, nothing
+  rerun: Chromium 967 passed and 2 skipped, Firefox 959 and 10, WebKit 955
+  and 14, mobile Chromium 52, mobile WebKit 52, cdp 62.
 - `test:hosted --project=chromium`: 11 passed. `tests/packed-consumer/run.sh`:
   all checks passed.

@@ -234,7 +234,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     from: unknown;
                     to: number;
                 };
-                recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode) => {
+                recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
                     item: import("./placement/slots.js").SeqItem;
                     stamp: import("./placement/slots.js").Stamp;
                     wins: boolean;
@@ -446,7 +446,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 from: unknown;
                 to: number;
             };
-            recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode) => {
+            recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
                 item: import("./placement/slots.js").SeqItem;
                 stamp: import("./placement/slots.js").Stamp;
                 wins: boolean;
@@ -1623,10 +1623,10 @@ export interface EngineNode {
     insert(index: number, content: unknown): void;
     delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
     hold(ids: number[]): void;
-    move(index: number, ids: number[], side?: number, part?: number, at?: {
+    move(index: number, ids: number[], side?: number, part?: number, at?: ReadonlyArray<{
         client: number;
         clock: number;
-    } | null): void;
+    }> | null): void;
 }
 ```
 
@@ -1636,7 +1636,7 @@ export interface EngineNode {
 - `_item`: The item this node is attached to (identity anchor for `crdtId`).
 - `delete`: Delete `length` live units at `index`.
 - `hold`: Append one hold record of `ids` (`client, clock, len` triples) to this records list: they read as deleted while it lives.
-- `move`: Move the units `ids` names (`client, clock, len` triples, in order) to live index `index` of this sequence: one move record there (the fork's `ContentMove`); `side` is its class among the items of its origin (`0` after, `1` before), `at` the unit it stands at for the sort of two records at one origin (`null`: the first it names) and `part` its order among the records standing there.
+- `move`: Move the units `ids` names (`client, clock, len` triples, in order) to live index `index` of this sequence: one move record there (the fork's `ContentMove`); `side` is its class among the items of its origin (`0` after, `1` before), `at` the chain it stands at for the sort of two records at one origin — the units from the root sequence down to the unit it stands at, outermost first (`null`: the first unit it names) — and `part` its order among the records standing there.
 
 ## EngineTransaction
 

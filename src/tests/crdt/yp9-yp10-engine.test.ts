@@ -34,7 +34,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { permutations, replica, seedUpdate } from './arch-v2/replica-harness.js';
-import { undoManagerOf } from './harness/undo.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');

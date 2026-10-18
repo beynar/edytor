@@ -14,11 +14,12 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { remoteOrigin } from '../harness/peer-set.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
 const newDoc = (clientID = 7) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientID;
 	return doc;
 };

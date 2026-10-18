@@ -8,12 +8,16 @@
  * YP22), and the display slot of every block whose slot walk
  * (`displaySlotOf`) reads one that changed — its stored subtree, through
  * the blocks it displays — patched into the parents' child lists. A
- * block's edge is accepted unless its display parent chain reaches back
- * to it; the oldest edge of such a cycle is rejected and its block shows
- * at the root's tail (`placement/resolve.ts`), so a cycle resolves
- * locally: no global pass. A placed block's order key is found from its
- * sequence neighbours (`placement/keys.ts`), never by walking the parent's
- * sequence. The layout rules re-run only on the layouts a change reaches.
+ * block's candidate edges are its live move records, strongest first, then
+ * its home slot; it shows at the first that closes no cycle through the
+ * accepted edges (`settle`): the later move wins, and the block whose edge
+ * is the oldest of a cycle falls back to its next candidate, back where it
+ * stood (its previous record, else home; the root's tail only when every
+ * candidate closes a cycle, as `placement/resolve.ts` rebuilds it), so a
+ * cycle resolves locally: no global pass. A placed block's order key is
+ * found from its sequence neighbours (`placement/keys.ts`), never by
+ * walking the parent's sequence. The layout rules re-run only on the
+ * layouts a change reaches.
  */
 import {
 	type BlockId,
@@ -29,21 +33,30 @@ import {
 import { keyBetween } from '../../placement/keys.js';
 import {
 	NO_SLOT,
-	blockBefore,
 	byTail,
+	candidatesOf,
 	cycleThrough,
+	edgeParentOf,
 	collectSlots,
-	edgeOf,
 	homeOf,
 	registryOwners,
 	resolveAll,
+	ownerOfNode,
 	slotOwner,
+	slotsBefore,
 	type Edge,
 	type Slots
 } from '../../placement/resolve.js';
-import { before, cmpStamp, isBlockSlot, type Entry, type Stamp } from '../../placement/slots.js';
+import {
+	cmpStamp,
+	isBlockSlot,
+	isRecord,
+	type SeqItem,
+	type Stamp
+} from '../../placement/slots.js';
+import type { EngineNode } from '../../engine-api.js';
 import { Y } from '../../engine.js';
-import { engineOps } from '../../structs.js';
+import { engineOps, firstItem } from '../../structs.js';
 import { DEAD, displayOf } from '../model.js';
 import type { IndexClaims } from './claims.js';
 import type { IndexLayout } from './layout.js';
@@ -68,6 +81,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		slotsByBlock,
 		rawOrder,
 		edges,
+		fallen,
 		rejected,
 		ensureOwners,
 		ownerOf,
@@ -283,21 +297,57 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		if (!slotsRead) readSlots();
 		return homeOf(registry, kept, slotsByBlock, id);
 	};
-	/** `id`'s display edge, read from the engine (`null`: no slot, or gone). */
-	const edgeOfBlock = (id: BlockId): Edge | null => {
-		const home = blocks.get(id)?.home ?? homeFor(id);
-		return home === null ? null : edgeOf(doc, registry, kept, home);
+	/**
+	 * Re-own the home slots of `node`'s sequence after the registry value it
+	 * stands for changed (a concurrent creation of one id won or lost, its
+	 * losing incarnation shown or not): each slot's parent is the node's owner
+	 * now, and its block re-placed; a node that is no block of the document
+	 * any more holds no slot (as a rebuild reads it).
+	 */
+	const reslot = (node: EngineNode): void => {
+		if (!slotsRead) return; // the first read collects them as they are
+		const owner = ownerOfNode(registry, kept, node);
+		for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
+			const arr = it.content.arr;
+			if (isRecord(it) || arr === undefined || it.gone === true) continue;
+			for (let j = 0; j < arr.length; j++) {
+				const v = arr[j];
+				if (!isBlockSlot(v)) continue;
+				const [c, k] = [it.id.client, it.id.clock + j];
+				const kept0 = (slotsByBlock.get(v.b) ?? []).filter((x) => x.c !== c || x.k !== k);
+				const next = owner === undefined ? kept0 : [...kept0, { parent: owner, c, k }];
+				if (next.length === 0) slotsByBlock.delete(v.b);
+				else slotsByBlock.set(v.b, next);
+				const b = slotOwner(registry, kept, v.b, c);
+				for (const id of new Set([v.b, b])) {
+					const rec = blocks.get(id);
+					if (rec !== undefined) rec.home = homeOf(registry, kept, slotsByBlock, id);
+					placementSeeds.add(id);
+				}
+			}
+		}
 	};
-	/** The owner of the sequence `id`'s slot shows in (`null`: the root), as the engine stands. */
-	const edgeParent = (id: BlockId): BlockId | null | undefined => edgeOfBlock(id)?.parent;
+	/** `id`'s candidate edges, read from the engine: its live records, strongest first, then home (`[]`: no slot, or gone). */
+	const candidatesFor = (id: BlockId): Edge[] => {
+		const home = blocks.get(id)?.home ?? homeFor(id);
+		return home === null ? [] : candidatesOf(doc, registry, kept, home);
+	};
+	/** The owner of the sequence `id`'s slot shows in as the engine stands (its mover's, else home's; `null`: the root). */
+	const edgeParent = (id: BlockId): BlockId | null | undefined => {
+		const home = blocks.get(id)?.home ?? homeFor(id);
+		return home === null ? undefined : edgeParentOf(doc, registry, kept, home);
+	};
 	/** The raw children of `parent` in order (every block whose edge parent it is), kept sorted by key. */
 	const rawList = (parent: BlockId | null): ChildSlot[] => {
 		let l = rawOrder.get(parent);
 		if (l === undefined) rawOrder.set(parent, (l = []));
 		return l;
 	};
+	/** Counts the placement writes: a key's walk that saw one happen under it walks again. */
+	let placedEpoch = 0;
 	const setPlacement = (id: BlockId, pl: ResolvedPlacement | undefined): void => {
 		ix.foldStats.placed++;
+		placedEpoch++;
 		const old = placementsMap.get(id);
 		if (old !== undefined) {
 			const l = rawList(old.parent);
@@ -314,37 +364,47 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		}
 	};
 	/**
-	 * The key `id` takes under `edge.parent`: between the key of the block
-	 * before its displaying unit in the sequence (placed first when it is
-	 * a pending seed; walked past when it shows elsewhere) and the next key
-	 * of that list.
+	 * The key `id` takes under `edge.parent`: between the key of the nearest
+	 * block shown where it stands before `id`'s place in the sequence (placed
+	 * first when it is a pending seed; walked past when it shows elsewhere)
+	 * and the next key of that list. Placing a pending neighbour can drop a
+	 * block the walk already passed back into that stretch (a cycle's
+	 * fallback, back where it stood): a walk under which a placement changed
+	 * walks again, so the key it returns reads one state.
 	 */
 	const keyFor = (id: BlockId, edge: Edge, place: (b: BlockId) => void): string => {
-		const isBlock = (e: Entry) => isBlockSlot(e.value);
-		const home = blocks.get(id)?.home ?? homeFor(id)!;
-		let prev = blockBefore(doc, registry, kept, home, edge);
-		let lrank: string | undefined;
-		for (let guard = 0; prev !== null && guard < 256; guard++) {
-			// A slot that is not its block's home (a second creation of one id) places nothing.
-			const h = blocks.get(prev.block)?.home ?? homeFor(prev.block);
-			if (h !== null && h.c === prev.entry.unit.c && h.k === prev.entry.unit.k) {
-				place(prev.block);
-				const pl = placementsMap.get(prev.block);
-				if (pl !== undefined && pl.parent === edge.parent && !rejected.has(prev.block)) {
-					lrank = pl.rank;
-					break;
-				}
-			}
-			const e = before(doc, prev.entry, isBlock);
-			if (e === null) break;
-			prev = {
-				entry: e,
-				block: slotOwner(registry, kept, (e.value as { b: BlockId }).b, e.unit.c)
-			};
+		for (;;) {
+			const before = placedEpoch;
+			const lrank = leftKey(id, edge, place);
+			if (placedEpoch !== before) continue;
+			const list = rawOrder.get(edge.parent as BlockId | null) ?? [];
+			const i = lrank === undefined ? 0 : seek(list, { id: '', rank: lrank }) + 1;
+			return keyBetween(lrank, list[i]?.rank);
 		}
-		const list = rawOrder.get(edge.parent as BlockId | null) ?? [];
-		const i = lrank === undefined ? 0 : seek(list, { id: '', rank: lrank }) + 1;
-		return keyBetween(lrank, list[i]?.rank);
+	};
+	/** The key of the nearest block shown before `id`'s place at `edge`, under its parent (`undefined`: none). */
+	const leftKey = (id: BlockId, edge: Edge, place: (b: BlockId) => void): string | undefined => {
+		const home = blocks.get(id)?.home ?? homeFor(id)!;
+		for (const e of slotsBefore(doc, edge, home)) {
+			const b = slotOwner(registry, kept, (e.value as { b: BlockId }).b, e.unit.c);
+			// `id` itself (its place before this one) keys nothing.
+			if (b === id) continue;
+			// A slot that is not its block's home (a second creation of one id) places nothing.
+			const h = blocks.get(b)?.home ?? homeFor(b);
+			if (h === null || h.c !== e.unit.c || h.k !== e.unit.k) continue;
+			place(b);
+			const pl = placementsMap.get(b);
+			const shows = edges.get(b);
+			if (
+				pl !== undefined &&
+				pl.parent === edge.parent &&
+				!rejected.has(b) &&
+				shows != null &&
+				shows.via === e.via
+			)
+				return pl.rank;
+		}
+		return undefined;
 	};
 	/** The key of `id` at the root's tail, among the rejected by stamp then id, after the last top-level block. */
 	const tailKey = (id: BlockId, stamp: Stamp): string => {
@@ -363,74 +423,90 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		const next = at < tail.length ? placementsMap.get(tail[at]!.id)?.rank : undefined;
 		return keyBetween(prev, next);
 	};
-	/** Show `id` at the root's tail: its edge rejected (a cycle), or none. */
+	/** Show `id` at the root's tail: every edge closes a cycle, or none. */
 	const reject = (id: BlockId, edge: Edge | null): void => {
 		edges.set(id, edge);
 		if (placementsMap.has(id)) setPlacement(id, undefined);
+		fallen.delete(id);
 		rejected.add(id);
 		setPlacement(id, { parent: null, rank: tailKey(id, edge?.stamp ?? NO_SLOT), home: false });
-	};
-	/**
-	 * Accept `id`'s `edge`, unless it closes a cycle through the accepted
-	 * edges and the claim owners: then the cycle's oldest edge is rejected
-	 * (its block shows at the root's tail, its subtree with it), and `id`'s
-	 * is accepted when it is not that one. `place` places a pending
-	 * neighbour first. Returns the blocks whose placement changed.
-	 */
-	const accept = (id: BlockId, edge: Edge, place: (b: BlockId) => void): BlockId[] => {
-		const changed = [id];
-		const parent = edge.parent;
-		if (parent === undefined || (parent !== null && !blocks.has(parent))) {
-			reject(id, edge);
-			return changed;
-		}
-		const cycle = cycleThrough(placementsMap, ownerOf, id, parent);
-		if (cycle !== null) {
-			let [min, minStamp] = [id, edge.stamp];
-			for (const m of cycle) {
-				const e = m === id ? edge : edges.get(m);
-				if (m !== id && e && cmpStamp(e.stamp, minStamp) < 0) [min, minStamp] = [m, e.stamp];
-			}
-			if (min === id) {
-				reject(id, edge);
-				return changed;
-			}
-			reject(min, edges.get(min) ?? null);
-			changed.push(min);
-		}
-		edges.set(id, edge);
-		rejected.delete(id);
-		if (placementsMap.has(id)) setPlacement(id, undefined);
-		setPlacement(id, { parent, rank: keyFor(id, edge, place), home: edge.via === null });
-		return changed;
 	};
 	/** The same display edge: the same sequence, the same record, the same stamp. */
 	const sameEdge = (a: Edge, b: Edge): boolean =>
 		a.parent === b.parent && a.via === b.via && cmpStamp(a.stamp, b.stamp) === 0;
+	/** Whether `edge` (of `id`) is a place `id` may take now: a live parent, and no cycle it would be the oldest edge of. */
+	const admits = (id: BlockId, edge: Edge): { ok: boolean; drop: BlockId | null } => {
+		const parent = edge.parent;
+		if (parent === undefined || (parent !== null && !blocks.has(parent)))
+			return { ok: false, drop: null };
+		const cycle = cycleThrough(placementsMap, ownerOf, id, parent);
+		if (cycle === null) return { ok: true, drop: null };
+		let [min, minStamp] = [id, edge.stamp];
+		for (const m of cycle) {
+			const e = m === id ? edge : edges.get(m);
+			if (m !== id && e && cmpStamp(e.stamp, minStamp) < 0) [min, minStamp] = [m, e.stamp];
+		}
+		return min === id ? { ok: false, drop: null } : { ok: true, drop: min };
+	};
 	/**
-	 * Try every rejected block again (a changed edge may have broken its
-	 * cycle, or made it the one to reject): accepted ones join `moved`.
+	 * Place `id` at its strongest candidate edge from `from` on that closes no
+	 * cycle it would be the oldest edge of (the later move wins). When the
+	 * edge closes a cycle through an older edge, that edge's block is dropped
+	 * to its next candidate (back where it stood before that move), and so on
+	 * down its records to home; a block every candidate of which fails shows
+	 * at the root's tail. `place` places a pending neighbour first. Returns
+	 * the blocks whose placement changed.
 	 */
-	const retryRejected = (moved: Set<BlockId>): void => {
-		for (let round = 0; round < rejected.size + 2 && rejected.size > 0; round++) {
+	const settle = (id: BlockId, place: (b: BlockId) => void, from = 0): BlockId[] => {
+		const changed = [id];
+		const cands = candidatesFor(id);
+		for (let n = from; n < cands.length; n++) {
+			const edge = cands[n]!;
+			// The key first: its walk places the pending neighbours, so the cycle
+			// check reads them placed (a neighbour placed after it could close a
+			// cycle through `id` that no check saw).
+			const rank = keyFor(id, edge, place);
+			const { ok, drop } = admits(id, edge);
+			if (!ok) continue;
+			edges.set(id, edge);
+			rejected.delete(id);
+			if (n > 0) fallen.add(id);
+			else fallen.delete(id);
+			if (placementsMap.has(id)) setPlacement(id, undefined);
+			setPlacement(id, { parent: edge.parent as BlockId | null, rank, home: edge.via === null });
+			if (drop !== null) {
+				const now = edges.get(drop);
+				const at = now ? candidatesFor(drop).findIndex((c) => sameEdge(c, now)) : -1;
+				changed.push(...settle(drop, () => {}, at + 1));
+			}
+			return changed;
+		}
+		reject(id, cands[0] ?? null);
+		return changed;
+	};
+	/** Whether a candidate stronger than `id`'s accepted edge would take it now. */
+	const canRise = (id: BlockId): boolean => {
+		const cands = candidatesFor(id);
+		const now = edges.get(id);
+		const at = rejected.has(id) || !now ? cands.length : cands.findIndex((c) => sameEdge(c, now));
+		for (let n = 0; n < (at < 0 ? cands.length : at); n++)
+			if (admits(id, cands[n]!).ok) return true;
+		return false;
+	};
+	/**
+	 * Try every block below its strongest edge again (a changed edge may have
+	 * broken its cycle, or made another the one to drop): those that rise join
+	 * `moved`.
+	 */
+	const retryFallen = (moved: Set<BlockId>): void => {
+		for (let round = 0; round < fallen.size + rejected.size + 2; round++) {
 			let changed = false;
-			const tail = [...rejected]
-				.map((x) => ({ id: x, stamp: edges.get(x)?.stamp ?? NO_SLOT }))
-				.sort(byTail);
-			for (const { id } of tail) {
-				const edge = edgeOfBlock(id);
-				if (edge === null || edge.parent === undefined) continue;
-				if (edge.parent !== null && !blocks.has(edge.parent)) continue;
-				const cycle = cycleThrough(placementsMap, ownerOf, id, edge.parent);
-				if (cycle !== null) {
-					let oldest = edge.stamp;
-					for (const m of cycle) {
-						const e = edges.get(m);
-						if (m !== id && e && cmpStamp(e.stamp, oldest) < 0) oldest = e.stamp;
-					}
-					if (oldest === edge.stamp) continue; // still the one to reject
-				}
-				for (const x of accept(id, edge, () => {})) moved.add(x);
+			const below = [...rejected, ...fallen]
+				.map((x) => ({ id: x, stamp: candidatesFor(x)[0]?.stamp ?? NO_SLOT }))
+				.sort((a, b) => -byTail(a, b));
+			for (const { id } of below) {
+				if (!canRise(id)) continue;
+				for (const x of settle(id, () => {})) moved.add(x);
 				changed = true;
 			}
 			if (!changed) break;
@@ -461,24 +537,31 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (const b of blocks.keys()) noteKind(b);
 		for (const line of lineCounts.keys()) lineKinds.add(line);
 		ix.placementFull = false;
+		// The first read's slots while no sequence changed since (one scan), and the homes the records keep.
+		const reuse = collected !== null && collectedAt === ix.seqEpoch ? collected : null;
+		// The resolution writes the index's own maps (no copy).
+		placementsMap.clear();
+		edges.clear();
 		const resolved = resolveAll(
 			doc,
 			blocks,
 			ownerOf,
 			kept,
-			collected !== null && collectedAt === ix.seqEpoch ? collected : undefined
+			reuse ?? collectSlots(doc, blocks.values(), kept),
+			true,
+			{ placements: placementsMap, edges }
 		);
 		collected = null;
-		placementsMap.clear();
 		rawOrder.clear();
-		edges.clear();
+		fallen.clear();
 		rejected.clear();
 		slotsByBlock.clear();
 		for (const [b, refs] of resolved.slots) slotsByBlock.set(b, refs);
 		slotsRead = true;
-		for (const rec of blocks.values()) rec.home = resolved.homes.get(rec.id) ?? null;
-		for (const [id, pl] of resolved.placements) setPlacement(id, pl);
-		for (const [id, e] of resolved.edges) edges.set(id, e);
+		// The lists come in key order: no insert sorts them.
+		for (const [parent, list] of resolved.order) rawOrder.set(parent, list as ChildSlot[]);
+		ix.foldStats.placed += resolved.placements.size;
+		for (const id of resolved.fallen) fallen.add(id);
 		for (const id of resolved.rejected) rejected.add(id);
 		layoutMode = layoutBlocks + itemBlocks + tableBlocks > 0;
 		ix.dissolved = new Set();
@@ -517,20 +600,25 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 				if (placementsMap.has(id)) {
 					setPlacement(id, undefined);
 					edges.delete(id);
+					fallen.delete(id);
 					rejected.delete(id);
 					moved.add(id);
 				}
 				return;
 			}
-			const edge = edgeOfBlock(id);
+			const top = candidatesFor(id)[0] ?? null;
 			const old = edges.get(id);
-			// The same edge, placed: its key still orders it (its neighbours' keys are theirs).
-			if (edge !== null && old && !rejected.has(id) && placementsMap.has(id) && sameEdge(edge, old))
+			// The same edge, placed at its strongest: its key still orders it (its neighbours' keys are theirs).
+			if (
+				top !== null &&
+				old &&
+				!rejected.has(id) &&
+				!fallen.has(id) &&
+				placementsMap.has(id) &&
+				sameEdge(top, old)
+			)
 				return;
-			if (edge === null) {
-				reject(id, null);
-				moved.add(id);
-			} else for (const x of accept(id, edge, place)) moved.add(x);
+			for (const x of settle(id, place)) moved.add(x);
 		};
 		for (const id of [...seeds]) place(id);
 		// A changed claim owner can close a cycle through a display edge that did not change.
@@ -539,9 +627,10 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 				const edge = edges.get(c.id);
 				if (!edge || rejected.has(c.id) || edge.parent === undefined) continue;
 				if (cycleThrough(placementsMap, ownerOf, c.id, edge.parent) !== null)
-					for (const x of accept(c.id, edge, () => {})) moved.add(x);
+					for (const x of settle(c.id, () => {})) moved.add(x);
 			}
-		if (rejected.size > 0 && (moved.size > 0 || ownerChanged.size > 0)) retryRejected(moved);
+		if (rejected.size + fallen.size > 0 && (moved.size > 0 || ownerChanged.size > 0))
+			retryFallen(moved);
 		const seeds2 = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
 		const kinds = [...stateSeeds];
 		placementSeeds.clear();
@@ -638,6 +727,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		edgeParent,
 		noteFollowing,
 		ensurePlacements,
+		reslot,
 		typeOf,
 		order
 	};

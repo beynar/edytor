@@ -29,6 +29,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference (flipped to `it` by I2). */
 const row = it;
@@ -54,7 +55,7 @@ const asAndroid = () => {
 
 /** A replica of the mounted document; `sync` exchanges both ways. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

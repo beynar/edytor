@@ -1252,8 +1252,9 @@ export const applyPending = (tr, clients) => {
  * Lamport `priority`, a `side` (`0`: it stands after what precedes it,
  * `1`: before what follows it — its sort class among the items of one
  * origin, `markClass`), and for the sort of two records at one origin
- * (`utils/marks.js` `sourceOrder`) the unit it stands at (`at`, else the
- * first it names) and its `part` there. While the record is live, each named unit shows at
+ * (`utils/marks.js` `sourceOrder`) the chain of units it stands at (`at`:
+ * the home slots from the root sequence down to that unit, else the first
+ * unit it names) and its `part` there. While the record is live, each named unit shows at
  * the record that wins its movers and is hidden at home; deleting the
  * record (an undo) hands the unit to the next record, else home. A record
  * waits for the units it names as an item waits for its origin
@@ -1267,7 +1268,7 @@ export class ContentMove {
    * @param {number} side
    * @param {Array<number>} ids
    * @param {number} [part] the writer's order among the records standing at one unit (0–7)
-   * @param {ID|null} [at] the unit the record stands at (`null`: the first it names)
+   * @param {Array<ID>|null} [at] the chain the record stands at, outermost first (`null`: the first unit it names)
    */
   constructor (priority, side, ids, part = 0, at = null) {
     this.priority = priority
@@ -1357,9 +1358,12 @@ export class ContentMove {
    * @param {number} _offsetEnd
    */
   write (encoder, _offset, _offsetEnd) {
-    // One varint: the priority, whether an anchor follows, the part, the side.
+    // One varint: the priority, whether an anchor chain follows, the part, the side.
     encoder.writeLen(this.priority * 32 + (this.at === null ? 0 : 16) + this.part * 2 + this.side)
-    if (this.at !== null) encoder.writeLeftID(this.at)
+    if (this.at !== null) {
+      encoder.writeLen(this.at.length)
+      for (const id of this.at) encoder.writeLeftID(id)
+    }
     encoder.writeLen(this.ids.length / 3)
     for (let i = 0; i < this.ids.length; i += 3) {
       encoder.writeLeftID(createID(this.ids[i], this.ids[i + 1]))

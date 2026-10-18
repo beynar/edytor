@@ -25,6 +25,7 @@ import {
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 type Peer = Awaited<ReturnType<typeof renderDomEdytor>>;
 
@@ -36,7 +37,7 @@ const seed = (
 );
 
 const replicaOf = async (peer: Peer, options: Parameters<typeof renderDomEdytor>[1] = {}) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer.edytor.doc));
 	return renderDomEdytor(seed, { doc, autoSelectFixture: false, ...options });
 };

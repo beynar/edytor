@@ -62,6 +62,7 @@ import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
 import { selectionState } from '../../selection.js';
 import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;
@@ -87,7 +88,7 @@ const asAndroid = () => {
 
 /** A remote peer on a replica of the mounted document; `deliver` applies its writes here. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

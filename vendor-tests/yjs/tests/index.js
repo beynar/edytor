@@ -5,7 +5,6 @@ import * as array from './y-array.tests.js'
 import * as text from './y-text.tests.js'
 import * as xml from './y-xml.tests.js'
 import * as encoding from './encoding.tests.js'
-import * as undoredo from './undo-redo.tests.js'
 import * as doc from './doc.tests.js'
 import * as updates from './updates.tests.js'
 import * as idset from './IdSet.tests.js'
@@ -21,7 +20,7 @@ if (isBrowser) {
 }
 
 const tests = {
-  doc, map, array, text, xml, encoding, undoredo, updates, idset, attribution, delta
+  doc, map, array, text, xml, encoding, updates, idset, attribution, delta
 }
 
 const run = async () => {

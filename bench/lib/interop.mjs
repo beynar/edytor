@@ -15,7 +15,19 @@ import * as YPatched from '../../src/lib/crdt/vendor/yjs/src/index.js';
 import * as YBaseline from '../vendor-baseline/yjs/index.js';
 import * as delta from 'lib0-v14/delta';
 import { applyDelta, toDelta } from '../../src/tests/crdt/harness/delta.js';
-import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+// The patched side's history is the document's (the one the editor runs), through jiti (TypeScript).
+const req = createRequire(import.meta.url);
+const vitestDir = req.resolve('vitest/package.json', {
+	paths: [fileURLToPath(new URL('../..', import.meta.url))]
+});
+const { createJiti } = await import(req.resolve('jiti', { paths: [vitestDir] }));
+const jiti = createJiti(import.meta.url);
+const { historyOf } = await jiti.import(
+	fileURLToPath(new URL('../../src/tests/crdt/harness/history.ts', import.meta.url))
+);
 
 let failures = 0;
 const check = (name, cond, extra = '') => {
@@ -96,7 +108,7 @@ check('after deletes: delta identical', normDelta(tA) === normDelta(tB));
 check('after deletes: lengths equal', tA.length === tB.length);
 
 console.log('== undo on patched side, synced to baseline ==');
-const um = new UndoManager(tA, { trackedOrigins: new Set([A]) });
+const um = historyOf(A, { scope: tA, trackedOrigins: new Set([A]) });
 A.transact(() => applyDelta(tA, delta.create().retain(5).insert('UNDO-ME', { b: true })), A);
 sync(A, B);
 check('pre-undo delta identical', normDelta(tA) === normDelta(tB));

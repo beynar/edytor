@@ -104,6 +104,14 @@ export const unitOf = (doc: EngineDoc, u: Unit): { item: SeqItem; value: unknown
 	return { item, value: arr === undefined ? undefined : arr[u.k - item.id.clock] };
 };
 
+/** The item holding unit `u`, or `null` when `doc` lacks it (no value read: the fold's hot path). */
+export const itemAt = (doc: EngineDoc, u: Unit): SeqItem | null => {
+	const structs = clientsOf(doc).get(u.c);
+	if (structs === undefined || u.k >= storeOf(doc).getClock(u.c)) return null;
+	const item = structAt(Y, structs, u.k) as SeqItem | null;
+	return item === null || !ops.isItem(item) ? null : item;
+};
+
 /** The units record `r` shows, in order: those it wins (`mover === r`) and that are not gone. */
 export const displayedUnits = (doc: EngineDoc, r: SeqItem): Entry[] => {
 	const out: Entry[] = [];
@@ -154,50 +162,6 @@ export const anchorOf = (doc: EngineDoc, home: Unit): Entry | null => {
 	return at < 0 ? null : shown[at]!;
 };
 
-/** The last of `entries` that `accept` takes, or `null`. */
-const lastOf = (entries: Entry[], accept: (e: Entry) => boolean): Entry | null => {
-	for (let i = entries.length - 1; i >= 0; i--) if (accept(entries[i]!)) return entries[i]!;
-	return null;
-};
-
-/**
- * The displayed entry `accept` takes right before unit `offset` of `item` in
- * its sequence, or `null` at the start: the earlier units of a slot run,
- * then the items to the left (a record's last displayed unit, a slot run's
- * last unit), the deleted and moved-away ones skipped. The cost is the
- * distance to the nearest such entry, never the sequence.
- */
-export const leftOf = (
-	doc: EngineDoc,
-	item: SeqItem,
-	offset: number,
-	accept: (e: Entry) => boolean = () => true
-): Entry | null => {
-	if (!item.deleted && !isRecord(item) && offset > 0) {
-		const own = lastOf(entriesOfItem(doc, item).slice(0, offset), accept);
-		if (own !== null) return own;
-	}
-	for (let p = item.left; p !== null; p = p.left) {
-		const found = lastOf(entriesOfItem(doc, p), accept);
-		if (found !== null) return found;
-	}
-	return null;
-};
-
-/** The entry right before `e` in its sequence (`e`'s record's previous displayed unit, else the item to the left). */
-export const before = (
-	doc: EngineDoc,
-	e: Entry,
-	accept: (e: Entry) => boolean = () => true
-): Entry | null => {
-	if (e.via !== null) {
-		const earlier = lastOf(displayedUnits(doc, e.via).slice(0, e.at), accept);
-		return earlier ?? leftOf(doc, e.via, 0, accept);
-	}
-	const u = unitOf(doc, e.unit)!;
-	return leftOf(doc, u.item, e.unit.k - u.item.id.clock, accept);
-};
-
 /** The sequence node that holds `e`'s displaying item (its record's, or its slot's). */
 export const nodeOf = (doc: EngineDoc, e: Entry): EngineNode =>
 	(e.via !== null ? e.via.parent : unitOf(doc, e.unit)!.item.parent) as EngineNode;
@@ -219,9 +183,13 @@ export const triples = (units: readonly Unit[]): number[] => units.flatMap((u) =
  * the middle of a record's display, the record written here carries that
  * record's later units too, so the new entries show between them. `side` is
  * the record's class among the items of its origin (`0` after, `1` before);
- * `at` the unit it stands at for the engine's sort of two records at one
- * origin (`null`: the first it moves) and `part` its order among the records
- * standing there. Returns the first new slot's unit (`null` without slots).
+ * `chain` the units the record stands at for the engine's sort of two
+ * records at one origin, given its first unit — the home slots from the root
+ * sequence down to the unit it stands at (`null`: the first unit alone) — and
+ * `part` its order among the records standing there. `shown` reads the units
+ * a record shows, as the reader sees them (the index's: a unit a cycle sent
+ * back elsewhere is not carried). Returns the first new slot's unit (`null`
+ * without slots).
  */
 export const placeAfter = (
 	doc: EngineDoc,
@@ -232,17 +200,21 @@ export const placeAfter = (
 	moved: readonly number[] | null = null,
 	side = 0,
 	part = 0,
-	at: Unit | null = null
+	chain: ((first: Unit) => readonly Unit[]) | null = null,
+	shown: (r: SeqItem) => Entry[] = (r) => displayedUnits(doc, r)
 ): Unit | null => {
 	let index: number;
 	let carry: number[] = [];
 	if (left === null) index = right === null ? node.length : liveIndexOf(doc, right);
 	else {
 		if (left.via !== null) {
-			const shown = displayedUnits(doc, left.via);
-			carry = triples(shown.slice(left.at + 1).map((e) => e.unit));
+			const there = shown(left.via);
+			carry = triples(there.slice(left.at + 1).map((e) => e.unit));
 		}
-		index = liveIndexOf(doc, left) + 1;
+		// A unit shown at home though its item moved away (a cycle sent it back)
+		// is no live unit: the gap after it starts at its live index.
+		const live = left.via !== null || unitOf(doc, left.unit)?.item.deleted !== true;
+		index = liveIndexOf(doc, left) + (live ? 1 : 0);
 	}
 	let first: Unit | null = null;
 	const units: number[] = moved === null ? [] : [...moved];
@@ -257,8 +229,18 @@ export const placeAfter = (
 		for (let k = 0; k < units[i + 2]!; k++) named.add(`${units[i]}:${units[i + 1]! + k}`);
 	for (let i = 0; i < carry.length; i += 3)
 		if (!named.has(`${carry[i]}:${carry[i + 1]}`)) units.push(carry[i]!, carry[i + 1]!, 1);
-	if (units.length > 0 && (moved !== null || carry.length > 0))
-		node.move(index, units, side, part, at === null ? null : Y.createID(at.c, at.k));
+	if (units.length > 0 && (moved !== null || carry.length > 0)) {
+		const at = chain === null ? null : chain({ c: units[0]!, k: units[1]! });
+		// A chain of the first unit alone is the engine's default: not written.
+		const own = at !== null && at.length === 1 && at[0]!.c === units[0] && at[0]!.k === units[1];
+		node.move(
+			index,
+			units,
+			side,
+			part,
+			at === null || own ? null : at.map((u) => Y.createID(u.c, u.k))
+		);
+	}
 	return first;
 };
 

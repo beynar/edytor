@@ -20,6 +20,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -58,7 +59,7 @@ describe('UW-17 · a kind the view does not register renders as a plain block', 
 				<paragraph>local</paragraph>
 			</root>
 		);
-		const remoteDoc = new Y.Doc();
+		const remoteDoc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(remoteDoc);
 		remote.facade.insertBlocks({ parent: null, index: 1 }, [

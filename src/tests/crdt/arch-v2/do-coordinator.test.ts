@@ -52,6 +52,7 @@
  */
 // @ts-nocheck -- test lane is excluded from svelte-check; engine internals are untyped here.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 // ── Worker-shaped globals ────────────────────────────────────────────────
 //
@@ -695,7 +696,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 		};
 		/** An update from a peer holding the server's state. */
 		const peerUpdate = (write) => {
-			const peer = new Y.Doc();
+			const peer = keepingReplaced(new Y.Doc());
 			Y.applyUpdate(peer, Y.encodeStateAsUpdate(server.doc));
 			const out = [];
 			peer.on('update', (u) => out.push(u));
@@ -839,7 +840,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 
 	it('the instance-free awareness codec is wire-compatible with Awareness, both ways', () => {
 		// Awareness → entries: decode what the instance encoder wrote.
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const aw = new crdt.Awareness(doc);
 		aw.setLocalStateField('user', { name: 'Ada' });
 		const peers = E.writeAwarenessEntries([
@@ -863,7 +864,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 
 		// Entries → Awareness: an instance applies what the codec wrote, and
 		// re-encodes it byte-identically; a null state removes the client.
-		const other = new crdt.Awareness(new Y.Doc());
+		const other = new crdt.Awareness(keepingReplaced(new Y.Doc()));
 		E.applyAwarenessUpdate(other, E.writeAwarenessEntries(entries), 'test');
 		for (const { clientID, clock, state } of entries) {
 			expect(other.getStates().get(clientID)).toEqual(state);

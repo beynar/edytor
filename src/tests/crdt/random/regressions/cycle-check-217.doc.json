@@ -1,0 +1,892 @@
+{
+	"about": "Wide corpus (seeds 1-1,000, 300 ops), doc adapter, the first 98 steps of seed 217: a neighbour the key walk placed closed a cycle through the block being placed, which no check saw; the display tree held b3 under b3b under b3 and the change report looped forever.",
+	"seed": 217,
+	"peers": 3,
+	"adapter": "doc",
+	"steps": [
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 3,
+				"offset": 8,
+				"atomId": "in217-0"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 1,
+				"offset": 11,
+				"text": "µ217x1",
+				"tag": "µ217x1"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 9,
+				"text": "µ217x2",
+				"tag": "µ217x2"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "removeInline",
+				"idIndex": 4,
+				"inlineIndex": 3
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 6,
+				"intoIndex": 4
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 6,
+				"intoIndex": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "removeInline",
+				"idIndex": 7,
+				"inlineIndex": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 11,
+				"text": "µ217x7",
+				"tag": "µ217x7"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 15,
+				"text": "µ217x8",
+				"tag": "µ217x8"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 3,
+				"offset": 9,
+				"length": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "split",
+				"idIndex": 2,
+				"offset": 12,
+				"newId": "sp217-10"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-12",
+				"type": "paragraph"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 3,
+				"offset": 10,
+				"atomId": "in217-13"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-14",
+				"type": "quote"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-15",
+				"type": "list"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "isolate",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliver",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 6,
+				"parentIndex": 3,
+				"destIndex": 6
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "syncFull",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 5,
+				"offset": 7,
+				"text": "µ217x22",
+				"tag": "µ217x22"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "split",
+				"idIndex": 5,
+				"offset": 10,
+				"newId": "sp217-24"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "heal",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "deliver",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "reloadSnap",
+				"a": 1,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 0,
+				"offset": 1,
+				"length": 3
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 4,
+				"offset": 10,
+				"length": 6,
+				"name": "italic"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 0,
+				"offset": 4,
+				"length": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "persist",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "isolate",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 6,
+				"offset": 4,
+				"atomId": "in217-34"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliver",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 5,
+				"parentIndex": 4,
+				"destIndex": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 4,
+				"offset": 11,
+				"length": 4
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "split",
+				"idIndex": 1,
+				"offset": 14,
+				"newId": "sp217-39"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 3,
+				"offset": 10,
+				"length": 4
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 1,
+				"intoIndex": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 4,
+				"offset": 7,
+				"length": 1,
+				"name": "italic"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-43",
+				"type": "quote"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-44",
+				"type": "paragraph"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "removeInline",
+				"idIndex": 1,
+				"inlineIndex": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 4,
+				"offset": 12,
+				"length": 4
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "duplicate",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverReverse",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 2,
+				"text": "µ217x49",
+				"tag": "µ217x49"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteBlock",
+				"idIndex": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 1,
+				"parentIndex": 6,
+				"destIndex": 4
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 6,
+				"text": "µ217x52",
+				"tag": "µ217x52"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "split",
+				"idIndex": 5,
+				"offset": 11,
+				"newId": "sp217-53"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 14,
+				"text": "µ217x54",
+				"tag": "µ217x54"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "partition",
+				"a": 1,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteBlock",
+				"idIndex": 7
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 0,
+				"intoIndex": 6
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 3,
+				"offset": 1,
+				"text": "µ217x58",
+				"tag": "µ217x58"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "undo"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "split",
+				"idIndex": 6,
+				"offset": 10,
+				"newId": "sp217-60"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 7,
+				"offset": 20,
+				"text": "µ217x62",
+				"tag": "µ217x62"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 5,
+				"parentIndex": 3,
+				"destIndex": 6
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 2,
+				"offset": 5,
+				"length": 6,
+				"name": "code"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 17,
+				"text": "µ217x65",
+				"tag": "µ217x65"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "unsetMark",
+				"idIndex": 7,
+				"offset": 11,
+				"length": 5,
+				"name": "underline"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 7,
+				"text": "µ217x67",
+				"tag": "µ217x67"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 7,
+				"offset": 0,
+				"text": "µ217x68",
+				"tag": "µ217x68"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 1,
+				"offset": 11,
+				"text": "µ217x69",
+				"tag": "µ217x69"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 1,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 5,
+				"offset": 20,
+				"length": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "undo"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "persist",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 2,
+				"offset": 16,
+				"text": "µ217x74",
+				"tag": "µ217x74"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 5,
+				"offset": 19,
+				"text": "µ217x75",
+				"tag": "µ217x75"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 2,
+				"parentIndex": 4,
+				"destIndex": 4
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "unsetMark",
+				"idIndex": 5,
+				"offset": 8,
+				"length": 6,
+				"name": "bold"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "unsetMark",
+				"idIndex": 1,
+				"offset": 7,
+				"length": 2,
+				"name": "italic"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 3,
+				"offset": 3,
+				"text": "µ217x79",
+				"tag": "µ217x79"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 5,
+				"parentIndex": 7,
+				"destIndex": 6
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 0,
+				"offset": 4,
+				"length": 4
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 2,
+				"text": "µ217x83",
+				"tag": "µ217x83"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "unNest",
+				"idIndex": 1
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 3,
+				"offset": 11,
+				"length": 2,
+				"name": "underline"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 7,
+				"offset": 15,
+				"length": 2,
+				"name": "code"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "isolate",
+				"a": 2,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "batch",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 1,
+				"intoIndex": 3
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 3,
+				"offset": 7,
+				"text": "µ217x90",
+				"tag": "µ217x90"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "nest",
+				"idIndex": 0,
+				"parentIndex": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s217-92",
+				"type": "paragraph"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "reloadLog",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "setMark",
+				"idIndex": 6,
+				"offset": 14,
+				"length": 2,
+				"name": "code"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 1,
+				"offset": 10,
+				"atomId": "in217-96"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "syncFull",
+				"a": 2,
+				"b": 0
+			}
+		}
+	],
+	"transcript": "seed 217 — 98 steps\n  0. peer 0: {\"kind\":\"insertInline\",\"idIndex\":3,\"offset\":8,\"atomId\":\"in217-0\"}\n  1. peer 2: {\"kind\":\"insertText\",\"idIndex\":1,\"offset\":11,\"text\":\"µ217x1\",\"tag\":\"µ217x1\"}\n  2. peer 0: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":9,\"text\":\"µ217x2\",\"tag\":\"µ217x2\"}\n  3. peer 2: {\"kind\":\"removeInline\",\"idIndex\":4,\"inlineIndex\":3}\n  4. peer 2: {\"kind\":\"merge\",\"fromIndex\":6,\"intoIndex\":4}\n  5. peer 1: {\"kind\":\"merge\",\"fromIndex\":6,\"intoIndex\":1}\n  6. peer 2: {\"kind\":\"removeInline\",\"idIndex\":7,\"inlineIndex\":1}\n  7. peer 2: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":11,\"text\":\"µ217x7\",\"tag\":\"µ217x7\"}\n  8. peer 0: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":15,\"text\":\"µ217x8\",\"tag\":\"µ217x8\"}\n  9. peer 1: {\"kind\":\"deleteText\",\"idIndex\":3,\"offset\":9,\"length\":2}\n  10. peer 2: {\"kind\":\"split\",\"idIndex\":2,\"offset\":12,\"newId\":\"sp217-10\"}\n  11. peer 2: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  12. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s217-12\",\"type\":\"paragraph\"}\n  13. peer 1: {\"kind\":\"insertInline\",\"idIndex\":3,\"offset\":10,\"atomId\":\"in217-13\"}\n  14. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s217-14\",\"type\":\"quote\"}\n  15. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s217-15\",\"type\":\"list\"}\n  16. peer 1: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":2,\"b\":0}\n  17. peer 2: {\"kind\":\"net\",\"action\":\"isolate\",\"a\":2,\"b\":0}\n  18. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  19. peer 1: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":1,\"b\":2}\n  20. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":6,\"parentIndex\":3,\"destIndex\":6}\n  21. peer 0: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":2,\"b\":0}\n  22. peer 2: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":7,\"text\":\"µ217x22\",\"tag\":\"µ217x22\"}\n  23. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":1,\"b\":2}\n  24. peer 0: {\"kind\":\"split\",\"idIndex\":5,\"offset\":10,\"newId\":\"sp217-24\"}\n  25. peer 0: {\"kind\":\"net\",\"action\":\"heal\",\"a\":2,\"b\":0}\n  26. peer 2: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":0,\"b\":1}\n  27. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":1,\"b\":0}\n  28. peer 2: {\"kind\":\"deleteText\",\"idIndex\":0,\"offset\":1,\"length\":3}\n  29. peer 1: {\"kind\":\"setMark\",\"idIndex\":4,\"offset\":10,\"length\":6,\"name\":\"italic\"}\n  30. peer 0: {\"kind\":\"deleteText\",\"idIndex\":0,\"offset\":4,\"length\":1}\n  31. peer 1: {\"kind\":\"net\",\"action\":\"persist\",\"a\":0,\"b\":1}\n  32. peer 1: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":2,\"b\":1}\n  33. peer 1: {\"kind\":\"net\",\"action\":\"isolate\",\"a\":2,\"b\":1}\n  34. peer 0: {\"kind\":\"insertInline\",\"idIndex\":6,\"offset\":4,\"atomId\":\"in217-34\"}\n  35. peer 1: {\"kind\":\"net\",\"action\":\"batch\",\"a\":2,\"b\":0}\n  36. peer 0: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":1,\"b\":2}\n  37. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":4,\"destIndex\":2}\n  38. peer 2: {\"kind\":\"deleteText\",\"idIndex\":4,\"offset\":11,\"length\":4}\n  39. peer 1: {\"kind\":\"split\",\"idIndex\":1,\"offset\":14,\"newId\":\"sp217-39\"}\n  40. peer 0: {\"kind\":\"deleteText\",\"idIndex\":3,\"offset\":10,\"length\":4}\n  41. peer 0: {\"kind\":\"merge\",\"fromIndex\":1,\"intoIndex\":0}\n  42. peer 0: {\"kind\":\"setMark\",\"idIndex\":4,\"offset\":7,\"length\":1,\"name\":\"italic\"}\n  43. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s217-43\",\"type\":\"quote\"}\n  44. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s217-44\",\"type\":\"paragraph\"}\n  45. peer 0: {\"kind\":\"removeInline\",\"idIndex\":1,\"inlineIndex\":2}\n  46. peer 2: {\"kind\":\"deleteText\",\"idIndex\":4,\"offset\":12,\"length\":4}\n  47. peer 1: {\"kind\":\"net\",\"action\":\"duplicate\",\"a\":2,\"b\":0}\n  48. peer 0: {\"kind\":\"net\",\"action\":\"deliverReverse\",\"a\":0,\"b\":1}\n  49. peer 2: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":2,\"text\":\"µ217x49\",\"tag\":\"µ217x49\"}\n  50. peer 2: {\"kind\":\"deleteBlock\",\"idIndex\":1}\n  51. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":1,\"parentIndex\":6,\"destIndex\":4}\n  52. peer 0: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":6,\"text\":\"µ217x52\",\"tag\":\"µ217x52\"}\n  53. peer 0: {\"kind\":\"split\",\"idIndex\":5,\"offset\":11,\"newId\":\"sp217-53\"}\n  54. peer 1: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":14,\"text\":\"µ217x54\",\"tag\":\"µ217x54\"}\n  55. peer 1: {\"kind\":\"net\",\"action\":\"partition\",\"a\":1,\"b\":0}\n  56. peer 2: {\"kind\":\"deleteBlock\",\"idIndex\":7}\n  57. peer 0: {\"kind\":\"merge\",\"fromIndex\":0,\"intoIndex\":6}\n  58. peer 2: {\"kind\":\"insertText\",\"idIndex\":3,\"offset\":1,\"text\":\"µ217x58\",\"tag\":\"µ217x58\"}\n  59. peer 1: {\"kind\":\"undo\"}\n  60. peer 1: {\"kind\":\"split\",\"idIndex\":6,\"offset\":10,\"newId\":\"sp217-60\"}\n  61. peer 0: {\"kind\":\"net\",\"action\":\"batch\",\"a\":2,\"b\":0}\n  62. peer 1: {\"kind\":\"insertText\",\"idIndex\":7,\"offset\":20,\"text\":\"µ217x62\",\"tag\":\"µ217x62\"}\n  63. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":3,\"destIndex\":6}\n  64. peer 2: {\"kind\":\"setMark\",\"idIndex\":2,\"offset\":5,\"length\":6,\"name\":\"code\"}\n  65. peer 2: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":17,\"text\":\"µ217x65\",\"tag\":\"µ217x65\"}\n  66. peer 2: {\"kind\":\"unsetMark\",\"idIndex\":7,\"offset\":11,\"length\":5,\"name\":\"underline\"}\n  67. peer 0: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":7,\"text\":\"µ217x67\",\"tag\":\"µ217x67\"}\n  68. peer 2: {\"kind\":\"insertText\",\"idIndex\":7,\"offset\":0,\"text\":\"µ217x68\",\"tag\":\"µ217x68\"}\n  69. peer 1: {\"kind\":\"insertText\",\"idIndex\":1,\"offset\":11,\"text\":\"µ217x69\",\"tag\":\"µ217x69\"}\n  70. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":1,\"b\":0}\n  71. peer 2: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":20,\"length\":1}\n  72. peer 1: {\"kind\":\"undo\"}\n  73. peer 0: {\"kind\":\"net\",\"action\":\"persist\",\"a\":1,\"b\":2}\n  74. peer 0: {\"kind\":\"insertText\",\"idIndex\":2,\"offset\":16,\"text\":\"µ217x74\",\"tag\":\"µ217x74\"}\n  75. peer 0: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":19,\"text\":\"µ217x75\",\"tag\":\"µ217x75\"}\n  76. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":2,\"parentIndex\":4,\"destIndex\":4}\n  77. peer 0: {\"kind\":\"unsetMark\",\"idIndex\":5,\"offset\":8,\"length\":6,\"name\":\"bold\"}\n  78. peer 0: {\"kind\":\"unsetMark\",\"idIndex\":1,\"offset\":7,\"length\":2,\"name\":\"italic\"}\n  79. peer 2: {\"kind\":\"insertText\",\"idIndex\":3,\"offset\":3,\"text\":\"µ217x79\",\"tag\":\"µ217x79\"}\n  80. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":7,\"destIndex\":6}\n  81. peer 1: {\"kind\":\"deleteText\",\"idIndex\":0,\"offset\":4,\"length\":4}\n  82. peer 2: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":2,\"b\":0}\n  83. peer 2: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":2,\"text\":\"µ217x83\",\"tag\":\"µ217x83\"}\n  84. peer 2: {\"kind\":\"unNest\",\"idIndex\":1}\n  85. peer 2: {\"kind\":\"setMark\",\"idIndex\":3,\"offset\":11,\"length\":2,\"name\":\"underline\"}\n  86. peer 2: {\"kind\":\"setMark\",\"idIndex\":7,\"offset\":15,\"length\":2,\"name\":\"code\"}\n  87. peer 0: {\"kind\":\"net\",\"action\":\"isolate\",\"a\":2,\"b\":1}\n  88. peer 0: {\"kind\":\"net\",\"action\":\"batch\",\"a\":2,\"b\":0}\n  89. peer 0: {\"kind\":\"merge\",\"fromIndex\":1,\"intoIndex\":3}\n  90. peer 0: {\"kind\":\"insertText\",\"idIndex\":3,\"offset\":7,\"text\":\"µ217x90\",\"tag\":\"µ217x90\"}\n  91. peer 2: {\"kind\":\"nest\",\"idIndex\":0,\"parentIndex\":1}\n  92. peer 1: {\"kind\":\"insertBlock\",\"id\":\"s217-92\",\"type\":\"paragraph\"}\n  93. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  94. peer 0: {\"kind\":\"net\",\"action\":\"reloadLog\",\"a\":2,\"b\":0}\n  95. peer 2: {\"kind\":\"setMark\",\"idIndex\":6,\"offset\":14,\"length\":2,\"name\":\"code\"}\n  96. peer 0: {\"kind\":\"insertInline\",\"idIndex\":1,\"offset\":10,\"atomId\":\"in217-96\"}\n  97. peer 0: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":2,\"b\":0}"
+}

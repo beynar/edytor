@@ -25,7 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
-import { resolveAll } from '../../../../lib/crdt/placement/resolve.js';
+import { edgeOf } from '../../../../lib/crdt/placement/resolve.js';
 import { engineOps } from '../../../../lib/crdt/structs.js';
 import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
 import { readData } from '../../../../lib/crdt/data.js';
@@ -583,7 +583,17 @@ export const tagAtomDeps = (
 export const captureOpState = (peer: Peer): OpState => {
 	const blocks = M.collectBlocks(peer.doc);
 	const own = T.computeOwnership(peer.doc, blocks);
-	const { edges } = resolveAll(peer.doc, blocks, own.ownerOf, engineOps(Y).isKeptReplaced);
+	// The stored intent: each block's strongest edge (its mover, else home), never
+	// the cycle resolution's choice — a merge or an undo elsewhere can break a
+	// cycle and let a dropped move show again, which no op wrote (fork patch YP22).
+	const registry = M.registryOf(peer.doc);
+	const kept = engineOps(Y).isKeptReplaced;
+	const edges = new Map(
+		[...blocks].map(([id, rec]) => [
+			id,
+			rec.home === null ? null : edgeOf(peer.doc, registry, kept, rec.home)
+		])
+	);
 	const atoms: OpState['atoms'] = new Map();
 	const claims: OpState['claims'] = new Map();
 	const blocksOut: OpState['blocks'] = new Map();
@@ -624,9 +634,9 @@ export const captureOpState = (peer: Peer): OpState => {
 			// (`hist.undo.withdraw`) is derived from what it holds, not a delete.
 			deleted: delItems.length > 0,
 			delStamp: delItems.length > 0 ? delItems.join(',') : null,
-			// Its display edge: the sequence its home slot shows in, at home or at a record
-			// (never the record's identity: a record written beside it carries it along
-			// without moving it, fork patch YP22 `placeAfter`).
+			// Its strongest edge: the sequence its home slot shows in as written, at home
+			// or at a record (never the record's identity: a record written beside it
+			// carries it along without moving it, fork patch YP22 `placeAfter`).
 			placements: canonKey(
 				(() => {
 					const e = edges.get(id);
@@ -705,16 +715,15 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 };
 
 /**
- * Attach history tracking for `peer` — an UndoManager scoped to the registry
- * and the text hold records (a text delete is a record, fork patch YP20) with
- * `captureTimeout: 0` (one stack item per op transaction) tracking only the
- * peer's local origin. Idempotent; reload clears `peer.undoManager`, so a
- * post-reload call re-derives it on the new doc.
+ * Attach history tracking for `peer` — the document's own history (the one
+ * the editor runs: its scope, the text hold records, `hist.undo.withdraw`,
+ * `harness/history.ts`) with `captureTimeout: 0` (one stack item per op
+ * transaction) tracking only the peer's local origin. Idempotent; reload
+ * clears `peer.undoManager`, so a post-reload call re-derives it on the new
+ * doc.
  */
 export const trackHistory = (peer: Peer): void => {
-	if (peer.undoManager === null) {
-		peer.enableUndo({ scope: M.registryOf(peer.doc), captureTimeout: 0 });
-	}
+	if (peer.undoManager === null) peer.enableUndo({ scope: null, captureTimeout: 0 });
 };
 
 export const undo = (peer: Peer): void => {

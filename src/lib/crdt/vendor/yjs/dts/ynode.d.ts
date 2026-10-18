@@ -211,17 +211,18 @@ export class YNode {
      * YP22: move the units `ids` (`client, clock, len` ranges, in the order
      * they will show) to live index `index` of this sequence: one move record
      * there (`ContentMove`); `side` is its class among the items of its origin
-     * (`0` after, `1` before), `at` the unit it stands at for the sort of two
-     * records at one origin (`null`: the first it names) and `part` the
-     * writer's order among the records standing at that unit.
+     * (`0` after, `1` before), `at` the chain it stands at for the sort of two
+     * records at one origin — the units from the root sequence down to the
+     * unit it stands at, outermost first (`null`: the first unit it names) —
+     * and `part` the writer's order among the records standing at that unit.
      *
      * @param {number} index
      * @param {Array<number>} ids
      * @param {number} [side]
      * @param {number} [part]
-     * @param {ID|null} [at]
+     * @param {Array<ID>|null} [at]
      */
-    move(index: number, ids: Array<number>, side?: number, part?: number, at?: ID | null): void;
+    move(index: number, ids: Array<number>, side?: number, part?: number, at?: Array<ID> | null): void;
     /**
      * Executes a provided function on once on every key-value pair.
      *

@@ -22,7 +22,7 @@ import * as delta from 'lib0-v14/delta';
 import { findMarker } from '../../../lib/crdt/vendor/yjs/src/ynode.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf } from '../harness/history.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 900_000;
@@ -158,7 +158,7 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new UndoManager(t, { captureTimeout: 0 });
+			const um = historyOf(doc, { scope: t, captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);
@@ -201,7 +201,7 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new UndoManager(t, { captureTimeout: 0 });
+			const um = historyOf(doc, { scope: t, captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);

@@ -1,0 +1,167 @@
+{
+	"about": "Wide corpus (CRDT_SEEDS=1-1000 CRDT_OPS=300), model adapter: an undo that withdraws a block a peer typed into removed the peer's text (`hist.undo.withdraw`). Minimized schedule.",
+	"seed": 219,
+	"peers": 3,
+	"steps": [
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "split",
+				"idIndex": 4,
+				"offset": 14,
+				"newId": "sp219-76"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 4,
+				"offset": 8,
+				"atomId": "in219-77"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 3,
+				"offset": 6,
+				"atomId": "in219-78"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "moveBlock",
+				"idIndex": 0,
+				"parentIndex": 5,
+				"destIndex": 0
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 4,
+				"text": "\u00b5219x80",
+				"tag": "\u00b5219x80"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "partition",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 4,
+				"offset": 14,
+				"text": "\u00b5219x99",
+				"tag": "\u00b5219x99"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 5,
+				"offset": 3,
+				"atomId": "in219-100"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "unNest",
+				"idIndex": 7
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 5,
+				"offset": 16,
+				"text": "\u00b5219x102",
+				"tag": "\u00b5219x102"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "merge",
+				"fromIndex": 5,
+				"intoIndex": 5
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 5,
+				"offset": 1,
+				"length": 5
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s219-105",
+				"type": "quote"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 6,
+				"offset": 16,
+				"text": "\u00b5219x107",
+				"tag": "\u00b5219x107"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverReverse",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "undo"
+			}
+		}
+	],
+	"transcript": "seed 219 \u2014 18 steps\n  0. peer 1: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":1,\"b\":2}\n  1. peer 0: {\"kind\":\"split\",\"idIndex\":4,\"offset\":14,\"newId\":\"sp219-76\"}\n  2. peer 2: {\"kind\":\"insertInline\",\"idIndex\":4,\"offset\":8,\"atomId\":\"in219-77\"}\n  3. peer 1: {\"kind\":\"insertInline\",\"idIndex\":3,\"offset\":6,\"atomId\":\"in219-78\"}\n  4. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":0,\"parentIndex\":5,\"destIndex\":0}\n  5. peer 2: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":4,\"text\":\"\u00b5219x80\",\"tag\":\"\u00b5219x80\"}\n  6. peer 2: {\"kind\":\"net\",\"action\":\"partition\",\"a\":2,\"b\":0}\n  7. peer 0: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":14,\"text\":\"\u00b5219x99\",\"tag\":\"\u00b5219x99\"}\n  8. peer 2: {\"kind\":\"insertInline\",\"idIndex\":5,\"offset\":3,\"atomId\":\"in219-100\"}\n  9. peer 0: {\"kind\":\"unNest\",\"idIndex\":7}\n  10. peer 0: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":16,\"text\":\"\u00b5219x102\",\"tag\":\"\u00b5219x102\"}\n  11. peer 1: {\"kind\":\"merge\",\"fromIndex\":5,\"intoIndex\":5}\n  12. peer 1: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":1,\"length\":5}\n  13. peer 1: {\"kind\":\"insertBlock\",\"id\":\"s219-105\",\"type\":\"quote\"}\n  14. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  15. peer 0: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":16,\"text\":\"\u00b5219x107\",\"tag\":\"\u00b5219x107\"}\n  16. peer 1: {\"kind\":\"net\",\"action\":\"deliverReverse\",\"a\":0,\"b\":1}\n  17. peer 1: {\"kind\":\"undo\"}"
+}

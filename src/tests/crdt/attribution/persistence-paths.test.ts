@@ -31,6 +31,7 @@ import {
 } from '../../../lib/crdt/index.js';
 import { docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import type { EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const idbProviders = bindIndexeddbProvider(Y);
 const providers = bindProviders(Y);
@@ -233,7 +234,7 @@ describe('IndexedDB persistence + compaction', () => {
 		await pA.destroy();
 
 		// A fresh doc hydrates from the compacted store — schema gate clean.
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		const pB = new idbProviders.IndexeddbPersistence(name, docB);
 		await pB.whenSynced;
 		const restored = attachDocument(docB, { actor: bob });
@@ -259,7 +260,7 @@ describe('IndexedDB persistence + compaction', () => {
 		// is what the gate must accept.
 		await seedGenerationDb(name, [a.encode()]);
 
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		const pB = new idbProviders.IndexeddbPersistence(name, docB);
 		const mismatches: unknown[] = [];
 		pB.on('schema-mismatch', (d: unknown) => mismatches.push(d));
@@ -287,7 +288,7 @@ describe('provider sync', () => {
 		const pA = new idbProviders.IndexeddbPersistence(name, a.doc as never);
 		await pA.whenSynced;
 
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		const pB = new idbProviders.IndexeddbPersistence(name, docB);
 		await pB.whenSynced;
 		await until(() => docB.get('blocks').getAttr(blockId) !== undefined, 4000);

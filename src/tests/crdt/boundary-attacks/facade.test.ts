@@ -1,14 +1,16 @@
 /**
  * GATE-2 attack probes — the assembled facade (attack items 2, 7, 9).
  *
- * 2. Undo scope: the facade ships NO UndoManager — U08 will attach one.
- *    These probes pin what each scope choice does to `meta`/`blocks`:
- *    - doc-scoped UM: init's version stamp is undoable; a schema-version
- *      upgrade is undoable (resurrects the stale version).
- *    - registry-scoped UM (baseline parity): meta writes are invisible, but
- *      the bootstrap insert IS inside the registry — attaching the UM before
- *      init lets a user undo the bootstrap into a "versioned but empty" doc.
- *    - provider/remote writes must never enter the undo stack.
+ * 2. Undo scope: the document's history (the one the editor runs, attached
+ *    here outside the facade's factory) scopes the block registry, the text
+ *    hold records and the document's data, never `meta`. These probes pin:
+ *    - the seed (version stamp + default block) is no undo step, even for a
+ *      history attached before init;
+ *    - a schema-version write is never undoable (the engine's undo manager,
+ *      scoped to the whole doc, used to resurrect the stale version);
+ *    - the bootstrap insert is unreachable whether the history attaches
+ *      before or after init;
+ *    - provider/remote writes never enter the undo stack.
  *
  * 7. DocChange mirror: apply every DocChange to a plain-JSON mirror and
  *    require equality with toJSON() — including remote updates, undo, and
@@ -24,14 +26,15 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 import { readData } from '../../../lib/crdt/data.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf } from '../harness/history.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
 const nextTick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
 const freshDoc = (withContent = true) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	const ed = E.create(doc);
 	ed.init();
 	if (withContent) {
@@ -43,11 +46,11 @@ const freshDoc = (withContent = true) => {
 };
 
 describe('attack 2: undo scope vs meta/schema', () => {
-	test('doc-scoped UM: the seed (version stamp + default block) is not an undo step', () => {
+	test('a history attached before init: the seed (version stamp + default block) is not an undo step', () => {
 		// R13 §2.1 / D-3: init's seed is one update applied with a non-local
 		// origin — it used to be a tracked local write that undo removed.
-		const doc = new Y.Doc();
-		const um = new UndoManager(doc, { captureTimeout: 0 });
+		const doc = keepingReplaced(new Y.Doc());
+		const um = historyOf(doc, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
 		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
@@ -60,23 +63,23 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		ed.dispose();
 	});
 
-	test('doc-scoped UM: undo resurrects a stale schema version', () => {
+	test('a schema-version write is never an undo step: undo cannot resurrect a stale version', () => {
 		const { doc, ed } = freshDoc();
-		const um = new UndoManager(doc, { captureTimeout: 0 });
+		const um = historyOf(doc, { captureTimeout: 0 });
 		doc.transact(() => doc.get('meta').setAttr('v', 99)); // a "future" schema bump
 		expect(E.schemaVersion(doc)).toBe(99);
-		um.undo();
-		// v14 UndoManager happily rolls the version record back to 1 — the
-		// doc now claims an older schema than it was written under. Nothing
-		// protects meta.v from undo resurrection.
-		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
+		// `meta` is outside the history's scope: nothing was captured, and the
+		// undo rolls nothing back (the engine's doc-scoped undo manager rolled
+		// the record back to the older version the doc was not written under).
+		expect(um.canUndo()).toBe(false);
+		expect(um.undo()).toBeNull();
+		expect(E.schemaVersion(doc)).toBe(99);
 		ed.dispose();
 	});
 
-	test('registry-scoped UM attached BEFORE init cannot reach the seed', () => {
-		const doc = new Y.Doc();
-		const registry = doc.get('blocks');
-		const um = new UndoManager(registry, { captureTimeout: 0 });
+	test('a history attached BEFORE init cannot reach the seed', () => {
+		const doc = keepingReplaced(new Y.Doc());
+		const um = historyOf(doc, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
 		ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
@@ -93,10 +96,9 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		ed.dispose();
 	});
 
-	test('registry-scoped UM attached AFTER init can never reach the bootstrap', () => {
+	test('a history attached AFTER init can never reach the bootstrap', () => {
 		const { doc, ed } = freshDoc(false);
-		const registry = doc.get('blocks');
-		const um = new UndoManager(registry, { captureTimeout: 0 });
+		const um = historyOf(doc, { captureTimeout: 0 });
 		ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 		um.undo();
 		// Undo consumed the only captured op — the bootstrap is unreachable.
@@ -107,14 +109,13 @@ describe('attack 2: undo scope vs meta/schema', () => {
 
 	test('provider-applied (remote/untracked-origin) updates never enter the stack', () => {
 		const { doc, ed } = freshDoc();
-		const um = new UndoManager(doc, { captureTimeout: 0 });
-		const remote = new Y.Doc();
+		const um = historyOf(doc, { captureTimeout: 0 });
+		const remote = keepingReplaced(new Y.Doc());
 		const remoteEd = E.create(remote);
 		remoteEd.init();
 		remoteEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'r1', type: 'paragraph' }]);
 		// Remote application carries an origin object that is NOT in
-		// trackedOrigins — and the update lands outside the registry scope
-		// check anyway (changedParentTypes covers it — origin is the filter).
+		// trackedOrigins (the update reaches the registry scope: origin is the filter).
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote), { remote: true });
 		expect(ed.childrenIds(null)).toContain('r1');
 		expect(um.canUndo()).toBe(false); // remote writes are never undoable
@@ -178,7 +179,7 @@ describe('attack 9: aliasing — caller objects leak into replicated state', () 
 		// CONTRACT: the facade owns its inputs — mutating a caller-held spec
 		// post-insert must not corrupt replicated state.
 		expect(readData(inlNode).label).toBe('Ada'); // ← fails: live alias
-		const replica = new Y.Doc();
+		const replica = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(replica, Y.encodeStateAsUpdate(doc));
 		expect(readData(replica.get('blocks').getAttr('b-inl').getAttr('content').get(0)).label).toBe(
 			'Ada'
@@ -357,15 +358,15 @@ describe('attack 7: DocChange mirror', () => {
 		expect(mirror.render()).toEqual(ed.toJSON());
 
 		// remote-applied update
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		const remoteEd = E.create(remote);
 		remoteEd.init();
 		remoteEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'r1', type: 'paragraph' }]);
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote), { remote: true });
 		expect(mirror.render()).toEqual(ed.toJSON());
 
-		// undo (doc-scoped UM for coverage)
-		const um = new UndoManager(doc, { captureTimeout: 0 });
+		// undo (the document's history)
+		const um = historyOf(doc, { captureTimeout: 0 });
 		ed.insertText('b1', 0, 'X');
 		um.stopCapturing();
 		um.undo();
@@ -373,7 +374,7 @@ describe('attack 7: DocChange mirror', () => {
 
 		// update-only construction: a doc built purely from applyUpdate
 		// (no init call) must produce a coherent facade + mirror.
-		const docOnly = new Y.Doc();
+		const docOnly = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(docOnly, Y.encodeStateAsUpdate(doc));
 		const edOnly = E.create(docOnly);
 		expect(edOnly.toJSON()).toEqual(ed.toJSON());

@@ -48,7 +48,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf, type UndoManager } from '../harness/history.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 100_000;
@@ -243,7 +243,7 @@ const replayChecked = (
 		const t = doc.get('t');
 		doc.transact(() => build(t, doc));
 		if (!withMarkers) t._searchMarker = null;
-		const um = new UndoManager(t, { captureTimeout: 0 });
+		const um = historyOf(doc, { scope: t, captureTimeout: 0 });
 		return { doc, t, um };
 	};
 	const a = mk(true);
@@ -400,7 +400,7 @@ describe('R1 — same-key boundary scenarios (differential, per-op)', () => {
 		);
 	});
 
-	test('undo/redo through UndoManager across format + marker ops', () => {
+	test('undo/redo through the history across format + marker ops', () => {
 		const ops = [
 			(s: Side) =>
 				s.doc.transact(() => applyDelta(s.t, delta.create().retain(120).insert('P', { u: true }))),
@@ -427,7 +427,7 @@ describe('R1 — bounded randomized replay: patched vs disabled after EVERY op',
 			const t = doc.get('t');
 			doc.transact(() => build(t, doc));
 			if (!withMarkers) t._searchMarker = null;
-			const um = new UndoManager(t, { captureTimeout: 0 });
+			const um = historyOf(doc, { scope: t, captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);

@@ -36,6 +36,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { diffSnaps, type DocSnap } from '../../oracles/doc-change.js';
 import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -180,7 +181,7 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 				p('d', 'delta', [p('d1', 'deep')])
 			];
 			const open = (clientID: number, bytes?: Uint8Array) => {
-				const doc = new Y.Doc();
+				const doc = keepingReplaced(new Y.Doc());
 				doc.clientID = clientID;
 				if (bytes) Y.applyUpdate(doc, bytes);
 				const ed = E.create(doc, { actor: () => ({ id: `u${clientID}` }), roleOf: roles });
@@ -325,7 +326,7 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 
 describe('D9 — publication: nested once, change-then-revert nothing, every facade once', () => {
 	const make = () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = 11;
 		const ed = E.create(doc);
 		ed.init({ content: [p('a', 'alpha'), p('b', 'beta', [p('b1', 'kid')]), p('c', 'gamma')] });
@@ -383,7 +384,7 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 		'a block that arrives under a deleted subtree takes its slot and is reported (visible = reachable, UW-08)',
 		() => {
 			const { doc, ed } = make();
-			const peerDoc = new Y.Doc();
+			const peerDoc = keepingReplaced(new Y.Doc());
 			peerDoc.clientID = 12;
 			Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
 			const peer = E.create(peerDoc);
@@ -408,7 +409,7 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 
 describe('F-O9 — a read inside a transaction sees the edits before it', () => {
 	const make = () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = 21;
 		const ed = E.create(doc);
 		ed.init({ content: [p('a', 'abc'), p('b', 'xyz')] });
@@ -503,7 +504,7 @@ describe('F-O5 — one transaction of N inserts folds about what N separate tran
 	 * transaction folded.
 	 */
 	const run = (n: number, oneTx: boolean) => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = 31;
 		const ed = E.create(doc);
 		ed.init({ content: [p('r0', 'x')] });

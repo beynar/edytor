@@ -27,10 +27,13 @@
  *   wins its movers — the greatest `(priority, client, clock)` — and is
  *   hidden at home; deleting a record (an undo) hands the slot to the next
  *   record, else home. Replicas converge in any delivery order.
- * - Projection resolves the display edges greedily in that order: an edge is
- *   accepted iff its DISPLAY parent chain cannot reach back to the block
- *   through already accepted edges; a rejected block (the oldest edge of a
- *   cycle) shows at the root after the last top-level block (deterministic,
+ * - Projection resolves the display edges greedily in that order: a block's
+ *   candidates are its live records, strongest first, then its home slot,
+ *   and it takes the first whose DISPLAY parent chain cannot reach back to
+ *   the block through already accepted edges — the later move wins, and a
+ *   block whose move a cycle drops is back where it stood (its previous
+ *   record, else home); only a block every candidate of which closes a cycle
+ *   shows at the root after the last top-level block (deterministic,
  *   acyclic, pure — no repair writes). The acyclic relation is the COMPOSED
  *   one — raw edges are acyclic but merge claims can redirect a display edge
  *   back into the block's own subtree.
@@ -94,18 +97,26 @@ import { incarnationNode, isIncarnationId } from '../incarnations.js';
 import { engineOps, firstItem, storeOf } from '../structs.js';
 import {
 	anchorOf,
-	before,
 	isBlockSlot,
+	isRecord,
 	nodeOf,
 	placeAfter,
 	triples,
+	unitOf,
 	type BlockSlot,
 	type Entry,
 	type Unit,
 	type SeqItem,
 	type Stamp
 } from './slots.js';
-import { resolvePlacements, type SlotRef } from './resolve.js';
+import {
+	ownerOfNode,
+	positionsOfItem,
+	resolvePlacements,
+	slotOwner,
+	type Edge,
+	type SlotRef
+} from './resolve.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -261,6 +272,14 @@ export type ModelView = {
 	 * marks what its target displays; a block set deletes many).
 	 */
 	displays: (owner: BlockId) => readonly BlockId[];
+	/**
+	 * The display edge block `id` shows at, as the index accepts it (its
+	 * strongest move record, or — a cycle dropped a later move — an older one
+	 * or its home slot); `null` at the root's tail (every edge closes a cycle)
+	 * or without a slot. The writes anchor where it shows.
+	 * @internal
+	 */
+	accepted: (id: BlockId) => Edge | null;
 };
 
 /**
@@ -399,10 +418,63 @@ export const isSelfOrDescendant = (
 const sequenceOf = (doc: EngineDoc, parent: BlockId | null): EngineNode =>
 	parent === null ? registryOf(doc) : blockNodeOf(doc, parent)!;
 
-/** The entry block `id` displays as in `v` (its home slot, or its mover's unit), or `null`. */
+/** The block slots record `r` shows as `v` reads it: the units whose block's accepted edge is `r`, in the order it names them. */
+const shownAt = (doc: EngineDoc, v: ModelView, r: SeqItem): Entry[] => {
+	const registry = registryOf(doc);
+	const out: Entry[] = [];
+	for (const e of positionsOfItem(doc, r)) {
+		const b = slotOwner(registry, isKeptReplaced, (e.value as BlockSlot).b, e.unit.c);
+		const home = v.blocks.get(b)?.home;
+		if (!home || home.c !== e.unit.c || home.k !== e.unit.k || v.accepted(b)?.via !== r) continue;
+		out.push({ ...e, at: out.length });
+	}
+	return out;
+};
+
+/** The block slots slot item `it` shows at home as `v` reads it (moved away or not: a cycle may send one back). */
+const homeShownAt = (doc: EngineDoc, v: ModelView, it: SeqItem): Entry[] => {
+	const registry = registryOf(doc);
+	return positionsOfItem(doc, it).filter((e) => {
+		const b = slotOwner(registry, isKeptReplaced, (e.value as BlockSlot).b, e.unit.c);
+		const home = v.blocks.get(b)?.home;
+		const edge = v.accepted(b);
+		return (
+			!!home && home.c === e.unit.c && home.k === e.unit.k && edge !== null && edge.via === null
+		);
+	});
+};
+
+/** The entry block `id` displays as in `v` (its home slot, or its unit at the record it shows at), or `null`. */
 const anchorIn = (doc: EngineDoc, v: ModelView, id: BlockId): Entry | null => {
 	const home = v.blocks.get(id)?.home;
-	return home === undefined || home === null ? null : anchorOf(doc, home);
+	if (home === undefined || home === null) return null;
+	const edge = v.accepted(id);
+	// At the root's tail (a cycle): the engine's place, the nearest one there is.
+	if (edge === null) return anchorOf(doc, home);
+	if (edge.via === null) {
+		const u = unitOf(doc, home);
+		return u === null ? null : { value: u.value, unit: home, via: null, at: 0 };
+	}
+	return shownAt(doc, v, edge.via).find((e) => e.unit.c === home.c && e.unit.k === home.k) ?? null;
+};
+
+/** The entry right before `e` in its sequence as `v` reads it (`e`'s record's previous unit, else the nearest shown to the left). */
+const beforeIn = (doc: EngineDoc, v: ModelView, e: Entry): Entry | null => {
+	let start: SeqItem;
+	if (e.via !== null) {
+		if (e.at > 0) return shownAt(doc, v, e.via)[e.at - 1] ?? null;
+		start = e.via;
+	} else {
+		const u = unitOf(doc, e.unit)!;
+		start = u.item;
+		const own = homeShownAt(doc, v, start).filter((x) => x.unit.k < e.unit.k);
+		if (own.length > 0) return own[own.length - 1]!;
+	}
+	for (let p = start.left; p !== null; p = p.left) {
+		const list = isRecord(p) ? shownAt(doc, v, p) : homeShownAt(doc, v, p);
+		if (list.length > 0) return list[list.length - 1]!;
+	}
+	return null;
 };
 
 /**
@@ -426,24 +498,50 @@ export const placeBlocks = (
 	part = 0,
 	at: Unit | null = null
 ): void => {
-	const isBlock = (e: Entry) => isBlockSlot(e.value);
+	// Where `v` shows its blocks: a unit a cycle sent back elsewhere is neither an anchor nor carried.
+	const shown = (r: SeqItem) => shownAt(doc, v, r);
+	// The record stands at `at` (else its first unit), named with the home slots above it.
+	const chain = (first: Unit) => unitChain(doc, v, at ?? first);
 	const l = left === null ? null : anchorIn(doc, v, left);
 	if (l !== null)
-		return void placeAfter(doc, nodeOf(doc, l), l, null, slots, moved, side, part, at);
+		return void placeAfter(doc, nodeOf(doc, l), l, null, slots, moved, side, part, chain, shown);
 	const r = right === null ? null : anchorIn(doc, v, right);
 	if (r !== null)
 		return void placeAfter(
 			doc,
 			nodeOf(doc, r),
-			before(doc, r, isBlock),
+			beforeIn(doc, v, r),
 			r,
 			slots,
 			moved,
 			side,
 			part,
-			at
+			chain,
+			shown
 		);
-	placeAfter(doc, sequenceOf(doc, parent), null, null, slots, moved, side, part, at);
+	placeAfter(doc, sequenceOf(doc, parent), null, null, slots, moved, side, part, chain, shown);
+};
+
+/**
+ * The chain a move record names for the engine's sort (fork patch YP22):
+ * the home slots from the root sequence down to unit `u`, outermost first —
+ * the slot of the block owning `u`'s sequence, that block's parent's, …
+ * Home slots never move, so every writer names one chain for one unit.
+ */
+const unitChain = (doc: EngineDoc, v: ModelView, u: Unit): Unit[] => {
+	const out: Unit[] = [u];
+	const item = unitOf(doc, u)?.item;
+	let owner =
+		item === undefined
+			? null
+			: ownerOfNode(registryOf(doc), isKeptReplaced, item.parent as EngineNode);
+	for (let n = 0; owner != null && n < 4096; n++) {
+		const home = v.blocks.get(owner)?.home;
+		if (!home) break;
+		out.unshift({ c: home.c, k: home.k });
+		owner = home.parent;
+	}
+	return out;
 };
 
 /** The displayed children of `parent` in `v`, the `exclude`d left out. */
@@ -784,17 +882,20 @@ export const resolveBlock = (doc: EngineDoc, id: BlockId): EngineNode | null => 
 
 /**
  * The live move records of `node`'s sequence (the room's purge, tests):
- * each with its stamp and whether some unit still shows at it.
+ * each with its stamp and whether some unit still shows at it — the
+ * engine's mover of a unit, or (with `v`) the record a block shows at in
+ * `v` (a cycle sent it back to an older one).
  */
 export const recordsOf = (
 	doc: EngineDoc,
-	node: EngineNode
+	node: EngineNode,
+	v?: ModelView
 ): { item: SeqItem; stamp: Stamp; wins: boolean }[] => {
 	const out: { item: SeqItem; stamp: Stamp; wins: boolean }[] = [];
 	for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
 		if (it.deleted || it.content.priority === undefined || it.content.ids === undefined) continue;
 		const ids = it.content.ids;
-		let wins = false;
+		let wins = v !== undefined && shownAt(doc, v, it).length > 0;
 		for (let i = 0; i < ids.length && !wins; i += 3)
 			for (let k = 0; k < ids[i + 2]! && !wins; k++)
 				wins = anchorOf(doc, { c: ids[i]!, k: ids[i + 1]! + k })?.via === it;

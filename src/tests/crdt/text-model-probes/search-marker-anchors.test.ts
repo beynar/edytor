@@ -26,7 +26,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as Y13 from 'yjs';
 import * as delta from 'lib0-v14/delta';
 import { toDelta, applyDelta } from '../harness/delta.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf } from '../harness/history.js';
 
 const buildFragmented = (doc, name, n) => {
 	const text = doc.get(name);
@@ -153,7 +153,7 @@ describe('gateF2/WU9 — undo resurrection around markers', () => {
 			const doc = newDoc();
 			const t = buildFragmented(doc, 't', 150);
 			if (!withMarkers) t._searchMarker = null;
-			const um = new UndoManager(t);
+			const um = historyOf(doc, { scope: t });
 			// plant marker at 120
 			doc.transact(() => applyDelta(t, delta.create().retain(120).insert('P')));
 			// delete a range ADJACENT to (not covering) the marker
@@ -176,7 +176,7 @@ describe('gateF2/WU9 — undo resurrection around markers', () => {
 			const doc = newDoc();
 			const t = buildFragmented(doc, 't', 150);
 			if (!withMarkers) t._searchMarker = null;
-			const um = new UndoManager(t);
+			const um = historyOf(doc, { scope: t });
 			doc.transact(() => applyDelta(t, delta.create().retain(120).insert('P', { u: true })));
 			um.undo(); // removes 'P' — marker anchor deleted by undo
 			doc.transact(() => applyDelta(t, delta.create().retain(110).insert('zz')));

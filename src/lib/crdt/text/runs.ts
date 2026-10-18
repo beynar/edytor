@@ -340,7 +340,11 @@ const buildView = (doc: EngineDoc): RunView => {
 		// The publication boundary shares THIS interner, so a payload
 		// emitted by `project()`/`contentItems()` is `===` the runs' one.
 		intern,
-		displays
+		displays,
+		accepted: (id) => {
+			ensurePlacements();
+			return ix.rejected.has(id) ? null : (ix.edges.get(id) ?? null);
+		}
 	};
 
 	// ── initial scan: index every existing block ────────────────────

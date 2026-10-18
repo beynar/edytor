@@ -16,6 +16,7 @@ import {
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /**
  * U2 headless command bridge — the deletion-collaboration handoff requires
@@ -65,7 +66,7 @@ const mountReplicaPeer = async (
 	peer: MountedPeer,
 	fixture: Parameters<typeof renderDomEdytor>[0]
 ) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer.edytor.doc));
 	return renderDomEdytor(fixture, { doc, autoSelectFixture: false });
 };

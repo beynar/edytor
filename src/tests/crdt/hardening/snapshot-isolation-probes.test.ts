@@ -24,12 +24,13 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID as BOOTSTRAP_BLOCK } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 500_000;
 
 const seed = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = cid++;
 	const ed = E.create(doc);
 	ed.init({
@@ -87,7 +88,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		}
 		let remoteThrew: unknown = null;
 		if (encoded) {
-			const remote = new Y.Doc();
+			const remote = keepingReplaced(new Y.Doc());
 			remote.clientID = cid++;
 			try {
 				Y.applyUpdate(remote, encoded);
@@ -137,7 +138,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		// BigInt data leaf replicates. FIXED: read paths project it
 		// through `cloneJsonSafe` — `{big:10n}` reads as `{big:10}` on every
 		// replica instead of throwing (deterministic normalization).
-		const src = new Y.Doc();
+		const src = keepingReplaced(new Y.Doc());
 		src.clientID = cid++;
 		const sn = new Y.Node('block');
 		src.get('blocks').setAttr('bad', sn);
@@ -145,7 +146,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		sn.setAttr('type', 'paragraph');
 		sn.setAttr('d/big', 10n);
 		const update = Y.encodeStateAsUpdate(src); // wire-valid: writeAny path
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		Y.applyUpdate(doc, update);
 		const ed = E.create(doc);
@@ -153,7 +154,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		const proj = ed.project();
 		expect(proj.children.find((b: any) => b.id === 'bad')?.data).toEqual({ big: 10 });
 		// Convergence: a second replica projects the same normalized form.
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		doc2.clientID = cid++;
 		Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
 		const ed2 = E.create(doc2);
@@ -167,7 +168,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		// any value) — the raw store keeps the hostile item (vendored write
 		// path, out of scope). FIXED side: `runs()` projects the mark
 		// through `cloneJsonSafe` instead of crashing.
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		const ed = E.create(doc);
 		ed.init();
@@ -181,7 +182,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		expect(runs.find((r: any) => r.text === 'hi')?.marks).toEqual({ big: 5 });
 		// The FACADE write boundary refuses before any mutation — the doc
 		// stays encodable (the raw-write poison above is separate).
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		doc2.clientID = cid++;
 		const ed2 = E.create(doc2);
 		ed2.init();
@@ -197,7 +198,7 @@ describe('gateH-R4 — __proto__ key handling', () => {
 		// the clone's PROTOTYPE for k='__proto__' rather than an own key.
 		const payload = JSON.parse('{"__proto__":{"polluted":1},"b":true}');
 		ed.insertText('b', 0, 'PP', payload);
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = cid++;
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
 		const red = E.create(remote);

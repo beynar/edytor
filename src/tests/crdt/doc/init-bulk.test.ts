@@ -24,13 +24,14 @@ import { bindDocument } from '../../../lib/crdt/document.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 const M = bindModel(Y);
 const D = bindDocument(Y);
 
 const newDoc = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = 7;
 	return doc;
 };
@@ -250,9 +251,9 @@ describe('U7 — init quadratic removal', () => {
 	});
 
 	it('concurrent inits with the same ids dedupe to one survivor per id', () => {
-		const a = new Y.Doc();
+		const a = keepingReplaced(new Y.Doc());
 		a.clientID = 11;
-		const b = new Y.Doc();
+		const b = keepingReplaced(new Y.Doc());
 		b.clientID = 22;
 		const content = [
 			{ id: 's0', type: 'paragraph', content: [{ kind: 'text', text: 'same id' }] },

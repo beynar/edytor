@@ -1,11 +1,11 @@
 /**
  * A cycle resolves locally (design §6, fork patch YP22): a two-block cycle
  * race — Ada nests X under Y while Bob nests Y under X — costs the same
- * index work on a 5,000-block document as on a 1,000-block one. The
- * rejected block is the one whose edge is the oldest of the cycle; it shows
- * at the root's tail (the parentless fallback), and no global pass runs:
- * the placements decided are the cycle's, not the document's (before, the
- * global resolution decided every block: 1,001 and 5,001). A scaling
+ * index work on a 5,000-block document as on a 1,000-block one. The later
+ * move wins: the block whose move is the oldest edge of the cycle is back
+ * where it stood (its next record, else its home slot), and no global pass
+ * runs: the placements decided are the cycle's, not the document's (before,
+ * the global resolution decided every block: 1,001 and 5,001). A scaling
  * contract on the index's counters, never a wall clock.
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
@@ -73,7 +73,7 @@ const race = (n: number) => {
 };
 
 describe('a two-block cycle race resolves locally', () => {
-	it('the same index work at 5,000 blocks as at 1,000; the rejected block at the root’s tail', () => {
+	it('the same index work at 5,000 blocks as at 1,000; the dropped block back where it stood', () => {
 		const small = race(1000);
 		const large = race(5000);
 		expect(small.converged).toBe(true);
@@ -92,12 +92,13 @@ describe('a two-block cycle race resolves locally', () => {
 		// incoming edge wins and the standing one is rejected), never the document.
 		expect(small.work.placements).toBeLessThanOrEqual(4);
 		expect(large.work.placements).toBeLessThanOrEqual(4);
-		// One block holds the other; the rejected one shows last at the root (the parentless fallback).
+		// One block holds the other; the one whose move the cycle dropped is back
+		// where it stood: at home, between its old neighbours at the root.
 		for (const { where, n } of [small, large]) {
 			const [outer, inner] = where.x.parent === null ? [where.x, where.y] : [where.y, where.x];
 			expect(outer.parent).toBeNull();
-			expect(outer.index).toBe(where.top - 1);
-			expect(outer.index).toBe(n - 2);
+			expect(outer.index).toBe(n >> 1);
+			expect(where.top).toBe(n - 1);
 			expect(inner.index).toBe(0);
 		}
 	});

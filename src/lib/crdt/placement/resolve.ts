@@ -1,25 +1,24 @@
 /**
  * Placement resolution over the sequences (fork patch YP22): which block a
- * home slot belongs to, each block's display edge (the sequence that shows
- * its slot: its parent's, or its mover record's), and every block's placement
- * from scratch — the greedy acyclic acceptance with the parentless fallback.
+ * home slot belongs to, each block's display edges (the sequences that can
+ * show its slot: its live move records', strongest first, then its parent's),
+ * and every block's placement from scratch — the greedy acyclic acceptance:
+ * the later move wins, and a block a cycle drops is back where it stood.
  * Pure over replicated state.
  */
 import type { EngineDoc, EngineNode } from '../engine-api.js';
-import { Y } from '../engine.js';
 import { isNodeLike, REGISTRY_KEY } from '../schema.js';
 import { baseIdOf, incarnationId, incarnationsOf, LIVE_WRITERS } from '../incarnations.js';
-import { attrItems, engineOps, itemOf, type StoreStruct } from '../structs.js';
+import { attrItems, firstItem, itemOf, type StoreStruct } from '../structs.js';
 import { denseKey, keyBetween } from './keys.js';
 import {
 	cmpStamp,
-	displayedUnits,
-	entriesOf,
 	isBlockSlot,
 	isRecord,
-	leftOf,
+	itemAt,
 	stampOf,
 	unitOf,
+	type BlockSlot,
 	type Entry,
 	type SeqItem,
 	type Stamp,
@@ -129,26 +128,117 @@ export const edgeOf = (
 	};
 };
 
-/** The entry (a block slot) right before `edge`'s displaying unit in its sequence, with its block. */
-export const blockBefore = (
+/**
+ * The owner of the sequence block `home`'s slot shows in as the engine
+ * stands — its mover's, else its home's (`undefined`: gone, not arrived, or
+ * a node that is no block): `edgeOf`'s parent without building the edge.
+ */
+export const edgeParentOf = (
 	doc: EngineDoc,
 	registry: EngineNode,
 	kept: (item: unknown) => boolean,
-	home: Unit,
-	edge: Edge
-): { entry: Entry; block: BlockId } | null => {
-	const isBlock = (e: Entry) => isBlockSlot(e.value);
-	let e: Entry | null;
-	if (edge.via !== null) {
-		const shown = displayedUnits(doc, edge.via);
-		const at = shown.findIndex((x) => x.unit.c === home.c && x.unit.k === home.k);
-		const earlier = shown.slice(0, Math.max(at, 0)).filter(isBlock);
-		e = earlier.length > 0 ? earlier[earlier.length - 1]! : leftOf(doc, edge.via, 0, isBlock);
-	} else e = leftOf(doc, edge.item, edge.offset, isBlock);
-	if (e === null) return null;
-	const { b } = e.value as { b: BlockId };
-	return { entry: e, block: slotOwner(registry, kept, b, e.unit.c) };
+	home: SlotRef
+): BlockId | null | undefined => {
+	const item = itemAt(doc, home);
+	if (item === null || item.gone === true) return undefined;
+	const r = item.mover ?? null;
+	return r === null || r.deleted
+		? home.parent
+		: ownerOfNode(registry, kept, r.parent as EngineNode);
 };
+
+/**
+ * The display edges block `home`'s slot can take, the strongest first: one per
+ * live move record naming it, by descending `(priority, client, clock)` (the
+ * first is the engine's mover), then its home slot. A block shows at the
+ * first one that closes no cycle (the later move wins); when that is not the
+ * first, it is back where it stood before the move a cycle dropped: the
+ * record before it, else home. `[]` when the slot is gone or has not arrived.
+ */
+export const candidatesOf = (
+	doc: EngineDoc,
+	registry: EngineNode,
+	kept: (item: unknown) => boolean,
+	home: SlotRef,
+	at: { item: SeqItem; offset: number } | null = null
+): Edge[] => {
+	let item: SeqItem;
+	let offset: number;
+	if (at !== null) [item, offset] = [at.item, at.offset];
+	else {
+		const u = unitOf(doc, home);
+		if (u === null) return [];
+		[item, offset] = [u.item, home.k - u.item.id.clock];
+	}
+	if (item.gone === true) return [];
+	const homeEdge: Edge = {
+		parent: home.parent,
+		via: null,
+		stamp: [HOME, home.c, home.k],
+		item,
+		offset
+	};
+	const movers = item.movers as readonly SeqItem[] | null | undefined;
+	if (movers == null || movers.length === 0) return [homeEdge];
+	const live = movers.filter((r) => !r.deleted).map((r) => ({ r, stamp: stampOf(r) }));
+	live.sort((a, b) => cmpStamp(b.stamp, a.stamp));
+	const out: Edge[] = live.map(({ r, stamp }) => ({
+		parent: ownerOfNode(registry, kept, r.parent as EngineNode),
+		via: r,
+		stamp,
+		item: r,
+		offset: 0
+	}));
+	out.push(homeEdge);
+	return out;
+};
+
+/**
+ * The block slots that can show in one sequence, in its order, as the index
+ * reads it: a slot item's units (moved away or not: a block a cycle sends back
+ * home shows there), a live record's units in the order it names them (a
+ * block a cycle sends back to an older record shows at it). Which block shows
+ * at a position is the index's acceptance; these are the places.
+ */
+export const positionsOfItem = (doc: EngineDoc, it: SeqItem): Entry[] => {
+	if (isRecord(it)) {
+		if (it.deleted) return [];
+		const out: Entry[] = [];
+		const ids = it.content.ids!;
+		for (let i = 0; i < ids.length; i += 3)
+			for (let k = 0; k < ids[i + 2]!; k++) {
+				const unit = { c: ids[i]!, k: ids[i + 1]! + k };
+				const u = unitOf(doc, unit);
+				if (u !== null && u.item.gone !== true && isBlockSlot(u.value))
+					out.push({ value: u.value, unit, via: it, at: out.length });
+			}
+		return out;
+	}
+	const arr = it.content.arr;
+	if (it.gone === true || arr === undefined) return [];
+	const out: Entry[] = [];
+	for (let j = 0; j < arr.length; j++)
+		if (isBlockSlot(arr[j]))
+			out.push({ value: arr[j], unit: { c: it.id.client, k: it.id.clock + j }, via: null, at: 0 });
+	return out;
+};
+
+/**
+ * The places before unit `home` shown at `edge`, nearest first: the units its
+ * record names before it (or its slot item's earlier units), then each item to
+ * the left, last place first. The index's order keys walk them to the nearest
+ * block that shows where it was found.
+ */
+export function* slotsBefore(doc: EngineDoc, edge: Edge, home: Unit): Generator<Entry> {
+	const own = positionsOfItem(doc, edge.item);
+	let at = own.findIndex((e) => e.unit.c === home.c && e.unit.k === home.k);
+	if (at < 0) at = edge.via === null ? 0 : own.length;
+	for (let j = at - 1; j >= 0; j--) yield own[j]!;
+	for (let p = edge.item.left; p !== null; p = p.left) {
+		const list = positionsOfItem(doc, p);
+		for (let j = list.length - 1; j >= 0; j--) yield list[j]!;
+	}
+}
 
 /** Where a cycle check walks: the display parent of `at` through the accepted edges. */
 type Accepted = ReadonlyMap<BlockId, { parent: BlockId | null }>;
@@ -188,14 +278,18 @@ export const byTail = (
 /** Everything the from-scratch resolution decides. */
 export type Resolution = {
 	placements: Map<BlockId, ResolvedPlacement>;
-	/** Each block's edge (`null`: no slot), as placed or rejected. */
+	/** Each block's edge (`null`: no slot): the accepted one, or the strongest when none is. */
 	edges: Map<BlockId, Edge | null>;
 	/** Each block's home slot ({@link homeOf}). */
 	homes: Map<BlockId, SlotRef>;
 	/** Every block slot by the id it names (`{ b }`), as the sequences hold them. */
 	slots: Map<BlockId, SlotRef[]>;
-	/** The blocks at the root's tail: their edge rejected (a cycle), or no slot. */
+	/** The blocks shown at an edge below their strongest: a cycle dropped a later move. */
+	fallen: Set<BlockId>;
+	/** The blocks at the root's tail: every edge closes a cycle, or no slot. */
 	rejected: Set<BlockId>;
+	/** Each parent's children in order, keyed as `placements` (the index's lists, built once). */
+	order: Map<BlockId | null, { id: BlockId; rank: string }[]>;
 };
 
 /**
@@ -219,10 +313,17 @@ export const homeOf = (
 	return best;
 };
 
-/** The block slots of every sequence: by the id they name, and each unit's displayed entry. */
+/** A slot unit as the sequences hold it: its sequence's owner (`null`: the root), its item and offset. */
+export type SlotAt = { owner: BlockId | null; item: SeqItem; offset: number };
+
+/** One place of a sequence: its entry, and the slot unit it is when at home (`null`: a record's unit). */
+export type Place = { e: Entry; at: SlotAt | null };
+
+/** The block slots of every sequence: by the id they name, by unit, and each sequence's places in order. */
 export type Slots = {
 	slots: Map<BlockId, SlotRef[]>;
-	shown: Map<string, { owner: BlockId | null; e: Entry; i: number }>;
+	units: Map<string, SlotAt>;
+	places: Map<BlockId | null, Place[]>;
 };
 
 /** Every registry node and its kept incarnations, with the block id each stands for (the sequences' owners). */
@@ -241,179 +342,150 @@ export const registryOwners = (
 	return owners;
 };
 
-/** A unit as the engine's sort hands it: its item and its clock in it. */
-type UnitRef = { item: SeqItem; clock: number };
-
 /**
- * The order of two units of different sequences, for the engine's sort of
- * two move records at one origin (fork patch YP22, `_unitOrder`): each
- * unit's chain of slots from the root sequence down — the home slot of the
- * block owning its sequence, that block's parent's, … — compared level by
- * level: in one sequence by position (`sequenceOrder`; in one item by
- * clock), a block's own slot before what stands inside it. Two peers that
- * lift blocks out of nested lists into one gap at once keep the document's
- * order there whatever their client ids (`del.merge.container`). `0` when a
- * chain cannot be
- * read (a sequence no block owns, a block without a slot): the engine falls
- * back to client id. Read from the engine alone (the slots are scanned, never
- * the index), so every replica with the same structs answers alike.
- */
-export const unitOrder =
-	(doc: EngineDoc) =>
-	(a: UnitRef, b: UnitRef): number => {
-		const registry = doc.get(REGISTRY_KEY);
-		const kept = engineOps(Y).isKeptReplaced;
-		let slots: Slots | null = null;
-		const chain = (u: UnitRef): UnitRef[] | null => {
-			const out = [u];
-			for (let node = u.item.parent as EngineNode; node !== registry; ) {
-				const owner = ownerOfNode(registry, kept, node);
-				if (owner == null) return null;
-				slots ??= collectSlots(doc, registryOwners(registry, kept), kept);
-				const home = homeOf(registry, kept, slots.slots, owner);
-				const at = home === null ? null : unitOf(doc, home);
-				if (at === null) return null;
-				out.unshift({ item: at.item, clock: home!.k });
-				node = at.item.parent as EngineNode;
-			}
-			return out;
-		};
-		const x = chain(a);
-		const y = chain(b);
-		if (x === null || y === null) return 0;
-		for (let i = 0; ; i++) {
-			const p = x[i];
-			const q = y[i];
-			if (p === undefined || q === undefined)
-				return (p === undefined ? 0 : 1) - (q === undefined ? 0 : 1);
-			if (p.item === q.item) {
-				if (p.clock !== q.clock) return p.clock - q.clock;
-				continue;
-			}
-			const d = Y.sequenceOrder(p.item, q.item);
-			return Number.isNaN(d) ? 0 : d;
-		}
-	};
-
-/** `doc` sorting two move records of one origin by {@link unitOrder} when their units stand in different sequences (set before anything integrates). */
-export const orderingUnits = <D extends object>(doc: D): D => {
-	const d = doc as { _unitOrder?: unknown };
-	d._unitOrder ??= unitOrder(doc as EngineDoc);
-	return doc;
-};
-
-/**
- * Every block slot of every sequence (the root's, each block's), each read
- * once: by the id it names (with the sequence its unit stands in), and the
- * entry that shows it, keyed by unit.
+ * Every block slot of every sequence (the root's, each block's), each item
+ * read once: the slots by the id they name and by unit (a slot item's units,
+ * moved away or not, none gone), and each sequence's places in order
+ * (`positionsOfItem`).
  */
 export const collectSlots = (
 	doc: EngineDoc,
 	owners: Iterable<{ id: BlockId; node: EngineNode }>,
-	kept: (item: unknown) => boolean
+	_kept: (item: unknown) => boolean
 ): Slots => {
-	const registry = doc.get(REGISTRY_KEY);
 	const slots = new Map<BlockId, SlotRef[]>();
-	const shown = new Map<string, { owner: BlockId | null; e: Entry; i: number }>();
+	const units = new Map<string, SlotAt>();
+	const places = new Map<BlockId | null, Place[]>();
 	const read = (owner: BlockId | null, node: EngineNode): void => {
-		let i = 0;
-		for (const e of entriesOf(doc, node)) {
-			if (!isBlockSlot(e.value)) continue;
-			const u = unitOf(doc, e.unit)!;
-			const homeNode = e.via === null ? node : (u.item.parent as EngineNode);
-			const ref: SlotRef = {
-				parent: e.via === null ? owner : (ownerOfNode(registry, kept, homeNode) ?? null),
-				c: e.unit.c,
-				k: e.unit.k
-			};
-			const list = slots.get(e.value.b);
-			if (list === undefined) slots.set(e.value.b, [ref]);
-			else list.push(ref);
-			shown.set(`${e.unit.c}:${e.unit.k}`, { owner, e, i: i++ });
+		let list: Place[] | undefined;
+		for (let it = firstItem<SeqItem>(node); it !== null; it = it.right) {
+			const here = positionsOfItem(doc, it);
+			if (here.length === 0) continue;
+			if (list === undefined) places.set(owner, (list = []));
+			for (const e of here) {
+				if (e.via !== null) {
+					list.push({ e, at: null });
+					continue;
+				}
+				const ref: SlotRef = { parent: owner, c: e.unit.c, k: e.unit.k };
+				const b = (e.value as BlockSlot).b;
+				const named = slots.get(b);
+				if (named === undefined) slots.set(b, [ref]);
+				else named.push(ref);
+				const at: SlotAt = { owner, item: it, offset: ref.k - it.id.clock };
+				units.set(`${ref.c}:${ref.k}`, at);
+				list.push({ e, at });
+			}
 		}
 	};
-	read(null, registry);
+	read(null, doc.get(REGISTRY_KEY));
 	for (const { id, node } of owners) read(id, node);
-	return { slots, shown };
+	return { slots, units, places };
 };
 
 /**
  * Every block's placement from scratch. Each sequence (the root's, each
- * block's) is read once (`collectSlots`, or the caller's reading): a block
- * slot at home or shown by a record is the block's display edge, keyed
- * densely in sequence order. The edges form a functional graph; its
- * acceptance runs in descending `(priority, client, clock)` (home slots:
- * priority 0) and rejects exactly the oldest edge of each cycle, whose
- * block then shows at the root after the last top-level block (the
- * parentless fallback), the rejected and slotless ones ordered by their
- * stamp. Pure — writes nothing.
+ * block's) is read once (`collectSlots`, or the caller's reading). A block's
+ * candidate edges are its live move records, the strongest first, then its
+ * home slot (`candidatesOf`); the acceptance runs over every candidate in
+ * descending `(priority, client, clock)` (home slots: priority 0) and gives
+ * each block the first that closes no cycle through the edges accepted so
+ * far: the later move wins, and the block a cycle drops is back where it
+ * stood before that move. A block every edge of which closes a cycle (or
+ * with no slot) shows at the root after the last top-level block, ordered
+ * by its strongest edge's stamp. The children of each parent are keyed
+ * densely in its sequence's places (`places`). `knownHomes`: the records'
+ * `home` is current (the index keeps it), so it is not read again. Pure —
+ * writes nothing.
  */
 export const resolveAll = (
 	doc: EngineDoc,
 	blocks: ReadonlyMap<BlockId, BlockRec>,
 	ownerOf: (b: BlockId) => Owner,
 	kept: (item: unknown) => boolean,
-	{ slots, shown }: Slots = collectSlots(doc, blocks.values(), kept)
+	collected: Slots = collectSlots(doc, blocks.values(), kept),
+	knownHomes = false,
+	out: {
+		placements?: Map<BlockId, ResolvedPlacement>;
+		edges?: Map<BlockId, Edge | null>;
+	} = {}
 ): Resolution => {
+	const { slots, units, places } = collected;
 	const registry = doc.get(REGISTRY_KEY);
-	const edges = new Map<BlockId, Edge | null>();
+	const edges = out.edges ?? new Map<BlockId, Edge | null>();
 	const homes = new Map<BlockId, SlotRef>();
-	const keys = new Map<BlockId, string>();
-	// Each block's home: its writer's slot (the lowest when several), and its edge where that slot shows.
-	for (const id of blocks.keys()) {
-		const home = homeOf(registry, kept, slots, id);
+	/** The block whose home each slot unit is. */
+	const homeAt = new Map<SlotAt, BlockId>();
+	/** Every candidate edge: its block, its stamp's parts (sorted on), its rank among the block's. */
+	const all: { id: BlockId; edge: Edge; p: number; c: number; k: number; n: number }[] = [];
+	for (const [id, rec] of blocks) {
+		const home = knownHomes ? rec.home : homeOf(registry, kept, slots, id);
 		if (home === null) continue;
 		homes.set(id, home);
-		const at = shown.get(`${home.c}:${home.k}`);
-		if (at === undefined) continue; // gone, or shown nowhere
-		const u = unitOf(doc, home)!;
-		edges.set(
-			id,
-			at.e.via === null
-				? {
-						parent: at.owner,
-						via: null,
-						stamp: [HOME, home.c, home.k],
-						item: u.item,
-						offset: home.k - u.item.id.clock
-					}
-				: { parent: at.owner, via: at.e.via, stamp: stampOf(at.e.via), item: at.e.via, offset: 0 }
-		);
-		keys.set(id, denseKey(at.i));
+		const at = units.get(`${home.c}:${home.k}`);
+		if (at !== undefined) homeAt.set(at, id);
+		const cands = candidatesOf(doc, registry, kept, home, at ?? null);
+		if (cands.length === 0) continue; // gone, or not arrived
+		edges.set(id, cands[0]!);
+		for (let n = 0; n < cands.length; n++) {
+			const edge = cands[n]!;
+			all.push({ id, edge, p: edge.stamp[0], c: edge.stamp[1], k: edge.stamp[2], n });
+		}
 	}
-	// Greedy acceptance, the highest stamp first.
-	const ordered = [...blocks.keys()]
-		.filter((id) => edges.get(id)?.parent !== undefined && edges.get(id) !== null)
-		.sort((a, b) => -cmpStamp(edges.get(a)!.stamp, edges.get(b)!.stamp) || (a < b ? -1 : 1));
-	const accepted = new Map<BlockId, ResolvedPlacement>();
+	// Greedy acceptance, the strongest candidate first.
+	all.sort(
+		(a, b) => b.p - a.p || b.c - a.c || b.k - a.k || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+	);
+	const accepted = out.placements ?? new Map<BlockId, ResolvedPlacement>();
+	const fallen = new Set<BlockId>();
+	for (const { id, edge, n } of all) {
+		if (accepted.has(id)) continue;
+		const parent = edge.parent;
+		if (parent === undefined || (parent !== null && !blocks.has(parent))) continue;
+		if (cycleThrough(accepted, ownerOf, id, parent) !== null) continue;
+		accepted.set(id, { parent, rank: '', home: edge.via === null });
+		edges.set(id, edge);
+		if (n > 0) fallen.add(id);
+	}
 	const rejected = new Set<BlockId>();
-	for (const id of ordered) {
-		const edge = edges.get(id)!;
-		const parent = edge.parent as BlockId | null;
-		if (parent !== null && !blocks.has(parent)) {
-			rejected.add(id);
-			continue;
+	for (const id of blocks.keys()) if (!accepted.has(id)) rejected.add(id);
+	// The keys: each parent's places in order, a block where its accepted edge shows it.
+	const order = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
+	for (const [owner, list] of places) {
+		let i = 0;
+		let kids: { id: BlockId; rank: string }[] | undefined;
+		for (const { e, at } of list) {
+			// A slot at home is the home of the block found with it; a record's unit, its slot's block's.
+			const b =
+				at !== null
+					? homeAt.get(at)
+					: slotOwner(registry, kept, (e.value as BlockSlot).b, e.unit.c);
+			if (b === undefined) continue;
+			const pl = accepted.get(b);
+			if (pl === undefined || pl.parent !== owner) continue;
+			const edge = edges.get(b)!;
+			const home = homes.get(b)!;
+			if (edge.via !== e.via || home.c !== e.unit.c || home.k !== e.unit.k) continue;
+			pl.rank = denseKey(i++);
+			if (kids === undefined) order.set(owner, (kids = []));
+			kids.push({ id: b, rank: pl.rank });
 		}
-		if (cycleThrough(accepted, ownerOf, id, parent) !== null) {
-			rejected.add(id);
-			continue;
-		}
-		accepted.set(id, { parent, rank: keys.get(id)!, home: edge.via === null });
 	}
-	for (const id of blocks.keys()) if (!accepted.has(id) && !rejected.has(id)) rejected.add(id);
-	// The tail: after the last top-level key, by stamp then id.
-	let last: string | undefined;
-	for (const [, pl] of accepted)
-		if (pl.parent === null && (last === undefined || pl.rank > last)) last = pl.rank;
+	// The tail: after the last top-level key, by the strongest edge's stamp, then id.
+	const root = order.get(null);
+	let last = root?.[root.length - 1]?.rank;
 	const tail = [...rejected]
 		.map((id) => ({ id, stamp: edges.get(id)?.stamp ?? NO_SLOT }))
 		.sort(byTail);
 	for (const { id } of tail) {
 		last = keyBetween(last, undefined);
 		accepted.set(id, { parent: null, rank: last, home: false });
+		let kids = order.get(null);
+		if (kids === undefined) order.set(null, (kids = []));
+		kids.push({ id, rank: last });
 	}
 	for (const id of blocks.keys()) if (!edges.has(id)) edges.set(id, null);
-	return { placements: accepted, edges, homes, slots, rejected };
+	return { placements: accepted, edges, homes, slots, fallen, rejected, order };
 };
 
 /** {@link resolveAll}'s placements: the oracle the index is checked against. */

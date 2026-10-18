@@ -43,7 +43,6 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { view } from '../../../lib/crdt/placement/model.js';
-import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 400_000;

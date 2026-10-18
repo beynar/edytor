@@ -140,9 +140,11 @@ export const indexState = (doc: EngineDoc) => {
 		slotsByBlock: new Map<BlockId, SlotRef[]>(),
 		/** Each sequence owner's blocks (every block whose display edge it holds), sorted by key. */
 		rawOrder: new Map<BlockId | null, ChildSlot[]>(),
-		/** Each block's display edge as placed or rejected (`null`: no slot). */
+		/** Each block's display edge as accepted, or its strongest when none is (`null`: no slot). */
 		edges: new Map<BlockId, Edge | null>(),
-		/** The blocks at the root's tail: their edge rejected (a cycle), or no slot. */
+		/** The blocks shown below their strongest edge: a cycle dropped a later move, they are back where they stood. */
+		fallen: new Set<BlockId>(),
+		/** The blocks at the root's tail: every edge closes a cycle, or no slot. */
 		rejected: new Set<BlockId>(),
 		/** The children index without the layout rules (what they read), and with them. */
 		kids0,

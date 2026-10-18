@@ -17,13 +17,14 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf } from '../harness/history.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
 let clientSeq = 1000;
 const seeded = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	// Deterministic client ids — a random collision with another test's doc
 	// would make remote writes look local (the engine even re-ids on clash).
 	doc.clientID = clientSeq++;
@@ -69,7 +70,7 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 		// A second replica: receive the local state FIRST (so both share one
 		// bootstrap identity — a second init would LWW-race it), write
 		// remotely, apply the remote state here.
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = clientSeq++;
 		const edR = E.create(remote);
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
@@ -82,12 +83,12 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 		expect(ed.runs(DEFAULT_SEED_ID)[0].text).toBe('REMOTE-hello');
 	});
 
-	it('a doc-scoped manager attached before init cannot undo the seed', () => {
+	it('a history attached before init cannot undo the seed', () => {
 		// R13 §2.1 / D-3: the seed is applied as an update with a non-local
-		// origin, so even a doc-scoped manager attached first never captures
-		// it (it used to leave a versioned-but-empty document).
-		const doc = new Y.Doc();
-		const rawUm = new UndoManager(doc, undoOps);
+		// origin, so even the document's history attached first (outside the
+		// factory) never captures it (it used to leave a versioned-but-empty document).
+		const doc = keepingReplaced(new Y.Doc());
+		const rawUm = historyOf(doc, undoOps);
 		const ed = E.create(doc);
 		ed.init();
 		expect(rawUm.undoStack.length).toBe(0);
@@ -96,7 +97,7 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 	});
 
 	it('createUndoManager on an uninitialized doc initializes first, then attaches', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		const um = ed.createUndoManager(undoOps);
 		expect(ed.isInitialized()).toBe(true);

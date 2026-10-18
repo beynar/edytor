@@ -370,9 +370,13 @@ export const bindPurge = (Y: EngineApi) => {
 		// removed): no undo below the horizon can make them movers again.
 		const sequences: EngineNode[] = [registryOf(doc)];
 		for (const [id, rec] of blocks) if (!removable.has(id)) sequences.push(rec.node);
+		// A record a block shows at stays, though it is no unit's mover (a cycle
+		// sent the block back to it): it is read before any record goes.
+		const shownNow = modelView(doc);
+		const listed = sequences.map((node) => [node, recordsOf(doc, node, shownNow)] as const);
 		doc.transact((tr) => {
-			for (const node of sequences)
-				for (const r of recordsOf(doc, node)) {
+			for (const [node, records] of listed)
+				for (const r of records) {
 					if (r.wins || !old(r.item.id.client, r.item.id.clock)) continue;
 					ops.remove(tr, r.item);
 					dropSearchMarkers(node);

@@ -31,7 +31,8 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 		noteClaims,
 		claimsOf,
 		noteKind,
-		homeFor
+		homeFor,
+		reslot
 	} = ix;
 
 	// ── records ──────────────────────────────────────────────────────
@@ -91,6 +92,11 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexStreams & Index
 			reclaim.add(id);
 		}
 		const rec = blocks.get(id);
+		// Another node now stands for `id` (or none): its sequence's slots change owner.
+		if (old?.node !== rec?.node) {
+			if (old !== undefined) reslot(old.node);
+			if (rec !== undefined) reslot(rec.node);
+		}
 		noteShell(id);
 		noteClaims(id, old?.claims ?? [], rec?.claims ?? []);
 		placementSeeds.add(id);

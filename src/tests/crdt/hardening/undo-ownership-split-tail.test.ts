@@ -34,13 +34,14 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
-import { UndoManager } from '../harness/undo.js';
+import { historyOf } from '../harness/history.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 300_000;
 
 const seed = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = cid++;
 	const ed = E.create(doc);
 	ed.init({
@@ -84,7 +85,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		ed.deleteText('tail', 0, 5);
 		um.undo();
 
-		const reloaded = new Y.Doc();
+		const reloaded = keepingReplaced(new Y.Doc());
 		reloaded.clientID = cid++;
 		Y.applyUpdate(reloaded, Y.encodeStateAsUpdate(doc));
 		const ed2 = E.create(reloaded);
@@ -96,7 +97,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('a synced peer that never ran the delete derives the same ownership', () => {
 		const { doc, ed } = seed();
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
@@ -132,7 +133,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('concurrent remote edit on b does not merge the restored tail into b', () => {
 		const { doc, ed } = seed();
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
@@ -158,7 +159,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('remote edit BETWEEN delete and undo — classification (see ADR)', () => {
 		const { doc, ed } = seed();
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = cid++;
 		const red = E.create(remote);
 
@@ -186,14 +187,15 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		expect(red.blockText('tail')).toBe('world');
 	});
 
-	test('raw Y.UndoManager (no facade factory) gets the same repair', () => {
+	test('a history built over the raw document (no facade factory) gets the same repair', () => {
 		const { doc, ed } = seed();
 		ed.splitBlock('b', 6, 'tail');
 		// The repair attaches once per DOC (doc-level update observer), so a
-		// directly-constructed UndoManager — e.g. the peer harness's
-		// `enableUndo` — produces the same ownership as createUndoManager().
-		// Its scope holds the text hold records (a text delete, fork patch YP20).
-		const um = new UndoManager([doc.get('blocks'), doc.get('textdel')], { captureTimeout: 0 });
+		// history built over the raw document — e.g. the peer harness's
+		// `enableUndo`, scoped to the registry — produces the same ownership as
+		// createUndoManager(). Its scope holds the text hold records (a text
+		// delete, fork patch YP20).
+		const um = historyOf(doc, { scope: [doc.get('blocks')], captureTimeout: 0 });
 		ed.deleteText('tail', 0, 5);
 		um.undo();
 		expect(ed.blockText('b')).toBe('hello ');
@@ -248,7 +250,7 @@ describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)',
 	const repairListeners = (doc: Y.Doc): number => channelListeners(doc, 'beforeObserverCalls');
 
 	test('facades install no repair listener; the index listens to `update` only while reporting', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const baseUpdate = updateListeners(doc);
 		const ed1 = E.create(doc);
 		const ed2 = E.create(doc);
@@ -264,7 +266,7 @@ describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)',
 	});
 
 	test('disposing one facade keeps undo repair working for the other', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		const ed1 = E.create(doc);
 		ed1.init({
@@ -288,7 +290,7 @@ describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)',
 	});
 
 	test('undo AFTER the last facade dispose is still repaired (Gate-H window)', () => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		doc.clientID = cid++;
 		const ed = E.create(doc);
 		ed.init({

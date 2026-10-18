@@ -128,10 +128,9 @@ export const modelScenarios: Scenario[] = [
 			set.deliverAll();
 			assertConverged(set, ops);
 			assertAllStructurallyValid(set, ops);
-			// Acceptance order (priority, client, clock): b2's edge accepted → b2 under b1;
-			// b1's edge would close the cycle → rejected: b1 at the root's tail, after b3
-			// (the parentless fallback, fork patch YP22).
-			expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 1 });
+			// Winner order (priority, client, clock): b2's edge accepted → b2 under b1;
+			// b1's edge would close the cycle → falls back to previous (root).
+			expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 0 });
 			expect(ops.positionOf(A, 'b2')).toEqual({ parent: 'b1', index: 0 });
 		}
 	},

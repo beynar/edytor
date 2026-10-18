@@ -32,6 +32,7 @@ import {
 	type DocumentActor,
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const providers = bindIndexeddbProvider(Y);
 
@@ -138,7 +139,7 @@ describe('legacy compat — IndexedDB', () => {
 		await pA.destroy();
 		const expected = legacyBytes(a);
 
-		const docB = new Y.Doc();
+		const docB = keepingReplaced(new Y.Doc());
 		const pB = new providers.IndexeddbPersistence(name, docB);
 		await pB.whenSynced;
 		const b = attachDocument(docB, { actor: bob });
@@ -188,7 +189,7 @@ describe('legacy compat — live sync', () => {
 	it('metadata-first delivery: a record landing before its content is preserved', () => {
 		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
-		const docD = new Y.Doc();
+		const docD = keepingReplaced(new Y.Doc());
 		applyUpdate(docD, a.encode());
 		const d = attachDocument(docD, { actor: carol });
 		d.sync();

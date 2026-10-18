@@ -200,35 +200,38 @@ export const sequenceOrder = (x, y) => {
 }
 
 /**
- * YP22: the unit record `r` stands at (`at`, else the first it names) as its
- * item and clock, `null` when none, or a GC struct replaced it.
+ * YP22: the chain record `r` stands at, outermost first — the units its
+ * writer named (`at`: the home slots from the root sequence down to the unit
+ * it stands at), else the first unit it moves — each as its item and clock,
+ * `null` where a GC struct replaced it.
  *
  * @param {any} r
  * @param {import('./StructStore.js').StructStore} store
- * @return {{ item: any, clock: number } | null}
+ * @return {Array<{ item: any, clock: number } | null>}
  */
-const anchorOf = (r, store) => {
+const chainOf = (r, store) => {
   const c = r.content
-  const id = c.at !== null ? c.at : c.ids.length > 0 ? { client: c.ids[0], clock: c.ids[1] } : null
-  if (id === null) return null
-  const item = store.getItem(id)
-  return item.isItem ? { item, clock: id.clock } : null
+  const ids = c.at !== null ? c.at : c.ids.length > 0 ? [{ client: c.ids[0], clock: c.ids[1] }] : []
+  return ids.map((/** @type {ID} */ id) => {
+    const item = store.getItem(id)
+    return item.isItem ? { item, clock: id.clock } : null
+  })
 }
 
 /**
- * YP22: the order of two move records at one origin: by the units they
- * stand at (`anchorOf`) — in one sequence by `sequenceOrder` (one item: by
- * clock); in two sequences by the document's `_unitOrder` (the
- * application's order of two units of different sequences, `null` for
- * none) — then by their `part` (the writer's order among the records
- * standing at one unit), then the stronger record first (the greater
- * priority, then client: a unit both move shows at the first of the two).
- * Two writers that move blocks out of one list into one gap at once (an
+ * YP22: the order of two move records at one origin: by the chains they
+ * stand at (`chainOf`), level by level from the root — two units of one
+ * sequence by `sequenceOrder` (one item: by clock), a unit before the units
+ * inside its block (the shorter chain first); chains that meet no common
+ * sequence order nothing — then by their `part` (the writer's order among
+ * the records standing at one unit), then the stronger record first (the
+ * greater priority, then client: a unit both move shows at the first of the
+ * two). Two writers that move blocks out of one list into one gap at once (an
  * outdent, a lift, a divider after an item) keep the list's order there and
  * every serial order's placement of what stands at one item, whatever their
- * client ids (the delete contract's CW-01 and DR-crdt-6 rules). It runs only
- * on a conflict of two records at one origin, and both records' units are
- * present then (`getMissing`).
+ * client ids (the delete contract's CW-01 and DR-crdt-6 rules). It reads only
+ * the records and the units they name, all present when a record integrates
+ * (`getMissing`), so every replica sorts alike in any delivery order.
  *
  * @param {any} o
  * @param {any} item
@@ -237,18 +240,25 @@ const anchorOf = (r, store) => {
  */
 const sourceOrder = (o, item, tr) => {
   const store = tr.doc.store
-  const x = anchorOf(o, store)
-  const y = anchorOf(item, store)
+  const x = chainOf(o, store)
+  const y = chainOf(item, store)
   let d = 0
-  if (x !== null && y !== null) {
-    if (x.item === y.item) d = x.clock - y.clock
-    else {
-      d = sequenceOrder(x.item, y.item)
-      if (Number.isNaN(d)) {
-        const order = /** @type {any} */ (tr.doc)._unitOrder
-        d = order === null ? 0 : order(x, y)
-      }
+  for (let i = 0; ; i++) {
+    const p = x[i]
+    const q = y[i]
+    if (p === undefined || q === undefined) {
+      d = (p === undefined ? 0 : 1) - (q === undefined ? 0 : 1)
+      break
     }
+    if (p === null || q === null) break
+    if (p.item === q.item) {
+      if (p.clock === q.clock) continue
+      d = p.clock - q.clock
+      break
+    }
+    d = sequenceOrder(p.item, q.item)
+    if (Number.isNaN(d)) d = 0
+    break
   }
   if (d === 0) d = o.content.part - item.content.part
   if (d === 0) d = item.content.priority - o.content.priority || item.id.client - o.id.client

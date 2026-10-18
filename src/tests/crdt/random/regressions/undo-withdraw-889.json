@@ -1,0 +1,123 @@
+{
+	"about": "Wide corpus (CRDT_SEEDS=1-1000 CRDT_OPS=300), model adapter: an undo that withdraws a block a peer typed into removed the peer's text (`hist.undo.withdraw`). Minimized schedule.",
+	"seed": 889,
+	"peers": 3,
+	"steps": [
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "healPeer",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "reloadLog",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertInline",
+				"idIndex": 4,
+				"offset": 5,
+				"atomId": "in889-162"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "syncSV",
+				"a": 1,
+				"b": 2
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "unsetMark",
+				"idIndex": 5,
+				"offset": 12,
+				"length": 7,
+				"name": "bold"
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 5,
+				"offset": 6,
+				"length": 3
+			}
+		},
+		{
+			"peer": 2,
+			"op": {
+				"kind": "deleteText",
+				"idIndex": 7,
+				"offset": 13,
+				"length": 2
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "insertBlock",
+				"id": "s889-183",
+				"type": "list"
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 2,
+				"b": 0
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "insertText",
+				"idIndex": 5,
+				"offset": 17,
+				"text": "\u00b5889x188",
+				"tag": "\u00b5889x188"
+			}
+		},
+		{
+			"peer": 1,
+			"op": {
+				"kind": "net",
+				"action": "deliverAll",
+				"a": 0,
+				"b": 1
+			}
+		},
+		{
+			"peer": 0,
+			"op": {
+				"kind": "undo"
+			}
+		}
+	],
+	"transcript": "seed 889 \u2014 13 steps\n  0. peer 0: {\"kind\":\"net\",\"action\":\"healPeer\",\"a\":1,\"b\":2}\n  1. peer 2: {\"kind\":\"net\",\"action\":\"reloadLog\",\"a\":2,\"b\":0}\n  2. peer 1: {\"kind\":\"insertInline\",\"idIndex\":4,\"offset\":5,\"atomId\":\"in889-162\"}\n  3. peer 2: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":1,\"b\":2}\n  4. peer 2: {\"kind\":\"unsetMark\",\"idIndex\":5,\"offset\":12,\"length\":7,\"name\":\"bold\"}\n  5. peer 2: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  6. peer 0: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":6,\"length\":3}\n  7. peer 2: {\"kind\":\"deleteText\",\"idIndex\":7,\"offset\":13,\"length\":2}\n  8. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s889-183\",\"type\":\"list\"}\n  9. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  10. peer 1: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":17,\"text\":\"\u00b5889x188\",\"tag\":\"\u00b5889x188\"}\n  11. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":0,\"b\":1}\n  12. peer 0: {\"kind\":\"undo\"}"
+}

@@ -34,6 +34,7 @@ import {
 	slashMenuPlugin,
 	tablePlugin
 } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -449,7 +450,7 @@ describe('the cell placeholder and the columns the view shows', () => {
 
 	it('a column an undo took out of the list while a peer typed in it shows last (table.cell)', async () => {
 		const a = await render(contract());
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(a.edytor.doc));
 		const b = await renderDomEdytor(
 			<root>

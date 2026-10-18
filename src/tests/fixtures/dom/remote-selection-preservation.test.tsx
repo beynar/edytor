@@ -8,6 +8,7 @@ import { flushDomUpdates, renderDomEdytor, setNativeSelection } from '../../dom/
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const input = (
 	<root>
@@ -31,7 +32,7 @@ const twoBlocks = (
  */
 const createRemotePeer = async (edytor: Edytor) => {
 	const localDoc = edytor.doc;
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(localDoc));
 	const remote = attachDocument(remoteDoc);
 	const push = async () => {

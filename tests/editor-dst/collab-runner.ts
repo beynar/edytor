@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 import * as Y from '../../src/lib/crdt/vendor/yjs/src/index.js';
-import { attachDocument, type EdytorDocument } from '../../src/lib/crdt/index.js';
+import { attachDocument, bindCrdt, type EdytorDocument } from '../../src/lib/crdt/index.js';
 import { blockRecordsOf } from '../../src/tests/oracles/block-records.js';
 import type { JSONBlock } from '../../src/lib/utils/json.js';
 import { waitForEditorReady } from '../editor-dom/helpers.js';
@@ -1691,7 +1691,8 @@ export const runCollabSchedule = async (
 	const room = `collab-dst-${schedule.seed}-${Math.random().toString(36).slice(2, 8)}`;
 	const ledger: CollabLedgerEntry[] = [];
 	const peers: PeerRuntime[] = [];
-	const referenceDoc = new Y.Doc();
+	// An edytor document from the start: it carries edytor's rules before the peers' updates.
+	const referenceDoc = bindCrdt(Y).createDoc();
 	let reference: EdytorDocument | undefined;
 	let held = false;
 	/**

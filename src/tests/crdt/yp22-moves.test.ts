@@ -371,14 +371,14 @@ describe('YP22 — a record sorts after the slots of its origin, after-records b
 		}
 	});
 
-	it('a record standing at a unit (`at`) sorts by that unit’s place, then its part, whatever the client ids', () => {
+	it('a record standing at a unit (`at`, a chain of one) sorts by that unit’s place, then its part, whatever the client ids', () => {
 		for (const [ca, cb] of [
 			[2, 3],
 			[3, 2]
 		]) {
 			const [a, b] = seeded(['p', 'x', 'y', 'q'], ca, cb);
 			const [c, k] = idOf(a, 'x');
-			t(a).move(1, ids(a, 'y'), 1, 0, Y.createID(c, k)); // y leaves for the gap after p, standing at x (a head's part)
+			t(a).move(1, ids(a, 'y'), 1, 0, [Y.createID(c, k)]); // y leaves for the gap after p, standing at x (a head's part)
 			t(b).move(1, ids(b, 'x'), 1, 3); // x leaves for the same gap, standing at itself
 			sync(a, b);
 			sync(b, a);
@@ -386,7 +386,40 @@ describe('YP22 — a record sorts after the slots of its origin, after-records b
 			expect(shown(b)).toEqual(['p', 'y', 'x', 'q']);
 			expect(shown(reload(a))).toEqual(['p', 'y', 'x', 'q']);
 			const r = records(a).find((it) => it.content.at !== null);
-			expect([r.content.part, r.content.at.client, r.content.at.clock]).toEqual([0, c, k]);
+			expect([
+				r.content.part,
+				r.content.at.length,
+				r.content.at[0].client,
+				r.content.at[0].clock
+			]).toEqual([0, 1, c, k]);
+		}
+	});
+
+	it('two records at one gap standing at units of two sequences sort by their chains (outermost first), whatever the client ids', () => {
+		// [p, x, y]: x holds a sequence `xs` with one unit m, named by its chain [x, m].
+		// Ada moves m out of x to the gap after p, Bob moves y there: x's slot
+		// comes before y's in the root, so m (inside x) sorts before y.
+		for (const [ca, cb] of [
+			[2, 3],
+			[3, 2]
+		]) {
+			const [a, b] = seeded(['p', 'x', 'y'], ca, cb);
+			const xs = a.get('xs');
+			xs.insert(0, ['m']);
+			sync(a, b);
+			const chain = (doc) =>
+				[idOf(doc, 'x'), idOf(doc, 'm', doc.get('xs'))].map(([c, k]) => Y.createID(c, k));
+			t(a).move(1, ids(a, 'm', a.get('xs')), 1, 0, chain(a));
+			t(b).move(1, ids(b, 'y'), 1, 0, [Y.createID(...idOf(b, 'y'))]);
+			sync(a, b);
+			sync(b, a);
+			expect(shown(a)).toEqual(['p', 'm', 'y', 'x']);
+			expect(shown(b)).toEqual(['p', 'm', 'y', 'x']);
+			expect(shown(reload(a))).toEqual(['p', 'm', 'y', 'x']);
+			// A replica that takes the whole state at once reads the same order.
+			const late = mk(9);
+			Y.applyUpdate(late, Y.encodeStateAsUpdate(a));
+			expect(shown(late)).toEqual(['p', 'm', 'y', 'x']);
 		}
 	});
 

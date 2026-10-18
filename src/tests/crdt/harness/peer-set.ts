@@ -44,12 +44,11 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
-import { orderingUnits } from '../../../lib/crdt/placement/resolve.js';
-import { TEXT_DELETES_ROOT } from '../../../lib/crdt/schema.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 import { mulberry32 } from './rng.js';
 import { updateHash } from './trace.js';
 import type { TraceEvent } from './trace.js';
-import { UndoManager } from './undo.js';
+import { historyOf, type UndoManager } from './history.js';
 
 /**
  * Fixed clientID of the ephemeral seed document. Well above the peer range
@@ -165,7 +164,8 @@ export class Peer {
 	 * the reloaded doc is a new writer. Undo history does not survive reload.
 	 */
 	reload(mode: 'snapshot' | 'log' = 'snapshot'): void {
-		const doc = orderingUnits(new Y.Doc({ guid: this.set.guid }));
+		// Every replica is an edytor document from the start (its rule before any update).
+		const doc = keepingReplaced(new Y.Doc({ guid: this.set.guid }));
 		// Copy before clearing/reattaching (#attach would overwrite persisted
 		// with the empty doc's state).
 		const sourceLog = this.updateLog.slice();
@@ -200,21 +200,19 @@ export class Peer {
 	}
 
 	/**
-	 * Enable a local UndoManager tracking only this peer's local origin.
-	 * `opts.scope` narrows the scope to a subtree (e.g. the model registry
-	 * node), always with the text hold records (a text delete is a record
-	 * there, fork patch YP20); the doc-wide default matches upstream behavior.
+	 * Enable this peer's history: the document's own (`doc/history.ts`, the
+	 * one the editor runs, `harness/history.ts`), tracking only this peer's
+	 * local origin. `opts.scope` narrows the scope to nodes of the document
+	 * (e.g. the model registry node), always with the text hold records (a
+	 * text delete is a record there, fork patch YP20); `null` is the
+	 * document's own scope (the registry, the records, the document's data);
+	 * the default is every root the document holds (the raw adapter's tree).
 	 */
 	enableUndo(opts: Record<string, unknown> & { scope?: unknown } = {}): UndoManager {
-		const { scope, ...rest } = opts;
-		const records = this.doc.get(TEXT_DELETES_ROOT);
-		const narrowed =
-			scope === undefined || scope === this.doc
-				? this.doc
-				: [...(Array.isArray(scope) ? scope : [scope]).filter((t) => t !== records), records];
-		this.undoManager = new UndoManager(narrowed as never, {
+		this.undoManager = historyOf(this.doc, {
 			trackedOrigins: new Set([this.localOrigin]),
-			...rest
+			...opts,
+			scope: 'scope' in opts ? opts.scope : this.doc
 		});
 		return this.undoManager;
 	}
@@ -526,7 +524,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 	if (seed instanceof Uint8Array) {
 		seedUpdate = seed;
 	} else {
-		const seedDoc = orderingUnits(new Y.Doc({ guid }));
+		const seedDoc = keepingReplaced(new Y.Doc({ guid }));
 		// The seed doc writes too (modelSpecSeed allocates ranks through
 		// insertBlock) — pin its identity or the seed bytes, hence every
 		// peer's initial state, would differ run to run.
@@ -537,7 +535,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 	}
 	const names = opts.names ?? Array.from({ length: n }, (_, i) => String.fromCharCode(65 + i));
 	for (let i = 0; i < n; i++) {
-		const doc = orderingUnits(new Y.Doc({ guid }));
+		const doc = keepingReplaced(new Y.Doc({ guid }));
 		Y.applyUpdate(doc, seedUpdate, remoteOrigin('seed'));
 		doc.clientID = set.nextClientId();
 		setDocRand(doc, set.randFor(i, 0));

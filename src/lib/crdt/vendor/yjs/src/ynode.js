@@ -1042,15 +1042,16 @@ export class YNode {
    * YP22: move the units `ids` (`client, clock, len` ranges, in the order
    * they will show) to live index `index` of this sequence: one move record
    * there (`ContentMove`); `side` is its class among the items of its origin
-   * (`0` after, `1` before), `at` the unit it stands at for the sort of two
-   * records at one origin (`null`: the first it names) and `part` the
-   * writer's order among the records standing at that unit.
+   * (`0` after, `1` before), `at` the chain it stands at for the sort of two
+   * records at one origin — the units from the root sequence down to the
+   * unit it stands at, outermost first (`null`: the first unit it names) —
+   * and `part` the writer's order among the records standing at that unit.
    *
    * @param {number} index
    * @param {Array<number>} ids
    * @param {number} [side]
    * @param {number} [part]
-   * @param {ID|null} [at]
+   * @param {Array<ID>|null} [at]
    */
     move (index, ids, side = 0, part = 0, at = null) {
     if (this.doc == null) throw new Error('move: node is not integrated')
@@ -1229,7 +1230,8 @@ export const readContentHold = decoder => {
 }
 
 /**
- * YP22: a move record: its priority and side in one word, then one
+ * YP22: a move record: its priority, side, part and whether an anchor chain
+ * follows in one word, the chain (a count, then its units), then one
  * `client, clock, len` per range.
  *
  * @param {UpdateDecoder} decoder
@@ -1237,7 +1239,12 @@ export const readContentHold = decoder => {
  */
 export const readContentMove = decoder => {
   const word = decoder.readLen()
-  const at = word & 16 ? decoder.readLeftID() : null
+  /** @type {Array<ID>|null} */
+  let at = null
+  if (word & 16) {
+    at = []
+    for (let n = decoder.readLen(); n > 0; n--) at.push(decoder.readLeftID())
+  }
   const ids = []
   for (let n = decoder.readLen(); n > 0; n--) {
     const id = decoder.readLeftID()

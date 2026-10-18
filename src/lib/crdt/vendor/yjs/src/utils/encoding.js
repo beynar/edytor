@@ -534,7 +534,9 @@ const getMissing = (struct, transaction, store) => {
   if (struct.content.constructor === ContentMove) { // YP22: a move record waits for the units it names and stands at
     // (a skip stands for none of them: its sort reads the units' order, `sourceOrder`)
     const { ids, at } = /** @type {ContentMove} */ (struct.content)
-    if (at !== null && (at.clock >= store.getClock(at.client) || store.skips.hasId(at))) return at.client
+    if (at !== null) {
+      for (const id of at) if (id.clock >= store.getClock(id.client) || store.skips.hasId(id)) return id.client
+    }
     for (let i = 0; i < ids.length; i += 3) {
       if (ids[i + 1] + ids[i + 2] > store.getClock(ids[i]) || store.skips.intersects(ids[i], ids[i + 1], ids[i + 2])) return ids[i]
     }

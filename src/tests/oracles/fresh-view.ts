@@ -108,7 +108,8 @@ const settleWithdrawn = (
 export const freshView = (Y: EngineApi, doc: EngineDoc): ModelView => {
 	const blocks = collectBlocks(doc);
 	const base = bindText(Y).computeOwnership(doc, blocks);
-	const placements = resolvePlacements(doc, blocks, base.ownerOf, kept);
+	const resolved = resolveAll(doc, blocks, base.ownerOf, kept);
+	const placements = resolved.placements;
 	// D-18 (`order.split.text`): pieces of one text read in its order by their slots' split keys.
 	const own = base;
 	const kids = childrenIndex(placements, own);
@@ -120,6 +121,7 @@ export const freshView = (Y: EngineApi, doc: EngineDoc): ModelView => {
 		kids,
 		order: documentOrder(kids),
 		intern: (v) => deepFreeze(cloneJsonSafe(v)),
-		displays: (owner) => by.get(owner) ?? []
+		displays: (owner) => by.get(owner) ?? [],
+		accepted: (id) => (resolved.rejected.has(id) ? null : (resolved.edges.get(id) ?? null))
 	};
 };

@@ -42,6 +42,7 @@ import {
 	type CommandPeer
 } from './command-peer-set.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 export const COMMAND_SEED: JSONDoc = {
 	children: [
@@ -178,7 +179,7 @@ export const runCommandScenario = async (): Promise<
 		// ── 7 · B persists; a THIRD editor rebuilds from the snapshot bytes
 		// through the real mount path — same signature or persistence lies.
 		set.peer('B').persist();
-		const docC = new Y.Doc();
+		const docC = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(docC, set.peer('B').persisted!);
 		const documentC = attachDocument(docC as never, {
 			actor: { id: 'actor-C' },

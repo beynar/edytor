@@ -16,6 +16,7 @@ import {
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /**
  * U11 canaries for the headless command lane. Each case mutates the real
@@ -54,7 +55,7 @@ const flat = (
 const at = (e: Edytor, i: number) => e.root!.children[i]!.firstText!;
 
 const mountReplica = async (peer: Awaited<ReturnType<typeof renderDomEdytor>>) => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer.edytor.doc));
 	return renderDomEdytor(flat, { doc, autoSelectFixture: false });
 };

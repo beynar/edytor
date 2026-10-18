@@ -772,10 +772,10 @@ export interface EngineNode {
     insert(index: number, content: unknown): void;
     delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
     hold(ids: number[]): void;
-    move(index: number, ids: number[], side?: number, part?: number, at?: {
+    move(index: number, ids: number[], side?: number, part?: number, at?: ReadonlyArray<{
         client: number;
         clock: number;
-    } | null): void;
+    }> | null): void;
 }
 ```
 
@@ -1267,7 +1267,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     from: unknown;
                     to: number;
                 };
-                recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode) => {
+                recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
                     item: import("./placement/slots.js").SeqItem;
                     stamp: import("./placement/slots.js").Stamp;
                     wins: boolean;
@@ -1479,7 +1479,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 from: unknown;
                 to: number;
             };
-            recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode) => {
+            recordsOf: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, v?: import("./placement/model.js").ModelView) => {
                 item: import("./placement/slots.js").SeqItem;
                 stamp: import("./placement/slots.js").Stamp;
                 wins: boolean;
@@ -2386,7 +2386,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                 from: unknown;
                 to: number;
             };
-            recordsOf: (doc: EngineDoc, node: EngineNode) => {
+            recordsOf: (doc: EngineDoc, node: EngineNode, v?: ModelView) => {
                 item: import("./placement/slots.js").SeqItem;
                 stamp: import("./placement/slots.js").Stamp;
                 wins: boolean;
@@ -2598,7 +2598,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             from: unknown;
             to: number;
         };
-        recordsOf: (doc: EngineDoc, node: EngineNode) => {
+        recordsOf: (doc: EngineDoc, node: EngineNode, v?: ModelView) => {
             item: import("./placement/slots.js").SeqItem;
             stamp: import("./placement/slots.js").Stamp;
             wins: boolean;

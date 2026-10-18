@@ -81,7 +81,7 @@ export type HistoryOptions = {
 };
 
 /** What a history is made over: the document and the rules of its replay. */
-type Rules = {
+export type Rules = {
 	Y: EngineApi;
 	doc: EngineDoc;
 	scope: EngineNode[];
@@ -438,10 +438,13 @@ export type HistoryContext = DocBase &
 		init: (doc: EngineDoc) => void;
 	};
 
-/** The history factory of one facade. */
-export const docHistory = (c: HistoryContext) => {
-	const { Y, doc, init, write, disposed } = c;
-
+/**
+ * The document's history rules over `doc` (the one set every history of an
+ * edytor document runs): its scope (the block registry, the text hold
+ * records, the document's data), the records a replay's text holds go to,
+ * the withdraw rule (`hist.undo.withdraw`) and the attr repair below.
+ */
+export const historyRules = (Y: EngineApi, doc: EngineDoc): Rules => {
 	/**
 	 * Undo repair, inside the replay's transaction. A replayed step
 	 * deletes its own attr write and re-creates the value that write
@@ -474,6 +477,24 @@ export const docHistory = (c: HistoryContext) => {
 		}
 	};
 
+	// The text hold records are in scope (an undo deletes the undoer's
+	// own, fork patch YP20). An undone creation withdraws the block instead
+	// of deleting it (`hist.undo.withdraw`).
+	const records = doc.get(TEXT_DELETES_ROOT);
+	return {
+		Y,
+		doc,
+		scope: [registryOf(doc), records, doc.get(DOC_DATA_ROOT)],
+		records,
+		withdraw: withdrawOnUndo(doc),
+		repair: repairAttrs
+	};
+};
+
+/** The history factory of one facade. */
+export const docHistory = (c: HistoryContext) => {
+	const { Y, doc, init, write, disposed } = c;
+
 	/**
 	 * The document's undo manager, SCOPED TO THE BLOCK REGISTRY (with the
 	 * text hold records and the document's data), attached only after the
@@ -496,21 +517,7 @@ export const docHistory = (c: HistoryContext) => {
 		write(() => {
 			if (!isInitialized(doc)) init(doc);
 		});
-		// The text hold records are in scope (an undo deletes the undoer's
-		// own, fork patch YP20). An undone creation withdraws the block instead
-		// of deleting it (`hist.undo.withdraw`).
-		const records = doc.get(TEXT_DELETES_ROOT);
-		return new UndoManager(
-			{
-				Y,
-				doc,
-				scope: [registryOf(doc), records, doc.get(DOC_DATA_ROOT)],
-				records,
-				withdraw: withdrawOnUndo(doc),
-				repair: repairAttrs
-			},
-			options
-		);
+		return new UndoManager(historyRules(Y, doc), options);
 	};
 
 	return { createUndoManager };

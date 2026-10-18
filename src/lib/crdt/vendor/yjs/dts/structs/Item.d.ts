@@ -443,8 +443,9 @@ export function applyPending(tr: Transaction, clients: Array<number>): void;
  * Lamport `priority`, a `side` (`0`: it stands after what precedes it,
  * `1`: before what follows it — its sort class among the items of one
  * origin, `markClass`), and for the sort of two records at one origin
- * (`utils/marks.js` `sourceOrder`) the unit it stands at (`at`, else the
- * first it names) and its `part` there. While the record is live, each named unit shows at
+ * (`utils/marks.js` `sourceOrder`) the chain of units it stands at (`at`:
+ * the home slots from the root sequence down to that unit, else the first
+ * unit it names) and its `part` there. While the record is live, each named unit shows at
  * the record that wins its movers and is hidden at home; deleting the
  * record (an undo) hands the unit to the next record, else home. A record
  * waits for the units it names as an item waits for its origin
@@ -458,14 +459,14 @@ export class ContentMove {
      * @param {number} side
      * @param {Array<number>} ids
      * @param {number} [part] the writer's order among the records standing at one unit (0–7)
-     * @param {ID|null} [at] the unit the record stands at (`null`: the first it names)
+     * @param {Array<ID>|null} [at] the chain the record stands at, outermost first (`null`: the first unit it names)
      */
-    constructor(priority: number, side: number, ids: Array<number>, part?: number, at?: ID | null);
+    constructor(priority: number, side: number, ids: Array<number>, part?: number, at?: Array<ID> | null);
     priority: number;
     side: number;
     ids: number[];
     part: number;
-    at: ID | null;
+    at: ID[] | null;
     /**
      * The record item, once integrated (its id and parent decide the move).
      * @type {Item|null}

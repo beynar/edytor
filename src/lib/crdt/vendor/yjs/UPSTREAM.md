@@ -870,13 +870,17 @@ Vendored execution lines 4,872 → 4,630; an app bundle 546.4 → 545.0 KB min
 (minimal), 745.4 → 744.0 (every plugin): edytor's manager is 4.3 KB where
 the engine's (without `redoItem`) and the hooks' driver were 5.6.
 
-Test side: `src/tests/crdt/harness/undo.js` is the engine's `UndoManager`
-as it stood before YP18 (`undoManagerOf(Y)`, over the fork or a copy of its
-tree), for the upstream suite, the replica harness's `raw` adapter, the
-engine probes and the differentials. Removed with their subject:
-`yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the hooks' rows;
-the rules are the facade history's `hist.undo.*` rows) and the upstream row
-on `ignoreRemoteAttributeChanges`.
+Test side: the tests keep no undo manager of their own. Every undo a test
+runs is edytor's (`createUndoManager`, `document.history`, or over a raw
+document `src/tests/crdt/harness/history.ts`: the same class with the same
+rules, `historyRules`, its scope narrowed to the probed nodes). Removed with
+their subject: `yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the
+hooks' rows; the rules are the facade history's `hist.undo.*` rows), the
+upstream rows on `ignoreRemoteAttributeChanges`, and later (the review of
+PR #29) the test copy of the engine's `UndoManager` as it stood before YP18
+(`harness/undo.js`, 528 lines), upstream's `undo-redo.tests.js` (20 rows of
+that class) and its `testSubdocsUndo`; the undo/redo steps of the YP16
+writes differential (an engine write path no more).
 
 ### YP19 — the engine ships what edytor calls: no plain formats, no observers, no subdocuments, no relative-position objects (`src/ynode.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/utils/Transaction.js`, `src/utils/transaction-helpers.js`, `src/utils/encoding.js`, `src/utils/ids.js`, `src/utils/StructStore.js`, `src/utils/positions.js` (new), `src/index.js`, `global.d.ts`)
 
@@ -955,8 +959,8 @@ prototype, from `src/tests/setup/engine-reads.ts` in every vitest lane (and
 on a stripped copy's node where a differential loads one). The harness's
 `applyDelta` writes a formatted op as paired mark operations (an insert takes
 exactly its formats, a retain sets the keys it names); the raw adapter marks
-with `mark`; the harness's pre-YP18 `UndoManager` derives
-`changedParentTypes` from `changed`. Removed with their subject: the
+with `mark`; the harness's pre-YP18 `UndoManager` derived
+`changedParentTypes` from `changed` (the copy is gone, YP18's test side). Removed with their subject: the
 upstream tests of observers and events, subdocuments, relative positions,
 plain formatting and its cleanup (`y-text`, `y-map`, `y-array`, `doc`,
 `delta`, `undo-redo`, `attribution`, `IdSet`, `y-xml`;
@@ -1106,7 +1110,7 @@ boundaries and marks on every pair of client ids, collection), the index
 self-checks (each record's claims equal a fresh scan's), the random corpus,
 the upstream suite unchanged.
 
-### YP22 — move records: an attributed, reversible, order-independent move (`src/structs/Item.js`, `src/ynode.js`, `src/utils/marks.js`, `src/utils/Doc.js`, `src/utils/Transaction.js`, `src/utils/StructStore.js`, `src/utils/encoding.js`, `src/index.js`, `global.d.ts`)
+### YP22 — move records: an attributed, reversible, order-independent move (`src/structs/Item.js`, `src/ynode.js`, `src/utils/marks.js`, `src/utils/Doc.js` (`_clock`), `src/utils/Transaction.js`, `src/utils/StructStore.js`, `src/utils/encoding.js`, `src/index.js`, `global.d.ts`)
 
 Reason: the engine has no move. Edytor placed each block by a map of
 placement candidates (`at`: `{p: parent, r: rank}` under an ever-growing
@@ -1126,13 +1130,15 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   `ynode.js`'s `contentRefs`): one countable unit at its destination
   holding a Lamport `priority`, a `side` (`0` after, `1` before), the
   ordered id ranges (`client, clock, len`) of the units it moves and, for
-  the sort of two records at one origin, the unit it stands at (`at`, an
-  id; `null`: the first it names) and its `part` there (0–7, the writer's
-  order among the records standing at one unit); `copy` keeps them all (a
-  redo copies the record, never the units); `write` puts priority, whether
-  an anchor follows, part and side in one varint (`priority · 32 + 16 ·
-  anchored + part · 2 + side`), then the anchor, then the ranges as a hold
-  record's.
+  the sort of two records at one origin, the chain it stands at (`at`: the
+  ids of the units from the root sequence down to the unit it stands at,
+  outermost first — for a block, the home slots of its ancestors, then its
+  own; `null`: the first unit it names alone) and its `part` there (0–7,
+  the writer's order among the records standing at one unit); `copy` keeps
+  them all (a redo copies the record, never the units); `write` puts
+  priority, whether a chain follows, part and side in one varint
+  (`priority · 32 + 16 · anchored + part · 2 + side`), then the chain (its
+  length, then its ids), then the ranges as a hold record's.
   A record never moves a record (such ids are skipped). Records are
   immutable and deleted at most once: the state that decides a unit's place
   is the items, the records and the deleted records, so replicas converge
@@ -1148,12 +1154,13 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   a record's content (its class orders concurrent inserts, as YP21's).
 - **Moving** (`moveRange`, as `holdRange`): the items a record names take
   it when it integrates, split at the range's edges. A record waits for
-  its units as an item waits for its origin (`getMissing` in
+  its units and its chain as an item waits for its origin (`getMissing` in
   `encoding.js`: a named id past a client's clock, or one a Skip stands
   for, is the missing dependency — a skip counts in the clock but holds no
-  item to sort by), so its units are present whenever its place is decided
-  and whenever another record at its origin is sorted against it
-  (`sourceOrder`); `applyPending` applies YP20's pending holds only. A
+  item to sort by), so they are present whenever its place is decided and
+  whenever another record at its origin is sorted against it
+  (`sourceOrder`), in one update or in many; `applyPending` applies YP20's
+  pending holds only. A
   unit that starts or stops being moved (and is not gone) moves
   its home sequence's length and drops its search markers; one whose mover
   changed is logged in `transaction.moves` (`client, clock, len`, in
@@ -1168,24 +1175,25 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   (between two records of one writer at one priority the later clock wins),
   and two peers splitting one list at once keep each block where one of them
   put it, never half of a head's items with each.
-- **`YNode#move(index, ids, side)`**: one record at live index `index` (in
-  the gap there, `insertInGapHelper`).
+- **`YNode#move(index, ids, side, part, at)`**: one record at live index
+  `index` (in the gap there, `insertInGapHelper`).
 - **Sort classes** (`marks.js` `markClass`, `sortsBefore`): among the items
   of one origin, a move record sorts after every slot (class `4 + side`:
   a split's pieces first, then the after-records, then the before-records
   — the order every serial run of the gestures gives, DR-crdt-6); two
-  records of one class sort by the home order of their first moved units
-  (`sourceOrder`): in one sequence by `sequenceOrder` (exported: the walk
-  from each item leftward until one meets the other, the distance between
-  them; one item: by clock); in different sequences by the document's
-  `_unitOrder` hook (`Doc.js`: the application's order of two units
-  `{ item, clock }` of different sequences — edytor's climbs each unit's
-  sequence to its owner block's home slot up to the root and compares the
-  chains level by level, `placement/resolve.ts` `unitOrder`; `null`, or a
-  hook answering `0`, falls back to client id, as does a unit a GC struct
-  replaced), so two peers that outdent or lift blocks out of one list, or
-  of nested lists, into one gap at once keep the list's order there
-  whatever their client ids (CW-01); and among block slots (`{ b }` units)
+  records of one class sort by the chains they stand at (`sourceOrder`),
+  level by level from the root: two units of one sequence by
+  `sequenceOrder` (exported: the walk from each item leftward until one
+  meets the other, the distance between them; one item: by clock), a unit
+  before the units inside its block (the shorter chain first); chains that
+  meet in no sequence (or reach a unit a GC struct replaced) order nothing,
+  and the part, then the stronger record decide — so two peers that outdent
+  or lift blocks out of one list, or of nested lists, into one gap at once
+  keep the list's order there whatever their client ids (CW-01). The
+  record names everything its sort reads, so the order needs no document
+  hook (the prototype's `_unitOrder` read the chains from the sequences at
+  integration time, and a replica that took a record before an ancestor's
+  slot, inside one update, compared it by client id); and among block slots (`{ b }` units)
   the split key first (`s`: the id of the boundary item of the split that
   made the block; two such slots sort by their boundaries' order in the
   text, `sequenceOrder`, and before a slot no split made, so two peers'
@@ -1195,8 +1203,8 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   types after its own line stay together around a peer's line inserted
   there (`order.insert.run`). Each is a total order per origin
   that every replica computes alike — `sourceOrder` because a record
-  integrates only once its units have (above), a unit's place in its
-  sequence never changes, and the hook reads the engine's structs alone.
+  integrates only once its units and its chain have (above), and a unit's
+  place in its sequence never changes.
 
 Plain items (every upstream test) are untouched: with no record, `movers`
 is `null` everywhere, `extendsRun` is false for every array or text item,
@@ -1209,9 +1217,14 @@ there (the root's in the registry root's list part), an array's items slots
 index reads the sequences, keeps an in-memory order key per child
 (`placement/keys.ts`), re-places only the blocks whose slot, record or
 mover changed (`transaction.moves`, the slots and records a fold touched)
-and resolves a cycle locally with a parentless fallback (the rejected
-block shows at the root's tail, `placement/resolve.ts`); the purge drops
-the old records no block shows at and the slots of removed blocks.
+and resolves a cycle locally: a block's candidate places are its live
+records, strongest first, then its home slot, and the block whose move is
+the oldest edge of a cycle is back where it stood (its next record, else
+home; the root's tail only when every place closes a cycle,
+`placement/resolve.ts`); writers name each record's chain (the home slots
+above the unit it stands at) and anchor and carry where the index shows a
+block; the purge drops the old records no block shows at and the slots of
+removed blocks.
 Removed: `placement/rank.ts`, `placement/source.ts`, the `at` nodes, the
 candidate argmax and runner-up, the global resolution pass, the ranks of
 data arrays.

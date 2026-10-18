@@ -687,8 +687,8 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   sort by their class — the side of the gap they leave for — then by the
   block each stands at (`at`: the block leaving, for a head or new blocks
   the block they stand beside) in the lists' order (fork patch YP22,
-  `sourceOrder`: the home slots' order in one sequence, or the chain of
-  slots down nested lists, `unitOrder`), then by the writer's part there
+  `sourceOrder`: the chain of home slots each record names, from the root
+  down to that block, compared level by level), then by the writer's part there
   (a head holding the items before the block, new blocks kept before the
   block after, a head holding the block too, the block itself, new blocks
   after it: `PART`), then the stronger record first. The new head list a

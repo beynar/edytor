@@ -63,14 +63,6 @@ export class Doc extends ObservableV2 {
      */
     this._clock = 0
     /**
-     * YP22: the application's order of two units of different sequences
-     * (`{ item, clock }` each), for the sort of two move records at one
-     * origin whose units stand in different sequences (`utils/marks.js`
-     * `sourceOrder`); `null`: by client id. Set before anything integrates.
-     * @type {null | ((a: { item: any, clock: number }, b: { item: any, clock: number }) => number)}
-     */
-    this._unitOrder = null
-    /**
      * @type {Map<string, YNode>}
      */
     this.share = new Map()

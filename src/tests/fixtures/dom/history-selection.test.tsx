@@ -41,6 +41,7 @@ import {
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /**
  * Rows still red (expected-fail). Red on the reference (arch-v2/ref-s7): F-U1
@@ -83,7 +84,7 @@ const history = async (
 
 /** A remote peer on a replica of the mounted document; `push` delivers its writes as a remote apply. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

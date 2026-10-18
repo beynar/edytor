@@ -21,12 +21,13 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const E = bindEdytorDoc(Y);
 
 let clientSeq = 2000;
 const seeded = () => {
-	const doc = new Y.Doc();
+	const doc = keepingReplaced(new Y.Doc());
 	doc.clientID = clientSeq++;
 	const ed = E.create(doc);
 	ed.init();
@@ -211,11 +212,11 @@ describe('anchor resolution through structure', () => {
 
 describe('anchors under concurrency (two replicas)', () => {
 	const pair = () => {
-		const d1 = new Y.Doc();
+		const d1 = keepingReplaced(new Y.Doc());
 		d1.clientID = clientSeq++;
 		const e1 = E.create(d1);
 		e1.init();
-		const d2 = new Y.Doc();
+		const d2 = keepingReplaced(new Y.Doc());
 		d2.clientID = clientSeq++;
 		Y.applyUpdate(d2, Y.encodeStateAsUpdate(d1));
 		const e2 = E.create(d2);

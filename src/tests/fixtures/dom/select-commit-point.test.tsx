@@ -40,6 +40,7 @@ import {
 import { endSuggestion, suggestEnd } from '../../test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
 import { codePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference; green since V2. */
 const row = it;
@@ -48,7 +49,7 @@ const pin = it;
 
 /** A remote peer on a replica of the mounted document; `push` delivers its writes as a remote apply. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	const deliver = () =>

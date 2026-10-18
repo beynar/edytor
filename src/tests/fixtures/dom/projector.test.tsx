@@ -45,6 +45,7 @@ import {
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
 import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference; green since V4. */
 const row = it;
@@ -57,7 +58,7 @@ afterEach(() => {
 
 /** A remote peer on a replica of the mounted document; `push` delivers its writes as a remote apply. */
 const peer = (edytor: Edytor) => {
-	const remoteDoc = new Y.Doc();
+	const remoteDoc = keepingReplaced(new Y.Doc());
 	Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 	const remote = attachDocument(remoteDoc);
 	return {

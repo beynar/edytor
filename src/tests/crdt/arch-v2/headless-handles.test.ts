@@ -24,6 +24,7 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { insertParts } from '../../test.utils.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4. */
 const row = test;
@@ -68,7 +69,7 @@ describe('one command, one update — normalization inside the transaction', () 
 		'the root emptied by a delete stays empty: one update, no block written; the view shows its virtual paragraph',
 		() => {
 			const { edytor, updates } = view([p('a', 'aa')]);
-			const peer = new Y.Doc();
+			const peer = keepingReplaced(new Y.Doc());
 			Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
 			updates.length = 0;
 			edytor.deleteBlock('a');
@@ -195,7 +196,7 @@ describe('handles read the index', () => {
 		const a = edytor.idToBlock.get('a')!;
 		edytor.insertText('a', 0, 'q');
 		expect(edytor.idToBlock.get('a')).toBe(a);
-		const peer = new Y.Doc();
+		const peer = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(peer);
 		remote.facade.insertBlocks({ parent: null, index: 2 }, [{ id: 'r', type: 'paragraph' }]);

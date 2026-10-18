@@ -24,6 +24,7 @@ import { attachDocument } from '$lib/crdt/document.js';
 import { Y } from '$lib/crdt/engine.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
+import { keepingReplaced } from '../../../../lib/crdt/incarnations.js';
 
 const dials: string[] = [];
 let refuse: (url: string) => [number, string] | undefined = () => undefined;
@@ -98,7 +99,7 @@ describe('a view mounted after a refusal (RW-05)', () => {
 		const source = createDocument({
 			value: { children: [{ type: 'paragraph', content: [{ text: 'stored' }] }] }
 		});
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		Y.applyUpdate(doc, source.encode());
 		const document = attachDocument(doc);
 		document.attachSync(refusedSync(4403, 'document access denied'));

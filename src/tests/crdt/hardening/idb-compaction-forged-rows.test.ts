@@ -45,6 +45,7 @@ import {
 	GENERATION_RECORD
 } from '../../../lib/crdt/protocols/envelope.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { keepingReplaced } from '../../../lib/crdt/incarnations.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -92,7 +93,7 @@ const hasRow = (rows: ArrayBuffer[], bytes: Uint8Array) =>
  * (a real block row) but `meta.v = 99` wins over the provider doc's `v = 1`.
  */
 const makeV99Update = () => {
-	const remote = new Y.Doc();
+	const remote = keepingReplaced(new Y.Doc());
 	remote.clientID = Number.MAX_SAFE_INTEGER; // wins the 'v' map-entry merge
 	const er = E.create(remote);
 	er.init();
@@ -119,7 +120,7 @@ describe('R2 — compaction must not delete a forged row', () => {
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [v99]);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 		expect(readOnly(doc)).toBe(true);
@@ -135,7 +136,7 @@ describe('R2 — compaction must not delete a forged row', () => {
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [v99]);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 		const dbsize = p._dbsize;
@@ -150,7 +151,7 @@ describe('R2 — compaction must not delete a forged row', () => {
 
 	test('mixed valid + forged rows: both hydrate, the doc is read-only, both survive', async () => {
 		const name = `h-r2-mixed-${Date.now()}`;
-		const validDoc = new Y.Doc();
+		const validDoc = keepingReplaced(new Y.Doc());
 		validDoc.clientID = 7777;
 		const ev = E.create(validDoc);
 		ev.init();
@@ -159,7 +160,7 @@ describe('R2 — compaction must not delete a forged row', () => {
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [validUpdate, v99]);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 		expect(readOnly(doc)).toBe(true);
@@ -178,13 +179,13 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [v99]);
 
-		const doc1 = new Y.Doc();
+		const doc1 = keepingReplaced(new Y.Doc());
 		const p1 = new providers.IndexeddbPersistence(name, doc1);
 		await p1.whenSynced;
 		await p1.destroy();
 		expect(hasRow(await readRows(name), v99)).toBe(true);
 
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		expect(readOnly(doc2)).toBe(true);
@@ -199,7 +200,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [v99]);
 
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 
@@ -218,7 +219,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 
 	/** A forged update whose dependency lives in a DIFFERENT row. */
 	const makeV99DeltaOn = (baseUpdate: Uint8Array) => {
-		const remote = new Y.Doc();
+		const remote = keepingReplaced(new Y.Doc());
 		remote.clientID = Number.MAX_SAFE_INTEGER; // meta.v LWW winner
 		Y.applyUpdate(remote, baseUpdate);
 		let captured: Uint8Array | null = null;
@@ -231,7 +232,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 	};
 
 	const makeBaseUpdate = () => {
-		const base = new Y.Doc();
+		const base = keepingReplaced(new Y.Doc());
 		const eb = E.create(base);
 		eb.init();
 		eb.insertText(DEFAULT_SEED_ID, 0, 'base');
@@ -246,7 +247,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 			const delta = makeV99DeltaOn(base);
 			await seedGenerationDb(name, order === 'in-order' ? [base, delta] : [delta, base]);
 
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			const p = new providers.IndexeddbPersistence(name, doc);
 			await p.whenSynced;
 			// One hydration transaction resolves either order.
@@ -261,7 +262,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 
 	test('a forged row fetched after sync turns the doc read-only before the same compaction', async () => {
 		const name = `h-r2-late-${Date.now()}`;
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -288,7 +289,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 
 	test('fully-admitted store still compacts; storeState resolves only after commit', async () => {
 		const name = `h-r2-clean-${Date.now()}`;
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const ed = E.create(doc);
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -302,7 +303,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		expect(rows.length).toBe(1); // single compacted snapshot row
 
 		// Reopen reconstructs everything from the compacted store.
-		const doc2 = new Y.Doc();
+		const doc2 = keepingReplaced(new Y.Doc());
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		for (let i = 0; i < 5; i++) expect(doc2.get('scratch').getAttr(`k${i}`)).toBe(i);
@@ -313,7 +314,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 
 	test('failures surface: closed-handle storeState rejects; _storeUpdate emits message-error', async () => {
 		const name = `h-r2-errors-${Date.now()}`;
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
 

@@ -91,16 +91,17 @@ export interface EngineNode {
 	 * Move the units `ids` names (`client, clock, len` triples, in order) to
 	 * live index `index` of this sequence: one move record there (the fork's
 	 * `ContentMove`); `side` is its class among the items of its origin (`0`
-	 * after, `1` before), `at` the unit it stands at for the sort of two records
-	 * at one origin (`null`: the first it names) and `part` its order among the
-	 * records standing there.
+	 * after, `1` before), `at` the chain it stands at for the sort of two
+	 * records at one origin — the units from the root sequence down to the
+	 * unit it stands at, outermost first (`null`: the first unit it names) —
+	 * and `part` its order among the records standing there.
 	 */
 	move(
 		index: number,
 		ids: number[],
 		side?: number,
 		part?: number,
-		at?: { client: number; clock: number } | null
+		at?: ReadonlyArray<{ client: number; clock: number }> | null
 	): void;
 }
 

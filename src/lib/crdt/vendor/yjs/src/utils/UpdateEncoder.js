@@ -1,6 +1,45 @@
 import * as error from 'lib0-v14/error'
 import * as encoding from 'lib0-v14/encoding'
 
+// YP24 begin (edytor fork: one string table per update — see UPSTREAM.md YP24)
+/**
+ * The update encoding this fork writes and reads, in upstream's reserved
+ * feature-flag varuint (upstream writes `0`): `1`, a string table per update.
+ */
+export const UPDATE_ENCODING = 1
+
+/**
+ * Write a content value in lib0's `writeAny` layout, its strings and object
+ * keys through the update's string table (`writeKey`).
+ *
+ * @param {UpdateEncoder} encoder
+ * @param {any} data
+ */
+const writeValue = (encoder, data) => {
+  const rest = encoder.restEncoder
+  if (typeof data === 'string') {
+    encoding.write(rest, 119)
+    encoder.writeKey(data)
+  } else if (data !== null && typeof data === 'object' && !(data instanceof Uint8Array)) {
+    if (Array.isArray(data)) {
+      encoding.write(rest, 117)
+      encoding.writeVarUint(rest, data.length)
+      for (let i = 0; i < data.length; i++) writeValue(encoder, data[i])
+    } else {
+      const keys = Object.keys(data)
+      encoding.write(rest, 118)
+      encoding.writeVarUint(rest, keys.length)
+      for (let i = 0; i < keys.length; i++) {
+        encoder.writeKey(keys[i])
+        writeValue(encoder, data[keys[i]])
+      }
+    }
+  } else {
+    encoding.writeAny(rest, data)
+  }
+}
+// YP24 end
+
 export class IdSetEncoder {
   constructor () {
     this.restEncoder = encoding.createEncoder() // encodes all the rest / non-optimized
@@ -50,7 +89,7 @@ export class UpdateEncoder extends IdSetEncoder {
      * @type {number}
      */
     this.keyClock = 0
-    this.keyClockEncoder = new encoding.IntDiffOptRleEncoder()
+    this.keyClockEncoder = new encoding.UintOptRleEncoder() // YP24: 0 a new string, else its index + 1
     this.clientEncoder = new encoding.UintOptRleEncoder()
     this.leftClockEncoder = new encoding.IntDiffOptRleEncoder()
     this.rightClockEncoder = new encoding.IntDiffOptRleEncoder()
@@ -63,7 +102,7 @@ export class UpdateEncoder extends IdSetEncoder {
 
   toUint8Array () {
     const encoder = encoding.createEncoder()
-    encoding.writeVarUint(encoder, 0) // this is a feature flag that we might use in the future
+    encoding.writeVarUint(encoder, UPDATE_ENCODING) // YP24: the feature flag names the encoding
     encoding.writeVarUint8Array(encoder, this.keyClockEncoder.toUint8Array())
     encoding.writeVarUint8Array(encoder, this.clientEncoder.toUint8Array())
     encoding.writeVarUint8Array(encoder, this.leftClockEncoder.toUint8Array())
@@ -142,7 +181,7 @@ export class UpdateEncoder extends IdSetEncoder {
    * @param {any} any
    */
   writeAny (any) {
-    encoding.writeAny(this.restEncoder, any)
+    writeValue(this, any) // YP24
   }
 
   /**
@@ -156,7 +195,7 @@ export class UpdateEncoder extends IdSetEncoder {
    * @param {any} embed
    */
   writeJSON (embed) {
-    encoding.writeAny(this.restEncoder, embed)
+    writeValue(this, embed) // YP24
   }
 
   /**
@@ -165,29 +204,23 @@ export class UpdateEncoder extends IdSetEncoder {
    *
    * We cache these keys in a Map and refer to them via a unique number.
    *
+   * YP24: the cache is on (upstream left it off for decoders older than its
+   * own), and every map key, root name and string of a content value goes
+   * through it: an update writes each distinct string once. The key column
+   * says `0` for a new string (the next in the string column) and the index
+   * of a known one plus one, so a key repeated block after block is the same
+   * small number every time.
+   *
    * @param {string} key
    */
   writeKey (key) {
     const clock = this.keyMap.get(key)
     if (clock === undefined) {
-      /**
-       * @todo uncomment to introduce this feature finally
-       *
-       * Background. The ContentFormat object was always encoded using writeKey, but the decoder used to use readString.
-       * Furthermore, I forgot to set the keyclock. So everything was working fine.
-       *
-       * However, this feature here is basically useless as it is not being used (it actually only consumes extra memory).
-       *
-       * I don't know yet how to reintroduce this feature..
-       *
-       * Older clients won't be able to read updates when we reintroduce this feature. So this should probably be done using a flag.
-       *
-       */
-      // this.keyMap.set(key, this.keyClock)
-      this.keyClockEncoder.write(this.keyClock++)
+      this.keyMap.set(key, this.keyClock++)
+      this.keyClockEncoder.write(0)
       this.stringEncoder.write(key)
     } else {
-      this.keyClockEncoder.write(clock)
+      this.keyClockEncoder.write(clock + 1)
     }
   }
 }

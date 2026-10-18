@@ -523,14 +523,14 @@ export class Item extends AbstractStruct {
           // find the correct key
           const ykey = findRootTypeKey(parent)
           encoder.writeParentInfo(true) // write parentYKey
-          encoder.writeString(ykey)
+          encoder.writeKey(ykey) // YP24
         } else {
           encoder.writeParentInfo(false) // write parent id
           encoder.writeLeftID(parentItem.id)
         }
       } else if (parent.constructor === String) { // this edge case was added by differential updates
         encoder.writeParentInfo(true) // write parentYKey
-        encoder.writeString(parent)
+        encoder.writeKey(parent) // YP24
       } else if (parent.constructor === ID) {
         encoder.writeParentInfo(false) // write parent id
         encoder.writeLeftID(parent)
@@ -538,7 +538,7 @@ export class Item extends AbstractStruct {
         error.unexpectedCase()
       }
       if (parentSub !== null) {
-        encoder.writeString(parentSub)
+        encoder.writeKey(parentSub) // YP24
       }
     }
     this.content.write(encoder, offset, offsetEnd)

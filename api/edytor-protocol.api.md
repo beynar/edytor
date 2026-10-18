@@ -332,7 +332,7 @@ export type ProviderStack = ReturnType<typeof bindProviders>;
 
 ```ts
 // crdt/doc/gate.d.ts
-declare const SCHEMA_VERSION: 9;
+declare const SCHEMA_VERSION: 10;
 ```
 
 ### SchemaMismatchDetail
@@ -530,7 +530,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 9;
+            readonly version: 10;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -541,7 +541,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 9;
+        SCHEMA_VERSION: 10;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {

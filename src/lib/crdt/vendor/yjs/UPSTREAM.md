@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records) and YP23 (a block set's trim)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim) and YP24 (a string table per update)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -55,11 +55,12 @@ applied to both) and `fork.diff` (newer → this tree, both carrying YP1) into
 the run's artifact, says in the summary whether the installed `lib0-v14`
 satisfies the newer engine's `lib0` range (a mismatch is a run warning: a
 red check may then be the older lib0, not the fork), then materializes the newer engine as `bench/vendor-baseline/yjs`
-so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
-wire) and the baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`
-(byte-identical stores after every operation) run against it. A red run
+so the baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`
+(identical stores after every operation, each read back from its own
+engine's encoding) runs against it. There is no wire interop to check since
+YP24: the fork's update encoding is its own. A red run
 means the re-sync needs care; the re-sync itself is the manual recipe under
-YP8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
+YP8. Locally: `node scripts/upstream-check.mjs`, then that check, then
 `bench/lib/mk-baseline.sh` to restore the pinned baseline.
 
 ## Local patches
@@ -833,10 +834,11 @@ Patch:
 - `edytor/crdt` exports `UpdateEncoder`, `UpdateDecoder` and `diffUpdate`
   in place of the V1/V2 pairs (see `src/tests/crdt/yp8-surface.test.ts`).
 
-Interop: an upstream engine reads the fork's bytes with its `…V2`
-functions (`bench/lib/interop.mjs`, the baseline legs of
-`search-marker-format.test.ts` and `yp16-writes.test.ts` compare against
-upstream's `encodeStateAsUpdateV2`). Vendored execution lines 5,123 →
+Interop: an upstream engine read the fork's bytes with its `…V2`
+functions until YP24 (a string table per update) made the encoding the
+fork's own; the baseline legs of `search-marker-format.test.ts` and
+`yp16-writes.test.ts` now compare the stores each engine reads back from
+its own encoding. Vendored execution lines 5,123 →
 4,872. Test side: `compatibility.tests.js` (v1 documents of Yjs 13) is
 removed; the upstream suite's helpers run every program in the one
 encoding (`testHelper.js`, `updates.tests.js`).
@@ -1277,6 +1279,65 @@ and the structs only where the store has nothing; a replica that
 integrated around a gap takes the full state of the writer that removed the
 subtree without throwing, and ends at its state vector), the random corpus's
 raw adapter (seed 140 passes: its pin is gone).
+
+### YP24 — one string table per update (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/structs/Item.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`)
+
+Reason: the v2 encoding writes every map key, root name and string value
+in full, every time. Upstream's `writeKey` has a cache, commented out
+(`keyMap.set`) because decoders older than its own read format keys with
+`readString`, and map keys and root names do not go through it anyway
+(`writeString` in `Item#write`, `readString` in both struct readers). In an
+edytor document a block's id (12 characters) was written five times (its
+registry key, its `id` attr, its home slot `{ b }`, its record key, the
+boundary of the split that made it), and `"blocks"`, `"blockattr"`, `"id"`,
+`"type"`, `"paragraph"`, an actor's id, once per block each: about a fifth
+of a stored document. Design and measurements:
+`docs/archive/storage-diet/design.md`. Edytor's schema generation 10 is the
+cutover (no conversion).
+
+Patch (new code delimited by `// YP24 begin` / `// YP24 end`, edits marked `// YP24`):
+
+- **The string table.** `UpdateEncoder#writeKey` keeps its cache: a string
+  the update has written is its index. The key column (`keyClockEncoder`)
+  is a `UintOptRleEncoder` saying `0` for a new string (the next in the
+  string column) and the index plus one for a known one, so a key repeated
+  block after block is the same small number each time (gzip finds it; a
+  running difference, upstream's `IntDiffOptRle`, did not).
+  `UpdateDecoder#readKey` reads it back (an index past the table is
+  refused).
+- **Keys and root names through it.** `Item#write` writes a map entry's
+  key, a root parent's name and a string parent with `writeKey`; both
+  struct readers (`updates.js`, `BlockSet.js`) read them with `readKey`.
+  Node names and format keys already went through `writeKey`.
+- **Content values through it.** `writeAny`/`writeJSON` write lib0's
+  `writeAny` layout with every string and object key through the table
+  (`writeValue`); `readAny`/`readJSON` read it back (`readValue`). Numbers,
+  booleans, `null`, `undefined` and binary keep lib0's codec. Text
+  (`ContentString`) stays in the string column, never in the table.
+- **The encoding's name.** The update's first varuint, upstream's reserved
+  feature flag (`0`), says `1` (`UPDATE_ENCODING`); the decoder refuses an
+  update of another encoding before it reads anything (`an update of
+  another encoding`): an upstream update, or one of edytor's generations 6
+  to 9, is refused, never mis-read.
+
+The tables are built in write order, so an update is still a function of
+the store (byte-identical for identical stores, as the fork's differential
+rows check), and every path that re-encodes (`mergeUpdates`, `diffUpdate`,
+a block set's re-write, the room's stripped frames) writes through the
+encoder's own methods.
+
+Plain programs (every upstream test) are untouched in what they store; their
+bytes differ from upstream's.
+
+Measured: see `docs/archive/storage-diet/design.md` ("Prototype: measured").
+
+Oracle: the upstream suite (`updates.tests.js` merges, diffs and re-encodes
+every program), `src/tests/crdt/yp16-writes.test.ts` and the baseline leg
+of `search-marker-format.test.ts` (the stores each engine reads back from
+its own encoding, `src/tests/crdt/harness/stored.js`, after every
+operation), `generation.test.ts` (an earlier encoding is refused before
+decode), `boundary-attacks/envelope.test.ts` (a v13 update inside a v14
+frame no longer integrates), the random corpus (every adapter).
 
 ## Generated declarations (`dts/`)
 

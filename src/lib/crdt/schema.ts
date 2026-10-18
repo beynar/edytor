@@ -90,9 +90,10 @@ export const SCHEMA = {
 	// storage; 8: a merge claim is an item `{m}` in a backing text (fork patch
 	// YP21), a block has no `claims` list; 9: a block's place is its home slot
 	// in its parent's sequence and a move is a move record (fork patch YP22),
-	// a block has no `at` map and an array item no rank. A container or frame
+	// a block has no `at` map and an array item no rank; 10: the update encoding
+	// writes each distinct string once (fork patch YP24). A container or frame
 	// of an earlier generation is refused.
-	version: 9,
+	version: 10,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

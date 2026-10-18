@@ -2,8 +2,10 @@
 # `package.json` (`pnpm.overrides["@y/protocols>@y/y"]`) and recorded in
 # `src/lib/crdt/vendor/yjs/UPSTREAM.md`. Every week this asks npm for a newer
 # `@y/y`; when there is one it diffs it against the pin and against the fork
-# (`scripts/upstream-check.mjs`), then runs the wire interop check and the
-# engine differential against it as the baseline. A red run means the next
+# (`scripts/upstream-check.mjs`), then runs the engine differential against
+# it as the baseline (the stores each engine reads back from its own
+# encoding: the fork's encoding is its own since its patch YP24, so there is
+# no wire interop to check). A red run means the next
 # re-sync needs care; the reports are the run's artifact. Re-syncing stays a
 # manual step (UPSTREAM.md, "Re-syncing with upstream"); this job only reports.
 name: Upstream
@@ -41,13 +43,9 @@ jobs:
       - name: Flag a lib0 the newer engine does not accept
         if: steps.check.outputs.lib0 == 'mismatch'
         run: echo "::warning title=lib0 mismatch::@y/y ${{ steps.check.outputs.newer }} asks a newer lib0 than lib0-v14 installs; a red check below may be lib0, not the fork (see the summary)"
-      - name: Wire interop (the fork against the newer engine)
+      - name: Engine differential (identical stores after every operation)
         if: steps.check.outputs.newer != ''
         # `shell: bash` runs with pipefail: a failed check fails the step through `tee`.
-        shell: bash
-        run: node bench/lib/interop.mjs | tee upstream-report/interop.log
-      - name: Engine differential (byte-identical stores after every operation)
-        if: steps.check.outputs.newer != ''
         shell: bash
         run: pnpm exec vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/hardening/search-marker-format.test.ts | tee upstream-report/differential.log
       - uses: actions/upload-artifact@v4

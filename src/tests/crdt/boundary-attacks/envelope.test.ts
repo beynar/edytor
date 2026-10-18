@@ -169,12 +169,12 @@ describe('attack 1b: real v13 updates never reach a v14 doc', () => {
 		pA.destroy();
 	});
 
-	test('envelope is transport-only: a v14-WRAPPED v13 payload is still applied', async () => {
-		// The gate authenticates the PROTOCOL, not the payload schema: a peer
-		// that speaks v14 (or forges the envelope) can still feed foreign
-		// update shapes to applyUpdate. v13 payloads decode under v14 — they
-		// land on the legacy root keys, so the v14 projection is unaffected,
-		// but the structs ARE integrated into the doc (state grows, persists).
+	test('a v14-WRAPPED v13 payload is refused by the engine: another encoding', async () => {
+		// The envelope authenticates the PROTOCOL, not the payload: a peer that
+		// speaks v14 (or forges the envelope) can still hand applyUpdate a
+		// foreign update. The engine refuses one in another encoding before
+		// it decodes anything (its feature flag, fork patch YP24): nothing
+		// integrates, the document and its state are unchanged.
 		const name = uniqueName('gate-wrapped-v13');
 		const docA = new Y.Doc();
 		const edA = E.create(docA);
@@ -182,16 +182,17 @@ describe('attack 1b: real v13 updates never reach a v14 doc', () => {
 		const pA = new providers.IndexeddbPersistence(name, docA);
 		await pA.whenSynced;
 		const jsonBefore = JSON.stringify(edA.toJSON());
+		const stateBefore = Y.encodeStateAsUpdate(docA);
 
 		const { update13 } = v13UpdateMessage();
+		expect(() => Y.applyUpdate(new Y.Doc(), update13)).toThrow(/an update of another encoding/);
 		const frame = encodeV14(0, (e) => sync.writeUpdate(e, update13));
 		bc.publish(generationDbName(name), frame.slice().buffer, 'forged');
-		await until(() => docA.get('content').getAttr('poison') !== undefined, 3000);
+		await nextTick(100);
 
-		// The v13 payload integrated (poison landed on the legacy root)…
-		expect(docA.get('content').getAttr('poison')).toEqual({ v13: true });
-		// …but the v14 projection is structurally unaffected.
+		expect(docA.get('content').getAttr('poison')).toBeUndefined();
 		expect(JSON.stringify(edA.toJSON())).toBe(jsonBefore);
+		expect(Buffer.from(Y.encodeStateAsUpdate(docA)).equals(Buffer.from(stateBefore))).toBe(true);
 		await pA.destroy();
 	});
 });

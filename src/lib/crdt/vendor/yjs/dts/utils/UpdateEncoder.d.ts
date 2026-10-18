@@ -1,3 +1,8 @@
+/**
+ * The update encoding this fork writes and reads, in upstream's reserved
+ * feature-flag varuint (upstream writes `0`): `1`, a string table per update.
+ */
+export const UPDATE_ENCODING: 1;
 export class IdSetEncoder {
     restEncoder: encoding.Encoder;
     dsCurrVal: number;
@@ -24,7 +29,7 @@ export class UpdateEncoder extends IdSetEncoder {
      * @type {number}
      */
     keyClock: number;
-    keyClockEncoder: encoding.IntDiffOptRleEncoder;
+    keyClockEncoder: encoding.UintOptRleEncoder;
     clientEncoder: encoding.UintOptRleEncoder;
     leftClockEncoder: encoding.IntDiffOptRleEncoder;
     rightClockEncoder: encoding.IntDiffOptRleEncoder;
@@ -84,6 +89,13 @@ export class UpdateEncoder extends IdSetEncoder {
      * occur very often. For a 3d application, the key `position` might occur very often.
      *
      * We cache these keys in a Map and refer to them via a unique number.
+     *
+     * YP24: the cache is on (upstream left it off for decoders older than its
+     * own), and every map key, root name and string of a content value goes
+     * through it: an update writes each distinct string once. The key column
+     * says `0` for a new string (the next in the string column) and the index
+     * of a known one plus one, so a key repeated block after block is the same
+     * small number every time.
      *
      * @param {string} key
      */

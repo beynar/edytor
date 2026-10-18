@@ -1172,7 +1172,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 9;
+            readonly version: 10;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -1183,7 +1183,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 9;
+        SCHEMA_VERSION: 10;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -2289,7 +2289,7 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 ```ts
 declare const bindEdytorDoc: (Y: EngineApi) => {
     SCHEMA: {
-        readonly version: 9;
+        readonly version: 10;
         readonly name: "edytor-doc";
         readonly roots: {
             readonly registry: "blocks";
@@ -2300,7 +2300,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             readonly schema: "schema";
         };
     };
-    SCHEMA_VERSION: 9;
+    SCHEMA_VERSION: 10;
     SCHEMA_NAME: "edytor-doc";
     META_KEY: "meta";
     init: (doc: EngineDoc, opts?: {

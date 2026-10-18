@@ -4,7 +4,7 @@
  * when that makes them smaller (`CompressionStream`, in every supported
  * browser, Node and Workers). A compressed record starts with gzip's magic
  * `1f 8b`, which no update does (its first byte is the encoder's feature
- * flag, `00`), so a record says itself whether it is compressed.
+ * flag, the encoding: `01`), so a record says itself whether it is compressed.
  * Worker-safe: no timers.
  */
 

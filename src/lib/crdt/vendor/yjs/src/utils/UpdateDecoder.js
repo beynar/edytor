@@ -1,6 +1,44 @@
 import * as decoding from 'lib0-v14/decoding'
+import * as error from 'lib0-v14/error' // YP24
 
 import { ID } from './ID.js'
+import { UPDATE_ENCODING } from './UpdateEncoder.js' // YP24
+
+// YP24 begin (edytor fork: one string table per update — see UPSTREAM.md YP24)
+/**
+ * Read a content value written by `writeValue` (lib0's `readAny` layout, its
+ * strings and object keys from the update's string table).
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {any}
+ */
+const readValue = decoder => {
+  const rest = decoder.restDecoder
+  switch (rest.arr[rest.pos]) {
+    case 119:
+      rest.pos++
+      return decoder.readKey()
+    case 118: {
+      rest.pos++
+      /** @type {Object<string,any>} */
+      const obj = {}
+      for (let n = decoding.readVarUint(rest); n > 0; n--) {
+        const key = decoder.readKey()
+        obj[key] = readValue(decoder)
+      }
+      return obj
+    }
+    case 117: {
+      rest.pos++
+      const arr = []
+      for (let n = decoding.readVarUint(rest); n > 0; n--) arr.push(readValue(decoder))
+      return arr
+    }
+    default:
+      return decoding.readAny(rest)
+  }
+}
+// YP24 end
 
 export class IdSetDecoder {
   /**
@@ -49,8 +87,9 @@ export class UpdateDecoder extends IdSetDecoder {
      * @type {Array<string>}
      */
     this.keys = []
-    decoding.readVarUint(decoder) // read feature flag - currently unused
-    this.keyClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder))
+    // YP24: the feature flag names the encoding; another one (upstream's `0`) is refused
+    if (decoding.readVarUint(decoder) !== UPDATE_ENCODING) throw error.create('an update of another encoding')
+    this.keyClockDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder)) // YP24
     this.clientDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder))
     this.leftClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder))
     this.rightClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder))
@@ -124,7 +163,7 @@ export class UpdateDecoder extends IdSetDecoder {
    * @return {any}
    */
   readAny () {
-    return decoding.readAny(this.restDecoder)
+    return readValue(this) // YP24
   }
 
   /**
@@ -138,20 +177,22 @@ export class UpdateDecoder extends IdSetDecoder {
    * @return {any}
    */
   readJSON () {
-    return decoding.readAny(this.restDecoder)
+    return readValue(this) // YP24
   }
 
   /**
    * @return {string}
    */
   readKey () {
+    // YP24: `0` a new string, else the index of a known one plus one
     const keyClock = this.keyClockDecoder.read()
-    if (keyClock < this.keys.length) {
-      return this.keys[keyClock]
-    } else {
+    if (keyClock === 0) {
       const key = this.stringDecoder.read()
       this.keys.push(key)
       return key
     }
+    if (keyClock > this.keys.length) throw error.create('an unknown key')
+    return this.keys[keyClock - 1]
   }
+
 }

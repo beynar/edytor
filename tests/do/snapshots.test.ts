@@ -80,7 +80,7 @@ describe('P5 · room snapshots, compressed', () => {
 			const snapshot = r.records().find((record) => record.kind === 'snapshot')!;
 			return { length: snapshot.bytes.length, first: snapshot.bytes[0] };
 		});
-		expect(raw).toMatchObject({ first: 0 }); // an update's feature flag
+		expect(raw).toMatchObject({ first: 1 }); // an update's feature flag: its encoding (fork patch YP24)
 		await inRoom(room, (r) => r.compressed());
 		const rows = await rowsOf(room);
 		expect(generationOf(rows)).toEqual(E.GENERATION_RECORD);

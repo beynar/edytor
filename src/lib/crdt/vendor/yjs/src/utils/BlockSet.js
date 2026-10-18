@@ -68,8 +68,8 @@ export const readBlockSet = (decoder) => {
             (info & binary.BIT8) === binary.BIT8 ? decoder.readLeftID() : null, // origin
             null, // right
             (info & binary.BIT7) === binary.BIT7 ? decoder.readRightID() : null, // right origin
-            cantCopyParentInfo ? (decoder.readParentInfo() ? decoder.readString() : decoder.readLeftID()) : null, // parent
-            cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readString() : null, // parentSub
+            cantCopyParentInfo ? (decoder.readParentInfo() ? decoder.readKey() : decoder.readLeftID()) : null, // parent (YP24: a key)
+            cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readKey() : null, // parentSub (YP24: a key)
             readItemContent(decoder, info) // item content
           )
           refs[i] = block

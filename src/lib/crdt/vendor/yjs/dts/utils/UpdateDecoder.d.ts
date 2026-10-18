@@ -26,7 +26,7 @@ export class UpdateDecoder extends IdSetDecoder {
      * @type {Array<string>}
      */
     keys: Array<string>;
-    keyClockDecoder: decoding.IntDiffOptRleDecoder;
+    keyClockDecoder: decoding.UintOptRleDecoder;
     clientDecoder: decoding.UintOptRleDecoder;
     leftClockDecoder: decoding.IntDiffOptRleDecoder;
     rightClockDecoder: decoding.IntDiffOptRleDecoder;

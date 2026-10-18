@@ -1138,7 +1138,10 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   them all (a redo copies the record, never the units); `write` puts
   priority, whether a chain follows, part and side in one varint
   (`priority · 32 + 16 · anchored + part · 2 + side`), then the chain (its
-  length, then its ids), then the ranges as a hold record's.
+  length, then its ids), then the ranges as a hold record's (one writer,
+  `writeIds`, and one reader, `readIds`, for both). `Item#delete` hands
+  the deleted item to its content's `delete`, so a record drops itself
+  from its units' movers without keeping its item.
   A record never moves a record (such ids are skipped). Records are
   immutable and deleted at most once: the state that decides a unit's place
   is the items, the records and the deleted records, so replicas converge
@@ -1152,7 +1155,8 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   of a moved item logs it (`tr.moves`) and moves no length; `Item#split`
   copies `movers`; `Item#mergeWith` requires both unmoved; `Item#gc` keeps
   a record's content (its class orders concurrent inserts, as YP21's).
-- **Moving** (`moveRange`, as `holdRange`): the items a record names take
+- **Moving** (YP20's walk: `holdRange`/`holdIds`/`holdItem` take the record,
+  `null` for a hold): the items a record names take
   it when it integrates, split at the range's edges. A record waits for
   its units and its chain as an item waits for its origin (`getMissing` in
   `encoding.js`: a named id past a client's clock, or one a Skip stands
@@ -1201,7 +1205,10 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   the text's order whatever each typed meanwhile, `order.split.text`), then
   the origin writer's own slots first (`extendsRun`): the lines one writer
   types after its own line stay together around a peer's line inserted
-  there (`order.insert.run`). Each is a total order per origin
+  there (`order.insert.run`). The two rules read a unit one way (`unitAt`:
+  an id's item and clock, `null` for a GC struct) and order two units one
+  way (`unitOrder`: by clock in one item, else `sequenceOrder`). Each is a
+  total order per origin
   that every replica computes alike — `sourceOrder` because a record
   integrates only once its units and its chain have (above), and a unit's
   place in its sequence never changes.

@@ -185,8 +185,9 @@ export class AbstractContent {
     integrate(_transaction: Transaction, _item: Item): void;
     /**
      * @param {Transaction} _transaction
+     * @param {Item} [_item] the item deleted (YP22: a move record reads it)
      */
-    delete(_transaction: Transaction): void;
+    delete(_transaction: Transaction, _item?: Item): void;
     /**
      * @param {Transaction} _transaction
      */
@@ -451,7 +452,8 @@ export function applyPending(tr: Transaction, clients: Array<number>): void;
  * waits for the units it names as an item waits for its origin
  * (`getMissing`), so two records at one origin sort by their units' home
  * order on every replica (`sourceOrder`). Immutable once written, so
- * replicas converge in any order.
+ * replicas converge in any order. The record's item is the one integrating
+ * or deleting it (it is what the units' `movers` hold).
  */
 export class ContentMove {
     /**
@@ -467,11 +469,6 @@ export class ContentMove {
     ids: number[];
     part: number;
     at: ID[] | null;
-    /**
-     * The record item, once integrated (its id and parent decide the move).
-     * @type {Item|null}
-     */
-    item: Item | null;
     /**
      * @return {number}
      */
@@ -505,8 +502,9 @@ export class ContentMove {
     integrate(transaction: Transaction, item: Item): void;
     /**
      * @param {Transaction} transaction
+     * @param {Item} item
      */
-    delete(transaction: Transaction): void;
+    delete(transaction: Transaction, item: Item): void;
     /**
      * @param {Transaction} _tr
      */

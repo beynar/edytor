@@ -1215,19 +1215,27 @@ export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
 export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen())
 
 /**
- * YP20: a hold record, one `client, clock, len` per unit.
+ * YP20, YP22: a record's id ranges, a count then one `client, clock, len` each.
  *
  * @param {UpdateDecoder} decoder
- * @return {ContentHold}
+ * @return {Array<number>}
  */
-export const readContentHold = decoder => {
+const readIds = decoder => {
   const ids = []
   for (let n = decoder.readLen(); n > 0; n--) {
     const id = decoder.readLeftID()
     ids.push(id.client, id.clock, decoder.readLen())
   }
-  return new ContentHold(ids)
+  return ids
 }
+
+/**
+ * YP20: a hold record, one `client, clock, len` per unit.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentHold}
+ */
+export const readContentHold = decoder => new ContentHold(readIds(decoder))
 
 /**
  * YP22: a move record: its priority, side, part and whether an anchor chain
@@ -1245,12 +1253,7 @@ export const readContentMove = decoder => {
     at = []
     for (let n = decoder.readLen(); n > 0; n--) at.push(decoder.readLeftID())
   }
-  const ids = []
-  for (let n = decoder.readLen(); n > 0; n--) {
-    const id = decoder.readLeftID()
-    ids.push(id.client, id.clock, decoder.readLen())
-  }
-  return new ContentMove(word >> 5, word & 1, ids, (word >> 1) & 7, at)
+  return new ContentMove(word >> 5, word & 1, readIds(decoder), (word >> 1) & 7, at)
 }
 
 const refused = () => { error.unexpectedCase() }

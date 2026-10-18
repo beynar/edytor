@@ -150,6 +150,46 @@ export const markClass = item => {
 }
 
 /**
+ * YP22: the unit id `client:clock` names, as its item and clock, `null` where
+ * a GC struct replaced it.
+ *
+ * @param {import('./StructStore.js').StructStore} store
+ * @param {number} client
+ * @param {number} clock
+ * @return {{ item: any, clock: number } | null}
+ */
+const unitAt = (store, client, clock) => {
+  const item = store.getItem({ client, clock })
+  return item.isItem ? { item, clock } : null
+}
+
+/**
+ * YP22: the order of two units (`unitAt`): by clock in one item, else by
+ * `sequenceOrder` (`NaN`: not in one sequence); `0` for one unit.
+ *
+ * @param {{ item: any, clock: number }} p
+ * @param {{ item: any, clock: number }} q
+ * @return {number}
+ */
+const unitOrder = (p, q) => (p.item === q.item ? p.clock - q.clock : sequenceOrder(p.item, q.item))
+
+/**
+ * YP22: a block slot's split key (`{ b, s: [client, clock] }`: the id of the
+ * boundary item of the split that made the block, kept when the slot is
+ * collected, `Item#gc`) as a unit (`unitAt`: `null` where a GC struct
+ * replaced the boundary), `undefined` for any other item (a slot no split
+ * made, a boundary, whose own `s` names a block).
+ *
+ * @param {any} item
+ * @param {import('./StructStore.js').StructStore} store
+ * @return {{ item: any, clock: number } | null | undefined}
+ */
+const splitKey = (item, store) => {
+  const s = item.content.arr?.[0]?.s
+  return Array.isArray(s) ? unitAt(store, s[0], s[1]) : undefined
+}
+
+/**
  * YP22: whether `item` is a list item outside a text (a block's or an
  * array's slot: its parent is no `content` node) written by the writer of
  * its origin: it extends that writer's run there, and sorts before every
@@ -161,20 +201,6 @@ export const markClass = item => {
  * @param {any} item
  * @return {boolean}
  */
-/**
- * YP22: a block slot's split key (`{ b, s: [client, clock] }`: the id of the
- * boundary item of the split that made the block, kept when the slot is
- * collected, `Item#gc`), `null` for any other item (a slot no split made, a
- * boundary, whose own `s` names a block).
- *
- * @param {any} item
- * @return {{ client: number, clock: number } | null}
- */
-const splitKey = item => {
-  const v = item.content.arr?.[0]
-  return v != null && Array.isArray(v.s) ? { client: v.s[0], clock: v.s[1] } : null
-}
-
 const extendsRun = (/** @type {Item} */ item) =>
   item.parentSub === null && /** @type {YNode} */ (item.parent).name !== 'content' && item.origin !== null && item.origin.client === item.id.client
 
@@ -211,11 +237,9 @@ export const sequenceOrder = (x, y) => {
  */
 const chainOf = (r, store) => {
   const c = r.content
-  const ids = c.at !== null ? c.at : c.ids.length > 0 ? [{ client: c.ids[0], clock: c.ids[1] }] : []
-  return ids.map((/** @type {ID} */ id) => {
-    const item = store.getItem(id)
-    return item.isItem ? { item, clock: id.clock } : null
-  })
+  return c.at !== null
+    ? c.at.map((/** @type {ID} */ id) => unitAt(store, id.client, id.clock))
+    : c.ids.length > 0 ? [unitAt(store, c.ids[0], c.ids[1])] : []
 }
 
 /**
@@ -251,12 +275,8 @@ const sourceOrder = (o, item, tr) => {
       break
     }
     if (p === null || q === null) break
-    if (p.item === q.item) {
-      if (p.clock === q.clock) continue
-      d = p.clock - q.clock
-      break
-    }
-    d = sequenceOrder(p.item, q.item)
+    d = unitOrder(p, q)
+    if (d === 0) continue
     if (Number.isNaN(d)) d = 0
     break
   }
@@ -284,29 +304,27 @@ export const sortsBefore = (o, item, tr) => {
     // YP22: block slots a split made sort by their boundaries' order in the
     // text (two writers' splits of one block keep its text's order), before
     // the slots no split made; then the origin writer's own slots first.
-    const sa = splitKey(o)
-    const sb = splitKey(item)
-    if (sa !== null || sb !== null) {
-      if (sa === null || sb === null) return sb === null
-      const store = tr.doc.store
-      const x = store.getItem(sa)
-      const y = store.getItem(sb)
-      if (x.isItem && y.isItem) {
+    const store = tr.doc.store
+    const x = splitKey(o, store)
+    const y = splitKey(item, store)
+    if (x !== undefined || y !== undefined) {
+      if (x === undefined || y === undefined) return y === undefined
+      if (x !== null && y !== null) {
         // One total order over the keyed slots of an origin: the boundaries' text
         // first (by the text node's item id, a root text first), then their place in
         // it (two boundaries one item holds: their clocks).
-        const px = /** @type {YNode} */ (x.parent)._item
-        const py = /** @type {YNode} */ (y.parent)._item
-        if (x.parent !== y.parent) {
+        const px = /** @type {YNode} */ (x.item.parent)._item
+        const py = /** @type {YNode} */ (y.item.parent)._item
+        if (x.item.parent !== y.item.parent) {
           if (px === null || py === null) return px === null
           return px.id.client !== py.id.client ? px.id.client < py.id.client : px.id.clock < py.id.clock
         }
-        const d = x === y ? sa.clock - sb.clock : sequenceOrder(x, y)
+        const d = unitOrder(x, y)
         if (d !== 0) return d < 0
       }
     }
-    const x = extendsRun(o)
-    if (x !== extendsRun(item)) return x
+    const run = extendsRun(o)
+    if (run !== extendsRun(item)) return run
   } else if (a >= 4) {
     const d = sourceOrder(o, item, tr)
     if (d !== 0) return d < 0

@@ -1050,81 +1050,117 @@ written so that nothing in it has to be redone then.
 
 ## Prototype: measured
 
-Built on branch `engine-move-proto` (2026-10-17): fork patch **YP22**
-(YP21 was taken by the merge-claim items, PR #27), stages 1 (arrays) and 2
-(block tree) together, schema generation 9 (wire word 14009, browser
-database `edytor-v14-g9:`). Stage 3 (text) was not built: merges stay
+Built on branch `engine-move-proto` (2026-10-17, finished 2026-10-18): fork
+patch **YP22** (YP21 was taken by the merge-claim items, PR #27), stages 1
+(arrays) and 2 (block tree) together, schema generation 9 (wire word 14009,
+browser database `edytor-v14-g9:`), and fork patch **YP23** (an upstream
+crash the wide corpus reached). Stage 3 (text) was not built: merges stay
 claim items, splits stay boundaries, `clipboard/moveText.ts` is untouched.
-Every number below was measured on one machine (Apple M4 Pro, Node
-v24.22.0), the "before" on `origin/engine-cuts` merged with `engine-move`
-(the branch's base) and the "after" on the prototype, with the same
-scripts (`scratchpad/measure.mjs`, `scripts/bundle-size.mjs`,
-`bench/run.js`).
+
+Every number below is of the final tree (the prototype plus the follow-up
+the review of PR #29 asked for, last section), measured on one machine
+(Apple M4 Pro, 14 cores, Node v24.22.0) against a fresh export of the
+branch's base, `origin/engine-cuts` (`d5afd25b`, PR #27 merged; the merge
+base of this branch), with the same scripts on both trees, before and after
+alternating: `scratchpad/measure.mjs` (stored sizes, heap, the cycle race),
+a realistic-document script (below), `scripts/bundle-size.mjs`,
+`bench/run.js` and `bench/scale.js`, and a load-to-first-keystroke script.
+The machine was not idle: other sessions' test runs and Spotlight kept the
+load average at 19–26 during the timings, so a single timing row moves by
+±20 % between runs; the sizes, the counts and the bundle are deterministic.
+The bench's undo and memory lanes run the document's history on both trees
+(the base's copy of `bench/lib/baseline.js` was given the same two-line
+change; review item 8), and the base's cycle-race count comes from a
+`foldStats.placed` counter added to the scratch export only.
 
 ### Sizes
 
 | Measure | Before | After | Change |
 | --- | --- | --- | --- |
-| Stored, 1,000 seeded paragraphs | 199,157 B (198.8 B/block) | 166,554 B (166.2 B/block) | −32.6 B/block (−16.4 %) |
-| Stored, 300 Enters at one spot (each with two typed characters) | 90,661 B (302.2 B/Enter) | 81,606 B (272.0 B/Enter) | −30 B/Enter |
+| Stored, 1,000 seeded paragraphs (about 30 characters each) | 199,158 B (198.8 B/block) | 166,554 B (166.2 B/block) | −32.6 B/block (−16.4 %) |
+| Stored, 1,000 paragraphs of about 300 characters, typed in runs of 8–40 characters with Enter at each end | 654,076 B (654.1 B/block) | 615,266 B (615.3 B/block) | −38.8 B/block (−5.9 %) |
+| The same document after an edit history (200 Enters at random offsets, 100 block moves, 100 deletes of 5–20 characters, 50 block deletes, 5 undos; 1,146 blocks shown) | 730,420 B (637.4 B/block) | 680,558 B (593.9 B/block) | −49,862 B (−6.8 %) |
+| 5,000 typed paragraphs (as above) | 3,293,474 B (658.7 B/block) | 3,100,463 B (620.1 B/block) | −5.9 % |
+| 5,000 typed paragraphs after five times that history (1,000 Enters, 500 moves, 500 word deletes, 250 block deletes, 5 undos; 5,748 blocks shown) | 3,679,434 B (640.1 B/block) | 3,434,282 B (597.5 B/block) | −245,152 B (−6.7 %) |
+| Stored, 300 Enters at one spot (each with two typed characters) | 90,898 B (303 B/Enter) | 81,624 B (272.1 B/Enter) | −31 B/Enter (−10 %) |
 | Longest order key after those Enters | 39 chars, stored in every block's `at` node | 54 chars, in memory only (`placement/keys.ts`; nothing is stored) | no stored rank |
-| Stored, 200 single-block moves | 8,807 B (44 B/move) | 2,500 B (12.5 B/move) | −71 % |
-| Heap after loading 1,000 blocks | 8.2 MB | 7.17 MB | −13 % |
-| Heap after loading 5,000 blocks | 33.8 MB | 30.01 MB | −11 % |
-| Cycle race (two blocks nested into each other), placements decided at 1,000 blocks | 1,001 | 2 | local |
-| Cycle race at 5,000 blocks | 5,001 | 2 | local |
-| Bundle `minimal`, edytor's own min / total min / gzip | 424.6 / 472.4 / 162.5 KB | 423.9 / 470.6 / 161.6 KB | −0.7 / −1.8 / −0.9 KB |
-| Bundle `all`, own / total / gzip | 659.4 / 709.3 / 247.4 KB | 653.3 / 701.9 / 244.5 KB | −6.1 / −7.4 / −2.9 KB |
-| Bundle `export`, own / total / gzip | 52.2 / 78.4 / 29.6 KB | 51.0 / 76.6 / 28.9 KB | −1.2 / −1.8 / −0.7 KB |
-| Purge of 1,000 of 1,001 deleted blocks: what stays | (ratio bound 1/5 of the deleted document) | 39,268 B for 189,950 B deleted, 176,920 B full; 374 B visible alone | the tombstones (a registry key and an attribution key per removed block, ~39 B) are unchanged while the document itself is leaner: the bound is now 1/4 |
+| Stored, 200 single-block moves | 9,007 B (45 B/move) | 2,500 B (12.5 B/move) | −72 % |
+| Move update, same parent (bench p50) / 500 sequential moves | 80 B / 75 B per move | 44 B / 34 B per move | −45 % / −55 % |
+| Heap after loading 1,000 / 5,000 blocks | 8.2 / 33.7 MB | 7.1 / 29.7 MB | −13 % / −12 % |
+| Heap retained by 1,000 / 5,000 blocks (bench, three documents held) | 23.8 / 123 MB | 19.1 / 99.6 MB | −20 % / −19 % |
+| Cycle race (two blocks nested into each other), placements decided at 1,000 / 5,000 blocks | 1,001 / 5,001 | 2–4 / 2 | local |
+| Bundle `minimal`, edytor's own min / total min / gzip | 414.6 / 461.4 / 158.7 KB | 426.7 / 473.5 / 162.6 KB | +12.1 / +12.1 / +3.9 KB |
+| Bundle `all`, own / total / gzip | 644.0 / 692.6 / 241.6 KB | 656.2 / 704.8 / 245.5 KB | +12.2 / +12.2 / +3.9 KB |
+| Bundle `export`, own / total / gzip | 51.0 / 76.6 / 28.9 KB | 51.0 / 76.6 / 28.9 KB | 0 |
+| Purge of 1,000 of 1,001 deleted blocks: what stays (the prototype's measurement, not repeated) | (ratio bound 1/5 of the deleted document) | 39,268 B for 189,950 B deleted, 176,920 B full; 374 B visible alone | the tombstones (a registry key and an attribution key per removed block) |
 
-The `minimal` bundle shrank less than the design's −0.9 to −3.7 KB
-estimate for stages 1 + 2: the engine grew by what the design did not
-foresee (below) — the anchored records with their parts, the sort rule
-that reads them and the split keys, the cross-sequence order hook, the
-GC rule that keeps a slot's key — about as much as the rank layer,
-`sourceRank`, the candidates and the text ranker removed. `all` shrank
-by 6.1 KB of edytor's own.
+The real documents gain less than the empty-paragraph seed: a block's text
+and its typing runs cost the same on both trees, and the change is the
+placement (a slot instead of an `at` node with a stored rank, a move one
+record instead of a candidate), about 40 B per block.
 
-### Timings (`bench/run.js`, two runs each, alternating, medians)
+The bundle grows by 12.1 KB (`minimal`) against the base. The prototype's
+first table read 424.6 → 423.9 KB, but that "before" does not reproduce:
+a fresh export of `origin/engine-cuts` builds 414.6 KB with the same script
+(`origin/master`, before PR #27, 417.0 KB), and the prototype commit
+(`46aecf81`) 423.9 KB, so the prototype was already 9.3 KB larger and the
+review's follow-up added 2.8 KB. By directory (`--by dir`, `minimal`): the
+engine +4.4 KB (`crdt/vendor/yjs`: the records, their chains and the sort
+that reads them, the split keys, the GC rule that keeps a slot's key), the
+index +4.8 KB (`crdt/text`: the candidate edges, `settle`, the one-pass
+rebuild), `crdt/placement` +3.5 KB (the writes that anchor where the index
+shows a block, the chain each record names), `crdt/data` +1.3 KB, against
+`crdt/doc` −1.8 KB and `crdt/flow` −0.3 KB. The design's −0.9 to −3.7 KB
+estimate for stages 1 + 2 does not hold.
 
-The "before" ran on an export of the branch's base commit, the "after" on
-the prototype, one after the other on an idle machine (2026-10-17). The
-facade lanes restore a fresh document from a snapshot for every sample,
-so their time is the first operation after a load: it includes the
-index's first build.
+### Timings
+
+`bench/run.js` (two runs a side) and `bench/scale.js` (three more), before
+and after alternating, medians; the scale rows are the median of all five
+runs, the facade rows of the two `bench/run.js` runs. The scale rows run on
+long-lived documents; the facade lanes restore a fresh document from a
+snapshot for every sample, so their time is the first operation after a
+load and includes the index's first build.
 
 | Measure | Before | After |
 | --- | --- | --- |
-| Keystroke on a long-lived document, 1,000 / 5,000 blocks (scale) | 0.05 / 0.04 ms | 0.07 / 0.04 ms |
+| Keystroke on a long-lived document, 1,000 / 5,000 blocks (scale) | 0.07 / 0.04 ms | 0.08 / 0.04 ms |
 | Remote keystroke, 5,000 blocks | 0.02 ms | 0.02 ms |
-| Enter, 1,000 / 5,000 blocks | 0.15 / 0.21 ms | 0.17 / 0.15 ms |
-| Backspace, 1,000 / 5,000 blocks | 0.06 / 0.08 ms | 0.06 / 0.10 ms |
-| Range delete of 40 blocks, 1,000 / 5,000 blocks | 1.68 / 1.85 ms | 1.93 / 2.04 ms |
-| Delete of 1,000 blocks, range / selected blocks | 13.7 / 17.0 ms | 19.0 / 18.6 ms |
-| Load 1,000 / 5,000 blocks (scale) | 12.3 / 69.4 ms | 13.8 / 54.3 ms |
-| Construct 1,000 / 5,000 blocks | 49.7 / 163 ms | 46.6 / 177 ms |
-| Encode 1,000 blocks (p50) | 1.29 ms | 1.00 ms |
-| Encode / load after 5,000 history steps | 0.65 / 3.70 ms | 0.69 / 3.27 ms |
-| Undo, last of 10 (p50) | 0.07 ms | 0.07 ms |
-| Undo after 5,000 history steps | 0.41 ms | 0.39 ms |
-| Move update, same parent / reparent (p50) | 80 / 80 B | 44 / 40 B |
-| 500 sequential moves | 75 B per move | 34 B per move |
-| Stored after 5,000 history steps | 67,551 B | 67,186 B |
-| Heap retained by 1,000 / 5,000 blocks (three documents held) | 23.7 / 123 MB | 18.9 / 98.6 MB |
-| First keystroke after a load, 1,000 / 5,000 blocks (facade lane) | 1.58 / 8.1 ms | 2.95 / 17.3 ms |
-| First move after a load, same parent (facade lane) | 0.11 ms | 0.27 ms |
-| First block delete after a load, 1,000 blocks (facade lane) | 1.43 ms | 2.77 ms |
+| Enter, 1,000 / 5,000 blocks | 0.26 / 0.20 ms | 0.27 / 0.26 ms |
+| Backspace, 1,000 / 5,000 blocks | 0.09 / 0.10 ms | 0.09 / 0.10 ms |
+| Range delete of 40 blocks, 1,000 / 5,000 blocks | 2.53 / 1.66 ms | 2.19 / 2.02 ms |
+| Delete of 1,000 blocks, range / selected blocks | 14.9 / 21.3 ms | 20.1 / 18.3 ms |
+| Load 1,000 / 5,000 blocks (scale) | 16.9 / 66.7 ms | 14.6 / 67.9 ms |
+| Construct 1,000 / 5,000 blocks (scale) | 68.4 / 198 ms | 68.9 / 223 ms |
+| Encode 1,000 blocks (p50) | 1.32 ms | 1.01 ms |
+| Encode / load after 5,000 history steps | 0.61 / 3.13 ms | 0.78 / 3.22 ms |
+| Undo, last of 10 (p50, the document's history) | 0.07 ms | 0.08 ms |
+| Undo after 5,000 history steps | 0.44 ms | 0.48 ms |
+| First keystroke after a load, 1,000 blocks (facade lane) | 1.68 ms | 1.83 ms |
+| First move after a load, same parent / a group of 5 (facade lane) | 0.15 / 0.18 ms | 0.21 / 0.20 ms |
+| First block delete after a load, 1,000 blocks (facade lane) | 1.52 ms | 1.68 ms |
+| Load 1,000 blocks (workload p50) | 2.29 ms | 2.63 ms |
 
-The first operation after a load is the regression: the index's first
-read resolves every slot (`resolveAll`, the registry's slots collected
-once) and inserts every placement into the sorted children lists
-(`rebuildPlacements`, `setPlacement`/`seek`), where the ranks were read
-off each block's `at` node. Timed alone on a document loaded from a
-snapshot: apply 4.5 → 3.1 ms and 19.4 → 16.0 ms, view creation 6.3 → 7.0
-and 26.6 → 31.4 ms, first keystroke 1.9 → 3.8 and 11.8 → 19.9 ms (1,000 /
-5,000 blocks); the second keystroke is unchanged (0.07 → 0.08 ms). Load to
-first keystroke, total: 12.7 → 13.9 ms and 57.7 → 67.4 ms.
+Load to first keystroke, timed alone (a document restored from a snapshot:
+apply, view creation, first and second keystroke; five rounds alternating,
+each the median of 20 samples, medians of the rounds):
+
+| Blocks | Apply | View creation | First keystroke | Second | Load to first keystroke |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 (before → after) | 3.03 → 2.38 ms | 4.52 → 4.85 ms | 1.78 → 1.84 ms | 0.05 → 0.05 ms | 11.59 → 10.60 ms (−9 %) |
+| 5,000 (before → after) | 15.11 → 14.53 ms | 23.48 → 24.63 ms | 10.75 → 8.17 ms | 0.05 → 0.06 ms | 50.27 → 46.68 ms (−7 %) |
+
+Building a 5,000-block document from a value (`createDocument`), five
+rounds: 119.1 → 125.5 ms (+5 %): the fold reads each touched block's engine
+parent from its slot's item, where the base read its `at` node.
+
+Rows that got worse beyond the noise: the delete of 1,000 blocks as a range
+(+35 %), construction at 5,000 blocks (+13 %; +5 % through
+`createDocument`), Enter at 5,000 blocks (+30 %), the 40-block range delete
+at 5,000 blocks (+22 %, better at 1,000), encode after 5,000 history steps
+(+28 %), and the first operation after a load in the facade lanes (+9 to
++40 %, a fraction of a millisecond). The selected-blocks delete, encode,
+load and the load-to-first-keystroke path are faster.
 
 ### What the build changed against the design
 
@@ -1136,11 +1172,10 @@ first keystroke, total: 12.7 → 13.9 ms and 57.7 → 67.4 ms.
    into one gap from one list sort by the clients' ids under YATA alone.
    The fork's sort rule (`utils/marks.js`) now orders the items of one
    origin by class, then:
-   - a move record by the unit it stands at (`ContentMove.at`, by default
-     the first it names) in that unit's sequence (`sourceOrder`), two units
-     of different sequences through edytor's `unitOrder` hook on the
-     document (`doc._unitOrder`: the chain of home slots up to the root,
-     read from the engine's structs alone), then its part (`ContentMove.part`:
+   - a move record by the chain it stands at (`ContentMove.at`: the home
+     slots from the root sequence down to the block it stands at, by
+     default the first it moves, named by the writer, `unitChain`),
+     compared level by level (`sourceOrder`), then its part (`ContentMove.part`:
      `PART` in `doc/steps.ts` — a head holding the items before the block,
      new blocks kept before the next, a head holding the block, the block,
      new blocks after it), then the stronger record (priority, client);
@@ -1158,9 +1193,10 @@ first keystroke, total: 12.7 → 13.9 ms and 57.7 → 67.4 ms.
    level at the split and moved out by records standing at the block they
    stand beside, written last first so each stands before the one written
    before it (`splitOut`).
-2. **A record waits for its units.** `getMissing` treats a record's named
-   units and its anchor as dependencies, like an origin; `pendingMoves`
-   only covers a Skip. The design had records integrate at once.
+2. **A record waits for its units and its chain.** `getMissing` treats a
+   record's named units and every unit of its chain as dependencies, like
+   an origin (a Skip standing for one too). The design had records
+   integrate at once.
 3. **One priority per writer until it sees a peer's.** `doc._clock` rises
    only on a peer's record, so a writer's gestures between syncs win or
    lose a contested block together (`FX-05`'s mixed outcomes are gone).
@@ -1215,11 +1251,17 @@ first keystroke, total: 12.7 → 13.9 ms and 57.7 → 67.4 ms.
 
 ### Behaviour changes for the user's decision
 
-Each existing test whose expected value changed, with before → after:
+Each existing test whose expected value changed, with before → after (the
+review's decisions are in the last section: the cycle fallback went back
+to "where it stood", FX-06 stands):
 
 - MV05 / MV05a (`placement/concurrency.test.ts`, `scenarios/active-model.ts`):
-  the block whose edge a cycle rejects shows at the root's tail (index 1
-  after `b3`) → it showed where it stood before (index 0). The design's §3.3.
+  unchanged from the base — the block whose move a cycle drops is back
+  where it stood (index 0); the first prototype showed it at the root's
+  tail (index 1), which the review rejected.
+- `cycle-scale.test.ts` (new with the prototype): the dropped block is at
+  its home between its old neighbours (index `n / 2`, the root holding
+  `n − 1` blocks), not last.
 - MV10: a move writes nothing inside the moved node: `deepEvents` after
   the move is 0 (was > 0); a remote text edit still reaches the handle.
 - `prepared-ops.test.ts` D5: `deleteBlock('x')` and
@@ -1260,13 +1302,21 @@ Each existing test whose expected value changed, with before → after:
   (was `g8`), schema generation 9.
 - `purge-before-horizon.test.ts`: `records: 0` replaces `candidates: 0`
   (the purge counts move records).
+- `yp22-moves.test.ts`: a record's `at` is a chain (`[id]`, was an id).
+- `stream-boundary-races.test.ts` F-D19, `stream-split-ownership.test.ts`
+  (the dead-boundary rows), `derived-writer-id.test.ts`: their premise — a
+  split-born block whose boundary died — came from a history without the
+  withdraw rule (the test copy of the engine's undo manager, now deleted);
+  a raw engine write that removes the host's node builds it. Expected
+  values unchanged; F-D19's late-redo half and the "pre-contract history"
+  late-redo rows went with that history (review item 8).
+- `boundary-attacks/facade.test.ts` attack 2: "a schema-version write is
+  never an undo step" — the document's history never reaches `meta`, so the
+  version stays 99 after the undo (was: the engine's doc-scoped undo
+  manager rolled it back to the older version).
 
 ### Risks not in the design
 
-- The cross-sequence order (`unitOrder`) picks each ancestor's home slot
-  as the lowest `(client, clock)` slot its registry value owns; two
-  concurrent creations of one block id whose slots arrive in different
-  orders could make two replicas compare differently while they differ.
 - A collected slot keeps its split key (~8 B) instead of merging into a
   bare tombstone: a purge leaves it. Measured above; no slot of the
   1,000-block purge carried one.
@@ -1274,37 +1324,202 @@ Each existing test whose expected value changed, with before → after:
   after 300 Enters): nothing is stored, but a very long run at one spot
   costs memory and comparisons in the index.
 - Records are countable units of their sequence (`YNode.length` counts
-  them); every edytor read goes through `entriesOf`.
-- The first operation after a load costs about twice as much (the index's
-  first read resolves every slot and inserts every placement; above): 8 ms
-  more at 5,000 blocks. Steady-state keystrokes, Enter, undo and moves are
-  level or cheaper.
-- A document must carry `orderingUnits` (the cross-sequence order of two
-  records at one origin) before it integrates anything, as it carries
-  `keepingReplaced`: the order of two items is decided when they
-  integrate, so one that took such records without it sorted them by
-  priority and client, and reads them in another order than a replica
-  that had it. The view's facade and the admission check install it first;
-  the prefetch document (stores bytes, reads nothing) and the seed's
-  scratch document (one writer) carry `keepingReplaced` only, and the
-  bench's restore path applies the snapshot before the facade attaches.
-  A new construction site must add it; nothing checks this yet.
+  them); every edytor read goes through `entriesOf` or the index.
 - The index's order keys are local to a replica; any new display rule that
   shows a block in a list must key it in that list's key space (the
   promotion-under-a-claim-owner divergence the wide corpus found).
+- The purge drops old records no block shows at; a cycle resolved after it
+  drops a later move and finds the block's purged records gone, so the
+  block falls back further (an older record, or home). Only below the
+  horizon.
+- A block every candidate of which closes a cycle (three or more peers
+  moving blocks into each other's subtrees at once, home included) still
+  shows at the root's tail: the last resort.
+- A document built from a value is 5 % slower to construct (13 % in the
+  scale workload at 5,000 blocks), and a 1,000-block range delete 35 %
+  slower (above).
+- The bundle is 12.1 KB larger than the base (above), where the design
+  expected it smaller.
+
+### The review of PR #29: what its decisions changed
+
+1. **Cycle fallback: back where it stood** (the first prototype's root-tail
+   fallback was rejected). A block's candidate edges are its live move
+   records, strongest first, then its home slot (`candidatesOf`); the
+   resolution accepts every candidate greedily in descending
+   `(priority, client, clock)`, each block at the first that closes no
+   cycle (`resolveAll`), so the later move wins and the block whose move a
+   cycle drops is at its next record, else home, falling further when that
+   closes a cycle too; the root's tail only when every candidate does. The
+   index does the same locally (`text/index/placement.ts` `settle`: a
+   candidate that closes a cycle through an older edge drops that edge's
+   block to its next candidate; `retryFallen` lets a dropped block rise
+   again when a cycle breaks). The §1.2 claim — the runner-up made the
+   resolution global — does not hold for a block's own records: the cycle
+   workload decides 2–4 / 2 placements at 1,000 / 5,000 blocks (1,001 /
+   5,001 on the base). Writes anchor where the index shows a block and a record
+   written beside a unit carries only the units the index shows at that
+   record (`anchorIn`, `beforeIn`, `shownAt`): a neighbour's write never
+   re-asserts a move a cycle dropped (model seed 5's split did, first). The
+   purge keeps a record a block shows at (`recordsOf` with the view).
+   Rows: `cycle-fallback.test.ts` (a block moved twice falls back to its
+   previous record; a previous record that closes a cycle too sends it
+   home; six delivery orders over three peers; an undo of the winning move
+   restores the dropped one), MV05/MV05a, `cycle-scale.test.ts`.
+2. **Undo order (FX-06): accepted** as built.
+3. **The first operation after a load.** The rebuild no longer inserts
+   each placement into a sorted list: the resolution builds each parent's
+   children in its sequence's order in one pass (`Resolution.order`) and
+   writes the index's own maps; the slot collection walks each item once
+   (no `entriesOf` arrays), links each home place to its slot unit, and
+   the records' homes the fold keeps are not read again (`knownHomes`);
+   the fold reads a block's engine parent from its slot's item alone
+   (`edgeParentOf`). Load to first keystroke: 11.59 → 10.60 ms and
+   50.27 → 46.68 ms (1,000 / 5,000 blocks; above). No wall clock entered a
+   gate lane; `cycle-scale.test.ts` and the facade's scaling rows hold the
+   work flat.
+4. **The full Playwright suites**: below.
+5. **The setup guard.** The anchor chain makes the order of two records a
+   function of the records alone, so the document hook that read it from
+   the sequences (`doc._unitOrder`, `orderingUnits`) is gone: it was also
+   wrong inside one update (a replica that took a record before an
+   ancestor's slot compared it by client id — the same-id differential's
+   three-replica reloads diverged on it). What stays is the keep-replaced
+   rule, and a facade or `attachDocument` now refuses loudly
+   (`adoptRules`, a `TypeError`) a document that holds state without it
+   (`document/rules-guard.test.ts`); the test suites build their raw
+   documents with the rule, and so do the collaboration DST runner's
+   reference document and the benches that restore a snapshot into a raw
+   document (`bench/lib/memory-probe.mjs`, `bench/u10-attribution-overhead.mjs`;
+   the guard's first DST run refused all 9 collab rows).
+6. **The same-id test** (`same-id-order.test.ts`: two and three replicas,
+   24 seeds each, every client-id assignment of `clientPairs` /
+   `clientTriples`, observers in both delivery orders, reloads). It found
+   two faults, both fixed: the slots of a node a concurrent creation of
+   its id displaced kept their old owner in the index (`reslot`, run when
+   the node an id stands for changes) and the order hook above.
+7. **The undo bug** (model seeds 219, 417, 889: an undo that withdraws a
+   block a peer typed into tombstoned the peer's text). The document's
+   history already keeps it (`withdrawOnUndo`; the doc adapter passed the
+   same schedules); the model lane ran a test copy of the engine's old
+   undo manager without the withdraw rule. That copy is gone (item 8): the
+   model lane runs the document's history, and
+   `random/undo-withdraw-regressions.test.ts` pins the three minimized
+   schedules on both lanes plus the rule through the facade.
+8. **No test-only undo manager** (added to the review: tests can no longer
+   exercise a history production never runs). `src/tests/crdt/harness/undo.js`
+   (528 lines, the engine's `UndoManager` as the fork carried it before
+   YP18, with its YP11/YP12 hooks) is deleted. Every undo a test or a bench
+   runs is the document's: `createUndoManager` / `document.history`, or over
+   a raw document `harness/history.ts` (41 lines: production's `UndoManager`
+   class with production's rules, `historyRules` — now exported from
+   `doc/history.ts`, which `createUndoManager` builds from too — only its
+   scope narrowed to the probed nodes). The replica harness's `enableUndo`
+   and the model lane's `trackHistory` build it (the model lane with the
+   document's own scope, the raw lane's peers over every root).
+   - Moved to the real history (rows kept, expected values unchanged):
+     `v14-smoke` (2 rows), `range-cursor` (2), `marker-seed` (1),
+     `text-model-probes/search-marker-anchors` (2),
+     `hardening/search-marker-probes` (2 raw rows),
+     `hardening/search-marker-format` (the replay and randomized rows),
+     `hardening/undo-ownership-split-tail` ("a history built over the raw
+     document gets the same repair"), `doc/undo-factory` ("a history
+     attached before init cannot undo the seed"), `yp7-gap-end` (both sides
+     of the differential run the one history), the vendored upstream
+     `attribution.tests.js` `testRdtDeletedSubtreeUndoScope`,
+     `arch-v2/stream-boundary-races` (the corpus program reads the step
+     `undo()` returns instead of the old class's `stack-item-popped`
+     event), every `enableUndo`/`trackHistory` user (model-edges,
+     scenarios, the corpus, the harness tests) and the bench's undo and
+     memory lanes (`bench/lib/baseline.js`, `memory-probe.mjs`,
+     `interop.mjs`).
+   - `boundary-attacks/facade` attack 2 (6 rows): moved; one expected value
+     changed: "a schema-version write is never an undo step" — the
+     document's history never reaches `meta`, so the undo rolls nothing
+     back (`canUndo()` false, the version stays 99); the old row pinned
+     that the engine's doc-scoped manager resurrected the stale version, a
+     hazard production never had.
+   - Deleted with their subject: upstream's `undo-redo.tests.js` (20 rows
+     of the removed class: its events, `deleteFilter`, capture options,
+     scope APIs) and `doc.tests.js` `testSubdocsUndo` (subdocuments are
+     gone too, YP19); the undo/redo steps of `yp16-writes`' engine
+     differential (an engine write path no more: the document's history
+     releases a dropped step's content for collection at once, which
+     upstream's undo manager leaves kept, so the gc-on rows differed by
+     design); `arch-v2/stream-split-ownership` "F-D19 late redo
+     (requirement 3), pre-contract history" (6 rows: the redo of a history
+     without the withdraw rule; the contract's own F-D19 row under
+     `hist.undo.withdraw` stays). Unused imports dropped:
+     `yp9-yp10-engine`, `hardening/undo-ownership-probes`.
+   - Rows whose premise was a history without the withdraw rule (a
+     split-born block whose boundary died) build it without a history: a
+     raw engine write removes the host's node, the state a peer that
+     deletes the node leaves (`stream-split-ownership` `deadBoundary`: the
+     requirement 2+4 and 5 rows; `derived-writer-id`; `stream-boundary-races`
+     F-D19, whose late-redo half went with the old history).
+   - Other test-side copies of removed production code, listed and kept
+     (not the same kind: production runs no second version of them):
+     `oracles/model-ops.ts` (201 lines, 27 importers: the placement layer's
+     old validating op layer, over production's primitives; with
+     `harness/ops/model-ops.ts`, 784 lines, 25 importers, it is the `model`
+     corpus lane — the closest kind, a follow-up candidate), `harness/delta.js`
+     (628 lines, 23 importers: the delta reader and writer YP16 removed,
+     the tests' fixture language over raw nodes), `harness/node-reads.js`
+     (203 lines, installed in every lane: the node reads YP19 removed);
+     the from-scratch oracles (`oracles/fresh-view.ts`, `doc-change.ts`
+     `diffSnaps`, `runs.ts`, `block-records.ts`) are rebuild comparators
+     by design.
+9. **A key walk a cycle fallback changed under it** (found by the final
+   wide corpus, a regression of item 1). The index keys a placed block
+   between the nearest block shown before its place and the next key of the
+   list, placing a pending neighbour first; placing one can close a cycle
+   that drops a block back where it stood, into the stretch the walk had
+   already passed, and the key was read from the stale walk: the maintained
+   order differed from its rebuild (the lanes' self-checks threw; doc seeds
+   126, 157, 188, model 126, 157, 188, 212, 360, 496, roles 7, tables 423,
+   516 — none fails on the prototype commit, where a dropped block went to
+   the root's tail, past every walk). A walk under which a placement changed
+   walks again (`text/index/placement.ts` `keyFor`, `placedEpoch`), and the
+   walk skips the block being placed.
+   The same walk placed its neighbours after the block's cycle check, with
+   the block unplaced: a neighbour could close a cycle through it that no
+   check saw (doc seed 217: the display tree held b3 under b3b under b3, and
+   the change report's walk up the tree never ended — the corpus process
+   hung; it passes on the prototype commit). `settle` now finds the key
+   first, then checks the cycle with the neighbours placed.
+   `random/key-walk-regressions.test.ts` pins four minimized schedules
+   (doc 126, model 360, roles 7, tables 423) and seed 217's first 98 steps.
 
 ### Lanes (final tree)
 
-`check`, `lint`, `check:deps`, `check:worker`, `check:api`, `check:docs` and
-the three typechecks pass; `test:crdt` (the known local-only
-`search-marker-format` baseline row fails, as on the base), `test:dom`,
-`test:do`, Playwright `block-handles.spec.ts` in Chromium, Firefox and
-WebKit, `test:hosted` (Chromium), the packed consumer and `test:dst` pass;
-`test:dst:extensive` fails exactly the known solo seeds (17, 18, 25, 34, 43,
-45, 52, 53, 61, 67, 70, 88, 90, 97, 98) and collab seed 20. The wide corpus
-(`CRDT_SEEDS=1-1000 CRDT_OPS=300`, every adapter, 5,027 rows) fails three
-model rows, all one violation — an undo that tombstones a peer's text typed
-into a block the undo withdraws: seed 417 fails the same way on the base;
-seeds 219 and 889 pass there in full, but their minimized schedules fail on
-the base with the same violation. No divergence, crash or ill-formed state.
+Run on the final tree, 2026-10-18 (after every fix above):
 
+- `check` (0 errors, 0 warnings), `lint`, `check:deps`, `check:worker`,
+  `api:report` then `check:api` (current), `check:docs` (292 examples),
+  `test:typecheck`, `test:dom:typecheck`, `test:do:typecheck`: pass.
+- Unit (`pnpm exec vitest --run`): 4,410 passed, 1 failed, 3 skipped, 11
+  todo. `test:crdt`: 3,869 passed, 1 failed, 9 skipped. The failure in both
+  is the known local-only `search-marker-format` row "patched engine vs
+  pre-P4 vendored baseline" (it compares against the gitignored
+  `bench/vendor-baseline` and runs no undo manager).
+- `test:dom`: 2,890 passed, 1 expected fail, 34 skipped. `test:do`: 313
+  passed. (A run alongside the wide corpus, at a load average near 40, timed
+  out one row of each — the F-O5 1,000-paragraph row's 60 s and
+  `live-compaction`'s 10 s `waitFor`; both lanes pass whole at a lower load.)
+- Wide corpus, `CRDT_SEEDS=1-1000 CRDT_OPS=300`, every adapter (raw, model,
+  doc, roles, tables; 1,011 rows each, 5,055 in all): 0 failures. The
+  model lane runs the document's history (review item 8). The known base
+  failures (raw 816/975, model 550, tables 193/898) pass. The first run of
+  the follow-up tree failed 12 rows and hung on doc seed 217 (review item
+  9; none fails on the prototype commit).
+- Playwright, full suites, one project at a time: Chromium 967 passed and 2
+  skipped, Firefox 959 and 10, WebKit 955 and 14, mobile Chromium 52,
+  mobile WebKit 52, cdp 62. No failure, nothing rerun.
+- `test:dst`: 80 passed — after the collaboration runner's reference
+  document became an edytor document from the start (`bindCrdt(Y).createDoc()`;
+  the first run failed its 9 collab rows on the setup guard's `TypeError`,
+  review item 5). `test:dst:extensive`: 178 passed, 16 failed — exactly the
+  known solo seeds 17, 18, 25, 34, 43, 45, 52, 53, 61, 67, 70, 88, 90, 97, 98
+  and collab seed 20 (fixed in PR #28).
+- `test:hosted --project=chromium`: 11 passed. `tests/packed-consumer/run.sh`:
+  all checks passed.

@@ -367,7 +367,7 @@ export const kindOf = (roots, struct) => {
 	if (struct.parentSub !== null) {
 		const key = struct.parentSub;
 		if (rootName === 'blocks') return `registry entry${state}`;
-		if (rootName === 'blockattr') return `attribution record entry (b/)${state}`;
+		if (rootName === 'blockattr') return `attribution record entry${state}`;
 		if (rootName === 'attribution') return `actor dictionary (${family(key)})${state}`;
 		if (rootName !== undefined) return `root ${rootName}.${family(key)}${state}`;
 		if (nodeName === 'block') return `block.${family(key)}${state}`;

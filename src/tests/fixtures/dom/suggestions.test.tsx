@@ -293,7 +293,10 @@ describe('accept and discard', () => {
 		edytor.selection.selectText(a, 1, a, 4);
 		const s = edytor.suggestions.add({ replace: 'selection' }, 'LPH');
 		expect(
-			'replace' in s.at && typeof s.at.replace === 'object' && !Array.isArray(s.at.replace)
+			!!s.at &&
+				'replace' in s.at &&
+				typeof s.at.replace === 'object' &&
+				!Array.isArray(s.at.replace)
 		).toBe(true);
 		await flushDomUpdates();
 		// The proposal shows after the range's block; the range is marked in the overlay.

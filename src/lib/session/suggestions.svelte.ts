@@ -152,9 +152,10 @@ export class Suggestion {
 	readonly id: string;
 	/**
 	 * The position, resolved: `replace: 'selection'` is the selection's
-	 * blocks or text range (`null`: a shared suggestion another view made).
+	 * blocks or text range; `null` for a shared suggestion another view
+	 * made (its `changes` say where it is).
 	 */
-	readonly at: ResolvedAt;
+	readonly at: ResolvedAt | null;
 	readonly label: string | undefined;
 	/** In the document: every collaborator sees it and reviews it. */
 	readonly shared: boolean;
@@ -170,7 +171,7 @@ export class Suggestion {
 
 	constructor(
 		layer: Suggestions,
-		at: ResolvedAt,
+		at: ResolvedAt | null,
 		kind: string,
 		options: SuggestionOptions,
 		status: SuggestionStatus
@@ -235,7 +236,7 @@ export class Suggestion {
 		this.#content =
 			typeof content !== 'string'
 				? cloneJson(content)
-				: 'end' in this.at
+				: this.at && 'end' in this.at
 					? [{ type: this.#kind, content: [{ text: content }] }]
 					: textToBlocks(content, { markdown: false, type: this.#kind });
 		this.#layer.write(this);
@@ -254,7 +255,7 @@ export class Suggestion {
 		const plain = tail && !('type' in tail) && !tail.marks ? tail.text : null;
 		if (plain !== null) content.pop();
 		const [head, ...rest] = (
-			'end' in this.at
+			this.at && 'end' in this.at
 				? [(plain ?? '') + text]
 				: ((plain ?? '') + text).split(/\n[ \t]*(?:\n[ \t]*)+/)
 		) as [string, ...string[]];
@@ -347,9 +348,7 @@ export class Suggestions {
 		const others = [...shared].map(
 			(id) =>
 				this.#others.get(id) ??
-				this.#others
-					.set(id, new Suggestion(this, null as never, '', { id, shared: true }, 'ready'))
-					.get(id)!
+				this.#others.set(id, new Suggestion(this, null, '', { id, shared: true }, 'ready')).get(id)!
 		);
 		return [...mine, ...others];
 	}
@@ -465,9 +464,9 @@ export class Suggestions {
 	write = (suggestion: Suggestion) => {
 		this.revision++;
 		const { facade, dispatcher } = this.edytor;
-		if (!suggestion.shared || !dispatcher.permits()) return;
-		const { prepare, suggest } = facade;
 		const { id, at, content: next } = suggestion;
+		if (!suggestion.shared || !at || !dispatcher.permits()) return;
+		const { prepare, suggest } = facade;
 		const prev = (suggestion.written ??= []);
 		const put = (plan: Prepared) => void suggest.apply(id, plan);
 		dispatcher.outside(() => {
@@ -553,7 +552,7 @@ export class Suggestions {
 	/** After a commit: a suggestion whose block (or range) died is dropped. */
 	prune = () => {
 		if (!this.#list.length) return;
-		const kept = this.#list.filter((s) => s.shared || this.#alive(s.at));
+		const kept = this.#list.filter((s) => s.shared || !s.at || this.#alive(s.at));
 		if (kept.length !== this.#list.length) {
 			this.#list = kept;
 			this.revision++;
@@ -567,8 +566,8 @@ export class Suggestions {
 		void this.edytor.valueRevision;
 		const at = (id: BlockId) => places.get(id) ?? places.set(id, place()).get(id)!;
 		for (const s of this.#list) {
-			if (s.shared) continue;
 			const { at: where } = s;
+			if (s.shared || !where) continue;
 			const named = sideOf(where);
 			if (named) {
 				const [side, id] = named;
@@ -618,8 +617,8 @@ export class Suggestions {
 	 */
 	accept = (suggestion: Suggestion): OpResult => {
 		const { edytor } = this;
-		if (!suggestion.live) return REFUSED;
 		const { at } = suggestion;
+		if (!suggestion.live || !at) return REFUSED;
 		const flow: Flow = { lines: suggestion.content.map((block) => jsonBlockToSpec(block, true)) };
 		const range =
 			'replace' in at && !Array.isArray(at.replace)

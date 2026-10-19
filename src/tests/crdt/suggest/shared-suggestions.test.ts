@@ -379,6 +379,26 @@ describe('block suggestions (sugg.block.*)', () => {
 		}
 	});
 
+	it('accept overwrites: a proposed retype and data change apply their stored values over newer ones (sugg.decide)', () => {
+		const ana = peer('ana', two);
+		const ben = peer('ben', two);
+		const s = S(ana).open();
+		const P = ana.facade.prepare;
+		S(ana).apply(s, P.setBlockType('p1', 'heading'));
+		S(ana).apply(s, P.patchData('p1', [{ path: ['color'], value: 'red' }]));
+		meshSync(ana, ben);
+		// Ben changes both since the proposal, then accepts it.
+		ben.facade.setBlockType('p1', 'quote');
+		ben.facade.patchData('p1', [{ path: ['color'], value: 'blue' }]);
+		accept(ben, S(ben).changes());
+		meshSync(ana, ben);
+		for (const d of [ana, ben]) {
+			expect(d.facade.blockTypeOf('p1')).toBe('heading');
+			expect(d.facade.blockDataOf('p1')).toMatchObject({ color: 'red' });
+			expect(review(d)).toEqual([]);
+		}
+	});
+
 	it('a block delete is proposed; rejected, the block stays and nothing is pending', () => {
 		const ana = peer('ana', two);
 		const s = S(ana).open();

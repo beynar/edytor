@@ -3806,10 +3806,10 @@ export type SplitTail = {
 export declare class Suggestion {
     #private;
     readonly id: string;
-    readonly at: ResolvedAt;
+    readonly at: ResolvedAt | null;
     readonly label: string | undefined;
     readonly shared: boolean;
-    constructor(layer: Suggestions, at: ResolvedAt, kind: string, options: SuggestionOptions, status: SuggestionStatus);
+    constructor(layer: Suggestions, at: ResolvedAt | null, kind: string, options: SuggestionOptions, status: SuggestionStatus);
     get by(): string | undefined;
     get via(): string | undefined;
     get changes(): readonly SuggestedChange[];

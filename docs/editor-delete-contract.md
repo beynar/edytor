@@ -2867,6 +2867,13 @@ writer's text held); an accepted operation runs, and settles. One command
 and one undo step of the decider (`acceptSuggestion`, `rejectSuggestion`),
 never written as a suggestion; an undo makes the change pending again.
 
+Accept overwrites: an accepted operation runs again with the arguments it
+was proposed with (a `setBlockType`'s kind, a `patchData`'s values, a
+`formatRange`'s marks over its anchors), through the decider's
+dispatcher. A field a collaborator changed since the proposal gets the
+proposed value, as the same edit made at the decision would write it; the
+reviewer accepts what the suggestion shows.
+
 ### `sugg.decide.concurrent` — decisions compose
 
 Two deciders of one change: an accept and a reject are a settle and a

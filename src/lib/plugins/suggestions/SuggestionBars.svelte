@@ -68,7 +68,7 @@
 	/** Block suggestions have a preview (an `end` one, past its first block); a shared one, a change. */
 	const shown = $derived(
 		edytor.suggestions.list.filter((s) =>
-			s.shared ? s.changes.length > 0 : !('end' in s.at) || s.content.length > 1
+			s.shared ? s.changes.length > 0 : !(s.at && 'end' in s.at) || s.content.length > 1
 		)
 	);
 	const payload = (suggestion: Suggestion): SuggestionBarPayload => {

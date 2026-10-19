@@ -709,7 +709,7 @@ export class Edytor {
 	#replaced = () => {
 		void this.suggestions.revision;
 		return this.suggestions.list.flatMap(({ at, shared }) => {
-			if (shared || !('replace' in at) || Array.isArray(at.replace)) return [];
+			if (shared || !at || !('replace' in at) || Array.isArray(at.replace)) return [];
 			const { anchor, focus } = at.replace as SuggestionRange;
 			const [start, end] = [anchor, focus].map(this.selection.resolveTextAnchor);
 			return start && end ? [{ start, end }] : [];

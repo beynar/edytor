@@ -296,7 +296,8 @@ export const docSuggest = (c: SuggestContext) => {
 		const streams = own.streamsIn(s.home);
 		for (let i = streams.findIndex((x) => x.block === b) - 1; i >= 0; i--) {
 			const owner = own.ownerOf(streams[i]!.block);
-			if (typeof owner === 'string' && c.live(owner)) return owner;
+			// Not itself: a block merged into it shows its stream there.
+			if (typeof owner === 'string' && owner !== b && c.live(owner)) return owner;
 		}
 		return null;
 	};

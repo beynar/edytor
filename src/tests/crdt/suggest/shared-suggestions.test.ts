@@ -341,6 +341,16 @@ describe('block suggestions (sugg.block.*)', () => {
 		}
 	});
 
+	it('a split whose source block was merged into it is no split: rejecting all leaves nothing pending', () => {
+		const ana = peer('ana', two);
+		const s = S(ana).open();
+		S(ana).apply(s, ana.facade.prepare.splitBlock('p1', 5, 'n1'));
+		// A reviewer merges the source into the split's block: n1 shows p1's stream now.
+		expect(ana.facade.mergeBlocks('p1', 'n1').status).toBe('applied');
+		reject(ana, S(ana).changes());
+		expect(S(ana).changes()).toEqual([]);
+	});
+
 	it('a merge, a retype, a data change or a format is refused, nothing written (sugg.refused)', () => {
 		const ana = peer('ana', two);
 		const s = S(ana).open();

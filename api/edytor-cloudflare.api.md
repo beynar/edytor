@@ -1966,7 +1966,7 @@ export type Anchor = {
 #### crdt/text/runs.d.ts#ContentRun
 
 ```ts
-export type ContentRun = ({
+export type ContentRun = {
     kind: 'text';
     text: string;
     marks?: Record<string, unknown>;
@@ -1975,8 +1975,6 @@ export type ContentRun = ({
     id: string;
     type: string;
     data?: Record<string, unknown>;
-}) & {
-    s?: string;
 };
 ```
 

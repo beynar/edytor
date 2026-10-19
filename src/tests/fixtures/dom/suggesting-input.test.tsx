@@ -22,12 +22,6 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-/** The pending runs the text draws: their kinds and text. */
-const runs = (editor: HTMLElement) =>
-	[...editor.querySelectorAll('[data-edytor-suggested-run]')].map((n) => [
-		n.getAttribute('data-edytor-suggested-run'),
-		n.textContent
-	]);
 const changes = (edytor: Edytor) => edytor.facade.suggest.changes().map((c) => [c.kind, c.text]);
 const shown = (edytor: Edytor) => edytor.root!.children.map((b) => edytor.facade.blockText(b.id));
 const base = (edytor: Edytor) =>
@@ -46,9 +40,6 @@ describe('suggesting mode under the browser’s input', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '?' });
 		expect(shown(edytor)).toEqual(['Hello world!?']);
-		// Drawn in the text, as a mark is (`sugg.view.runs`).
-		await flushDomUpdates();
-		expect(runs(editor)).toEqual([['insert', '!?']]);
 		// Backspace over its own pending text deletes it; over "d" it proposes:
 		// the "d" stays, struck, and the caret goes before it.
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
@@ -56,8 +47,6 @@ describe('suggesting mode under the browser’s input', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 		expect(shown(edytor)).toEqual(['Hello world']);
 		expect(edytor.selection.caret?.offset).toBe(10);
-		await flushDomUpdates();
-		expect(runs(editor)).toEqual([['delete', 'd']]);
 		// An input method's composition at the caret (before the "d").
 		await dispatchComposition(editor, [
 			{ type: 'compositionstart' },

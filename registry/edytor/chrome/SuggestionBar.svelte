@@ -18,7 +18,7 @@
 </script>
 
 <div data-suggestion-bar>
-	<span data-edytor-suggestion-label style:--edytor-suggestion-color={author?.color}
+	<span data-edytor-suggestion-label style:--edytor-range-color={author?.color}
 		>{suggestion.status === 'streaming'
 			? labels.writing(suggestion.label)
 			: suggestion.shared
@@ -69,7 +69,7 @@
 	}
 	[data-edytor-suggestion-label] {
 		padding: 0 6px;
-		color: var(--edytor-suggestion-color, var(--edytor-suggestion-accent, var(--primary)));
+		color: var(--edytor-range-color, var(--edytor-suggestion-accent, var(--primary)));
 		font-weight: 500;
 	}
 	[data-edytor-suggestion-pending] {

@@ -1556,24 +1556,6 @@ its node: nothing hidden or released; the root list still holds), the YP20
 rows and the shared-suggestion rows, the upstream suite unchanged
 (`encoding.tests.js` still pins 14 content refs).
 
-### YP32 — an id list marks what it names changed (`src/structs/Item.js`)
-
-Reason: edytor's run index draws a shared suggestion's pending runs inline:
-each run carries its units' suggestion state, read as the index builds the
-runs. A settle or a proposal (YP31's id lists) changes that state without
-an insert or a delete in the text, so the index must hear of it.
-
-Patch (new code delimited by `// YP32 begin` / `// YP32 end`, edits marked `// YP32`):
-`ContentHold#integrate` and `#delete` of a record that holds nothing
-(YP31) log each present sequence item it names in `transaction.holds`
-with no length and mark its parent changed (`touchIds`); nothing is split,
-held or released, and a map value it names is not logged. Edytor's fold
-reads a zero-length log entry as an opaque change of that text: every
-reader re-reads.
-
-Oracle: `src/tests/crdt/yp31-id-lists.test.ts` (the zero-length log),
-the shared-suggestion rows with the index's self-checks on.
-
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

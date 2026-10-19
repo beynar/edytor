@@ -24,12 +24,9 @@
  *   decider).
  *
  * What is pending is a function of the replicated state (items, records,
- * settled ranges), so replicas converge in any delivery order. Each unit's
- * state is read by the run index (`suggestionState`; an id list marks what
- * it names changed, fork patch YP32), so a block's runs carry it, the view
- * draws them as it draws marks and a block's changes are read from its
- * runs, for the blocks the records' writers and proposals are in: a
- * document with no suggestion pays nothing.
+ * settled ranges), so replicas converge in any delivery order. It is read
+ * again after any write, from the blocks the records' writers and
+ * proposals are in: a document with no suggestion pays nothing.
  */
 import type { EngineNode } from '../engine-api.js';
 import {
@@ -41,14 +38,7 @@ import {
 } from '../schema.js';
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
 import { removeUnit } from '../placement/slots.js';
-import {
-	isRowMark,
-	newNode,
-	openRangeCursor,
-	ownTextIds,
-	suggestionState,
-	writersOf
-} from '../text/model.js';
+import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
 import {
 	changedUnder,
 	clientsOf,
@@ -293,20 +283,6 @@ export const docSuggest = (c: SuggestContext) => {
 		return null;
 	};
 
-	/**
-	 * Unit `client:clock`'s state (`suggestionState`, the run index reads
-	 * it): `+<id>` a pending insertion of suggestion `id`, `-<id>` proposed
-	 * for deletion by it, space-separated; `undefined`: none.
-	 */
-	const stateOf = (client: number, clock: number): string | undefined => {
-		const ins = pendingIn(client, clock);
-		let s = ins ? `+${ins.id}` : '';
-		for (const r of records().proposing)
-			if (r.proposed.has(client, clock) && !r.settled.has(client, clock)) s += ` -${r.id}`;
-		return s.trim() || undefined;
-	};
-	suggestionState.set(doc, () => (records().recs.length ? stateOf : undefined));
-
 	/** `b`'s pending changes, read from the state now (`null`: none). */
 	const compute = (b: BlockId): Pending | null => {
 		const t = records();
@@ -421,12 +397,11 @@ export const docSuggest = (c: SuggestContext) => {
 	};
 
 	const listeners = new Set<() => void>();
-	/** The records changed: read them again before the commit's fold reads the units' state. */
-	const bump = (tr: never) => void (changedUnder(tr, [root()]) && version++);
 	const onCommit = (tr: never) => {
-		if (changedUnder(tr, [root()])) for (const f of listeners) f();
+		if (!changedUnder(tr, [root()])) return;
+		version++;
+		for (const f of listeners) f();
 	};
-	doc.on('beforeCommit', bump);
 	doc.on('commit', onCommit);
 
 	// ── writes ──────────────────────────────────────────────────────────
@@ -726,7 +701,6 @@ export const docSuggest = (c: SuggestContext) => {
 		/** @internal The work done (blocks read, units walked): the scaling rows count it. */
 		debug,
 		dispose: () => {
-			doc.off('beforeCommit', bump);
 			doc.off('commit', onCommit);
 			listeners.clear();
 		}

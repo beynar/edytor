@@ -164,7 +164,7 @@ export type ContentItem = {
 
 ```ts
 // crdt/text/runs.d.ts
-export type ContentRun = ({
+export type ContentRun = {
     kind: 'text';
     text: string;
     marks?: Record<string, unknown>;
@@ -173,8 +173,6 @@ export type ContentRun = ({
     id: string;
     type: string;
     data?: Record<string, unknown>;
-}) & {
-    s?: string;
 };
 ```
 
@@ -1297,7 +1295,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 anchorAt: (text: import("./engine-api.js").EngineNode, index: number, assoc: number) => import("./text/model.js").Anchor;
                 openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
                 itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-                readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats, state?: import("./text/model.js").UnitState) => import("./text/model.js").RangeItem[];
+                readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
                 computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
                 flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
                 ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
@@ -1543,7 +1541,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             anchorAt: (text: import("./engine-api.js").EngineNode, index: number, assoc: number) => import("./text/model.js").Anchor;
             openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-            readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats, state?: import("./text/model.js").UnitState) => import("./text/model.js").RangeItem[];
+            readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
             computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
@@ -2455,7 +2453,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             anchorAt: (text: EngineNode, index: number, assoc: number) => Anchor;
             openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-            readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats, state?: import("./text/model.js").UnitState) => import("./text/model.js").RangeItem[];
+            readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
             computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
@@ -2701,7 +2699,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         anchorAt: (text: EngineNode, index: number, assoc: number) => Anchor;
         openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
         itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-        readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats, state?: import("./text/model.js").UnitState) => import("./text/model.js").RangeItem[];
+        readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
         computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
         flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
         ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;

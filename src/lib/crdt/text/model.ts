@@ -124,13 +124,9 @@ export type SeqItem = {
 };
 
 /** One emitted range-read element — the `ContentItem` shape. */
-export type RangeItem = (
+export type RangeItem =
 	| { kind: 'text'; text: string; marks?: Record<string, unknown> }
-	| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> }
-) & {
-	/** Its units' state in the shared suggestions (`suggestionState`): `+<id>` inserted, `-<id>` proposed for deletion. */
-	s?: string;
-};
+	| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> };
 
 /** One element of the vendored `Y.RangeCursor` piece stream (see `RangeCursor.js`). */
 export type RangePiece = {
@@ -328,30 +324,16 @@ export const itemsOfRange = (text: EngineNode, i0: number, i1: number): RangeIte
 	readRange(openRangeCursor(text), i0, i1);
 
 /** The items of `segs`, one cursor per backing text. */
-export const readSegs = (
-	segs: readonly Seg[],
-	stats?: RangeReadStats,
-	state?: UnitState
-): RangeItem[] => {
+export const readSegs = (segs: readonly Seg[], stats?: RangeReadStats): RangeItem[] => {
 	const out: RangeItem[] = [];
 	const cursors = new Map<EngineNode, RangeCursor>();
 	for (const seg of segs) {
 		let cur = cursors.get(seg.text);
 		if (cur === undefined) cursors.set(seg.text, (cur = openRangeCursor(seg.text)));
-		readRange(cur, seg.i0, seg.i1, stats, out, state);
+		readRange(cur, seg.i0, seg.i1, stats, out);
 	}
 	return out;
 };
-
-/** A unit's state in the shared suggestions (`undefined`: none). */
-export type UnitState = (client: number, clock: number) => string | undefined;
-/**
- * Each doc's shared-suggestion reading of its units (`doc/suggest.ts`
- * registers it): the run index splits runs where it changes and carries it
- * on each run (`s`), so the view draws pending runs as it draws marks.
- * Answers `undefined` while the doc holds no suggestion.
- */
-export const suggestionState = new WeakMap<EngineDoc, () => UnitState | undefined>();
 
 /**
  * A from-scratch ownership context over `given` (every text scanned; the

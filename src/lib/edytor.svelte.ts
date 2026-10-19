@@ -37,7 +37,7 @@ import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
 import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
-import Ranges from './components/Ranges.svelte';
+import Ranges, { runOf } from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -491,22 +491,6 @@ export class Edytor {
 				return initializedPlugin;
 			});
 
-			// A shared suggestion's pending run (its state, `+<id>` inserted, `-<id>`
-			// proposed for deletion): drawn in place, in its author's colour (`sugg.view.runs`).
-			define(this.marks, {
-				suggested: {
-					tag: 'span',
-					attributes: (state: string) => {
-						const color = this.suggestions.colorOf(state.slice(1).split(' ')[0]!);
-						return {
-							'data-edytor-suggested-run': state.replace(/([+-])\S+/g, (_, sign) =>
-								sign === '+' ? 'insert' : 'delete'
-							),
-							style: color && `--edytor-suggestion-color: ${color}`
-						};
-					}
-				}
-			});
 			// Kind records generate their commands; an extension's own command id wins.
 			this.kinds = kindCatalogue(this.blocks);
 			for (const row of this.kinds)
@@ -731,6 +715,20 @@ export class Edytor {
 			return start && end ? [{ start, end }] : [];
 		});
 	};
+
+	/**
+	 * A shared suggestion's runs (`sugg.view.runs`): the deleted ones
+	 * (`deleted`), else the inserted ones and the ranges a format proposal
+	 * names, each in its author's colour.
+	 */
+	#suggested = (deleted: boolean) => () =>
+		this.suggestions
+			.changes()
+			.flatMap((c) =>
+				c.block && c.length && c.kind === (deleted ? 'delete' : 'insert')
+					? runOf(this, c.block, c.offset, c.length, false, this.suggestions.colorOf(c.suggestion))
+					: []
+			);
 
 	/**
 	 * The placeholder block `id` shows: its cell has one empty
@@ -1023,10 +1021,18 @@ export class Edytor {
 			target: this.overlay.layer!,
 			props: { edytor: this }
 		});
-		// The text a `replace` suggestion removes, marked beside the host.
+		// The text a `replace` suggestion removes, and a shared suggestion's runs, marked beside the host.
 		const ranges = mount(Ranges, {
 			target: this.overlay.layer!,
 			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }
+		});
+		const inserted = mount(Ranges, {
+			target: this.overlay.layer!,
+			props: { edytor: this, name: 'suggestion-inserted', z: 19, ranges: this.#suggested(false) }
+		});
+		const deleted = mount(Ranges, {
+			target: this.overlay.layer!,
+			props: { edytor: this, name: 'suggestion-deleted', z: 19, ranges: this.#suggested(true) }
 		});
 		// The polite live region: what this view's block moves and deletes did.
 		const live = mount(Announcer, {
@@ -1036,6 +1042,8 @@ export class Edytor {
 		this.off.push(
 			() => unmount(presence),
 			() => unmount(ranges),
+			() => unmount(inserted),
+			() => unmount(deleted),
 			() => unmount(live),
 			detachOverlay
 		);

@@ -25,7 +25,7 @@ export class ItemTextListPosition {
     advance(transaction: Transaction, length: number): void;
 }
 export function insertAtGapEndHelper(transaction: Transaction, parent: YNode, index: number, content: import("./structs/Item.js").AbstractContent): void;
-export function deleteText(transaction: Transaction, currPos: ItemTextListPosition, length: number, held?: Array<number> | null, fresh?: import("./utils/ids.js").IdSet | null): ItemTextListPosition;
+export function deleteText(transaction: Transaction, currPos: ItemTextListPosition, length: number, held?: Array<number> | null, fresh?: import("./utils/ids.js").IdSet | null, sort?: ((client: number, clock: number) => number) | null, proposed?: Array<number> | null, hidden?: Array<number> | null): ItemTextListPosition;
 export class ArraySearchMarker {
     /**
      * @param {Item} p
@@ -193,12 +193,23 @@ export class YNode {
      * which an undo of the record takes back), except those `fresh` names (the
      * open undo step's inserts: removed, so that step's undo changes nothing).
      *
+     * YP32: with `propose` (a suggestion's delete) each unit is sorted: held
+     * by the record in `into` (`1`: its author's own), proposed (`2`: an id
+     * list appended to `propose.into`, a suggestion's record, holding nothing)
+     * or stepped over (`3`: already proposed); proposed and stepped-over units
+     * read gone until `unhide`, so the rest of the plan reads the offsets it
+     * was prepared with.
+     *
      * @param {number} index Index at which to start deleting elements
      * @param {number} length The number of elements to remove. Defaults to 1.
      * @param {YNode|null} [into]
      * @param {import('./utils/ids.js').IdSet|null} [fresh]
+     * @param {{ into: YNode, sort: (client: number, clock: number) => number }|null} [propose]
      */
-    delete(index: number, length?: number, into?: YNode | null, fresh?: import("./utils/ids.js").IdSet | null): void;
+    delete(index: number, length?: number, into?: YNode | null, fresh?: import("./utils/ids.js").IdSet | null, propose?: {
+        into: YNode;
+        sort: (client: number, clock: number) => number;
+    } | null): void;
     /**
      * YP20: append to this node (the document's records list) one hold record of
      * the items `ids` names (`client, clock, len` triples): they read as deleted

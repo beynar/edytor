@@ -38,7 +38,14 @@ import {
 } from '../schema.js';
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
 import { removeUnit } from '../placement/slots.js';
-import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
+import {
+	isRowMark,
+	newNode,
+	openRangeCursor,
+	ownTextIds,
+	proposing,
+	writersOf
+} from '../text/model.js';
 import {
 	changedUnder,
 	clientsOf,
@@ -51,7 +58,7 @@ import {
 import { nonceOf } from '../rand.js';
 import { id as mint } from '../../utils.js';
 import { effectOf, NOOP, refused } from './plan.js';
-import type { OpResult, Plan, PlanStep, Prepared } from './types.js';
+import type { DocAnchor, OpResult, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 
 /** `[client, clock, length]`: the units a decision names. */
@@ -142,6 +149,8 @@ const push = (runs: IdRange[], client: number, clock: number, next = true) => {
 export type SuggestContext = DocBase &
 	DocReads & {
 		write: <R>(fn: () => R) => R;
+		anchorAt: (id: BlockId, offset: number, affinity?: 'left' | 'right') => DocAnchor | null;
+		resolveAnchor: (anchor: DocAnchor) => { blockId: BlockId; offset: number } | null;
 		/** Write in one transaction and one attribution frame (the funnel's). */
 		framed: (fn: () => void) => boolean;
 		apply: (p: Prepared) => OpResult;
@@ -152,7 +161,8 @@ export type SuggestContext = DocBase &
 /** The document's shared suggestions (`facade.suggest`). */
 export const docSuggest = (c: SuggestContext) => {
 	const { Y, doc, runsView, view, write } = c;
-	const idSet = engineOps(Y).idSet;
+	const ops = engineOps(Y);
+	const { idSet } = ops;
 	const root = (): EngineNode => doc.get(SUGGEST_ROOT);
 	const actorOf = (client: number): string | undefined => {
 		const bound = doc.get(ATTRIBUTION_ROOT).getAttr(`c/${client}`);
@@ -500,12 +510,14 @@ export const docSuggest = (c: SuggestContext) => {
 
 	/**
 	 * Write plan `p` as suggestion `id` (the view's suggesting mode), by the
-	 * suggestion's writer: insertions are written, a text delete proposes
-	 * the units that are not its author's pending ones (those go), a block
-	 * delete proposes the blocks it removes (its author's own go), and a plan
-	 * it {@link refuses} writes nothing. Later steps' offsets, prepared with
-	 * the proposed text gone, step over it (an insertion lands after it).
-	 * Answers the result and where the plan's caret is now.
+	 * suggestion's writer, in one frame: insertions are written; a text
+	 * delete proposes the units that are not its author's pending ones (those
+	 * go), the engine hiding them until the plan ends so its later steps read
+	 * the offsets they were prepared with (fork patch YP32: an insertion at
+	 * a proposed deletion lands after it); a block delete proposes the
+	 * blocks it removes by their nodes (its author's own go); a plan it
+	 * {@link refuses} writes nothing. Answers the result and where the
+	 * plan's caret is now, the proposed text shown.
 	 */
 	const apply = (
 		id: string,
@@ -516,77 +528,55 @@ export const docSuggest = (c: SuggestContext) => {
 		const w = rec.writer;
 		if (refuses(p, w)) return { result: refused('suggesting') };
 		const at = about(p);
-		/** The units this plan proposed, per block: present, though the plan counts them gone. */
-		const kept = new Map<BlockId, string[]>();
-		const key = (u: Unit) => `${u.client}:${u.clock}`;
-		/** The units the plan's `[o, o + length)` of `b` names, and its offset `o` now. */
-		const range = (b: BlockId, o: number, length: number) => {
-			const keep = kept.get(b);
-			if (!keep && !length) return { units: [], at: o };
-			const units = keep ? unitsOf(b).filter((u) => !keep.includes(key(u))) : unitsOf(b);
-			return { units: units.slice(o, o + length), at: units[o]?.offset ?? c.displayLength(b) };
-		};
-		let wrote = false;
-		/** Written steps waiting to be applied together (a paste's lines keep their split's key). */
-		const batch: PlanStep[] = [];
-		const flush = () => {
-			const writes = batch.splice(0);
-			if (writes.length)
-				wrote =
-					c.apply({
-						ids: [],
-						writes,
-						effect: effectOf(writes),
-						version: runsView.version()
-					} as Plan).status === 'applied' || wrote;
-		};
-		const propose = (ids: number[]) => {
-			flush();
-			entry(rec, ids);
-			wrote = true;
-		};
-		const result = write(() =>
-			doc.transact(() =>
-				as(w, (): OpResult => {
-					for (const s of p.writes) {
-						const b = 'id' in s ? s.id : undefined;
-						if (b !== undefined && kept.has(b)) flush();
-						if (s.op === 'insertBlocks') batch.push(s);
-						else if (s.op === 'insertText' || s.op === 'insertInline' || s.op === 'splitBlock')
-							batch.push({ ...s, offset: range(s.id, s.offset, 0).at });
-						else if (s.op === 'deleteText' || s.op === 'removeInline') {
-							flush();
-							const { units } = range(s.id, s.offset, 'length' in s ? s.length : 1);
-							const own = units.filter((u) => ownPending(u.client, u.clock, w));
-							const others = units.filter((u) => !own.includes(u));
-							// Units this suggestion already proposes are stepped over, not proposed again.
-							const fresh = others.filter(
-								(u) => !rec.proposed.has(u.client, u.clock) || rec.settled.has(u.client, u.clock)
-							);
-							if (fresh.length) propose(fresh.flatMap((u) => [u.client, u.clock, 1]));
-							kept.set(s.id, [...(kept.get(s.id) ?? []), ...others.map(key)]);
-							// Its author's own pending units go, from the right so the offsets hold.
-							for (const u of own.reverse())
-								batch.push({ op: 'deleteText', id: s.id, offset: u.offset, length: 1 });
-							flush();
-						} else if (ownBlock(at(s), w)) batch.push(s);
-						else if (s.op === 'deleteBlock')
-							// The blocks it removes, named by their nodes.
-							propose(
-								s.removes.flatMap((r) => {
-									const { client, clock } = itemOf<Item>(blockNodeOf(doc, r)!)!.id;
-									return [client, clock, 1];
-								})
-							);
-						// What else is not its author's is a promoted child's kind, re-read on accept.
+		const blocks: number[] = [];
+		const writes = p.writes.filter((s) => {
+			if (s.op === 'deleteBlock' && !ownBlock(s.id, w)) {
+				for (const r of s.removes) {
+					const { client, clock } = itemOf<Item>(blockNodeOf(doc, r)!)!.id;
+					blocks.push(client, clock, 1);
+				}
+				return false;
+			}
+			// A promoted child's retype follows its deletion: written with it, or read again on accept.
+			return s.op !== 'setBlockType' || ownBlock(at(s), w);
+		});
+		return write(() =>
+			doc.transact((tr: unknown) =>
+				as(w, () => {
+					let result = NOOP;
+					let anchor: DocAnchor | null;
+					proposing.set(doc, {
+						into: rec.node,
+						sort: (client, clock) =>
+							ownPending(client, clock, w)
+								? 1
+								: rec.proposed.has(client, clock) && !rec.settled.has(client, clock)
+									? 3
+									: 2
+					});
+					try {
+						if (writes.length)
+							result = c.apply({
+								...p,
+								writes,
+								effect: effectOf(writes),
+								version: runsView.version()
+							} as Plan);
+						anchor = p.at ? c.anchorAt(p.at.block, p.at.offset, 'right') : null;
+					} finally {
+						proposing.delete(doc);
+						ops.unhide(tr);
 					}
-					flush();
-					return wrote ? { status: 'applied', ids: p.ids } : NOOP;
+					if (blocks.length) {
+						entry(rec, blocks);
+						result = { status: 'applied', ids: p.ids };
+					}
+					version++;
+					const caret = anchor && c.resolveAnchor(anchor);
+					return { result, ...(caret && { at: { block: caret.blockId, offset: caret.offset } }) };
 				})
 			)
 		);
-		const caret = p.at && { block: p.at.block, offset: range(p.at.block, p.at.offset, 0).at };
-		return { result, ...(caret && { at: caret }) };
 	};
 
 	/**

@@ -12,6 +12,7 @@ import {
   ContentType,
   ContentHold, // YP20
   ContentMove, // YP22
+  hideIds, // YP32
   readFormatValue, // YP25
   YXmlFragmentRefID,
   YXmlElementRefID,
@@ -327,19 +328,24 @@ const holdHelper = (transaction, list, ids) => {
 
 /**
  * With `held`, the live units are not deleted: their ids go to `held`
- * (`client, clock, len`), except those `fresh` names (YP20).
+ * (`client, clock, len`), except those `fresh` names (YP20). YP32: with
+ * `sort` (a suggestion's delete), `sort`'s `1` goes to `held`, `2` to
+ * `proposed` and `hidden`, `3` to `hidden`.
  *
  * @param {Transaction} transaction
  * @param {ItemTextListPosition} currPos
  * @param {number} length
  * @param {Array<number>|null} [held]
  * @param {import('./utils/ids.js').IdSet|null} [fresh]
+ * @param {((client: number, clock: number) => number)|null} [sort] YP32: a suggestion's delete sorts each unit
+ * @param {Array<number>|null} [proposed] YP32: the units it proposes
+ * @param {Array<number>|null} [hidden] YP32: the units it hides until `unhide`
  * @return {ItemTextListPosition}
  *
  * @private
  * @function
  */
-export const deleteText = (transaction, currPos, length, held = null, fresh = null) => {
+export const deleteText = (transaction, currPos, length, held = null, fresh = null, sort = null, proposed = null, hidden = null) => {
   const startLength = length
   let kept = 0 // YP20
   while (length > 0 && currPos.right !== null) {
@@ -347,15 +353,19 @@ export const deleteText = (transaction, currPos, length, held = null, fresh = nu
     if (!item.deleted && item.countable) {
       const { client, clock } = item.id
       // YP20: a held run ends where the open step's inserts start or end
-      const n = fresh === null ? math.min(length, item.length) : runEnd(fresh, client, clock, clock + math.min(length, item.length)) - clock
+      let n = fresh === null ? math.min(length, item.length) : runEnd(fresh, client, clock, clock + math.min(length, item.length)) - clock
+      // YP32: a suggestion's delete sorts each unit — held (`1`), proposed (`2`) or stepped over (`3`)
+      const kind = held === null || (fresh !== null && fresh.has(client, clock)) ? 0 : sort === null ? 1 : sort(client, clock)
+      if (kind !== 0 && sort !== null) for (let k = 1; k < n; k++) if (sort(client, clock + k) !== kind) n = k
       if (n < item.length) {
         getItemCleanStart(transaction, createID(client, clock + n))
       }
       length -= item.length
-      if (held === null || (fresh !== null && fresh.has(client, clock))) {
+      if (kind === 0) {
         item.delete(transaction)
       } else {
-        held.push(client, clock, item.length)
+        if (kind === 2) /** @type {Array<number>} */ (proposed).push(client, clock, item.length)
+        ;/** @type {Array<number>} */ (kind === 1 ? held : hidden).push(client, clock, item.length)
         kept += item.length
       }
     }
@@ -993,12 +1003,20 @@ export class YNode {
    * which an undo of the record takes back), except those `fresh` names (the
    * open undo step's inserts: removed, so that step's undo changes nothing).
    *
+   * YP32: with `propose` (a suggestion's delete) each unit is sorted: held
+   * by the record in `into` (`1`: its author's own), proposed (`2`: an id
+   * list appended to `propose.into`, a suggestion's record, holding nothing)
+   * or stepped over (`3`: already proposed); proposed and stepped-over units
+   * read gone until `unhide`, so the rest of the plan reads the offsets it
+   * was prepared with.
+   *
    * @param {number} index Index at which to start deleting elements
    * @param {number} length The number of elements to remove. Defaults to 1.
    * @param {YNode|null} [into]
    * @param {import('./utils/ids.js').IdSet|null} [fresh]
+   * @param {{ into: YNode, sort: (client: number, clock: number) => number }|null} [propose]
    */
-  delete (index, length = 1, into = null, fresh = null) {
+  delete (index, length = 1, into = null, fresh = null, propose = null) {
     if (!(length > 0)) return
     if (this.doc == null) {
       const runs = prelimOf(this).runs
@@ -1015,13 +1033,17 @@ export class YNode {
     transact(this.doc, transaction => {
       const currPos = cursorAt(transaction, this, index)
       const held = into === null ? null : [] // YP20
-      deleteText(transaction, currPos, length, held, fresh)
+      const [proposed, hidden] = [[], []] // YP32
+      deleteText(transaction, currPos, length, held, fresh, propose && propose.sort, proposed, hidden)
       if (held !== null && held.length > 0) {
         // YP20: `deleteText` moved the markers as for a delete; the hold keeps them
         const ms = this._searchMarker === null ? null : this._searchMarker.slice()
         holdHelper(transaction, /** @type {YNode} */ (into), held)
         if (ms !== null && this._searchMarker !== null) this._searchMarker.splice(0, this._searchMarker.length, ...ms)
       }
+      // YP32: the proposal, then what it hides until `unhide`
+      if (proposed.length > 0) holdHelper(transaction, /** @type {any} */ (propose).into, proposed)
+      if (hidden.length > 0) hideIds(transaction, hidden)
       plantMarker(this, currPos)
     })
   }

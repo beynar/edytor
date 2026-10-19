@@ -17,4 +17,4 @@ export { idAtIndex, indexOfId } from "./utils/positions.js";
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from "./utils/transaction-helpers.js";
 export { Transaction, transact } from "./utils/Transaction.js";
 export { redoItem, keepItem } from "./utils/redo.js";
-export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType, ContentMove } from "./structs/Item.js";
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType, ContentMove, unhide } from "./structs/Item.js";

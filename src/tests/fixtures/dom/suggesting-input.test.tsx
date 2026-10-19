@@ -64,6 +64,37 @@ describe('suggesting mode under the browser’s input', () => {
 		expect(base(edytor)).toEqual(['Hello world']);
 	});
 
+	it('typing or pasting over a selection: the deletion is proposed, the insertion lands after it', async () => {
+		const typed = await renderDomEdytor(
+			<root>
+				<paragraph>Hel|lo wo|rld</paragraph>
+			</root>
+		);
+		typed.edytor.suggestions.suggesting = true;
+		await dispatchDomBeforeInput(typed.editor, { inputType: 'insertText', data: 'X' });
+		expect(shown(typed.edytor)).toEqual(['Hello woXrld']);
+		expect(typed.edytor.selection.caret?.offset).toBe(9);
+		expect(changes(typed.edytor)).toEqual([
+			['delete', 'lo wo'],
+			['insert', 'X']
+		]);
+		document.body.innerHTML = '';
+		const pasted = await renderDomEdytor(
+			<root>
+				<paragraph>Hel|lo wo|rld</paragraph>
+			</root>
+		);
+		pasted.edytor.suggestions.suggesting = true;
+		await dispatchPaste(pasted.editor, 'P\nQ');
+		expect(shown(pasted.edytor)).toEqual(['Hello woP', 'Qrld']);
+		expect(changes(pasted.edytor)).toEqual([
+			['delete', 'lo wo'],
+			['insert', 'P'],
+			['split', 'Qrld']
+		]);
+		expect(base(pasted.edytor)).toEqual(['Hello world']);
+	});
+
 	it('a paste of several lines is the suggestion’s blocks', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>

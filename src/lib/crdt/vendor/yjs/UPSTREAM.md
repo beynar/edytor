@@ -1556,6 +1556,48 @@ its node: nothing hidden or released; the root list still holds), the YP20
 rows and the shared-suggestion rows, the upstream suite unchanged
 (`encoding.tests.js` still pins 14 content refs).
 
+### YP32 — a delete that proposes (`src/ynode.js`, `src/structs/Item.js`, `src/index.js`)
+
+Reason: in suggesting mode a text delete writes nothing to the text: the
+units that are not the suggestion's author's own pending ones are named by
+an id list in the suggestion's record (YP31), and they stay shown. The
+plan that deleted them was prepared with them gone, so edytor carried a
+layer that re-read each later step's offsets over the units the plan had
+proposed, batched the steps around every proposal and mapped the caret
+back (`crdt/doc/suggest.ts` `apply`, about 1.4 KB minified). The fork's
+delete now proposes, and hides what it proposed until the plan ends: the
+plan's later steps read the offsets they were prepared with, and an
+insertion at a proposed deletion lands after it (at the end of the gap,
+as any insertion lands after deleted items). Design:
+`docs/archive/suggestions-in-engine/design.md`.
+
+Patch (new code delimited by `// YP32 begin` / `// YP32 end`, edits marked `// YP32`):
+
+- **`YNode#delete(index, length, into, fresh, propose)`**: with `propose`
+  (`{ into, sort }`), each live unit the delete reaches is sorted by
+  `sort(client, clock)`: `1` held by the record appended to `into` (the
+  author's own pending text, YP20's path), `2` proposed (one id list
+  appended to `propose.into`, the suggestion's record, which holds nothing
+  there, YP31), `3` stepped over (already proposed). `fresh` units are
+  removed as before. Proposed and stepped-over units are hidden
+  (`hideIds`: a hold without a record, kept in `transaction.hidden`) until
+  `unhide(transaction)`, which edytor calls when the plan is written.
+  `deleteText` splits a run where the sort changes.
+- **`hideIds`, `unhide`** (`Item.js`, `unhide` exported): YP20's
+  `holdIds` with no record, and its release.
+
+Plain deletes (every upstream test, every YP20 row) are untouched: without
+`propose` the sort is not read and every changed path reduces to YP20's.
+
+Edytor side: `crdt/text/model.ts` `deleteRange` passes the plan's
+`proposing` context; `crdt/doc/suggest.ts` writes a suggesting plan as one
+frame, its caret anchored before `unhide` and resolved after.
+
+Oracle: the shared-suggestion rows (`src/tests/crdt/suggest/`, the random
+schedules with the index's self-checks on), `suggesting-input.test.tsx`
+(typing over a selection, a paste, Backspace and Delete over struck text),
+the YP20 rows, the upstream suite unchanged.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

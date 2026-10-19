@@ -82,9 +82,18 @@ export interface EngineNode {
 	 * Delete `length` live units at `index`. With `into` (the document's
 	 * records list), they are held by one record appended there instead (a
 	 * delete its writer can take back), except those `fresh` names, which are
-	 * removed.
+	 * removed. With `propose` (a suggestion's delete), each
+	 * unit is sorted: `1` held as above (its author's own), `2` proposed (an
+	 * id list appended to `propose.into`) or `3` stepped over; proposed and
+	 * stepped-over units read gone until the engine's `unhide`.
 	 */
-	delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
+	delete(
+		index: number,
+		length?: number,
+		into?: EngineNode | null,
+		fresh?: unknown,
+		propose?: { into: EngineNode; sort: (client: number, clock: number) => number } | null
+	): void;
 	/** Append one hold record of `ids` (`client, clock, len` triples) to this records list: they read as deleted while it lives. */
 	hold(ids: number[]): void;
 	/**

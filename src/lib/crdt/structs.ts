@@ -381,6 +381,8 @@ export const engineOps = (Y: EngineApi) => {
 			Y.mergeIdSets(sets as unknown as V[]) as unknown as IdSetOf,
 		/** Whether a store struct is an item (not a GC or a Skip). */
 		isItem: (struct: unknown): struct is StoreStruct => struct instanceof Y.Item,
+		/** Show again what a suggestion's deletes in `tr` proposed (fork patch YP32). */
+		unhide: (tr: unknown): void => Y.unhide(tr as Tr),
 		/** Whether `item` sits in `node`'s subtree. */
 		inside: (node: EngineNode, item: StoreStruct): boolean =>
 			Y.isParentOf(asYNode(node), item as unknown as Item),

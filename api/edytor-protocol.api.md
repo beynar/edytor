@@ -212,7 +212,10 @@ export interface EngineNode {
     forEachAttr(f: (value: unknown, key: string, node: EngineNode) => void): void;
     attrKeys(): IterableIterator<string>;
     insert(index: number, content: unknown): void;
-    delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
+    delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown, propose?: {
+        into: EngineNode;
+        sort: (client: number, clock: number) => number;
+    } | null): void;
     hold(ids: number[]): void;
     move(index: number, ids: number[], side?: number, part?: number, at?: ReadonlyArray<{
         client: number;
@@ -1404,7 +1407,7 @@ declare const writeReadOnly: (encoder: encoding.Encoder) => void;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID' | 'unhide';
 ```
 
 #### crdt/engine.d.ts#Y

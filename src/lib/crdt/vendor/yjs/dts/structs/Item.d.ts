@@ -450,6 +450,8 @@ export class ContentHold {
      */
     getRef(): 11;
 }
+export function hideIds(tr: Transaction, ids: Array<number>): void;
+export function unhide(tr: Transaction): void;
 export function applyPending(tr: Transaction, clients: Array<number>): void;
 /**
  * A move record: one countable unit at its destination, naming the units

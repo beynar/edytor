@@ -1183,6 +1183,32 @@ export class ContentHold {
 const holding = item => /** @type {YNode} */ (item.parent)._item === null
 // YP31 end
 
+// YP32 begin (edytor fork: a delete that proposes — see UPSTREAM.md YP32)
+/**
+ * Hide the units `ids` names until `unhide` (a suggestion's proposed
+ * deletion, which the rest of its plan reads gone): a hold without a
+ * record, kept in `tr.hidden`.
+ *
+ * @param {Transaction} tr
+ * @param {Array<number>} ids
+ */
+export const hideIds = (tr, ids) => {
+  holdIds(tr, ids, 1)
+  ;/** @type {any} */ (tr).hidden = (/** @type {any} */ (tr).hidden ?? []).concat(ids)
+}
+
+/**
+ * Show again what `hideIds` hid in `tr`.
+ *
+ * @param {Transaction} tr
+ */
+export const unhide = tr => {
+  const hidden = /** @type {any} */ (tr).hidden
+  if (hidden) holdIds(tr, hidden, -1)
+  ;/** @type {any} */ (tr).hidden = null
+}
+// YP32 end
+
 // YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
 /**
  * Whether move record `a` beats `b`: the greater `(priority, client, clock)`

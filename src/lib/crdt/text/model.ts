@@ -439,8 +439,19 @@ export const deleteRange = (
 	const records = doc.get(TEXT_DELETES_ROOT);
 	const fresh = openInserts(doc);
 	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
-		r.text.delete(r.a, r.b - r.a, records, fresh);
+		r.text.delete(r.a, r.b - r.a, records, fresh, proposing.get(doc));
 };
+
+/**
+ * A suggestion's plan being written on a doc (`doc/suggest.ts`): its text
+ * deletes propose (fork patch YP32) into its record, `sort` telling each
+ * unit's lot (`1` its author's own: held; `2` proposed; `3` already
+ * proposed: stepped over).
+ */
+export const proposing = new WeakMap<
+	EngineDoc,
+	{ into: EngineNode; sort: (client: number, clock: number) => number }
+>();
 
 export const formatRangeIn = (
 	doc: EngineDoc,

@@ -807,6 +807,38 @@
 	color: var(--notion-placeholder);
 }
 
+/*
+ * Shared suggestions: a block a suggestion made or proposes an operation on
+ * (`data-edytor-suggested`), and its runs in the overlay, in its author's
+ * colour (`--edytor-range-color`).
+ */
+.edytor-notion [data-edytor-suggested='inserted'],
+.edytor-notion [data-edytor-suggested='split'] {
+	box-shadow: inset 2px 0 0 var(--edytor-suggestion-inserted, rgb(68 131 97));
+	background: var(--edytor-suggestion-inserted-background, rgba(68, 131, 97, 0.07));
+}
+.edytor-notion [data-edytor-suggested='removed'] {
+	background: var(--edytor-suggestion-removed);
+}
+.edytor-notion [data-edytor-suggested='removed'] [data-edytor-text] {
+	text-decoration: line-through;
+	text-decoration-color: var(--edytor-suggestion-removed-line, rgba(235, 87, 87, 0.6));
+}
+.edytor-notion :is([data-edytor-suggested='merged'], [data-edytor-suggested='changed']) {
+	box-shadow: inset 2px 0 0 var(--edytor-suggestion-accent);
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-suggestion-inserted] {
+	border-bottom: 2px solid var(--edytor-range-color, rgb(68 131 97));
+	background: color-mix(in srgb, var(--edytor-range-color, rgb(68 131 97)) 10%, transparent);
+}
+:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-suggestion-deleted] {
+	background: linear-gradient(
+		transparent calc(50% - 1px),
+		var(--edytor-range-color, rgb(235 87 87)) calc(50% - 1px) calc(50% + 1px),
+		transparent calc(50% + 1px)
+	);
+}
+
 /* ── Page (a subpage link) and table of contents ────────────────────── */
 .edytor-notion [data-edytor-type='page'] {
 	margin: 1px 0;

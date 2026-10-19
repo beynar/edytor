@@ -1,3 +1,4 @@
+import { editorEnglish, labelsOf } from '$lib/labels.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { OpResult } from '$lib/crdt/edytor-doc.js';
@@ -137,6 +138,7 @@ const parts = (edytor: Edytor, request: BlockMoveRequest): BlockMoveRequest[] =>
 
 /** Whether the move is allowed: for runs (`parts`), whether one of them may move. */
 export const canMove = (edytor: Edytor, request: BlockMoveRequest): boolean =>
+	!edytor.suggestions.suggesting &&
 	parts(edytor, request).some((part) => destination(edytor, part) !== null);
 
 /**
@@ -150,6 +152,12 @@ export const canMove = (edytor: Edytor, request: BlockMoveRequest): boolean =>
  * (`announcer.moved`).
  */
 export const move = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
+	// Nothing moves through a suggestion (`sugg.move.refused`): refused, and said.
+	if (edytor.suggestions.suggesting) {
+		edytor.dispatcher.record({ operation: 'moveBlocks', status: 'refused' });
+		edytor.announcer.say(labelsOf(edytor, 'editor', editorEnglish).moveRefused);
+		return [];
+	}
 	const runs = parts(edytor, request);
 	const moved =
 		runs.length > 1

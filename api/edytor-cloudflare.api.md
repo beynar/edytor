@@ -1682,7 +1682,9 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
 
 ```ts
 export interface DocumentReads {
-    toJSON(): JSONDoc;
+    toJSON(options?: {
+        suggestions?: boolean;
+    }): JSONDoc;
     docData(): JsonObj;
     dataItemIds(target: DataTarget, path: readonly string[]): string[];
     project(): ProjectedDoc;

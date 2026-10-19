@@ -4,15 +4,22 @@ import type { Plugin } from '$lib/plugins.js';
 import { branded } from '../brand.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 
-/** What a `bar` snippet receives: one block suggestion and its actions. */
+/** What a `bar` snippet receives: one suggestion (a block suggestion, or a shared one) and its actions. */
 export type SuggestionBarPayload = {
 	suggestion: Suggestion;
-	/** Place it in the document and give the editor its focus back. */
+	/** Accept it (a view-local one: place it in the document) and give the editor its focus back. */
 	accept: () => void;
+	/** Drop it (a shared one: its author withdraws it, a decider rejects it). */
 	discard: () => void;
+	/** Reject a shared one (a view-local one: drop it). */
+	reject: () => void;
 	/** Ask for another answer (`onRetry`); `undefined` without one. */
 	retry: (() => void) | undefined;
 	readonly: boolean;
+	/** This view may accept or reject it (a shared one; else: not readonly). */
+	canDecide: boolean;
+	/** A shared one's author, as their profile names them ("Ada", with `suggestion.via`: "Ada (AI)"). */
+	author: { id: string; name?: string; color?: string } | undefined;
 	/** The view's keys are a Mac's: Mod is ⌘ (name the Accept key with it). */
 	mac: boolean;
 };

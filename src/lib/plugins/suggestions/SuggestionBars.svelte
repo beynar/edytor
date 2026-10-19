@@ -7,7 +7,9 @@
 	/**
 	 * The suggestion bar (Notion AI's): your `bar` under each block
 	 * suggestion (Accept, Discard, and Try again when the app passed
-	 * `onRetry`); its keys are the suggestions plugin's.
+	 * `onRetry`) and under each shared suggestion's last block (its author,
+	 * Accept and Reject for a view that decides, Withdraw for its author);
+	 * its keys are the suggestions plugin's.
 	 */
 	export const createSuggestionBarPlugin =
 		({ bar }: SuggestionBarOptions): Plugin =>
@@ -39,15 +41,21 @@
 			if (!edytor.suggestions.list.length)
 				return Object.keys(places).length ? () => (places = {}) : undefined;
 			const next: typeof places = {};
+			const put = (id: string, node: Element | null | undefined) => {
+				const rect = node?.getBoundingClientRect();
+				if (rect)
+					next[id] = {
+						left: rect.left - origin.left,
+						top: rect.bottom - origin.top + 4,
+						width: rect.width
+					};
+			};
 			for (const node of edytor.node?.querySelectorAll<HTMLElement>('[data-edytor-suggestion]') ??
-				[]) {
-				const rect = node.getBoundingClientRect();
-				next[node.dataset.edytorSuggestion!] = {
-					left: rect.left - origin.left,
-					top: rect.bottom - origin.top + 4,
-					width: rect.width
-				};
-			}
+				[])
+				put(node.dataset.edytorSuggestion!, node);
+			// A shared one's bar: under the last block it changes.
+			for (const s of shown)
+				if (s.shared) put(s.id, edytor.idToBlock.get(s.changes.at(-1)?.block ?? '')?.node);
 			return () => (places = next);
 		})
 	);
@@ -57,21 +65,30 @@
 		edytor.overlay.invalidate();
 	});
 
-	/** Block suggestions have a preview (an `end` one, past its first block). */
+	/** Block suggestions have a preview (an `end` one, past its first block); a shared one, a change. */
 	const shown = $derived(
-		edytor.suggestions.list.filter((s) => !('end' in s.at) || s.content.length > 1)
+		edytor.suggestions.list.filter((s) =>
+			s.shared ? s.changes.length > 0 : !('end' in s.at) || s.content.length > 1
+		)
 	);
-	const payload = (suggestion: Suggestion): SuggestionBarPayload => ({
-		suggestion,
-		accept: () => {
-			suggestion.accept();
-			takeKeys(edytor);
-		},
-		discard: suggestion.discard,
-		retry: suggestion.retryable ? suggestion.retry : undefined,
-		readonly: edytor.readonly,
-		mac: edytor.keymap.isMac
-	});
+	const payload = (suggestion: Suggestion): SuggestionBarPayload => {
+		const by = suggestion.by;
+		const profile = by === undefined ? undefined : edytor.document.attribution.actors.get(by);
+		return {
+			suggestion,
+			accept: () => {
+				suggestion.accept();
+				takeKeys(edytor);
+			},
+			discard: suggestion.discard,
+			reject: suggestion.reject,
+			retry: suggestion.retryable ? suggestion.retry : undefined,
+			readonly: edytor.readonly,
+			canDecide: suggestion.shared ? suggestion.canDecide : !edytor.readonly,
+			author: by === undefined ? undefined : { id: by, ...profile },
+			mac: edytor.keymap.isMac
+		};
+	};
 </script>
 
 {#each shown as suggestion (suggestion.id)}

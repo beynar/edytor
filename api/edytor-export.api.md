@@ -662,6 +662,29 @@ export type NewInline = Omit<InlineSpec, 'id'> & {
 };
 ```
 
+#### crdt/doc/suggest.d.ts#SuggestedChange
+
+```ts
+export type SuggestedChange = {
+    readonly suggestion: string;
+    readonly kind: 'insert' | 'delete' | 'block' | 'split' | 'op';
+    readonly block: BlockId | null;
+    readonly offset: number;
+    readonly length: number;
+    readonly text: string;
+    readonly op?: SuggestedOp;
+};
+```
+
+#### crdt/doc/suggest.d.ts#SuggestedOp
+
+```ts
+export type SuggestedOp = {
+    op: 'deleteBlock' | 'mergeBlocks' | 'setBlockType' | 'patchData' | 'formatRange';
+    args: unknown[];
+};
+```
+
 #### crdt/doc/types.d.ts#AnchorAffinity
 
 ```ts
@@ -865,6 +888,12 @@ export type TextRange = {
 };
 ```
 
+#### crdt/document.d.ts#DocumentAccess
+
+```ts
+export type DocumentAccess = 'write' | 'suggest' | 'comment' | 'read';
+```
+
 #### crdt/document.d.ts#DocumentActor
 
 ```ts
@@ -919,6 +948,7 @@ export declare class EdytorDocument {
     get ready(): boolean;
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
+    access: DocumentAccess;
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -1020,7 +1050,9 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
 
 ```ts
 export interface DocumentReads {
-    toJSON(): JSONDoc;
+    toJSON(options?: {
+        suggestions?: boolean;
+    }): JSONDoc;
     docData(): JsonObj;
     dataItemIds(target: DataTarget, path: readonly string[]): string[];
     project(): ProjectedDoc;
@@ -1939,6 +1971,7 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
+    moveRefused: string;
 };
 ```
 
@@ -2981,7 +3014,13 @@ export declare class Suggestion {
     readonly id: string;
     readonly at: ResolvedAt;
     readonly label: string | undefined;
+    readonly shared: boolean;
     constructor(layer: Suggestions, at: ResolvedAt, kind: string, options: SuggestionOptions, status: SuggestionStatus);
+    get by(): string | undefined;
+    get via(): string | undefined;
+    get changes(): readonly SuggestedChange[];
+    get canDecide(): boolean;
+    get mine(): boolean;
     get content(): readonly JSONBlock[];
     get status(): SuggestionStatus;
     get retryable(): boolean;
@@ -2990,6 +3029,7 @@ export declare class Suggestion {
     append: (text: string) => void;
     done: () => void;
     accept: () => OpResult;
+    reject: () => OpResult;
     discard: () => void;
     retry: () => void;
 }
@@ -3025,6 +3065,8 @@ export type SuggestionOptions = {
     status?: SuggestionStatus;
     label?: string;
     onRetry?: (suggestion: Suggestion) => void;
+    shared?: boolean;
+    via?: string;
 };
 ```
 
@@ -3048,12 +3090,17 @@ export type SuggestionStatus = 'streaming' | 'ready';
 ```ts
 export declare class Suggestions {
     #private;
-    private edytor;
+    readonly edytor: Edytor;
     revision: number;
-    constructor(edytor: Edytor);
+    get suggesting(): boolean;
+    set suggesting(on: boolean);
+    changes: () => readonly SuggestedChange[];
     get list(): readonly Suggestion[];
     get latest(): Suggestion | undefined;
     get: (id: string) => Suggestion | undefined;
+    decide: (changes: readonly SuggestedChange[], accept: boolean, own?: number) => OpResult;
+    acceptAll: () => OpResult;
+    rejectAll: () => OpResult;
     add: (at: SuggestionAt, content?: SuggestionContent, options?: SuggestionOptions) => Suggestion;
     clear: () => void;
     prune: () => void;

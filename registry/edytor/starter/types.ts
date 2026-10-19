@@ -241,4 +241,10 @@ export type StarterEditorProps = Omit<EdytorProps, 'plugins' | 'edytor'> & {
 	edytor?: EdytorInstance;
 	/** A class on the starter's root element (`class` is the editing host's). */
 	rootClass?: string;
+	/**
+	 * The review controls above the blocks (default `true`): the Editing /
+	 * Suggesting switch (a user who may only suggest stays suggesting), and
+	 * Accept all and Reject all while shared suggestions are pending.
+	 */
+	review?: boolean;
 };

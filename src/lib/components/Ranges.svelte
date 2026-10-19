@@ -2,8 +2,16 @@
 	import type { PresencePoint } from '$lib/collaboration/awarenessSelection.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 
-	/** A run of text the overlay marks: its ends, and whether it is the current one (`data-current`). */
-	export type MarkedRange = { start: PresencePoint; end: PresencePoint; current?: boolean };
+	/**
+	 * A run of text the overlay marks: its ends, whether it is the current one
+	 * (`data-current`), and a colour (`--edytor-range-color`: a suggestion's author's).
+	 */
+	export type MarkedRange = {
+		start: PresencePoint;
+		end: PresencePoint;
+		current?: boolean;
+		color?: string;
+	};
 
 	/** The run of `length` at block offset `offset` of block `id` (none where it is not shown). */
 	export const runOf = (
@@ -11,11 +19,12 @@
 		id: string,
 		offset: number,
 		length: number,
-		current?: boolean
+		current?: boolean,
+		color?: string
 	): MarkedRange[] => {
 		const block = edytor.idToBlock.get(id);
 		const [start, end] = [block?.textAtOffset(offset), block?.textAtOffset(offset + length)];
-		return start && end ? [{ start, end, current }] : [];
+		return start && end ? [{ start, end, current, color }] : [];
 	};
 </script>
 
@@ -26,7 +35,8 @@
 	/**
 	 * Runs of text marked in the overlay (never inside the host), one
 	 * rectangle per line box, measured once per frame: the find matches, the
-	 * text a `replace` suggestion removes, the comment being written. Each
+	 * text a `replace` suggestion removes, a shared suggestion's inserted and
+	 * deleted runs, the comment being written. Each
 	 * rectangle carries `data-edytor-<name>` (`data-current` on the current
 	 * run's); the layer is `z`.
 	 */
@@ -37,12 +47,12 @@
 		ranges
 	}: { edytor: Edytor; name: string; z: number; ranges: () => MarkedRange[] } = $props();
 
-	let rects: (RemoteSelectionRect & { current?: boolean })[] = $state([]);
+	let rects: (RemoteSelectionRect & { current?: boolean; color?: string })[] = $state([]);
 
 	onMount(() =>
 		edytor.overlay.add((origin) => {
-			const next = ranges().flatMap(({ start, end, current }) =>
-				rangeRects(edytor, start, end, origin).map((rect) => ({ ...rect, current }))
+			const next = ranges().flatMap(({ start, end, current, color }) =>
+				rangeRects(edytor, start, end, origin).map((rect) => ({ ...rect, current, color }))
 			);
 			if (next.length || rects.length) return () => (rects = next);
 		})
@@ -63,6 +73,7 @@
 			style:top={`${rect.top}px`}
 			style:width={`${rect.width}px`}
 			style:height={`${rect.height}px`}
+			style:--edytor-range-color={rect.color}
 		></span>
 	{/each}
 </div>

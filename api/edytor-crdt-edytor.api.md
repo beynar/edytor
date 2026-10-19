@@ -490,7 +490,9 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
 ```ts
 // crdt/operations.d.ts
 export interface DocumentReads {
-    toJSON(): JSONDoc;
+    toJSON(options?: {
+        suggestions?: boolean;
+    }): JSONDoc;
     docData(): JsonObj;
     dataItemIds(target: DataTarget, path: readonly string[]): string[];
     project(): ProjectedDoc;
@@ -641,6 +643,7 @@ export declare class EdytorDocument {
     get ready(): boolean;
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
+    access: DocumentAccess;
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -1175,7 +1178,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 10;
+            readonly version: 11;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -1186,7 +1189,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 10;
+        SCHEMA_VERSION: 11;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -1362,8 +1365,43 @@ declare const bindCrdt: (Y: EngineApi) => {
             assertSchema: () => void;
             dispose: () => void;
             createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
+            suggest: {
+                writer: () => number;
+                open: (options?: {
+                    id?: string;
+                    writer?: number;
+                    via?: string;
+                    label?: string;
+                    at?: number;
+                }) => string;
+                apply: (id: string, p: import("./edytor-doc.js").Prepared) => {
+                    result: import("./edytor-doc.js").OpResult;
+                    at?: {
+                        block: import("./index.js").BlockId;
+                        offset: number;
+                    };
+                };
+                settle: (id: string, ids: readonly import("./doc/suggest.js").IdRange[]) => void;
+                decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
+                run: (parts: readonly import("./doc/suggest.js").DecisionPart[]) => void;
+                withdraw: (id: string, w: number) => void;
+                records: () => import("./doc/suggest.js").SuggestionRecord[];
+                any: () => boolean;
+                changes: () => import("./doc/suggest.js").SuggestedChange[];
+                at: (b: import("./index.js").BlockId) => readonly import("./doc/suggest.js").SuggestedChange[];
+                base: (data: import("./index.js").JSONDoc["data"] | undefined) => import("./index.js").JSONDoc;
+                version: () => number;
+                onChange: (f: () => void) => () => undefined;
+                debug: {
+                    computes: number;
+                    units: number;
+                };
+                dispose: () => void;
+            };
             project: () => import("./index.js").ProjectedDoc;
-            toJSON: () => import("./index.js").JSONDoc;
+            toJSON: (options?: {
+                suggestions?: boolean;
+            } | undefined) => import("./index.js").JSONDoc;
             blockJSON: (id: string) => import("./index.js").JSONBlock;
             childrenIds: (id: string | null) => string[];
             childSlots: (parent: import("./index.js").BlockId | null) => import("./placement/model.js").ChildSlot[];
@@ -2281,6 +2319,12 @@ export type TextRange = {
 };
 ```
 
+#### crdt/document.d.ts#DocumentAccess
+
+```ts
+export type DocumentAccess = 'write' | 'suggest' | 'comment' | 'read';
+```
+
 #### crdt/edytor-doc.d.ts#EdytorDocBinding
 
 ```ts
@@ -2292,7 +2336,7 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 ```ts
 declare const bindEdytorDoc: (Y: EngineApi) => {
     SCHEMA: {
-        readonly version: 10;
+        readonly version: 11;
         readonly name: "edytor-doc";
         readonly roots: {
             readonly registry: "blocks";
@@ -2303,7 +2347,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             readonly schema: "schema";
         };
     };
-    SCHEMA_VERSION: 10;
+    SCHEMA_VERSION: 11;
     SCHEMA_NAME: "edytor-doc";
     META_KEY: "meta";
     init: (doc: EngineDoc, opts?: {
@@ -2479,8 +2523,43 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         assertSchema: () => void;
         dispose: () => void;
         createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
+        suggest: {
+            writer: () => number;
+            open: (options?: {
+                id?: string;
+                writer?: number;
+                via?: string;
+                label?: string;
+                at?: number;
+            }) => string;
+            apply: (id: string, p: Prepared) => {
+                result: OpResult;
+                at?: {
+                    block: BlockId;
+                    offset: number;
+                };
+            };
+            settle: (id: string, ids: readonly import("./doc/suggest.js").IdRange[]) => void;
+            decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
+            run: (parts: readonly import("./doc/suggest.js").DecisionPart[]) => void;
+            withdraw: (id: string, w: number) => void;
+            records: () => import("./doc/suggest.js").SuggestionRecord[];
+            any: () => boolean;
+            changes: () => import("./doc/suggest.js").SuggestedChange[];
+            at: (b: BlockId) => readonly import("./doc/suggest.js").SuggestedChange[];
+            base: (data: JSONDoc["data"] | undefined) => JSONDoc;
+            version: () => number;
+            onChange: (f: () => void) => () => undefined;
+            debug: {
+                computes: number;
+                units: number;
+            };
+            dispose: () => void;
+        };
         project: () => import("./index.js").ProjectedDoc;
-        toJSON: () => JSONDoc;
+        toJSON: (options?: {
+            suggestions?: boolean;
+        } | undefined) => JSONDoc;
         blockJSON: (id: string) => JSONBlock;
         childrenIds: (id: string | null) => string[];
         childSlots: (parent: BlockId | null) => import("./placement/model.js").ChildSlot[];

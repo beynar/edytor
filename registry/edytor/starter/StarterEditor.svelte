@@ -22,6 +22,7 @@
 	import { starterPlugins } from './starterPlugins.js';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import SmileIcon from '@lucide/svelte/icons/smile';
+	import PencilIcon from '@lucide/svelte/icons/pencil-line';
 	import { Button } from '$registry/ui/button/index.js';
 	import { words } from '../chrome/words.svelte.js';
 	import Cover from './page/Cover.svelte';
@@ -58,6 +59,7 @@
 		locale = 'en-US',
 		edytor = $bindable(),
 		rootClass,
+		review = true,
 		allowNesting = true,
 		readonly = false,
 		value,
@@ -140,6 +142,15 @@
 		if (first) edytor.selection.setCaret({ block: first, offset: 0 });
 		edytor.focus();
 	};
+
+	// Review: suggesting mode, and the pending shared suggestions a writer decides.
+	const suggestOnly = $derived(live && edytor!.document.access === 'suggest');
+	const suggesting = $derived(live && (suggestOnly || edytor!.suggestions.suggesting));
+	const pending = $derived(live && edytor!.suggestions.list.some((s) => s.shared && s.canDecide));
+	$effect(() => {
+		if (suggestOnly && edytor && !edytor.suggestions.suggesting)
+			edytor.suggestions.suggesting = true;
+	});
 
 	const coverPayload: StarterCoverPayload = $derived({
 		cover: data.cover,
@@ -257,6 +268,38 @@
 				{/if}
 			{/if}
 		</div>
+		{#if review && editable}
+			<div class="starter-review" role="toolbar" aria-label={words.suggestions.suggestion}>
+				<Button
+					variant={suggesting ? 'secondary' : 'ghost'}
+					size="sm"
+					aria-pressed={suggesting}
+					disabled={suggestOnly}
+					data-edytor-starter-suggesting
+					onmousedown={(event) => event.preventDefault()}
+					onclick={() => (edytor!.suggestions.suggesting = !suggesting)}
+				>
+					<PencilIcon />
+					{suggesting ? words.suggestions.suggesting : words.suggestions.editing}
+				</Button>
+				{#if pending}
+					<Button
+						variant="ghost"
+						size="sm"
+						data-edytor-starter-accept-all
+						onmousedown={(event) => event.preventDefault()}
+						onclick={() => edytor!.suggestions.acceptAll()}>{words.suggestions.acceptAll}</Button
+					>
+					<Button
+						variant="ghost"
+						size="sm"
+						data-edytor-starter-reject-all
+						onmousedown={(event) => event.preventDefault()}
+						onclick={() => edytor!.suggestions.rejectAll()}>{words.suggestions.rejectAll}</Button
+					>
+				{/if}
+			</div>
+		{/if}
 		<Edytor
 			{...rest}
 			{value}
@@ -292,6 +335,15 @@
 	}
 	.starter-page[data-has-cover] .starter-header {
 		padding-top: 24px;
+	}
+	.starter-review {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		display: flex;
+		justify-content: flex-end;
+		gap: 2px;
+		margin: 0 0 4px;
 	}
 	.starter-controls {
 		position: relative;

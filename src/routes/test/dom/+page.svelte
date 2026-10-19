@@ -15,7 +15,7 @@
 		blockHandlesPlugin,
 		blockMenuPlugin,
 		bookmarkPlugin,
-		codePlugin,
+		code,
 		embedPlugin,
 		equation,
 		file,
@@ -58,6 +58,7 @@
 	import type { HotKey } from '$lib/session/keymap.js';
 	import { anchorsInOrder } from '$lib/session/selection.js';
 	import type { PageData } from './$types';
+	import { CODE_LANGUAGES } from '$lib/plugins/code/languages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -539,6 +540,32 @@
 			reader.onerror = () => reject(reader.error);
 			reader.readAsDataURL(file);
 		});
+
+	/**
+	 * The code blocks' languages, each grammar loaded as it ships. A spec that
+	 * sets `__EDYTOR_GRAMMAR_HOLD__` holds every grammar load until it calls
+	 * `__EDYTOR_RELEASE_GRAMMARS__()`: the grammar lands when the spec says
+	 * (under a caret, `sel.drift.unreported`).
+	 */
+	type GrammarHold = {
+		__EDYTOR_GRAMMAR_HOLD__?: boolean;
+		__EDYTOR_RELEASE_GRAMMARS__?: () => void;
+	};
+	const heldGrammars: (() => void)[] = [];
+	const grammarAnswer = () =>
+		new Promise<void>((resolve) => {
+			const page = window as GrammarHold;
+			if (!page.__EDYTOR_GRAMMAR_HOLD__) return resolve();
+			heldGrammars.push(resolve);
+			page.__EDYTOR_RELEASE_GRAMMARS__ = () =>
+				heldGrammars.splice(0).forEach((release) => release());
+		});
+	const codePlugin = code({
+		languages: CODE_LANGUAGES.map((language) => {
+			const { load } = language;
+			return load ? { ...language, load: () => grammarAnswer().then(load) } : language;
+		})
+	});
 
 	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
 	const triggerMentions = mention({

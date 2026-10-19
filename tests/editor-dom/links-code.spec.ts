@@ -183,6 +183,84 @@ test.describe('code block languages', () => {
 		issues.assertClean();
 	});
 
+	/*
+	 * `sel.drift.unreported` (docs/editor-delete-contract.md): a grammar that
+	 * lands under the caret re-renders its line with no commit, removing the
+	 * text node the caret was in; Chromium moves that caret to the line's start
+	 * and reports no `selectionchange`. The page holds the grammar
+	 * (`__EDYTOR_GRAMMAR_HOLD__`) and lets it land when the row says, between
+	 * the caret's display and the key.
+	 */
+	type GrammarHold = {
+		__EDYTOR_GRAMMAR_HOLD__?: boolean;
+		__EDYTOR_RELEASE_GRAMMARS__?: () => void;
+	};
+	const holdGrammars = (page: Page) =>
+		page.evaluate(() => void ((window as GrammarHold).__EDYTOR_GRAMMAR_HOLD__ = true));
+	const releaseGrammars = (page: Page) =>
+		page.evaluate(() => (window as GrammarHold).__EDYTOR_RELEASE_GRAMMARS__!());
+	const caret = (page: Page) =>
+		page.evaluate(
+			() =>
+				(window as { __EDYTOR__?: { selection: { caret: { offset: number } | null } } }).__EDYTOR__
+					?.selection.caret?.offset
+		);
+
+	test('sel.drift.unreported: a grammar landing after Escape gave the keys back keeps the caret where it was', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await gotoEditorRoute(page, '/test/dom?scenario=code');
+		await holdGrammars(page);
+		await caretInCode(page);
+		await page.keyboard.press('End');
+		await page.keyboard.press('Alt+F10');
+		await expect(button(page)).toBeFocused();
+		await page.keyboard.press('Enter');
+		await expect(field(page)).toBeFocused();
+		await page.keyboard.type('script');
+		await page.keyboard.press('ArrowDown');
+		await expect(menu(page).getByRole('option', { selected: true })).toHaveText('TypeScript');
+		await page.keyboard.press('Enter');
+		await expect.poll(() => languageOf(page)).toEqual({ language: 'typescript' });
+		// Its grammar is held: the lines are plain text.
+		await expect.poll(() => tokens(page)).toEqual([]);
+		await expect(button(page)).toBeFocused();
+		await page.keyboard.press('Escape');
+		await expect(button(page)).not.toBeFocused();
+		await expect.poll(() => caret(page)).toBe('const a = 1;'.length);
+		// The grammar lands under the caret the Escape gave back.
+		await releaseGrammars(page);
+		await expect.poll(() => tokens(page)).toContainEqual(['th-keyword', 'const']);
+		await page.keyboard.type('x');
+		await expect
+			.poll(async () => (await value(page)).children[0]?.children?.[0]?.content)
+			.toEqual([{ text: 'const a = 1;x' }]);
+		issues.assertClean();
+	});
+
+	test('sel.drift.unreported: a grammar landing under a clicked caret keeps it there', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await gotoEditorRoute(page, '/test/dom?scenario=code');
+		await holdGrammars(page);
+		await button(page).click();
+		await menu(page).getByRole('option', { name: 'Python' }).click();
+		await expect.poll(() => languageOf(page)).toEqual({ language: 'python' });
+		await expect.poll(() => tokens(page)).toEqual([]);
+		await caretInCode(page);
+		await page.keyboard.press('End');
+		await expect.poll(() => caret(page)).toBe('const a = 1;'.length);
+		await releaseGrammars(page);
+		await expect.poll(() => tokens(page)).toContainEqual(['th-keyword', 'return']);
+		await page.keyboard.type('x');
+		await expect
+			.poll(async () => (await value(page)).children[0]?.children?.[0]?.content)
+			.toEqual([{ text: 'const a = 1;x' }]);
+		issues.assertClean();
+	});
+
 	test('code.language.picker: Escape and a press outside close the list and write nothing', async ({
 		page
 	}) => {

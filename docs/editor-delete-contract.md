@@ -2307,6 +2307,42 @@ fixture/harness paths that write the DOM selection directly
 helpers in `tests/editor-*/`) call `edytor.markUserGesture()` first, or
 the classifier reads their synthetic `selectionchange` as drift.
 
+### `sel.drift.unreported` — a render that moves the caret with no event
+
+A render no commit asked for — a kind's decoration that reads state of its
+own (`transformText`: a code block's grammar landing re-tokenizes its
+lines, plain text into token spans) — replaces the text node the DOM caret
+is in. The browser leaves the caret where the removed node stood (the text
+element at a child index: the line's start). Chromium and WebKit report
+that move with no `selectionchange`; one that does come would read as
+foreign, as no flush ran the projector since its last observation (the
+render evidence of `sel.drift.churn` is the projector's own passes). The
+projector's post-flush pass does not run either: nothing it reads (the
+display request, the render epoch) changed. The next key then acts at
+that caret: its `beforeinput` declares it, and the declared range is
+adopted (`declares` in `events/onBeforeInput.ts`).
+
+Rule: once the observer compared the records of a DOM change, it tells
+the projector (`projector.rendered`, `surface/projector.svelte.ts`). A DOM
+selection in the host that is no longer where the last observation found
+it (a display, an adopted or classified `selectionchange`: `#at`), with no
+gesture since, no display waiting, no drag and no live composition, under
+a text value, is render drift: the value is displayed again
+(`selection.display()`, the classifier's drift), in the render's own task,
+before any key. A move with a gesture since is the classifier's (intent),
+as before, and a display that waits on the records gets its pass, as
+before (`inputHandled`).
+
+Rows: `tests/editor-dom/links-code.spec.ts` "sel.drift.unreported: …" in
+three engines (the page holds the grammar, `__EDYTOR_GRAMMAR_HOLD__`, and
+the row releases it between the caret's display and the key: after Escape
+gives the keys back from the language button, and under a clicked caret);
+`src/tests/fixtures/dom/code-languages.test.tsx` (jsdom: the caret is
+displayed at the line's end once its grammar landed). The row
+`code.language.picker: the keys alone` failed about once in 150 runs under
+14 workers when the TypeScript grammar landed between its Escape and its
+`x`.
+
 ### `sel.key.before-adoption` — a key the press's caret has not reached
 
 A press places the DOM caret at once, but the model adopts it only at the

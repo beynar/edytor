@@ -329,6 +329,96 @@ describe('F-I16 — a session and its commit are one undo step', () => {
 	});
 });
 
+describe('ime.range.blocks — a composition over a range across blocks replaces it at its start', () => {
+	/** Where the DOM caret sits: the block index of its text and its offset there; null for a range. */
+	const domCaret = (edytor: Edytor) => {
+		const selection = document.getSelection();
+		if (!selection?.rangeCount || !selection.isCollapsed) return null;
+		const node = selection.anchorNode!;
+		const element = (node instanceof Element ? node : node.parentElement)?.closest(
+			'[data-edytor-text]'
+		);
+		const text = element && edytor.selection.getTextOfNode(element);
+		if (!element || !text) return null;
+		const range = document.createRange();
+		range.setStart(element, 0);
+		range.setEnd(node, selection.anchorOffset);
+		const block = edytor.root!.children.findIndex((b) => b === text.parent);
+		return { block, offset: range.toString().replace(/\u200B/g, '').length };
+	};
+
+	row(
+		'the blocks merge and the DOM caret is parked at the start before the IME writes',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>a|b</paragraph>
+					<paragraph>c|d</paragraph>
+				</root>
+			);
+			await start(editor);
+			// Before any preview: the range is gone, one block holds both halves,
+			// and the IME's caret is a collapsed DOM caret at the range's start.
+			expect(texts(edytor)).toEqual(['ad']);
+			expect(editor.querySelectorAll('[data-edytor-block]')).toHaveLength(1);
+			expect(domCaret(edytor)).toEqual({ block: 0, offset: 1 });
+			await preview(editor, 'に');
+			await end(editor, '日');
+			expect(texts(edytor)).toEqual(['a日d']);
+			expect(domText(edytor, 0)).toBe('a日d');
+			expect(caret(edytor)).toEqual({ block: 0, offset: 2, isCollapsed: true });
+
+			// The replacement and the composition are one undo step.
+			await undo(editor);
+			expect(texts(edytor)).toEqual(['ab', 'cd']);
+			const { startText, endText, yStart, yEnd } = selectionState(edytor);
+			expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual([
+				edytor.root!.children[0]!.id,
+				1,
+				edytor.root!.children[1]!.id,
+				1
+			]);
+		}
+	);
+
+	row(
+		'canceled before its first preview, the replacement stays: one step, as over selected blocks',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>a|b</paragraph>
+					<paragraph>c|d</paragraph>
+				</root>
+			);
+			const steps = edytor.undoManager!.undoStack.length;
+			await start(editor);
+			// The IME cancels before its first preview (Escape: an empty commit).
+			await end(editor, '');
+			expect(texts(edytor)).toEqual(['ad']);
+			expect(edytor.undoManager!.undoStack.length).toBe(steps + 1);
+			await undo(editor);
+			expect(texts(edytor)).toEqual(['ab', 'cd']);
+		}
+	);
+
+	pin(
+		'a range inside one block keeps the first-write path: nothing is written at the start',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>a|bc|d</paragraph>
+					<paragraph>ef</paragraph>
+				</root>
+			);
+			await start(editor);
+			expect(texts(edytor)).toEqual(['abcd', 'ef']);
+			await preview(editor, 'に');
+			await end(editor, '日');
+			expect(texts(edytor)).toEqual(['a日d', 'ef']);
+		}
+	);
+});
+
 describe('F-I17 — time never ends a session; abandonment adopts what the DOM shows', () => {
 	pin(
 		'a blur with compositionend suppressed keeps the composed text in model and DOM',

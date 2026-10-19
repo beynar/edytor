@@ -26,6 +26,7 @@ import {
 	domRepairSignature,
 	installEventRecorder,
 	isPersistedStickyEscape,
+	isBidiHorizontalMove,
 	isStickyOutsideEscape,
 	selectionSignature,
 	semanticSignature,
@@ -1152,7 +1153,8 @@ const assertLineDeleteExpectation = (
 const compareEngines = (
 	snapshots: Record<DstEngineName, DstBrowserSnapshot>,
 	action: DstAction | null,
-	selectionTolerant?: ReadonlySet<DstEngineName>
+	selectionTolerant?: ReadonlySet<DstEngineName>,
+	before?: DstBrowserSnapshot
 ) => {
 	const reference = snapshots.chromium;
 	const referenceSemantic = semanticSignature(reference);
@@ -1172,7 +1174,8 @@ const compareEngines = (
 	// semantic signature are still asserted; only cross-engine selection
 	// identity is vacuous for the diverging engine.
 	const wordJumpMove = action?.kind === 'move' && action.key.startsWith('Alt+');
-	const compareSelection = !wordJumpMove && !selectionTolerant?.has('chromium');
+	const compareSelection =
+		!wordJumpMove && !isBidiHorizontalMove(action, before) && !selectionTolerant?.has('chromium');
 	for (const engine of ['firefox', 'webkit'] as const) {
 		const semantic = semanticSignature(snapshots[engine]);
 		if (semantic !== referenceSemantic) {
@@ -1539,9 +1542,22 @@ export const runDstSchedule = async (
 				)
 			);
 
+		let diverged = false;
 		for (stepIndex = 0; stepIndex < schedule.steps.length; stepIndex++) {
 			step = schedule.steps[stepIndex];
 			resolvedSelection = resolveSelection(step.selection, currentSnapshots.chromium);
+			const reference = currentSnapshots.chromium.selection;
+			if (diverged && resolvedSelection.kind === 'preserve' && reference?.kind === 'text') {
+				resolvedSelection = {
+					kind: 'text',
+					startTextIndex: reference.startTextIndex,
+					startOffset: reference.yStart,
+					endTextIndex: reference.endTextIndex,
+					endOffset: reference.yEnd,
+					reversed: reference.isReversed
+				};
+			}
+			diverged = false;
 
 			await Promise.all(activePages.map((active) => setSelection(active.page, resolvedSelection!)));
 			await Promise.all(activePages.map((active) => settleEditor(active.page)));
@@ -1612,7 +1628,21 @@ export const runDstSchedule = async (
 					afterSnapshots[engine]
 				);
 			}
-			compareEngines(afterSnapshots, step.action, escapedSet(afterSnapshots));
+			compareEngines(
+				afterSnapshots,
+				step.action,
+				escapedSet(afterSnapshots),
+				selectedSnapshots.chromium
+			);
+			// A bidi move the oracle tolerates may leave the engines on different
+			// carets: a `preserve` step after it starts from the reference's.
+			diverged =
+				isBidiHorizontalMove(step.action, selectedSnapshots.chromium) &&
+				(['firefox', 'webkit'] as const).some(
+					(engine) =>
+						selectionSignature(afterSnapshots[engine]) !==
+						selectionSignature(afterSnapshots.chromium)
+				);
 			historyEntry.status = 'passed';
 		}
 		// F-O10: the settled host of every engine is the projection of its cells.

@@ -3,18 +3,18 @@
  * The client-id sweeps (`gesture-order-sweep`, `dr-crdt-order`, the rescore7
  * and wave10 rows on `clientPairs`) prove it for one structural gesture per
  * peer between syncs — a split, a paste of lines into a line, a lift, an
- * outdent, a Turn into, a merge that unnests children — with text typed
- * before the split point (typing or deleting after one's own split point
- * before it syncs is the split residual, pinned in `dr-crdt-order`). They do not cover a new line
- * inserted beside a block (Enter at a block's start or end, Duplicate, the +
- * button: `insertBlock` ranks it at random in the gap), a paste of whole
- * blocks or over selected blocks (`insertFlow`'s `whole` and `replace`:
- * `insertBlocks` too, DR-crdt-1), several structural gestures by one peer before it syncs
- * (Turn into over several blocks is one plan per block, FX-05), or
- * a move (a drag, the handle's Alt+↑/↓/→ (Alt+← is the outdent, ranked), Mod+Shift+↑/↓, the block menu's
- * Move up/down, Tab). The rows below pin one outcome set each, so the
- * docs that list these as not covered change with the code. Expected sets
- * are hand-authored: the serial order, and the one the ids can give.
+ * outdent, a Turn into, a merge that unnests children — whatever text the
+ * peer typed or deleted before or after its split point (`order.split.text`).
+ * The rows below pin the races those sweeps leave out: a new line inserted
+ * beside a block (Enter at a block's start or end, Duplicate, the +
+ * button), a paste of whole blocks or over selected blocks (`insertFlow`'s
+ * `whole` and `replace`), several structural gestures by one peer before it
+ * syncs (Turn into over several blocks is one plan per block, FX-05), and
+ * Tab. Since fork patch YP22 they read the serial order on every pair; two
+ * still follow the client ids (two pastes into one gap from both sides, and
+ * one `unNestBlocks` call over non-adjacent siblings), so the docs that
+ * list them change with the code. Expected sets are hand-authored: the
+ * serial order, and the one the ids can give.
  *
  * DW-05: one client never mints the same source rank twice in one gap;
  * FX-06: what one gesture minted there never interleaves a later one's.

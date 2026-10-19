@@ -40,7 +40,9 @@ const readBlockAlignment = (page: Page) =>
 			const block = document.querySelector<HTMLElement>(
 				`[data-edytor-block][data-edytor-id="${id}"]`
 			);
-			if (!handle || !block) throw new Error(`Missing handle or block ${id}`);
+			// Not drawn yet (the overlay measures after the page lays out): the
+			// poll reads again, as a row waits for the fact it needs.
+			if (!handle || !block) return { id, handleCenter: NaN, lineCenter: NaN, delta: NaN };
 
 			const handleRect = handle.getBoundingClientRect();
 			const handleCenter = handleRect.top + handleRect.height / 2;

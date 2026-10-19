@@ -18,8 +18,11 @@
  * - The pre pass (root `$effect.pre`, before the flush's writes) inverts a
  *   record that removed registered elements (its added nodes go, its removed
  *   nodes return at their recorded siblings, before Svelte reconciles around
- *   them) and snapshots a content the flush re-renders whose DOM holds an edit
- *   the flush would overwrite.
+ *   them), and one that removed only the render's anchors from a block list
+ *   when the editor did not write it (`dom.anchors.foreign`: the records taken
+ *   from the pre pass to the end of a compare pass are the editor's own), and
+ *   snapshots a content the flush re-renders whose DOM holds an edit the
+ *   flush would overwrite.
  * - The compare pass (root `$effect`, after every DOM write of the flush)
  *   removes identity clones, nodes inside a content's run and the root's
  *   foreign children, heals owned attributes (bounded), and compares each
@@ -60,8 +63,19 @@ type Place = { block: string; at: number; remove: number; insert: string };
 type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
 /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
 type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
-/** A record that removed registered elements: what it removed and added, and where. */
-type Removal = { parent: Node; nodes: Node[]; added: Node[]; next: Node | null; prev: Node | null };
+/**
+ * A record that removed registered elements or the render's anchors: what it
+ * removed and added, and where; `foreign`: the editor did not write it (taken
+ * outside its own writes, `#own`).
+ */
+type Removal = {
+	parent: Node;
+	nodes: Node[];
+	added: Node[];
+	next: Node | null;
+	prev: Node | null;
+	foreign: boolean;
+};
 type Replacement = { nodes: Node[]; value: string; caret: number | undefined };
 
 const ZWSP = /\u200B/g;
@@ -223,6 +237,10 @@ export class SurfaceObserver {
 	#wrote = false;
 	/** Records arrived since the last pass (the projector reads what they did: `rendered`). */
 	#fresh = false;
+	/** The flush writes the host: from the pre pass to the end of its compare pass. */
+	#rendering = false;
+	/** Passes under way (a pass's own repairs; an adoption's synchronous flush nests one). */
+	#passes = 0;
 	#window: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(private edytor: Edytor) {}
@@ -230,10 +248,11 @@ export class SurfaceObserver {
 	/** Observe `root` (the host): records name what to compare. */
 	attach = (root: HTMLElement) => {
 		const mo = (this.#mo = new MutationObserver((records) => {
-			records.forEach(this.#intake);
+			for (const record of records) this.#intake(record, this.#own());
 			this.signal();
 		}));
 		for (const child of root.childNodes) this.#rooted.add(child);
+		this.#rendering = false;
 		mo.observe(root, {
 			attributes: true,
 			attributeOldValue: true,
@@ -322,12 +341,17 @@ export class SurfaceObserver {
 			this.#take();
 			if (!this.edytor.readonly) this.#restore();
 			this.#snapshot();
+			// From here to the end of the compare pass, what the host records is the flush's.
+			this.#rendering = true;
 		});
 	};
 
 	post = () => {
 		this.#deps();
-		untrack(() => void this.#pass(true));
+		untrack(() => {
+			void this.#pass(true);
+			this.#rendering = false;
+		});
 	};
 
 	#deps = () => {
@@ -336,9 +360,18 @@ export class SurfaceObserver {
 		void [edytor.selection.value, edytor.suggestions.revision];
 	};
 
+	/**
+	 * The editor writes the host now: the flush (from the pre pass to the end
+	 * of its compare pass) or a pass's own repairs. A record taken then is the
+	 * render's (`dom.anchors.foreign`); every other one is the browser's, a
+	 * page script's or an extension's.
+	 */
+	#own = () => this.#rendering || this.#passes > 0;
+
 	#take = () => {
 		const records = this.#mo?.takeRecords() ?? [];
-		records.forEach(this.#intake);
+		const own = this.#own();
+		for (const record of records) this.#intake(record, own);
 		return records.length > 0;
 	};
 
@@ -372,8 +405,8 @@ export class SurfaceObserver {
 		(node instanceof Element &&
 			[...node.querySelectorAll('*')].some((child) => this.#registry.has(child)));
 
-	/** A record names elements to compare (never a verdict). */
-	#intake = (record: MutationRecord) => {
+	/** A record names elements to compare (never a verdict); `own`: the editor wrote it. */
+	#intake = (record: MutationRecord, own: boolean) => {
 		this.#fresh = true;
 		const id = this.#owner(record.target);
 		if (id === undefined) return;
@@ -390,7 +423,7 @@ export class SurfaceObserver {
 		if (!removed.some((node) => isAnchor(node) || this.#holds(node))) return;
 		const added = [...record.addedNodes];
 		const { target: parent, nextSibling: next, previousSibling: prev } = record;
-		this.#removed.push({ parent, nodes: removed, added, next, prev });
+		this.#removed.push({ parent, nodes: removed, added, next, prev, foreign: !own });
 		// Wrapper replacement: the browser replaced a text element with its own nodes.
 		const [text] = removed;
 		if (
@@ -430,6 +463,15 @@ export class SurfaceObserver {
 	 * browser removed them one record each (Firefox): an anchor-only record is
 	 * inverted in a parent that gets a registered element back, else the
 	 * element's recorded siblings are gone and it lands outside Svelte's block.
+	 * A foreign range across blocks (`dom.anchors.foreign`: a script's
+	 * `Range.deleteContents()`) takes the render's anchors between the blocks
+	 * from their list (the root, a block's children) and those after its start
+	 * and before its end inside the blocks it enters, and leaves the elements:
+	 * Svelte's next removal of either block would start at a detached anchor
+	 * and leave its element, a child added to one would find no anchor to
+	 * render before. When a foreign record took anchors from a block list,
+	 * every foreign anchor-only record of the batch is inverted. The render's
+	 * own removals (an item leaving the list) are never undone.
 	 */
 	#restore = () => {
 		const root = this.edytor.node;
@@ -437,10 +479,12 @@ export class SurfaceObserver {
 		const held = ({ parent, nodes }: Removal) =>
 			nodes.some((node) => node.parentNode !== parent && this.#holds(node));
 		const parents = new Set(removals.filter(held).map(({ parent }) => parent));
+		const crossed = removals.some((removal) => this.#lost(removal) && this.#list(removal.parent));
 		for (const removal of removals) {
 			const { parent, nodes, added, next, prev } = removal;
 			if (!root?.contains(parent)) continue;
-			if (!held(removal) && !(parents.has(parent) && nodes.every(isAnchor))) continue;
+			const anchors = parents.has(parent) && nodes.every(isAnchor);
+			if (!held(removal) && !anchors && !(crossed && this.#lost(removal))) continue;
 			// A browser-owned attempt's host: its change is adopted whatever the
 			// browser did to its structure, which the re-render then restores.
 			const inside = this.#textOf(parent);
@@ -459,6 +503,23 @@ export class SurfaceObserver {
 		}
 		this.#replaced.clear();
 	};
+
+	/**
+	 * A foreign record took only the render's anchors, and they are gone from
+	 * the page (not moved): they can return beside a recorded sibling still
+	 * there (never at the parent's end).
+	 */
+	#lost = ({ parent, nodes, next, prev, foreign }: Removal) =>
+		foreign &&
+		nodes.every((node) => isAnchor(node) && !node.isConnected) &&
+		(next?.parentNode === parent || prev?.parentNode === parent);
+
+	/** A block list: the root, or a parent of block elements (a block's children). */
+	#list = (parent: Node) =>
+		parent === this.edytor.node ||
+		[...parent.childNodes].some(
+			(child) => child instanceof Element && this.#registry.get(child)?.kind === 'block'
+		);
 
 	/**
 	 * Where an edit made at `at` of the base lands now: through the anchor
@@ -511,6 +572,18 @@ export class SurfaceObserver {
 	 * `$effect`); otherwise contents waiting for a flush are left to it.
 	 */
 	#pass = (flushed: boolean): Promise<unknown>[] => {
+		this.#passes++;
+		try {
+			return this.#compare(flushed);
+		} finally {
+			// What the flush and this pass wrote: the render's records, compared
+			// at the next pass (as the observer's callback would have them).
+			if (this.#take()) queueMicrotask(this.signal);
+			this.#passes--;
+		}
+	};
+
+	#compare = (flushed: boolean): Promise<unknown>[] => {
 		const { edytor } = this;
 		const cells = edytor.cells;
 		if (!cells || !edytor.node?.isConnected || edytor.destroyed) return [];

@@ -3,6 +3,7 @@ import { expect, test } from './editorTest';
 import {
 	expectSelection,
 	modKey,
+	pageClock,
 	readJsonByTestId,
 	readNativeSelectionDirection,
 	setSelectionByTextIndex,
@@ -15,6 +16,7 @@ test.describe('coalesced history range restoration', () => {
 		page
 	}) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 		const document = encodeURIComponent(
 			JSON.stringify({
 				children: [{ type: 'paragraph', content: [{ text: '' }] }]
@@ -27,8 +29,11 @@ test.describe('coalesced history range restoration', () => {
 		await page.keyboard.press(`${modKey}+E`);
 		await page.keyboard.type('.');
 		await setSelectionByTextIndex(page, 0, 0, 0, 1);
+		// The delete and the replacement in one capture window (page time held).
+		await clock.hold();
 		await page.keyboard.press('Delete');
 		await page.keyboard.type('!');
+		await clock.release();
 		await page.keyboard.press(`${modKey}+Z`);
 
 		await expect

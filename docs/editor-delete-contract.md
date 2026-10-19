@@ -544,13 +544,16 @@ unchanged. Expected no-ops are contract results, not skipped tests.
 Caret `item@0` + Backspace over `[paragraph "para", bulleted-list-item "item"]`
 → `[paragraph "para", paragraph "item"]`, caret `item@0`. A block whose kind
 the catalogue offers (it has presets) and that is not its parent's default
-child turns into that default first — one `setBlock`, data reset, text and
-children kept — before the doc-start no-op, the unnest and the merge
-(Notion). The next Backspace merges (`del.merge.backward-head`) or unnests.
-A nested last-child bullet becomes a nested paragraph; an empty only bullet
-becomes the empty paragraph. Kinds without presets (`list-item` in a list,
-`codeLine`) keep the structural path. Pinned in `notion-parity.test.tsx`
-("lists on Backspace").
+child turns into that default first — one `setBlock`, its data kept
+(`data.retype.keep`: the leaves the default kind's preset names are set,
+none removed; the paragraph's names none), text and children kept — before
+the doc-start no-op, the unnest and the merge (Notion). The next Backspace
+merges (`del.merge.backward-head`) or unnests. A nested last-child bullet
+becomes a nested paragraph; an empty only bullet becomes the empty
+paragraph. Kinds without presets (`list-item` in a list, `codeLine`) keep
+the structural path. Pinned in `notion-parity.test.tsx` ("lists on
+Backspace"); a callout's `data.icon` stays through it in the DST delete
+oracle (`tests/editor-dst/browser-state-oracle.spec.ts`).
 
 ### `del.merge.backward-head` — Backspace at a block's head
 
@@ -811,54 +814,49 @@ a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2 a3 q`; before, 34 of 40 pairs
   child in memory. Documents, rooms and stores of generation 8 and earlier
   are refused, never converted (`reference/migration.mdx`).
   27-bit client id; with a 53-bit one 165, 446 and 72).
-- Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
-  gestures above are ordered by source (the engine's sort classes, fork
-  patch YP22: in one gap a split's pieces, then the records of blocks
+- Claimed since fork patch YP22 (schema generation 9; EW-05, EW-11,
+  pinned in `order-scope.test.ts` on 48 client-id pairs a row): the
+  engine's sort classes (a split's pieces, then the records of blocks
   leaving a block for the gap after it, then those leaving one for the gap
-  before it — `moveTo`'s `side`; and `order.split.text`); every other
-  placement is a slot or a record in the gap, ordered among a peer's
-  concurrent ones by client id (YATA), so its order against a peer's
-  concurrent block follows the client ids.
-  Both replicas converge and no text is lost. That covers:
-  - a block inserted beside one (`insertBlocks`): Enter at the start or
-    end of a block (`insertBlocks` before or after it; at the end of
-    a block with children and text, not a container header, Enter splits
-    it, `liftContent`), a container header's new first child
-    (`insertBlocks` at index 0) or its text after the caret when Enter splits it
-    (`splitKeepingChildren`: an open toggle, a callout or quote
-    with children), Duplicate (`duplicateBlock`) and the handle's +
-    button. Enter at the end of X and typing "foo" ‖ Enter after "hello"
-    in X → "foo" can read before " world";
-  - a paste of whole blocks (a block-selection copy, `insertFlow`'s
-    `whole`: after the caret's block) and a paste or typing over selected
-    blocks (`replace`: the first one's slot), both `atSlot` →
-    `insertBlocks` (DR-crdt-1): a whole paste with the caret in X ‖ Enter
-    after "hello" in X → " world" can read before the pasted blocks (since
-    `order.insert.run`, never between them).
-    (Ranking them by source, before fork patch YP22, kept the order but grew
-    ranks 5 to 7 times as fast under repeated pastes in one place, EW-02;
-    now nothing grows, and the claim is not made.)
-  - several structural gestures by one peer before it syncs (text edits
-    before one's split point are fine, DR-crdt-7; one after it is the
-    residual above): two Enters ‖ a first-item lift,
-    a new line or Duplicate after X then a split of X ‖ a split of X.
-    That includes Turn into over several blocks (`convertBlocks`: one
-    `convertToKind`/`liftOut` plan per block): turning `a` and `b` of
-    `[p, ul > [a, b, c, d, e], q]` into headings ‖ Shift+Tab on `c` → `b`
-    can read after `c` (`unNestBlocks` over adjacent siblings is one plan
-    and keeps the order), and Shift+Tab over selected items with an
-    unselected one between them (`moveRoots`: one `unNestBlocks` plan per
-    run of adjacent siblings): `a` and `c` ‖ Shift+Tab on `d` → `d` can
-    read before `b` (SW15-crdt-1). One headless `unNestBlocks` call over
-    non-adjacent siblings (`edytor.moveBlocks` with `direction: 'out'`
-    makes one per run, GX-05) is not covered either: `unNestBlocks([a, c])` ‖ an
-    outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
-    is `p|b|a|c|d|e|q` (DR-rest-2);
-  - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
-    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (createArrowMovePlugin()), the
-    block menu's Move up/down and Tab (`nestBlock` at the parent's end:
-    Tab on `y` ‖ Enter at the end of the last child of the block above →
-    the new line can read after `y`).
+  before it — `moveTo`'s `side`), `order.split.text` and
+  `order.insert.run` give the serial order to the gestures this row listed
+  as not claimed before: a block inserted beside one
+  (`insertBlocks` before or after it; at the end of a block with children
+  and text, not a container header, Enter splits it, `liftContent`) —
+  Enter at the end of
+  X and typing "foo" ‖ Enter after "hello" in X → `P|hello| world|foo|Q`
+  only; a container header's text after the caret becoming its first
+  child (`splitKeepingChildren`: an open toggle, a callout or quote with
+  children) ‖ another such Enter → the text's order; Duplicate (`duplicateBlock`)
+  then Enter in X ‖ Enter earlier in X; a paste of whole blocks
+  (`insertFlow`'s `whole`) or a paste or typing over selected blocks
+  (`replace`) ‖ Enter in X → the split's piece first, the pasted run after
+  it; a list pasted at a line's start (`flow.apart`) ‖ Enter above;
+  several structural gestures by one peer before it syncs (two Enters ‖ a
+  first-item lift); Turn into over several blocks
+  (`convertBlocks`: one `convertToKind`/`liftOut` plan per block, one
+  writer's records keeping one priority) ‖ Shift+Tab on the next item;
+  Shift+Tab over selected items with an unselected one between them
+  (`moveRoots`: one `unNestBlocks` plan per run of adjacent siblings) ‖
+  Shift+Tab on another; Tab on `y` (`nestBlock` at the parent's end) ‖
+  Enter at the end of the last child of the block above → `x|k|n|y` only.
+  Both replicas converge and no text is lost in every race. Not claimed:
+  - which of two peers' blocks inserted at one place comes first: both
+    orders are serial ones, and the client ids pick one (`order.insert.run`
+    keeps each peer's run together);
+  - two flows into one gap from both sides: a list pasted at the start of
+    `B` ‖ a list pasted at the end of the line above → `one|two` or
+    `two|one` by client id, where the serial order reads `two|one`;
+  - one headless `unNestBlocks` call over non-adjacent siblings
+    (`edytor.moveBlocks` with `direction: 'out'` makes one per run, GX-05;
+    `unNestBlocks` over adjacent siblings is one plan and keeps the order):
+    `unNestBlocks([a, c])` ‖ an outdent of `d` → `p|a|b|c|d|e|q` on some
+    pairs, where the serial result is `p|b|a|c|d|e|q` (DR-rest-2);
+  - moves other than Tab (`moveBlocks`, `nestBlock`): a drag, the handle's
+    Alt+↑/↓/→ (Alt+← is the outdent, `unNestBlocks`), Mod+Shift+↑/↓
+    (createArrowMovePlugin()), the block menu's Move up/down: they
+    converge, but no sweep runs them against a peer's edit next to the
+    moved block.
 - Nothing is minted (fork patch YP22, schema generation 9): a block's
   place is its home slot in its parent's sequence, written once at its
   creation after its left neighbour's unit, and a move is one record at the
@@ -2242,7 +2240,8 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
 - **The projector is the only DOM-selection writer** (`surface/projector.svelte.ts`,
   arch-v2 V4): `post()` after every flush, and `park`, the one write made
   while a composition is live (the caret a composition over a block or
-  atom selection gets before the IME writes). The named exceptions are
+  atom selection, or over a text range across blocks, gets before the IME
+  writes). The named exceptions are
   listed in `docs/agents/selection-and-input.md` (DOM selection exceptions): a snapshot read
   replaces a multi-range selection (Firefox) with its bounding range
   (`selection/domSelection.ts`), and a few sites clear it
@@ -2439,6 +2438,33 @@ listed (`sel.marquee`) the press waits for its release: a click (no move
 past the threshold) does exactly this, a drag selects blocks instead and
 writes nothing.
 
+### `sel.bidi.arrows` — horizontal arrows in mixed-direction text are each engine's
+
+ArrowLeft and ArrowRight, with or without Shift, in a block whose text
+mixes directions (a strong right-to-left letter and a strong left-to-right
+one in a text the selection touches), are the browser's caret movement: the
+editor adopts what lands (`selectionchange`, the classifier's intent) and
+never re-resolves the key in the model, so each engine keeps its native
+movement. The engines differ there, in a bare `contenteditable` as in the
+editor:
+
+- **Firefox** moves visually (its default, `bidi.edit.caret_movement_style`
+  2), collapses a range to its visual edge, and may not move or extend at a
+  logical edge (Shift+ArrowRight at the logical end of a right-to-left line).
+- **Chromium and WebKit** map the keys by the paragraph's direction (`dir`
+  on the block, `blockDir`) and collapse a range to its logical end.
+
+A line of one direction (all Hebrew, all Latin) is the same in the three
+engines (`tests/editor-dom/bidi.spec.ts`, `caret-navigation.spec.ts`).
+Every other key, and these keys over text of one direction, keep the
+cross-engine contract. Rows: the DST corpus compares the engines' selections
+after every step except for these keys over mixed-direction text
+(`isBidiHorizontalMove` in `tests/editor-dst/browserState.ts`, its unit row
+in `browser-state-oracle.spec.ts`); each engine's own legality (the model
+and the DOM agree, the caret stays in the editor) is still asserted, and a
+`preserve` step after such a divergence starts every engine from the
+reference engine's caret.
+
 ### `sel.marquee` — a rectangle from the editor's empty area selects blocks (Notion's rubber band)
 
 Opt-in (`createMarqueePlugin({ container, threshold, box })`,
@@ -2538,6 +2564,44 @@ layout's few columns one by one): never a walk of the page. Row:
 move in the middle of 1,000 and of 5,000 top-level paragraphs reads the
 same boxes and handles within a binary search's difference.
 
+## Composition (IME)
+
+### `ime.range.blocks` — a composition over a range across blocks replaces it at its start
+
+A composition that starts over a text range whose ends lie in different
+blocks replaces the range at `compositionstart`, as one over a block or an
+atom selection does (`Composition.#rangeless`,
+`session/composition.svelte.ts`): one command through the dispatcher
+(hooks, veto; `replaceSelectionForInsertion` merges the blocks around the
+range's start), rendered at once (`flushSync`), and the DOM caret parked at
+the range's start (`projector.park`) before the IME writes. The IME then
+composes at a caret in one text and never runs its own delete across
+blocks. The visible result is unchanged: the range is replaced by the
+composed text, and the replacement, the previews and the commit are one
+undo step, whose undo brings back the blocks and the range. A composition
+canceled or abandoned before its first preview leaves that replacement,
+one undo step, as one over selected blocks does (over a range inside one
+block it writes nothing). A refused replacement (a hook's veto) writes
+nothing: the IME writes at the range's start and the tail restores it, as
+typing over the range is refused. A range inside one block (across an
+inline atom) keeps the first-write path (`pin.merge`: the rest of the
+block's text follows the host in its own element).
+
+Why: Firefox's `insertText` (and any script that writes across the blocks
+in the same task) is a composition whose native delete runs before the
+model's change renders. It joins the blocks' elements and removes the
+render's anchors between them, so a dead block's element stayed in the host
+or the host's text went missing (the extensive DST lane's Firefox
+`dom-block-count` and `dom-text-projection` seeds).
+
+Rows: `tests/editor-dom/composition-across-blocks.spec.ts` (three engines:
+two lines either way, over and before an atom; one DOM block per model
+block; the host is its cells' projection), `composition-session.test.tsx`
+("ime.range.blocks": the blocks merged and the DOM caret parked before the
+first write, one undo step; a cancel before the first preview) and
+`composition.spec.ts` ("keeps a cross-block composition-start range after
+selection drift").
+
 ## Host DOM ownership (D-25)
 
 The host renders a pure function of the model and declared view state;
@@ -2560,6 +2624,32 @@ is the only interpreter of DOM changes.
 - The live composition host is the IME's; read-only divergence is
   restored when the view becomes editable again; divergence during an
   open model-owned attempt window waits until the window closes.
+
+### `dom.anchors.foreign` — the render's anchors a foreign range took return
+
+Svelte keeps comment anchors between the blocks of a list (the root, a
+block's children) and inside each block and text element; it inserts and
+removes a block's nodes from them. A page script or an extension calling
+`Range.deleteContents()` (or any write) over a range from one block's text
+into another's leaves the two block elements (the range only enters them)
+and takes the anchors between them: from their list, and inside the two
+blocks after the range's start and before its end. The text it deleted is
+adopted as input (each block keeps its own text); the anchors are the
+render's and return at their recorded siblings, as a removed element does
+(`#restore`, `surface/observer.svelte.ts`). Without them, the render's next
+removal of either block starts at a detached anchor and leaves its element
+in the host, and a child added to the first block finds no anchor to render
+before.
+
+Provenance: the observer takes the records the editor's own writes made —
+from the root's pre pass to the end of its compare pass, and a pass's own
+repairs — as the render's, never undone (an item leaving a list removes its
+anchors with it). When a foreign record took only anchors from a block list,
+gone from the page (not moved), every foreign anchor-only record of that
+batch is inverted. Rows: `tests/editor-dom/observer-divergence.spec.ts` "a
+foreign delete across two blocks keeps the render's anchors" (top level and
+nested, three engines: the anchors' count, then a child added and three
+blocks deleted, the host its cells' projection after each).
 
 ## Oracle and checkpoint contract
 
@@ -2799,6 +2889,35 @@ closing socket drops what waits for it. Entries held past their socket's
 rate (`room.presence.quota`) enter the same path when released. What
 waits is lost at a wake (a hibernation, an eviction), as the presence
 snapshot is (`room-load.test.ts`).
+
+### `room.depart.unload` — a departure a page sends while it unloads is best-effort
+
+A provider announces its presence removal when its page starts to unload
+(`beforeunload`, `initLifecycle` in `crdt/providers/room.ts`) and again at
+its teardown (`pagehide`, `onPageLeave`). Those frames are best-effort.
+WebKit drops the frames a socket still has queued when the page tears
+down, and every frame sent from `pagehide`. Measured over the opaque test
+relay, 10 or 20 closes each: a frame sent at the start of `beforeunload`
+arrived 20/20 in the three engines; one sent 150 ms later in the same
+handler 0/10 in WebKit, 10/10 in Chromium and Firefox; one sent from
+`pagehide` 0/20 in WebKit, 20/20 in the others.
+
+So in WebKit the departure comes from the socket's close, not from a frame
+sent at unload: the room announces a socket's departure when it closes
+(`webSocketClose` and `webSocketError` → `presence.depart`,
+`cloudflare/DocumentRoom.ts`), whatever the page sent, and that is the
+departure every peer can rely on in every engine. Behind a relay that
+announces nothing (the opaque test relay), a departed WebKit peer's caret
+goes when its awareness entry expires (30 s). No product change: sending
+the frame earlier does not help, as WebKit loses even one sent 150 ms into
+`beforeunload`.
+
+Rows: `tests/hosted/hosted.spec.ts` "presence: a tab closed with its unload
+handlers leaves through the room's close (room.depart.unload)" in the three
+engines, WebKit's proof (B closes with its unload handlers run; A and C drop
+its caret); `tests/editor-dom/collaboration-websocket.spec.ts` (F-T9)
+asserts the page's own frame over the opaque relay in Chromium and Firefox,
+skipped in WebKit with this row named.
 
 ### `room.access` — revocation and credential expiry (WU-06)
 

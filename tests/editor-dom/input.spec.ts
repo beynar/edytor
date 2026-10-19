@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './editorTest';
 
 import {
+	pageClock,
 	dispatchBeforeInput,
 	dispatchDomTextInputMutation,
 	expectSelection,
@@ -2436,11 +2437,14 @@ test.describe('browser input behavior', () => {
 
 	test('repairs non-cancelable native replacement drift over marked ranges', async ({ page }) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 
 		await page.goto('/test/dom?scenario=marks');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0, 0, 5);
 
+		// The browser's write follows its `beforeinput` inside the repair window (page time held).
+		await clock.hold();
 		const wasPrevented = await dispatchBeforeInput(page, {
 			inputType: 'insertReplacementText',
 			data: 'Alfa',
@@ -2455,6 +2459,7 @@ test.describe('browser input behavior', () => {
 			inputType: 'insertReplacementText',
 			data: 'Alfa'
 		});
+		await clock.release();
 
 		await expect
 			.poll(async () => {

@@ -163,4 +163,86 @@ test.describe('R7 — the host is the projection of its cells', () => {
 		await expect.poll(rootChildren).toEqual(['éd', 'z', 'anchor']);
 		issues.assertClean();
 	});
+
+	/**
+	 * `dom.anchors.foreign`: a page script or an extension calls
+	 * `Range.deleteContents()` over a range from one block's text into the
+	 * next's. The block elements stay (the range only enters them); the
+	 * render's anchors (Svelte's comments) between them go, from the blocks'
+	 * list and from inside the two blocks, after the range's start and before
+	 * its end. Each block's text is adopted as input, and the anchors are the
+	 * render's, restored as a removed element is: else a later removal of
+	 * either block starts at a detached anchor and leaves its element in the
+	 * host (the truth check: `blocks [p1,p2] ≠ cells [p2]`), and a child added
+	 * to the first finds no anchor to render before (`k: no block element`).
+	 * Expected values are hand-authored from the range and the operations.
+	 */
+	for (const nested of [false, true]) {
+		test(`a foreign delete across two ${nested ? 'nested ' : ''}blocks keeps the render's anchors`, async ({
+			page
+		}) => {
+			const issues = trackPageIssues(page);
+			const p = (id: string, text: string, children?: unknown[]) => ({
+				type: 'paragraph',
+				id,
+				content: [{ text }],
+				...(children ? { children } : {})
+			});
+			const pair = [p('p0', 'ab'), p('p1', 'cd')];
+			const doc = {
+				children: nested ? [p('h', 'head', pair), p('p2', 'ef')] : [...pair, p('p2', 'ef')]
+			};
+			await gotoEditorRoute(
+				page,
+				`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify(doc))}`,
+				{ requireRuntime: true }
+			);
+			const view = (run: string) =>
+				page.evaluate(`(window).__EDYTOR__.${run}`).then(() => settle(page));
+			/** Each block element in document order, as `id:text`. */
+			const blocks = () =>
+				page.evaluate(() =>
+					Array.from(document.querySelectorAll('[data-edytor] [data-edytor-block="true"]')).map(
+						(block) =>
+							`${(block as HTMLElement).dataset.edytorId}:${(
+								block.querySelector('[data-edytor-text]')?.textContent ?? ''
+							).replaceAll('\u200B', '')}`
+					)
+				);
+			/** The host's comments: Svelte's anchors. */
+			const anchors = () =>
+				page.evaluate(() => {
+					const host = document.querySelector('[data-edytor]')!;
+					const walker = document.createTreeWalker(host, NodeFilter.SHOW_COMMENT);
+					let count = 0;
+					while (walker.nextNode()) count++;
+					return count;
+				});
+			const head = nested ? ['h:head'] : [];
+			const rendered = await anchors();
+			const first = nested ? 1 : 0;
+			await setSelectionByTextIndex(page, first, 1, first + 1, 1);
+			await page.evaluate(() => document.getSelection()!.getRangeAt(0).deleteContents());
+			await settle(page);
+			await expect.poll(() => truth(page)).toEqual([]);
+			await expect.poll(blocks).toEqual([...head, 'p0:a', 'p1:d', 'p2:ef']);
+			expect(await anchors()).toBe(rendered);
+
+			await view(
+				`insertBlocks({ parent: 'p0', index: 0 }, [{ id: 'k', type: 'paragraph', content: [{ text: 'kid' }] }])`
+			);
+			await expect.poll(() => truth(page)).toEqual([]);
+			await expect.poll(blocks).toEqual([...head, 'p0:a', 'k:kid', 'p1:d', 'p2:ef']);
+			for (const [id, left] of [
+				['k', ['p0:a', 'p1:d', 'p2:ef']],
+				['p0', ['p1:d', 'p2:ef']],
+				['p1', ['p2:ef']]
+			] as const) {
+				await view(`deleteBlocks(['${id}'])`);
+				await expect.poll(() => truth(page)).toEqual([]);
+				await expect.poll(blocks).toEqual([...head, ...left]);
+			}
+			issues.assertClean();
+		});
+	}
 });

@@ -1511,6 +1511,38 @@ export const selectionSignature = (snapshot: DstBrowserSnapshot): string | null 
 					)
 				});
 
+/** A strong right-to-left letter (Hebrew, Arabic, Syriac, Thaana, N'Ko). */
+const RTL = /[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u;
+/** A strong left-to-right letter: any other letter. */
+const LTR =
+	/(?![\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}])\p{L}/u;
+
+/**
+ * `sel.bidi.arrows`: ArrowLeft/ArrowRight in text that mixes directions are
+ * the browser's caret movement, and the engines map left and right onto
+ * logical order differently there (Firefox moves visually by default —
+ * `bidi.edit.caret_movement_style` 2 — and collapses a range to its visual
+ * edge; Chromium and WebKit map the keys by the paragraph's direction and
+ * collapse to the logical end). The editor adopts what lands, so only each
+ * engine's own legality is checked, not cross-engine identity. Mixed: a
+ * rendered text the selection touches holds a strong letter of each direction.
+ * Firefox may also not move at all there (Shift+ArrowRight at the logical end
+ * of a right-to-left line), as it does in a bare contenteditable.
+ */
+export const isBidiHorizontalMove = (
+	action: DstAction | null,
+	before: DstBrowserSnapshot | undefined
+): boolean => {
+	if (action?.kind !== 'move' || !/^Arrow(Left|Right)$/.test(action.key)) return false;
+	const selection = before?.selection;
+	if (selection?.kind !== 'text') return false;
+	const texts = before!.model.renderedTexts.slice(
+		selection.startTextIndex,
+		selection.endTextIndex + 1
+	);
+	return texts.some((text) => RTL.test(text) && LTR.test(text));
+};
+
 const POINTER_INPUT_KINDS = new Set([
 	'pointerClick',
 	'pointerDrag',
@@ -2277,7 +2309,12 @@ export const assertActionEffect = (
 		// the weight here.
 		return;
 	}
-	if (action.kind === 'move' && selection && canMoveSelection(before, selection, action)) {
+	if (
+		action.kind === 'move' &&
+		selection &&
+		canMoveSelection(before, selection, action) &&
+		!isBidiHorizontalMove(action, before)
+	) {
 		if (selectionSignature(before) === selectionSignature(after)) {
 			fail('move-produced-no-effect', engine, 'navigation did not move or extend the selection', {
 				action,
@@ -2316,6 +2353,125 @@ export const assertActionEffect = (
 	}
 };
 
+/** A fresh empty block of `type`, as `edytor.value` serializes it (its id aside). */
+const emptyBlock = (type: string): JsonBlock => ({ type, data: {} });
+
+/** The kinds whose body shows even empty (`body.enter`: `body: true`, a callout). */
+const BODY_SHOWS_EMPTY = new Set(['callout']);
+
+/**
+ * The block a navigation gesture creates by contract, as the expected
+ * document and the rendered text the caret lands in — never more than one:
+ * - `body.down`: ArrowDown on the last line of a header whose body shows and
+ *   is empty (a callout without children) runs `openBody`: a first child of
+ *   the kind's default child kind, the caret in it;
+ * - `nav.trailing.exit`: ArrowDown on the last line of the document's last
+ *   stop (no displayable stop below it), in a block that is not a top-level
+ *   block of the root's default kind: the trailing paragraph;
+ * - `nav.trailing.press`: a primary press without a modifier on the host
+ *   below its last top-level block: the trailing paragraph.
+ * The trailing paragraph is a new top-level block of the root's default kind
+ * after the last one, unless the last one is already such an empty block
+ * (the caret goes there, nothing is written). "Last line" is a line box,
+ * which the snapshot does not hold: the oracle checks the shape of what was
+ * created and the rows' structural preconditions, never that one was owed.
+ */
+const navigationCreations = (
+	action: DstAction,
+	before: DstBrowserSnapshot
+): Array<{ row: string; value: JsonRoot; textIndex: number }> => {
+	const { blocks, renderedTexts } = before.model;
+	const rootDefault = before.model.rootDefaultType ?? before.model.defaultType ?? 'paragraph';
+	const lastTop = before.value.children.at(-1);
+	const trailingWritten =
+		lastTop !== undefined &&
+		!(
+			lastTop.type === rootDefault &&
+			!(lastTop.children ?? []).length &&
+			(lastTop.content ?? []).every((item) => isText(item) && item.text === '')
+		);
+	const trailing = (row: string) =>
+		trailingWritten
+			? [
+					{
+						row,
+						value: {
+							...before.value,
+							children: [...before.value.children, emptyBlock(rootDefault)]
+						},
+						textIndex: renderedTexts.length
+					}
+				]
+			: [];
+	if (action.kind === 'pointerClick') {
+		// The press below the last block: the runner's padding target with no gap
+		// pair between top-level blocks (`pointerPoint`), or no text to aim at.
+		const topLevel = blocks.filter((block) => block.path.length === 1).length;
+		const padding =
+			action.target === 'padding' ||
+			(action.target === 'inline' &&
+				before.model.inlineIds.length === 0 &&
+				renderedTexts.length === 0) ||
+			(action.target === 'blockText' && renderedTexts.length === 0);
+		return padding && topLevel <= 1 ? trailing('nav.trailing.press') : [];
+	}
+	const selection = before.selection;
+	if (
+		action.kind !== 'move' ||
+		action.key !== 'ArrowDown' ||
+		action.extend ||
+		selection?.kind !== 'text' ||
+		!selection.isCollapsed
+	)
+		return [];
+	const blockIndex = blockIndexForRenderedText(before, selection.startTextIndex);
+	const block = blocks[blockIndex];
+	if (!block) return [];
+	const created: Array<{ row: string; value: JsonRoot; textIndex: number }> = [];
+	const hasChildren = blocks.some((other) => isPrefixPath(block.path, other.path));
+	if (BODY_SHOWS_EMPTY.has(block.type) && !hasChildren) {
+		const childKind =
+			before.model.defaultChild?.[block.type] ?? before.model.defaultType ?? 'paragraph';
+		const value = structuredClone(before.value);
+		let at: JsonBlock | JsonRoot = value;
+		for (const index of block.path) at = (at.children ?? [])[index]!;
+		(at as JsonBlock).children = [emptyBlock(childKind)];
+		const [, end] = blockRenderedTextRange(before, blockIndex);
+		created.push({ row: 'body.down', value, textIndex: end });
+	}
+	// No stop below: no rendered text after the caret's (the corpus holds no
+	// layout or table, whose stops beside the caret would not count).
+	const topLevelDefault = block.path.length === 1 && block.type === rootDefault;
+	if (!topLevelDefault && selection.startTextIndex === renderedTexts.length - 1)
+		created.push(...trailing('nav.trailing.exit'));
+	return created;
+};
+
+/**
+ * Whether `after` is one of the contract's navigation creations from
+ * `before`: the document it expects, the caret at the start of the new
+ * block's text.
+ */
+const isNavigationCreation = (
+	action: DstAction,
+	before: DstBrowserSnapshot,
+	after: DstBrowserSnapshot
+): string | null => {
+	const afterValue = semanticSignature(after);
+	for (const { row, value, textIndex } of navigationCreations(action, before)) {
+		if (JSON.stringify(canonicalDocumentValue(value)) !== afterValue) continue;
+		const caret = after.selection;
+		if (
+			caret?.kind === 'text' &&
+			caret.isCollapsed &&
+			caret.startTextIndex === textIndex &&
+			caret.yStart === 0
+		)
+			return row;
+	}
+	return null;
+};
+
 export const assertSemanticPreservation = (
 	engine: string,
 	action: DstAction,
@@ -2340,6 +2496,8 @@ export const assertSemanticPreservation = (
 	if (action.kind !== 'format' && !preservesSemantics) return;
 	const beforeValue = preservesSemantics ? semanticSignature(before) : structureSignature(before);
 	const afterValue = preservesSemantics ? semanticSignature(after) : structureSignature(after);
+	// A navigation gesture writes exactly one block where a contract row says so.
+	if (beforeValue !== afterValue && isNavigationCreation(action, before, after)) return;
 	if (beforeValue !== afterValue) {
 		fail('non-text-action-mutated-structure', engine, `${action.kind} changed protected content`, {
 			before: beforeValue,

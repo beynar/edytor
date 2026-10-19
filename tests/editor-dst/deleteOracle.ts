@@ -1441,9 +1441,10 @@ const describeDeleteInner = (
 	const contentBackward = (): DeleteExpectation => {
 		// `del.start.kind`: Backspace at the start of a catalogue kind other
 		// than its parent's default (a callout, a heading, a to-do) turns it
-		// into that default first, keeping its content and children (Notion).
-		// Structural kinds outside the catalogue (a list item) keep the
-		// structural path below.
+		// into that default first, keeping its content and children (Notion),
+		// and its data: a retype removes no property (`data.retype.keep`; the
+		// default kind's preset names none). Structural kinds outside the
+		// catalogue (a list item) keep the structural path below.
 		const parentDefault = startBlock.parent ? childKindOf(roles, startBlock.parent) : null;
 		if (
 			isCollapsed &&
@@ -1457,7 +1458,6 @@ const describeDeleteInner = (
 			!insideIsland(startBlock)
 		) {
 			startBlock.type = parentDefault;
-			startBlock.data = {};
 			return tree('start-of-block backspace resets a catalogue kind to its default');
 		}
 		if (isCollapsed && isAtStartOfBlock && isFirstChildOfDocument && isEmptyBlock(startBlock)) {

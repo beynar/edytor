@@ -294,11 +294,20 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 	});
 
 	test('a websocket-only peer that closes its tab drops its caret on the others (F-T9)', async ({
-		browser
+		browser,
+		browserName
 	}, testInfo) => {
 		// arch-v2 §8.6 F-T9 (C13): the departure announcement is the room's,
 		// so a socket-only peer announces it exactly as an IndexedDB /
 		// BroadcastChannel peer does — well before the 30 s awareness expiry.
+		// The opaque relay announces nothing at a socket's close, so this row
+		// proves the page's own frame, which WebKit drops while the page tears
+		// down (`room.depart.unload` in docs/editor-delete-contract.md): there
+		// the departure is the room's at the close, proven in the hosted lane.
+		test.skip(
+			browserName === 'webkit',
+			"room.depart.unload: WebKit drops a closing page's frames; the room's close is its departure (tests/hosted)"
+		);
 		const relay = await startOpaqueRelay();
 		const room = roomName();
 		let clients: SocketClients | undefined;

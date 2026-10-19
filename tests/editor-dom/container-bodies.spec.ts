@@ -2,6 +2,7 @@ import { expect, test, type Page } from './editorTest';
 import {
 	modKey,
 	notionTheme,
+	pageClock,
 	setSelectionByTextIndex,
 	trackPageIssues,
 	waitForEditorReady
@@ -80,6 +81,7 @@ test.describe('container bodies', () => {
 		page
 	}) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 		await open(page, toggle);
 		const details = page.locator('[data-edytor-id="t"]');
 		const hint = details.locator('[data-edytor-empty-body]');
@@ -96,7 +98,10 @@ test.describe('container bodies', () => {
 			.toEqual([['toggle "Title"', ['paragraph']], 'paragraph "after"']);
 		await expect.poll(() => caret(page)).toEqual(['t', 0, 0]);
 		await expect(hint).toHaveCount(0);
+		// One typing burst: one step (page time held inside the capture window).
+		await clock.hold();
 		await page.keyboard.type('Inside');
+		await clock.release();
 		await expect
 			.poll(() => outline(page))
 			.toEqual([['toggle "Title"', ['paragraph "Inside"']], 'paragraph "after"']);
@@ -110,6 +115,7 @@ test.describe('container bodies', () => {
 		page
 	}) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 		await open(page, toggle);
 		const details = page.locator('[data-edytor-id="t"]');
 		await details.locator('summary').evaluate((summary) => {
@@ -122,7 +128,9 @@ test.describe('container bodies', () => {
 			.poll(() => outline(page))
 			.toEqual([['toggle "Title"', ['paragraph']], 'paragraph "after"']);
 		await expect.poll(() => caret(page)).toEqual(['t', 0, 0]);
+		await clock.hold();
 		await page.keyboard.type('Inside');
+		await clock.release();
 		await expect
 			.poll(() => outline(page))
 			.toEqual([['toggle "Title"', ['paragraph "Inside"']], 'paragraph "after"']);

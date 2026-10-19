@@ -128,6 +128,10 @@ After the report above, the user accepted these, each its own commit:
    delete.
 2. **AI answers rewritten whole.** A shared answer is still written live,
    but each chunk replaces what the answer wrote before: no per-chunk diff.
+   Built (cut 4), then reverted at the user's decision (cut 12): the cost
+   grew with the square of the answer's length (a 257-character answer in
+   60 chunks synced 35 KB and stored 8.7 KB, against 3.5 KB and 2.1 KB with
+   the diff).
 3. **Pending runs drawn inline.** The run index carries each run's
    suggestion state, the text renders it as a styled run (a mark the view
    draws), and the overlay's suggestion layers go.
@@ -157,19 +161,21 @@ gives the per-declaration numbers. `edytor/export` stays at 52,220 B
 | 1 | A decision is one engine call over its ids: `YNode#hold` into the record (a settle) or into `textdel` (the decider's hold, in the funnel's attribution frame); `deleteRun` and the per-run `deleteText` go | edytor computing what the engine holds | −247 | −68 | −241 | yes |
 | 2 | Change 1: only text and blocks are suggested; block deletions are id lists naming nodes, the rest refused; the proposed operations and their replay go | (behaviour, accepted) | −863 | −304 | −858 | yes |
 | 3 | Change 5: withdrawing is rejecting (by a writer of the author's when the view may not decide) | (behaviour, accepted) | −374 | −124 | −383 | yes |
-| 4 | Change 2: a live answer is rewritten whole, the previous chunk's blocks removed for real | (behaviour, accepted) | −764 | −273 | −762 | yes |
+| 4 | Change 2: a live answer is rewritten whole, the previous chunk's blocks removed for real | (behaviour, accepted) | −764 | −273 | −762 | no: reverted by cut 12 |
 | 5 | Change 4: `toJSON()` without pending suggestions is a copy with every one rejected | (behaviour, accepted) | −927 | −345 | −897 | yes |
 | 6 | Change 3: pending runs drawn inline through the run index (each run's state, an id list marking what it names changed, a mark the view draws) | (behaviour, accepted) | +483 | +271 | +568 | no: reverted in the next commit |
 | 7 | The dispatcher's step arguments back where they are read, one history replay method, the records' walk bounded by a clock | a shape moved for a consumer that left | −27 | −10 | −79 | yes (before the method's 0.3 KB floor) |
 | 8 | Engine YP32, a delete that proposes: a suggesting plan is one frame, its proposed text hidden until the plan ends; the offset remapping, the batching and the caret walk go | edytor computing what the engine could hold | −269 | +26 | −261 | yes |
 | 9 | The document part rewritten: one id shape (the engine's triples), a decision table, the refusal decided once in `apply`, one `writeAs` and `ownIdsOf` for four copies, a dead guard and parameter | one idea in several shapes; special cases a rule covers; a check at every layer; private copies of a helper | −616 | −223 | −616 | yes |
 | 10 | The view's part: one overlay layer for the suggestion runs, a shared answer's slot from the flow target, the open record's existence asked once | one idea in several shapes; a missing provider; a check at every layer | −325 | −7 | −338 | yes |
+| 11 | A split's source is another block (a fix: the suggestion corpus at 300 operations found a split read as its own source) | — | +7 | +6 | +7 | yes |
+| 12 | Change 2 reverted at the user's decision: a live answer writes only what changed again (equal blocks kept, the last block's text extended, the rest replaced); `erase` goes | (behaviour, the user's decision) | +751 | +270 | +762 | yes |
 
-**Result.** The minimal app: +18,392 → **+13,980 B** min against
-`569823b5` (+6,351 → +5,023 B gzip); every plugin: +18,783 → +14,348 B
-(+6,683 → +5,350 B gzip). Shared suggestions alone (the press fixes set
-aside): **+17,067 → +12,655 B** (12.4 KiB). The target was +6 KB: missed by
-about 6.4 KB.
+**Result.** The minimal app: +18,392 → **+14,738 B** min against
+`569823b5` (+6,351 → +5,299 B gzip); every plugin: +18,783 → +15,117 B
+(+6,683 → +5,654 B gzip). Shared suggestions alone (the press fixes set
+aside): **+17,067 → +13,413 B** (13.1 KiB). The target was +6 KB: missed by
+about 7.4 KB.
 
 ## 5. Why the target is missed
 
@@ -177,8 +183,8 @@ The bytes left are the feature's rules, not a layer over the engine:
 
 | Part | B | What it is |
 | --- | ---: | --- |
-| `crdt/doc/suggest.js` | 6,418 | records 770, pending per block (`compute` 801, `candidates` 620, `unitsOf` 349, `sourceOf` 242, the memo 175), a suggesting plan (`apply` 870), decisions (`decide` 359, `run` 129, `hold` 84), `open` 300, `erase` 108 |
-| `session/suggestions.svelte.js` | +3,400 | suggesting mode and its grouping (`written` 440), decisions as commands (`decide` 550), the one list (`list` 286), a live answer (`write` 575, `#slot` 150), block marks, colours, the shared `Suggestion`'s getters |
+| `crdt/doc/suggest.js` | 6,321 | records 770, pending per block (`compute` 801, `candidates` 620, `unitsOf` 349, `sourceOf` 236, the memo 175), a suggesting plan (`apply` 901), decisions (`decide` 359, `run` 129, `hold` 84), `open` 300 |
+| `session/suggestions.svelte.js` | +4,280 | suggesting mode and its grouping (`written` 416), decisions as commands (`decide` 551), the one list (`list` 286), a live answer (`write` 959, its diff `grown` 450 and `same` 44, `#slot` 185), block marks, colours, the shared `Suggestion`'s getters |
 | the rest | +2,800 | the overlay layer and the view's wiring, the access level on the document and the provider, the history's writer, the writer's binding, the press fixes (1,325, not suggestions) |
 
 What the engine could take, it took: a decision is one engine call, a
@@ -192,11 +198,12 @@ layer other features ship.
 ## 6. Behaviour changes not made, measured
 
 Each prototyped on the final tree, measured with the same command, then
-reverted (minimal app, own bytes min / gzip):
+reverted (minimal app, own bytes min / gzip; the first after cut 12, the
+others before it, whose code they do not touch):
 
 | Change | Saves | Notes |
 | --- | ---: | --- |
-| AI answers not shared live (an app's shared answer written once, or not at all: view-local drafts only) | −875 / −360 | reverses the user's decision 7 |
+| AI answers not shared live (an app's shared answer written once, or not at all: view-local drafts only) | −1,653 / −645 | reverses the user's decision 7; measured again with the per-chunk diff back (−875 / −360 while the answer was rewritten whole) |
 | Block deletions refused too (suggesting mode proposes text and new blocks only) | −499 / −215 | a block selection's Delete is refused while suggesting |
 | No access level on the client (the room still enforces; the app sets `suggesting` itself for a suggest-only user) | −343 / −123 | `document.access` and `onAccessChange` go |
 | `toJSON()` shows pending suggestions by default (`{ suggestions: false }` for the copy) | −285 / −159 | reverses the user's decision 3; also drops the whole-document cost of reads |
@@ -204,7 +211,7 @@ reverted (minimal app, own bytes min / gzip):
 | One suggestion per suggesting session (no contiguity grouping) | −166 / −79 | reverses the user's decision 10 |
 | A decision's block operations written as the document's (hooks see `acceptSuggestion`/`rejectSuggestion`, not the nested `deleteBlock`/`mergeBlocks`) | −63 / −32 | |
 
-Together about −2.4 KB: shared suggestions would still cost about
+Together about −3.2 KB: shared suggestions would still cost about
 +10.2 KB. Reaching +6 KB needs a smaller feature than the one the user
 decided (for example no shared AI answers and no client access level and
 no block proposals), not a smaller implementation of it.

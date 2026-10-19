@@ -1379,9 +1379,9 @@ declare const bindCrdt: (Y: EngineApi) => {
                     label?: string;
                     at?: number;
                 }) => string;
-                refuses: (p: import("./edytor-doc.js").Plan, w: number) => boolean;
-                apply: (id: string, p: import("./edytor-doc.js").Prepared) => {
+                apply: (id: string | null, p: import("./edytor-doc.js").Prepared, w?: number) => {
                     result: import("./edytor-doc.js").OpResult;
+                    id?: string;
                     at?: {
                         block: import("./index.js").BlockId;
                         offset: number;
@@ -2537,9 +2537,9 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                 label?: string;
                 at?: number;
             }) => string;
-            refuses: (p: Plan, w: number) => boolean;
-            apply: (id: string, p: Prepared) => {
+            apply: (id: string | null, p: Prepared, w?: number) => {
                 result: OpResult;
+                id?: string;
                 at?: {
                     block: BlockId;
                     offset: number;

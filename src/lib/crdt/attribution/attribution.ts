@@ -34,7 +34,7 @@
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
-import { writersOf } from '../text/model.js';
+import { writeAs, writersOf } from '../text/model.js';
 import { blockAttributionOf, type BlockAttribution } from './block.js';
 
 /** Reserved replicated root for all attribution metadata (`SCHEMA.roots.attribution`). */
@@ -191,14 +191,8 @@ export const bindAttribution = (_Y: EngineApi) => {
 			}
 			// A suggestion writer this replica minted binds itself, written by itself (`sugg.writer.binding`).
 			for (const writer of writersOf(doc))
-				if (tr.insertSet.clients.has(writer) && !root.getAttr(`${CLIENT_PREFIX}${writer}`)) {
-					doc.clientID = writer;
-					try {
-						publish(tr);
-					} finally {
-						doc.clientID = client;
-					}
-				}
+				if (tr.insertSet.clients.has(writer) && !root.getAttr(`${CLIENT_PREFIX}${writer}`))
+					writeAs(doc, writer, () => publish(tr));
 		};
 		/** This replica's binding (`c/<clientID>`), and its profile when the stored one differs. */
 		const publish = (tr: { changed: Map<unknown, Set<string | null>> }): void => {

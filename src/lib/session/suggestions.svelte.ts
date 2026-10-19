@@ -27,7 +27,7 @@ import { DEV } from 'esm-env';
 import type { BlockId, BlockSpec, DocAnchor, OpResult } from '../crdt/index.js';
 import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
-import { NOOP, REFUSED, refused } from '../crdt/doc/plan.js';
+import { NOOP, REFUSED } from '../crdt/doc/plan.js';
 import type { SuggestedChange } from '../crdt/doc/suggest.js';
 import type { Plan } from '../crdt/doc/types.js';
 import type { DocPosition } from '../crdt/rangeDelete.js';
@@ -345,17 +345,18 @@ export class Suggestions {
 	written = (plan: Plan): { result: OpResult; at?: DocPosition } | null => {
 		if (!this.suggesting || this.#deciding) return null;
 		const { facade, announcer } = this.edytor;
-		if (facade.suggest.refuses(plan, (this.#writer ||= facade.suggest.writer()))) {
-			announcer.say(labelsOf(this.edytor, 'editor', editorEnglish).notSuggested);
-			return { result: refused('suggesting') };
-		}
 		const block = plan.effect.textRanges[0]?.block ?? plan.ids[0] ?? null;
 		const last = this.#last;
 		const near =
 			block === last || (!!last && [facade.next(last), facade.previous(last)].includes(block));
-		if (!near || !facade.suggest.records().some((r) => r.id === this.#open))
-			this.#open = facade.suggest.open({ writer: this.#writer });
-		const out = facade.suggest.apply(this.#open!, plan);
+		const out = facade.suggest.apply(
+			near && facade.suggest.records().some((r) => r.id === this.#open) ? this.#open : null,
+			plan,
+			(this.#writer ||= facade.suggest.writer())
+		);
+		if (out.result.status === 'refused')
+			announcer.say(labelsOf(this.edytor, 'editor', editorEnglish).notSuggested);
+		this.#open = out.id ?? this.#open;
 		if (out.result.status === 'applied') this.#last = block;
 		return out;
 	};

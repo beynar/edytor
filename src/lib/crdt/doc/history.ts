@@ -14,7 +14,7 @@
  */
 import { getUnixTime } from 'lib0-v14/time';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import { openSteps, ownTextIds, writersOf } from '../text/model.js';
+import { openSteps, ownTextIds, writeAs, writersOf } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
 	BLOCK_NODE,
@@ -347,11 +347,9 @@ export class UndoManager {
 			[...writersOf(this.doc)].find(
 				(w) => top.inserts.clients.has(w) || top.deletes.clients.has(w)
 			);
-		const local = this.doc.clientID;
-		if (writer !== undefined) this.doc.clientID = writer;
 		const ops = this.#ops;
 		const { records, withdraw, repair } = this.#rules;
-		try {
+		writeAs(this.doc, writer ?? this.doc.clientID, () =>
 			this.doc.transact((transaction: unknown) => {
 				const tr = transaction as Tr;
 				while (stack.length > 0 && this.currStackItem === null) {
@@ -399,10 +397,8 @@ export class UndoManager {
 				tr.changed.forEach((keys, node) => {
 					if (keys.has(null)) dropSearchMarkers(node);
 				});
-			}, this);
-		} finally {
-			this.doc.clientID = local;
-		}
+			}, this)
+		);
 		const step = this.currStackItem;
 		this.currStackItem = null;
 		return step;

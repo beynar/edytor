@@ -42,8 +42,9 @@ import {
 	isRowMark,
 	newNode,
 	openRangeCursor,
-	ownTextIds,
+	ownIdsOf,
 	proposing,
+	writeAs,
 	writersOf
 } from '../text/model.js';
 import {
@@ -61,9 +62,6 @@ import { effectOf, NOOP, refused } from './plan.js';
 import type { DocAnchor, OpResult, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 
-/** `[client, clock, length]`: the units a decision names. */
-export type IdRange = [client: number, clock: number, length: number];
-
 /** One change of a suggestion, as a reviewer sees it. */
 export type SuggestedChange = {
 	/** The suggestion it is part of (its record's id). */
@@ -80,8 +78,8 @@ export type SuggestedChange = {
 	readonly offset: number;
 	readonly length: number;
 	readonly text: string;
-	/** The units a decision names. @internal */
-	readonly ids: readonly IdRange[];
+	/** The units a decision names, as the engine names them (`client, clock, len` triples). @internal */
+	readonly ids: readonly number[];
 };
 
 /** A suggestion the document holds. */
@@ -112,7 +110,6 @@ export type DecisionPart =
 type Rec = SuggestionRecord & {
 	node: EngineNode;
 	start: number;
-	end: number;
 	settled: IdSetOf;
 	proposed: IdSetOf;
 };
@@ -133,17 +130,28 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 /** What a suggestion refuses, unless on its author's own pending block (`sugg.refused`). */
 const REFUSE = ['mergeBlocks', 'setBlockType', 'patchData', 'formatRange'];
-/** The order a decision runs its operations in: the id lists first, structure last. */
-const RANK: Record<string, number> = { mergeBlocks: 2, deleteBlock: 3 };
+/**
+ * What a decision does with a change of each kind, accepted and rejected:
+ * `1` settles its ids (it stays), `2` holds them (its text goes), `3`
+ * deletes its block, `4` holds its writer's text and joins its block to the
+ * one it was split from.
+ */
+const DECIDE: Record<SuggestedChange['kind'], readonly [number, number]> = {
+	insert: [1, 2],
+	delete: [2, 1],
+	block: [1, 3],
+	split: [1, 4],
+	remove: [3, 1]
+};
 
 /** The list `map` keeps at `key` (made empty when absent). */
 const listOf = <K, V>(map: Map<K, V[]>, key: K): V[] => map.get(key) ?? map.set(key, []).get(key)!;
 
-/** Append unit `client:clock` to `runs`, joining the last range when it continues it (`next`: shown right after it). */
-const push = (runs: IdRange[], client: number, clock: number, next = true) => {
-	const last = runs[runs.length - 1];
-	if (next && last && last[0] === client && last[1] + last[2] === clock) last[2]++;
-	else runs.push([client, clock, 1]);
+/** Append unit `client:clock` to the id triples `ids`, extending the last one when it continues it. */
+const push = (ids: number[], client: number, clock: number) => {
+	const n = ids.length;
+	if (ids[n - 3] === client && ids[n - 2]! + ids[n - 1]! === clock) ids[n - 1] = ids[n - 1]! + 1;
+	else ids.push(client, clock, 1);
 };
 
 export type SuggestContext = DocBase &
@@ -168,16 +176,7 @@ export const docSuggest = (c: SuggestContext) => {
 		const bound = doc.get(ATTRIBUTION_ROOT).getAttr(`c/${client}`);
 		return typeof bound === 'string' ? bound : undefined;
 	};
-	/** Run `fn` writing as `client` (the derived-writer technique of seeds and `ownText`). */
-	const as = <R>(client: number, fn: () => R): R => {
-		const local = doc.clientID;
-		doc.clientID = client;
-		try {
-			return fn();
-		} finally {
-			doc.clientID = local;
-		}
-	};
+	const as = <R>(client: number, fn: () => R): R => writeAs(doc, client, fn);
 
 	// ── the records ─────────────────────────────────────────────────────
 
@@ -215,7 +214,6 @@ export const docSuggest = (c: SuggestContext) => {
 				label: attr('lbl'),
 				at: Number(node.getAttr('at')) || 0,
 				start: item.id.clock,
-				end: Infinity,
 				settled: idSet(),
 				proposed: idSet()
 			};
@@ -233,21 +231,31 @@ export const docSuggest = (c: SuggestContext) => {
 			t.recs.push(rec);
 			listOf(t.byWriter, writer).push(rec);
 		}
-		for (const recs of t.byWriter.values()) {
-			recs.sort((a, b) => a.start - b.start);
-			recs.forEach((rec, i) => (rec.end = recs[i + 1]?.start ?? Infinity));
-		}
+		for (const recs of t.byWriter.values()) recs.sort((a, b) => a.start - b.start);
 		t.recs.sort((a, b) => a.at - b.at || a.start - b.start);
 		table = { v: version, t };
 		return t;
 	};
 
-	/** The record whose clocks hold `client:clock`, when it is pending there (not settled). */
+	/**
+	 * The record whose clocks hold `client:clock` (its writer's latest opened
+	 * before it), when it is pending there (not settled).
+	 */
 	const pendingIn = (client: number, clock: number): Rec | undefined => {
 		const rec = records()
 			.byWriter.get(client)
 			?.findLast((r) => r.start <= clock);
-		return rec && clock < rec.end && !rec.settled.has(client, clock) ? rec : undefined;
+		return rec && !rec.settled.has(client, clock) ? rec : undefined;
+	};
+	/** The records proposing to delete unit `client:clock` (not settled there). */
+	const proposersOf = (client: number, clock: number) =>
+		records().proposing.filter(
+			(r) => r.proposed.has(client, clock) && !r.settled.has(client, clock)
+		);
+	/** The id of block `b`'s node: what its creation and a proposal of its deletion name. */
+	const bornOf = (b: BlockId | undefined) => {
+		const node = b === undefined ? null : blockNodeOf(doc, b);
+		return node && itemOf<Item>(node)!.id;
 	};
 
 	// ── what is pending ─────────────────────────────────────────────────
@@ -278,80 +286,72 @@ export const docSuggest = (c: SuggestContext) => {
 
 	/**
 	 * The block a split-born `b` was split from: the one showing the nearest
-	 * stream before `b`'s in its text, past those `skip` names (`null`: none
+	 * stream before `b`'s in its text (`null`: none
 	 * is shown; `undefined`: `b` was not split).
 	 */
-	const sourceOf = (b: BlockId, skip?: (owner: BlockId) => boolean) => {
+	const sourceOf = (b: BlockId) => {
 		const { own } = view();
 		const s = own.streamOf(b);
 		if (s === undefined || s.home === b) return undefined;
 		const streams = own.streamsIn(s.home);
 		for (let i = streams.findIndex((x) => x.block === b) - 1; i >= 0; i--) {
 			const owner = own.ownerOf(streams[i]!.block);
-			if (typeof owner === 'string' && c.live(owner) && !skip?.(owner)) return owner;
+			if (typeof owner === 'string' && c.live(owner)) return owner;
 		}
 		return null;
 	};
 
 	/** `b`'s pending changes, read from the state now (`null`: none). */
 	const compute = (b: BlockId): Pending | null => {
-		const t = records();
 		const units = unitsOf(b);
-		const node = blockNodeOf(doc, b);
-		const born = node && itemOf<Item>(node)!.id;
+		const born = bornOf(b);
 		// A split whose source is gone is no longer one: its writer's text is an insertion.
 		const split = sourceOf(b);
 		const maker = born && split !== null ? pendingIn(born.client, born.clock) : undefined;
-		const changes: SuggestedChange[] = [];
-		const made: IdRange[] = maker ? [[born!.client, born!.clock, 1]] : [];
-		const open = new Map<string, Mutable<SuggestedChange> & { ids: IdRange[] }>();
-		const touch = (rec: Rec, kind: 'insert' | 'delete', u: Unit) => {
-			const run = open.get(kind + rec.id);
+		const out: SuggestedChange[] = [];
+		const runs = new Map<string, Mutable<SuggestedChange> & { ids: number[] }>();
+		/** Its maker's units: shown as the block's change, in one piece. */
+		const made: number[] = [];
+		const add = (rec: Rec, kind: 'insert' | 'delete', u: Unit) => {
+			const run = runs.get(kind + rec.id);
 			if (run && run.offset + run.length === u.offset) {
 				run.length++;
 				run.text += u.char;
 				return push(run.ids, u.client, u.clock);
 			}
-			if (run) changes.push(run);
-			open.set(kind + rec.id, {
+			if (run) out.push(run);
+			runs.set(kind + rec.id, {
 				suggestion: rec.id,
 				kind,
 				block: b,
 				offset: u.offset,
 				length: 1,
 				text: u.char,
-				ids: [[u.client, u.clock, 1]]
+				ids: [u.client, u.clock, 1]
 			});
 		};
-		const whole = (suggestion: string, kind: 'block' | 'split' | 'remove', ids: IdRange[]) => ({
-			suggestion,
+		for (const u of units) {
+			const rec = pendingIn(u.client, u.clock);
+			if (rec && rec === maker) push(made, u.client, u.clock);
+			else if (rec) add(rec, 'insert', u);
+			for (const r of proposersOf(u.client, u.clock)) add(r, 'delete', u);
+		}
+		out.push(...runs.values());
+		out.sort((x, y) => x.offset - y.offset);
+		const whole = (rec: Rec, kind: SuggestedChange['kind'], ids: number[]) => ({
+			suggestion: rec.id,
 			kind,
 			block: b,
 			offset: 0,
 			length: units.length,
 			text: units.map((u) => u.char).join(''),
-			ids
+			ids: [born!.client, born!.clock, 1, ...ids]
 		});
-		let last = -2;
-		for (const u of units) {
-			const rec = pendingIn(u.client, u.clock);
-			if (rec && rec === maker) {
-				// A range of the block's own writer is shown in one piece.
-				push(made, u.client, u.clock, last === u.offset - 1);
-				last = u.offset;
-			} else if (rec) touch(rec, 'insert', u);
-			for (const r of t.proposing)
-				if (r.proposed.has(u.client, u.clock) && !r.settled.has(u.client, u.clock))
-					touch(r, 'delete', u);
-		}
-		changes.push(...open.values());
-		changes.sort((x, y) => x.offset - y.offset);
-		if (maker) changes.unshift(whole(maker.id, split ? 'split' : 'block', made));
+		if (maker) out.unshift(whole(maker, split ? 'split' : 'block', made));
 		// A record whose id list names the block's node proposes deleting the block.
-		for (const r of born ? t.proposing : [])
-			if (r.proposed.has(born!.client, born!.clock) && !r.settled.has(born!.client, born!.clock))
-				changes.push(whole(r.id, 'remove', [[born!.client, born!.clock, 1]]));
-		return changes.length ? changes : null;
+		for (const r of born ? proposersOf(born.client, born.clock) : [])
+			out.push(whole(r, 'remove', []));
+		return out.length ? out : null;
 	};
 
 	/** Every block the records' writers and proposals are in (a proposal naming a block's node included). */
@@ -436,7 +436,6 @@ export const docSuggest = (c: SuggestContext) => {
 			const w = options.writer ?? writer();
 			const id = options.id ?? mint('s');
 			const from = storeOf(doc).getClock(w);
-			writersOf(doc).add(w);
 			doc.transact(() =>
 				as(w, () => {
 					root().setAttr(id, newNode('suggestion'));
@@ -447,17 +446,12 @@ export const docSuggest = (c: SuggestContext) => {
 				})
 			);
 			// No history step captures the record's creation: its clocks stay its own.
-			if (!ownTextIds.has(doc)) ownTextIds.set(doc, idSet());
-			ownTextIds.get(doc)!.add(w, from, storeOf(doc).getClock(w) - from);
+			ownIdsOf(doc).add(w, from, storeOf(doc).getClock(w) - from);
 			version++;
 			return id;
 		});
 
-	const recOf = (id: string): Rec => {
-		const rec = records().recs.find((r) => r.id === id);
-		if (!rec) throw new RangeError(`[edytor] suggestion "${id}" is unknown`);
-		return rec;
-	};
+	const recOf = (id: string): Rec => records().recs.find((r) => r.id === id)!;
 
 	/** Two writers of one author (the same writer, or bound to the same actor). */
 	const sameAuthor = (a: number, b: number) =>
@@ -467,8 +461,7 @@ export const docSuggest = (c: SuggestContext) => {
 		!!pendingIn(client, clock) && sameAuthor(client, w);
 	/** Block `b` is a pending insertion of `w`'s author. */
 	const ownBlock = (b: BlockId | undefined, w: number) => {
-		const node = b === undefined ? null : blockNodeOf(doc, b);
-		const id = node && itemOf<Item>(node)!.id;
+		const id = bornOf(b);
 		return !!id && ownPending(id.client, id.clock, w);
 	};
 
@@ -493,53 +486,38 @@ export const docSuggest = (c: SuggestContext) => {
 	};
 
 	/**
-	 * Whether plan `p` cannot be written as a suggestion of writer `w`
-	 * (`sugg.refused`): it moves blocks, or merges, retypes, changes data or
-	 * formats what is not its author's own pending block.
-	 */
-	const refuses = (p: Plan, w: number): boolean => {
-		const at = about(p);
-		return p.writes.some(
-			(s) =>
-				s.op === 'moveBlocks' ||
-				(REFUSE.includes(s.op) &&
-					!ownBlock(at(s), w) &&
-					!(s.op === 'setBlockType' && at(s) !== s.id))
-		);
-	};
-
-	/**
-	 * Write plan `p` as suggestion `id` (the view's suggesting mode), by the
-	 * suggestion's writer, in one frame: insertions are written; a text
-	 * delete proposes the units that are not its author's pending ones (those
-	 * go), the engine hiding them until the plan ends so its later steps read
-	 * the offsets they were prepared with (fork patch YP32: an insertion at
-	 * a proposed deletion lands after it); a block delete proposes the
-	 * blocks it removes by their nodes (its author's own go); a plan it
-	 * {@link refuses} writes nothing. Answers the result and where the
-	 * plan's caret is now, the proposed text shown.
+	 * Write plan `p` as suggestion `id` (a new one of writer `w` when `null`:
+	 * the view's suggesting mode), by the suggestion's writer, in one frame:
+	 * insertions are written; a text delete proposes the units that are not
+	 * its author's pending ones (those go), the engine hiding them until the
+	 * plan ends so its later steps read the offsets they were prepared with
+	 * (fork patch YP32: an insertion at a proposed deletion lands after it);
+	 * a block delete proposes the blocks it removes by their nodes (its
+	 * author's own go). A plan that moves blocks, or merges, retypes,
+	 * changes data or formats what is not its author's own pending block, is
+	 * refused, nothing written (`sugg.refused`). Answers the result, the
+	 * suggestion and where the plan's caret is now, the proposed text shown.
 	 */
 	const apply = (
-		id: string,
-		p: Prepared
-	): { result: OpResult; at?: { block: BlockId; offset: number } } => {
+		id: string | null,
+		p: Prepared,
+		w = recOf(id!).writer
+	): { result: OpResult; id?: string; at?: { block: BlockId; offset: number } } => {
 		if (!('writes' in p)) return { result: p };
-		const rec = recOf(id);
-		const w = rec.writer;
-		if (refuses(p, w)) return { result: refused('suggesting') };
 		const at = about(p);
-		const blocks: number[] = [];
-		const writes = p.writes.filter((s) => {
-			if (s.op === 'deleteBlock' && !ownBlock(s.id, w)) {
+		const [writes, blocks]: [PlanStep[], number[]] = [[], []];
+		for (const s of p.writes)
+			if (s.op === 'moveBlocks') return { result: refused('suggesting') };
+			else if (ownBlock(at(s), w) || (!REFUSE.includes(s.op) && s.op !== 'deleteBlock'))
+				writes.push(s);
+			else if (s.op === 'deleteBlock')
 				for (const r of s.removes) {
-					const { client, clock } = itemOf<Item>(blockNodeOf(doc, r)!)!.id;
+					const { client, clock } = bornOf(r)!;
 					blocks.push(client, clock, 1);
 				}
-				return false;
-			}
-			// A promoted child's retype follows its deletion: written with it, or read again on accept.
-			return s.op !== 'setBlockType' || ownBlock(at(s), w);
-		});
+			// A promoted child's retype follows its deletion: read again when it is accepted.
+			else if (s.op !== 'setBlockType' || at(s) === s.id) return { result: refused('suggesting') };
+		const rec = recOf(id ?? open({ writer: w }));
 		return write(() =>
 			doc.transact((tr: unknown) =>
 				as(w, () => {
@@ -573,7 +551,11 @@ export const docSuggest = (c: SuggestContext) => {
 					}
 					version++;
 					const caret = anchor && c.resolveAnchor(anchor);
-					return { result, ...(caret && { at: { block: caret.blockId, offset: caret.offset } }) };
+					return {
+						result,
+						id: rec.id,
+						...(caret && { at: { block: caret.blockId, offset: caret.offset } })
+					};
 				})
 			)
 		);
@@ -603,26 +585,19 @@ export const docSuggest = (c: SuggestContext) => {
 
 	/**
 	 * What accepting (`accept`) or rejecting `changes` writes, in the order
-	 * it runs: the id lists first (what stays settled in its record, the
-	 * text that goes held by the decider), then the operations, structure
-	 * last, each reading its arguments when it runs.
+	 * it runs ({@link DECIDE}): the id lists first (what stays settled in its
+	 * record, the text that goes held by the decider), then the merges, then
+	 * the block deletes, each reading its arguments when it runs.
 	 */
 	const decide = (changes: readonly SuggestedChange[], accept: boolean): DecisionPart[] => {
 		const lists = new Map<string | null, number[]>();
-		const ops: DecisionPart[] = [];
-		for (const ch of changes) {
-			const b = ch.block;
-			const keep = ch.kind === 'delete' || ch.kind === 'remove' ? !accept : accept;
-			// What stays is settled; a block that goes goes by its operation, a rejected split's writer text is held.
-			if (keep || (ch.kind !== 'block' && ch.kind !== 'remove'))
-				listOf(lists, keep ? ch.suggestion : null).push(
-					...(keep || ch.kind !== 'split' ? ch.ids : ch.ids.slice(1)).flat()
-				);
-			if (!keep && (ch.kind === 'block' || ch.kind === 'remove'))
-				ops.push({ op: 'deleteBlock', calls: () => (c.live(b) ? [[b]] : []) });
-			else if (!keep && ch.kind === 'split')
-				// The block joins the one it was split from.
-				ops.push({
+		const [merges, deletes]: DecisionPart[][] = [[], []];
+		for (const { kind, block: b, suggestion, ids } of changes) {
+			const act = DECIDE[kind][accept ? 0 : 1];
+			if (act === 3) deletes.push({ op: 'deleteBlock', calls: () => (c.live(b) ? [[b]] : []) });
+			else listOf(lists, act === 1 ? suggestion : null).push(...(act === 4 ? ids.slice(3) : ids));
+			if (act === 4)
+				merges.push({
 					op: 'mergeBlocks',
 					calls: () => {
 						const into = sourceOf(b);
@@ -630,11 +605,7 @@ export const docSuggest = (c: SuggestContext) => {
 					}
 				});
 		}
-		const rank = (part: DecisionPart) => ('op' in part ? (RANK[part.op] ?? 1) : 0);
-		return [
-			...[...lists].map(([into, ids]) => ({ into, ids })),
-			...ops.sort((a, b) => rank(a) - rank(b))
-		];
+		return [...[...lists].map(([into, ids]) => ({ into, ids })), ...merges, ...deletes];
 	};
 
 	/**
@@ -668,7 +639,6 @@ export const docSuggest = (c: SuggestContext) => {
 		/** A fresh writer this replica writes suggestions under. */
 		writer,
 		open,
-		refuses,
 		apply,
 		erase,
 		decide,

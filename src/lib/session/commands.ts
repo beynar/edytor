@@ -18,7 +18,7 @@ import type { BlockId } from '$lib/crdt/index.js';
 import type { DocumentWrites } from '$lib/crdt/operations.js';
 import type { OpResult, Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DocPosition } from '$lib/crdt/rangeDelete.js';
-import { argsOf, refused } from '$lib/crdt/doc/plan.js';
+import { refused } from '$lib/crdt/doc/plan.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
@@ -176,6 +176,26 @@ const subjectOf = (arg: unknown): BlockId | null => {
 	if (arg === null || typeof arg !== 'object') return null;
 	const at = arg as { block?: unknown; parent?: unknown; replace?: unknown; slot?: unknown };
 	return subjectOf(at.block ?? at.parent ?? at.replace ?? at.slot);
+};
+
+type Step<K extends PlanStep['op']> = Extract<PlanStep, { op: K }>;
+/** A planned step as the operation it performs, with that operation's arguments. */
+const ARGS: { [K in PlanStep['op']]: (w: Step<K>, keepChildren: boolean) => unknown[] } = {
+	insertBlocks: (w) => [{ parent: w.parent, index: w.index }, w.specs],
+	moveBlocks: (w) => [w.ids, { parent: w.parent, index: w.index }],
+	deleteBlock: (w, keepChildren) => [w.id, { keepChildren }],
+	splitBlock: (w) => [w.id, w.offset, w.newId, w.tail],
+	mergeBlocks: (w) => [w.from, w.into],
+	setBlockType: (w) => [w.id, w.type],
+	patchData: (w) => [
+		w.inlineId !== undefined ? { block: w.id, atom: w.inlineId } : (w.id ?? null),
+		w.ops
+	],
+	insertText: (w) => [w.id, w.offset, w.text, w.marks],
+	insertInline: (w) => [w.id, w.offset, w.atom],
+	deleteText: (w) => [w.id, w.offset, w.length],
+	removeInline: (w) => [w.id, w.inlineId],
+	formatRange: (w) => [w.id, w.offset, w.length, w.marks]
 };
 
 export class Dispatcher {
@@ -804,7 +824,7 @@ export class Dispatcher {
 
 	/**
 	 * The planned steps as hooks see them: each as the operation it performs,
-	 * with that operation's arguments (`argsOf`), about the block it writes
+	 * with that operation's arguments (`ARGS`), about the block it writes
 	 * (the root for the document's data). A step that is the command itself
 	 * (same name, same block) is not repeated; a write into a block the plan
 	 * creates is part of that creation.
@@ -818,7 +838,9 @@ export class Dispatcher {
 		const created = new Set(creates);
 		const out: Change[] = [];
 		for (const w of writes) {
-			const args = argsOf(w, facade.childrenIds);
+			const keeps =
+				w.op === 'deleteBlock' && facade.childrenIds(w.id).some((c) => !w.removes.includes(c));
+			const args = (ARGS[w.op] as (w: PlanStep, keeps: boolean) => unknown[])(w, keeps);
 			const target = subjectOf(args[0]);
 			const block = target === null ? root : idToBlock.get(target);
 			if ((target !== null && created.has(target)) || !block) continue;

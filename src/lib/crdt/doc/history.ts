@@ -349,69 +349,63 @@ export class UndoManager {
 			);
 		const local = this.doc.clientID;
 		if (writer !== undefined) this.doc.clientID = writer;
+		const ops = this.#ops;
+		const { records, withdraw, repair } = this.#rules;
 		try {
-			this.#replay(stack, deletedByHistory);
+			this.doc.transact((transaction: unknown) => {
+				const tr = transaction as Tr;
+				while (stack.length > 0 && this.currStackItem === null) {
+					const step = stack.pop()!;
+					const restore = new Set<StoreStruct>();
+					const remove: StoreStruct[] = [];
+					const held: number[] = [];
+					let changed = false;
+					ops.iterate(tr, step.inserts, (struct) => {
+						if (!ops.isItem(struct)) return;
+						const item = ops.latest(tr, struct);
+						// An atom the step inserted is held whole: its attrs stay with it.
+						const atom = (item.parent as EngineNode | undefined)?._item;
+						if (
+							atom?.id &&
+							isUnit(atom as StoreStruct) &&
+							step.inserts.has(atom.id.client, atom.id.clock)
+						)
+							return;
+						if (!item.deleted && this.#inScope(item)) remove.push(item);
+					});
+					ops.iterate(tr, step.deletes, (struct) => {
+						if (!ops.isItem(struct) || !this.#inScope(struct)) return;
+						// Created and deleted within the step: nothing to bring back.
+						if (step.inserts.has(struct.id.client, struct.id.clock)) return;
+						// Text a record holds stays hidden: the record decides (removed with its node).
+						if ((struct.holds ?? 0) > 0) return;
+						restore.add(struct);
+					});
+					for (const item of restore)
+						changed =
+							ops.redo(tr, item, restore, step.inserts, deletedByHistory) !== null || changed;
+					// Children before parents: more is known when an item is judged.
+					for (let i = remove.length - 1; i >= 0; i--) {
+						const item = remove[i]!;
+						// Text the step wrote is held, never removed: a redo shows it again where it was.
+						if (isUnit(item)) held.push(item.id.client, item.id.clock, item.length);
+						else if (!withdraw(item, step)) ops.remove(tr, item);
+						changed = true;
+					}
+					records.hold(held);
+					this.currStackItem = changed ? step : null;
+					if (changed) repair(step);
+				}
+				tr.changed.forEach((keys, node) => {
+					if (keys.has(null)) dropSearchMarkers(node);
+				});
+			}, this);
 		} finally {
 			this.doc.clientID = local;
 		}
 		const step = this.currStackItem;
 		this.currStackItem = null;
 		return step;
-	}
-
-	#replay(
-		stack: StackItem[],
-		deletedByHistory: (id: { client: number; clock: number }) => boolean
-	) {
-		const ops = this.#ops;
-		const { records, withdraw, repair } = this.#rules;
-		this.doc.transact((transaction: unknown) => {
-			const tr = transaction as Tr;
-			while (stack.length > 0 && this.currStackItem === null) {
-				const step = stack.pop()!;
-				const restore = new Set<StoreStruct>();
-				const remove: StoreStruct[] = [];
-				const held: number[] = [];
-				let changed = false;
-				ops.iterate(tr, step.inserts, (struct) => {
-					if (!ops.isItem(struct)) return;
-					const item = ops.latest(tr, struct);
-					// An atom the step inserted is held whole: its attrs stay with it.
-					const atom = (item.parent as EngineNode | undefined)?._item;
-					if (
-						atom?.id &&
-						isUnit(atom as StoreStruct) &&
-						step.inserts.has(atom.id.client, atom.id.clock)
-					)
-						return;
-					if (!item.deleted && this.#inScope(item)) remove.push(item);
-				});
-				ops.iterate(tr, step.deletes, (struct) => {
-					if (!ops.isItem(struct) || !this.#inScope(struct)) return;
-					// Created and deleted within the step: nothing to bring back.
-					if (step.inserts.has(struct.id.client, struct.id.clock)) return;
-					// Text a record holds stays hidden: the record decides (removed with its node).
-					if ((struct.holds ?? 0) > 0) return;
-					restore.add(struct);
-				});
-				for (const item of restore)
-					changed = ops.redo(tr, item, restore, step.inserts, deletedByHistory) !== null || changed;
-				// Children before parents: more is known when an item is judged.
-				for (let i = remove.length - 1; i >= 0; i--) {
-					const item = remove[i]!;
-					// Text the step wrote is held, never removed: a redo shows it again where it was.
-					if (isUnit(item)) held.push(item.id.client, item.id.clock, item.length);
-					else if (!withdraw(item, step)) ops.remove(tr, item);
-					changed = true;
-				}
-				records.hold(held);
-				this.currStackItem = changed ? step : null;
-				if (changed) repair(step);
-			}
-			tr.changed.forEach((keys, node) => {
-				if (keys.has(null)) dropSearchMarkers(node);
-			});
-		}, this);
 	}
 
 	/**

@@ -353,13 +353,13 @@ export const docSuggest = (c: SuggestContext) => {
 		/** Note where the structs of `client` from `from` to `to` (exclusive) are. */
 		const each = (client: number, from: number, to: number) => {
 			const structs = clients.get(client) ?? [];
-			let k = structs.length;
-			try {
-				k = Y.findIndexSS(structs as never[], from);
-			} catch {
-				// Past what this replica holds.
-			}
-			for (; k < structs.length && structs[k]!.id.clock < to; k++) {
+			// Past what this replica holds: nothing.
+			if (from >= storeOf(doc).getClock(client)) return;
+			for (
+				let k = Y.findIndexSS(structs as never[], from);
+				k < structs.length && structs[k]!.id.clock < to;
+				k++
+			) {
 				const st = structs[k]!;
 				const parent = st.parent as EngineNode;
 				if (st.deleted || !isNodeLike(parent)) continue;

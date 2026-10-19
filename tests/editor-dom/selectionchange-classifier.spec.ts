@@ -25,6 +25,7 @@ import { readDomSelection } from './cdp';
 import {
 	dispatchComposition,
 	expectSelection,
+	pageClock,
 	modKey,
 	readSelection,
 	setSelectionByTextIndex,
@@ -149,6 +150,7 @@ test.describe('V5 classifier — F-S10 (after settle the DOM caret is the model 
 test.describe('V5 classifier — the IME post-commit jump (named rule)', () => {
 	/** An empty first paragraph composed to `é`, with a page-script jump to 0 queued after the commit. */
 	const commitWithJump = async (page: Page, jumpAfterMs: number | null) => {
+		const clock = await pageClock(page);
 		await open(page, 'first');
 		await setSelectionByTextIndex(page, 0, 0);
 		if (jumpAfterMs !== null) {
@@ -165,11 +167,19 @@ test.describe('V5 classifier — the IME post-commit jump (named rule)', () => {
 				);
 			}, jumpAfterMs);
 		}
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
-			{ type: 'compositionend', data: 'é' }
-		]);
+		// Page time: the jump lands `jumpAfterMs` after the commit, whatever the runner's speed.
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
+				{ type: 'compositionend', data: 'é' }
+			],
+			{ held: true }
+		);
+		await clock.run(jumpAfterMs ?? 0);
+		await clock.release();
 		await expect
 			.poll(() => page.locator('[data-edytor-text="true"]').first().textContent())
 			.toBe('é');

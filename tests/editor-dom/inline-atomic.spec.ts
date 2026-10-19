@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './editorTest';
 
 import {
+	pageClock,
 	dragSelectionByTextIndex,
 	expectSelection,
 	getPlaceholderLocators,
@@ -372,6 +373,7 @@ test.describe('browser inline atomic behavior', () => {
 		page
 	}) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 
 		await page.goto('/test/dom?scenario=nestedInline');
 		await waitForEditorReady(page);
@@ -391,7 +393,10 @@ test.describe('browser inline atomic behavior', () => {
 			yEnd: 'World'.length,
 			isCollapsed: true
 		});
+		// One typing burst: one step (page time held inside the capture window).
+		await clock.hold();
 		await page.keyboard.type('eza ');
+		await clock.release();
 
 		await expect
 			.poll(async () => {

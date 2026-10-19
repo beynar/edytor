@@ -111,7 +111,10 @@ room lane `vi.waitFor` defaults to 10 s (`tests/do/setup.ts`), a seeded `RawClie
 "never relayed" row counts `syncFrames()`; a Playwright row waits until the model holds the caret
 its click placed before it presses a key (a known residual, `sel.key.before-adoption` in
 `docs/editor-delete-contract.md`: a key handled at keydown before the click's `selectionchange`
-acts on the caret before it).
+acts on the caret before it). A browser row that asserts a named, time-bounded window (the
+composition tail, the history's capture window, a native input's repair window) holds the page
+clock across it (`pageClock` in `tests/editor-dom/helpers.ts`) and states the page time that
+passes, so the window is the row's, never the runner's speed between two commands.
 
 Never add `performance.now()` with `toBeLessThan` to a gate lane, nor a retry to hide a flake
 (`src/tests/ci-gates.test.ts` fails on either, and keeps the workflows and this page in step). A

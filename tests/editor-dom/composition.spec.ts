@@ -4,6 +4,7 @@ import { expectedByBrowser } from './browserExpectations';
 import {
 	blurEditor,
 	dispatchComposition,
+	pageClock,
 	expectSelection,
 	getPlaceholderLocators,
 	modKey,
@@ -143,9 +144,9 @@ const setCaretAfterMarkWrapper = async (page: Page, markIndex: number) => {
 
 const dispatchLateCompositionInputWithNativeDomDrift = async (
 	page: Page,
-	payload: { staleDomText: string; inputType: string; data: string }
+	payload: { staleDomText: string; inputType: string; data: string; held?: boolean }
 ) =>
-	page.evaluate(async ({ staleDomText, inputType, data }) => {
+	page.evaluate(async ({ staleDomText, inputType, data, held }) => {
 		const text = document.querySelector<HTMLElement>('[data-edytor-text="true"]');
 		const textNode =
 			text && Array.from(text.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
@@ -170,7 +171,12 @@ const dispatchLateCompositionInputWithNativeDomDrift = async (
 					})
 				: (new Event('input', { bubbles: true }) as InputEvent);
 		text.dispatchEvent(inputEvent);
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise<void>((resolve) => {
+			if (!held) return void setTimeout(resolve, 0);
+			const channel = new MessageChannel();
+			channel.port1.onmessage = () => resolve();
+			channel.port2.postMessage(0);
+		});
 	}, payload);
 
 const dispatchShadowCompositionWithTargetRange = async (
@@ -567,6 +573,7 @@ test.describe('browser composition and selection resilience', () => {
 		page
 	}) => {
 		const issues = trackPageIssues(page);
+		const clock = await pageClock(page);
 
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
@@ -588,12 +595,19 @@ test.describe('browser composition and selection resilience', () => {
 				{ once: true, capture: true }
 			);
 		});
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
-			{ type: 'compositionend', data: 'é' }
-		]);
-		await page.waitForTimeout(60);
+		// Page time: the jump lands 20 ms after the commit, inside the rule's window.
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
+				{ type: 'compositionend', data: 'é' }
+			],
+			{ held: true }
+		);
+		await clock.run(60);
+		await clock.release();
 
 		await expectSelection(page, {
 			startBlockPath: [0],
@@ -919,21 +933,30 @@ test.describe('browser composition and selection resilience', () => {
 	test('repairs stale late composition input after compositionend', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
+		const clock = await pageClock(page);
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0);
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'n' },
-			{ type: 'compositionupdate', data: 'n' },
-			{ type: 'compositionend', data: 'に' }
-		]);
+		// The late input follows the commit inside the tail (page time held).
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'n' },
+				{ type: 'compositionupdate', data: 'n' },
+				{ type: 'compositionend', data: 'に' }
+			],
+			{ held: true }
+		);
 
 		await dispatchLateCompositionInputWithNativeDomDrift(page, {
 			staleDomText: 'n',
 			inputType: 'insertCompositionText',
-			data: 'n'
+			data: 'n',
+			held: true
 		});
+		await clock.release();
 
 		await expect
 			.poll(async () => {
@@ -960,21 +983,30 @@ test.describe('browser composition and selection resilience', () => {
 	}) => {
 		const issues = trackPageIssues(page);
 
+		const clock = await pageClock(page);
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0);
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'n' },
-			{ type: 'compositionupdate', data: 'n' },
-			{ type: 'compositionend', data: 'に' }
-		]);
+		// The late input follows the commit inside the tail (page time held).
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'n' },
+				{ type: 'compositionupdate', data: 'n' },
+				{ type: 'compositionend', data: 'に' }
+			],
+			{ held: true }
+		);
 
 		await dispatchLateCompositionInputWithNativeDomDrift(page, {
 			staleDomText: 'にに',
 			inputType: 'insertCompositionText',
-			data: 'に'
+			data: 'に',
+			held: true
 		});
+		await clock.release();
 
 		await expect
 			.poll(async () => {
@@ -1546,16 +1578,24 @@ test.describe('browser composition and selection resilience', () => {
 	}) => {
 		const issues = trackPageIssues(page);
 
+		const clock = await pageClock(page);
 		await page.goto('/test/dom?scenario=basic&empty=first&enterHotkey=true');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0);
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'compositionupdate', data: 'に' },
-			{ type: 'compositionend', data: 'に' }
-		]);
+		// The engine's key follows its commit at once (page time held between them).
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'compositionupdate', data: 'に' },
+				{ type: 'compositionend', data: 'に' }
+			],
+			{ held: true }
+		);
 
 		await page.keyboard.press('Enter');
+		await clock.release();
 
 		await expect
 			.poll(async () => {
@@ -1620,16 +1660,24 @@ test.describe('browser composition and selection resilience', () => {
 	}) => {
 		const issues = trackPageIssues(page);
 
+		const clock = await pageClock(page);
 		await page.goto('/test/dom?scenario=basic&empty=first&backspaceHotkey=true');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0);
-		await dispatchComposition(page, [
-			{ type: 'compositionstart', data: '' },
-			{ type: 'compositionupdate', data: 'に' },
-			{ type: 'compositionend', data: 'に' }
-		]);
+		// The engine's key follows its commit at once (page time held between them).
+		await clock.hold();
+		await dispatchComposition(
+			page,
+			[
+				{ type: 'compositionstart', data: '' },
+				{ type: 'compositionupdate', data: 'に' },
+				{ type: 'compositionend', data: 'に' }
+			],
+			{ held: true }
+		);
 
 		await page.keyboard.press('Backspace');
+		await clock.release();
 
 		await expect
 			.poll(async () => {

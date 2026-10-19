@@ -1022,6 +1022,27 @@ export const dispatchClipboardEvent = async (page: Page, type: 'copy' | 'cut') =
 	}, type);
 };
 
+/**
+ * The page's clock, held where a row asserts a named browser window (the
+ * composition tail, the IME post-commit jump, the history's capture window, a
+ * native input's repair deadline). Install it before the page loads; `hold()`
+ * stops page time (`Date`, `performance.now`, the page's timers) where the
+ * row's window opens, `run(ms)` lets `ms` of page time pass (the timers due
+ * fire), `release()` lets it flow again. Inside a hold the runner's latency
+ * between two commands is no page time: the windows are the row's, never the
+ * machine's (a CI runner several times slower than a laptop).
+ */
+export const pageClock = async (page: Page) => {
+	await page.clock.install();
+	return {
+		// Page time jumps a little ahead (past one command's round trip, firing
+		// the timers due: the page was at rest) and stops there.
+		hold: async () => page.clock.pauseAt((await page.evaluate(() => Date.now())) + 5_000),
+		run: (ms: number) => page.clock.runFor(ms),
+		release: () => page.clock.resume()
+	};
+};
+
 export const dispatchComposition = async (
 	page: Page,
 	steps: Array<
@@ -1035,72 +1056,83 @@ export const dispatchComposition = async (
 				data?: string;
 				cancelable?: boolean;
 		  }
-	>
+	>,
+	/** `held`: the page clock is held (`pageClock`): each event's turn is a message task, no timer. */
+	options: { held?: boolean } = {}
 ) => {
-	await page.evaluate(async (sequence) => {
-		const target = document.querySelector<HTMLElement>('[data-edytor]');
-		if (!target) {
-			throw new Error('Missing [data-edytor] root');
-		}
+	await page.evaluate(
+		async ({ sequence, held }) => {
+			const target = document.querySelector<HTMLElement>('[data-edytor]');
+			if (!target) {
+				throw new Error('Missing [data-edytor] root');
+			}
 
-		const flushEventTurn = () => new Promise((resolve) => setTimeout(resolve, 0));
+			const flushEventTurn = () =>
+				new Promise<void>((resolve) => {
+					if (!held) return void setTimeout(resolve, 0);
+					const channel = new MessageChannel();
+					channel.port1.onmessage = () => resolve();
+					channel.port2.postMessage(0);
+				});
 
-		for (const step of sequence) {
-			if (step.type === 'beforeinput') {
+			for (const step of sequence) {
+				if (step.type === 'beforeinput') {
+					const event =
+						typeof InputEvent === 'function'
+							? new InputEvent('beforeinput', {
+									bubbles: true,
+									cancelable: step.cancelable ?? true,
+									inputType: step.inputType,
+									data: step.data ?? ''
+								})
+							: (new Event('beforeinput', {
+									bubbles: true,
+									cancelable: step.cancelable ?? true
+								}) as InputEvent);
+
+					if (typeof InputEvent !== 'function' || event.inputType !== step.inputType) {
+						Object.defineProperties(event, {
+							inputType: {
+								value: step.inputType,
+								configurable: true
+							},
+							data: {
+								value: step.data ?? '',
+								configurable: true
+							}
+						});
+					}
+
+					target.dispatchEvent(event);
+					await flushEventTurn();
+					continue;
+				}
+
 				const event =
-					typeof InputEvent === 'function'
-						? new InputEvent('beforeinput', {
+					typeof CompositionEvent === 'function'
+						? new CompositionEvent(step.type, {
 								bubbles: true,
-								cancelable: step.cancelable ?? true,
-								inputType: step.inputType,
+								cancelable: true,
 								data: step.data ?? ''
 							})
-						: (new Event('beforeinput', {
+						: (new Event(step.type, {
 								bubbles: true,
-								cancelable: step.cancelable ?? true
-							}) as InputEvent);
+								cancelable: true
+							}) as CompositionEvent);
 
-				if (typeof InputEvent !== 'function' || event.inputType !== step.inputType) {
-					Object.defineProperties(event, {
-						inputType: {
-							value: step.inputType,
-							configurable: true
-						},
-						data: {
-							value: step.data ?? '',
-							configurable: true
-						}
+				if (typeof CompositionEvent !== 'function' || event.data !== (step.data ?? '')) {
+					Object.defineProperty(event, 'data', {
+						value: step.data ?? '',
+						configurable: true
 					});
 				}
 
 				target.dispatchEvent(event);
 				await flushEventTurn();
-				continue;
 			}
-
-			const event =
-				typeof CompositionEvent === 'function'
-					? new CompositionEvent(step.type, {
-							bubbles: true,
-							cancelable: true,
-							data: step.data ?? ''
-						})
-					: (new Event(step.type, {
-							bubbles: true,
-							cancelable: true
-						}) as CompositionEvent);
-
-			if (typeof CompositionEvent !== 'function' || event.data !== (step.data ?? '')) {
-				Object.defineProperty(event, 'data', {
-					value: step.data ?? '',
-					configurable: true
-				});
-			}
-
-			target.dispatchEvent(event);
-			await flushEventTurn();
-		}
-	}, steps);
+		},
+		{ sequence: steps, held: options.held ?? false }
+	);
 };
 
 export const blurEditor = async (page: Page) => {

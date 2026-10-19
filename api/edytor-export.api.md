@@ -667,21 +667,11 @@ export type NewInline = Omit<InlineSpec, 'id'> & {
 ```ts
 export type SuggestedChange = {
     readonly suggestion: string;
-    readonly kind: 'insert' | 'delete' | 'block' | 'split' | 'op';
-    readonly block: BlockId | null;
+    readonly kind: 'insert' | 'delete' | 'block' | 'split' | 'remove';
+    readonly block: BlockId;
     readonly offset: number;
     readonly length: number;
     readonly text: string;
-    readonly op?: SuggestedOp;
-};
-```
-
-#### crdt/doc/suggest.d.ts#SuggestedOp
-
-```ts
-export type SuggestedOp = {
-    op: 'deleteBlock' | 'mergeBlocks' | 'setBlockType' | 'patchData' | 'formatRange';
-    args: unknown[];
 };
 ```
 
@@ -1973,7 +1963,7 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
-    moveRefused: string;
+    notSuggested: string;
 };
 ```
 

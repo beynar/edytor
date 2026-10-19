@@ -2817,10 +2817,10 @@ writer's clocks it owns, up to the writer's next record. Its creation is in
 no history step (`ownTextIds`), so no undo or redo moves those clocks. The
 record holds `at` (ms), `via` (an agent: `'ai'`) and `lbl` (a label), and
 a list: its writer's id lists (fork patch YP31: hold records that hold
-nothing inside a nested node) propose deletions, anyone else's settle
-ranges (the decider is the entry's client), and its writer's JSON entries
-`{ op, args }` propose operations. What is pending is a function of that
-state, so replicas converge in any delivery order.
+nothing inside a nested node) propose deletions (of text, or of a block
+by its node), anyone else's settle ranges (the decider is the entry's
+client). What is pending is a function of that state, so replicas
+converge in any delivery order.
 
 ### `sugg.insert` — an insertion is its writer's text
 
@@ -2839,40 +2839,31 @@ step wrote them). Text typed inside the range later is not in it and
 survives an accept. Units the record already proposes are skipped, so a
 second Delete over struck text proposes nothing new.
 
-### `sugg.op` — any other step is a proposed operation
+### `sugg.refused` — only text and blocks are suggested
 
-A suggesting plan's `deleteBlock`, `mergeBlocks`, `setBlockType`,
-`patchData` and `formatRange` steps on content that is not its author's
-pending one are written as the step's operation and its arguments
-(`formatRange`: its block, two anchors and the marks); on accept the
-reviewer runs the operation again (prepared then, so a target gone leaves
-nothing pending and runs nothing). Steps on its author's pending content
-are written directly. A later step's offsets, prepared with the proposed
-text gone, step over it; an insertion at a proposed deletion lands after
-the struck text.
-
-### `sugg.move.refused` — nothing moves through a suggestion
-
-A plan holding a `moveBlocks` step is refused whole (`refused`,
-`'suggesting'`), nothing written; a view in suggesting mode cannot move
-blocks (a drag, a move key, a handle move) and announces it.
+A suggesting plan's `deleteBlock` step on a block that is not its author's
+pending one is proposed: the writer's id list names the node of each block
+it removes (a retype the deletion writes on a child it promotes follows
+it: read again when the deletion is accepted). A plan holding a
+`moveBlocks` step, or a `mergeBlocks`, `setBlockType`, `patchData` or
+`formatRange` step on content that is not its author's pending block, is
+refused whole (`refused`, `'suggesting'`), nothing written; a view in
+suggesting mode cannot move blocks (a drag, a move key, a handle move) and
+announces every refusal (`editor.notSuggested`). Steps on its author's
+pending blocks are written directly. A later step's offsets, prepared with
+the proposed text gone, step over it; an insertion at a proposed deletion
+lands after the struck text.
 
 ### `sugg.decide` — a decision writes only what changes
 
 Accepting an insertion or rejecting a deletion settles its ids (the text
 stays); rejecting an insertion or accepting a deletion is the decider's
-`deleteText` (a hold: the text goes); a rejected block is deleted (its
-children promote), a rejected split joins the block it was split from (its
-writer's text held); an accepted operation runs, and settles. One command
-and one undo step of the decider (`acceptSuggestion`, `rejectSuggestion`),
-never written as a suggestion; an undo makes the change pending again.
-
-Accept overwrites: an accepted operation runs again with the arguments it
-was proposed with (a `setBlockType`'s kind, a `patchData`'s values, a
-`formatRange`'s marks over its anchors), through the decider's
-dispatcher. A field a collaborator changed since the proposal gets the
-proposed value, as the same edit made at the decision would write it; the
-reviewer accepts what the suggestion shows.
+hold of the change's ids (the text goes; one engine call, `YNode#hold`,
+as a settle is); a rejected block and an accepted block deletion are the
+decider's block delete (its children promote), a rejected split joins the
+block it was split from (its writer's text held). One command and one undo
+step of the decider (`acceptSuggestion`, `rejectSuggestion`), never written
+as a suggestion; an undo makes the change pending again.
 
 ### `sugg.decide.concurrent` — decisions compose
 

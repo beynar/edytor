@@ -292,15 +292,20 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 		await expect.poll(async () => (await rects(page, 'deleted')).length).toBe(0);
 	});
 
-	test('a move is refused while the view suggests, and said', async ({ page }) => {
+	test('a move, and a merge, are refused while the view suggests, and said', async ({ page }) => {
 		await open(page);
 		await clickText(page, 'b');
 		await inPage(page, (edytor) => (edytor.suggestions.suggesting = true));
+		// Backspace at a block's start would merge it: refused, and said.
+		await page.keyboard.press('Home');
+		await page.keyboard.press('Backspace');
+		await expect(page.locator('[data-edytor-live]')).toContainText('Only text and blocks');
+		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
 		const moved = await inPage(page, (edytor) =>
 			edytor.move({ blocks: [edytor.idToBlock.get('b')], direction: 'up' }).map((b: any) => b.id)
 		);
 		expect(moved).toEqual([]);
-		await expect(page.locator('[data-edytor-live]')).toContainText('do not move in a suggestion');
 		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
+		expect(await inPage(page, (edytor) => edytor.facade.suggest.changes().length)).toBe(0);
 	});
 });

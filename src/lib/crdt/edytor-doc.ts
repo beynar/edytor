@@ -357,8 +357,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			write,
 			apply,
 			framed: funnel.framed,
-			anchorAt,
-			resolveAnchor,
 			run: (op, args) =>
 				apply((prepare as unknown as Record<string, (...a: unknown[]) => Prepared>)[op]!(...args))
 		});

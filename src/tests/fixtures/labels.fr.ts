@@ -32,7 +32,7 @@ export const fr: Labels = {
 		outdented: (what) => `${what} désindenté`,
 		moved: (what) => `${what} déplacé`,
 		deleted: (what) => `${what} supprimé`,
-		moveRefused: 'Les blocs ne se déplacent pas dans une proposition'
+		notSuggested: 'Seuls le texte et les blocs peuvent être proposés'
 	},
 	richText: {
 		kinds: {

@@ -725,9 +725,7 @@ export class Edytor {
 		this.suggestions
 			.changes()
 			.flatMap((c) =>
-				c.block &&
-				c.length &&
-				(deleted ? c.kind === 'delete' : c.kind === 'insert' || c.op?.op === 'formatRange')
+				c.block && c.length && c.kind === (deleted ? 'delete' : 'insert')
 					? runOf(this, c.block, c.offset, c.length, false, this.suggestions.colorOf(c.suggestion))
 					: []
 			);

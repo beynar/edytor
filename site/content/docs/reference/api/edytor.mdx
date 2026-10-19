@@ -2642,7 +2642,7 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
-    moveRefused: string;
+    notSuggested: string;
 };
 ```
 
@@ -2650,7 +2650,7 @@ export type EditorLabels = {
 - `block`: One block in an announcement, by its kind's label ("Heading 1 block").
 - `blocks`: Several blocks in an announcement ("3 blocks").
 - `moved`: A move to a place (a drop).
-- `moveRefused`: Announced when a move is refused because the view is suggesting.
+- `notSuggested`: Announced when a change is refused because the view is suggesting (a move, a merge, a retype, a data change, a format).
 
 ## Edytor
 

@@ -808,7 +808,7 @@
 }
 
 /*
- * Shared suggestions: a block a suggestion made or proposes an operation on
+ * Shared suggestions: a block a suggestion made or proposes to delete
  * (`data-edytor-suggested`), and its runs in the overlay, in its author's
  * colour (`--edytor-range-color`).
  */
@@ -823,9 +823,6 @@
 .edytor-notion [data-edytor-suggested='removed'] [data-edytor-text] {
 	text-decoration: line-through;
 	text-decoration-color: var(--edytor-suggestion-removed-line, rgba(235, 87, 87, 0.6));
-}
-.edytor-notion :is([data-edytor-suggested='merged'], [data-edytor-suggested='changed']) {
-	box-shadow: inset 2px 0 0 var(--edytor-suggestion-accent);
 }
 :is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-suggestion-inserted] {
 	border-bottom: 2px solid var(--edytor-range-color, rgb(68 131 97));

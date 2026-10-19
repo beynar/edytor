@@ -115,13 +115,8 @@ const sideOf = (at: ResolvedAt) => {
 	return side && ([side, (at as Record<typeof side, BlockId>)[side]] as const);
 };
 
-/** The block mark of a proposed operation (`marked`); a format marks its text. */
-const MARKS: Record<string, string | undefined> = {
-	deleteBlock: 'removed',
-	mergeBlocks: 'merged',
-	setBlockType: 'changed',
-	patchData: 'changed'
-};
+/** A block change's mark (`marked`): its kind's, but for these. */
+const MARKS: Record<string, string> = { block: 'inserted', remove: 'removed' };
 
 /** Two blocks alike but for their ids. */
 const same = (a: JSONBlock, b: JSONBlock) =>
@@ -366,13 +361,15 @@ export class Suggestions {
 	 * @internal `plan` written as this view's suggestion while it suggests
 	 * (`Dispatcher.write`), with where its caret is now; `null` while it does
 	 * not. It continues the open suggestion while it writes in the block
-	 * that one last wrote in or a neighbour; a move is refused, announced.
+	 * that one last wrote in or a neighbour; a plan the document refuses to
+	 * suggest (a move, a merge, a retype, a data change, a format:
+	 * `sugg.refused`) is refused and announced.
 	 */
 	written = (plan: Plan): { result: OpResult; at?: DocPosition } | null => {
 		if (!this.suggesting || this.#deciding) return null;
 		const { facade, announcer } = this.edytor;
-		if (plan.writes.some((w) => w.op === 'moveBlocks')) {
-			announcer.say(labelsOf(this.edytor, 'editor', editorEnglish).moveRefused);
+		if (facade.suggest.refuses(plan, (this.#writer ||= facade.suggest.writer()))) {
+			announcer.say(labelsOf(this.edytor, 'editor', editorEnglish).notSuggested);
 			return { result: refused('suggesting') };
 		}
 		const block = plan.effect.textRanges[0]?.block ?? plan.ids[0] ?? null;
@@ -380,7 +377,7 @@ export class Suggestions {
 		const near =
 			block === last || (!!last && [facade.next(last), facade.previous(last)].includes(block));
 		if (!near || !facade.suggest.records().some((r) => r.id === this.#open))
-			this.#open = facade.suggest.open({ writer: (this.#writer ||= facade.suggest.writer()) });
+			this.#open = facade.suggest.open({ writer: this.#writer });
 		const out = facade.suggest.apply(this.#open!, plan);
 		if (out.result.status === 'applied') this.#last = block;
 		return out;
@@ -422,16 +419,15 @@ export class Suggestions {
 
 	/**
 	 * @internal How a shared suggestion marks block `id` (`data-edytor-suggested`):
-	 * `inserted` or `split` (it made the block), `removed`, `merged` or
-	 * `changed` (an operation it proposes); `undefined`: none.
+	 * `inserted` or `split` (it made the block), `removed` (it proposes
+	 * deleting it); `undefined`: none.
 	 */
 	marked = (id: string): string | undefined => {
 		void [this.revision, this.edytor.valueRevision];
-		const change = this.edytor.facade.suggest
+		const kind = this.edytor.facade.suggest
 			.at(id)
-			.find((c) => c.kind !== 'insert' && c.kind !== 'delete');
-		const op = change?.op?.op;
-		return change && (op ? MARKS[op] : change.kind === 'block' ? 'inserted' : 'split');
+			.find((c) => c.kind !== 'insert' && c.kind !== 'delete')?.kind;
+		return kind && (MARKS[kind] ?? kind);
 	};
 
 	/** @internal The colour of suggestion `id`'s author (its profile's), for its runs. */

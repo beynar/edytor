@@ -729,6 +729,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     label?: string;
                     at?: number;
                 }) => string;
+                refuses: (p: import("./edytor-doc.js").Plan, w: number) => boolean;
                 apply: (id: string, p: import("./edytor-doc.js").Prepared) => {
                     result: import("./edytor-doc.js").OpResult;
                     at?: {

@@ -112,14 +112,14 @@ describe('suggesting mode (sugg.*)', () => {
 		]);
 	});
 
-	it('nothing moves while the view suggests: refused and said (sugg.move.refused)', () => {
+	it('nothing moves while the view suggests: refused and said (sugg.refused)', () => {
 		const { edytor, p2 } = view();
 		edytor.suggestions.suggesting = true;
 		const block = edytor.idToBlock.get(p2)!;
 		expect(edytor.canMove({ blocks: [block], direction: 'up' })).toBe(false);
 		expect(edytor.move({ blocks: [block], direction: 'up' })).toEqual([]);
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
-		expect(edytor.announcer.message).toBe('Blocks do not move in a suggestion');
+		expect(edytor.announcer.message).toBe('Only text and blocks can be suggested');
 		// A move planned by another command (a nest) is refused at its write.
 		expect(edytor.moveBlocks([p2], { parent: null, index: 0 }).status).toBe('refused');
 		// Nesting (Tab) and outdenting are moves too.

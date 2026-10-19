@@ -152,10 +152,10 @@ export const canMove = (edytor: Edytor, request: BlockMoveRequest): boolean =>
  * (`announcer.moved`).
  */
 export const move = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
-	// Nothing moves through a suggestion (`sugg.move.refused`): refused, and said.
+	// Nothing moves through a suggestion (`sugg.refused`): refused, and said.
 	if (edytor.suggestions.suggesting) {
 		edytor.dispatcher.record({ operation: 'moveBlocks', status: 'refused' });
-		edytor.announcer.say(labelsOf(edytor, 'editor', editorEnglish).moveRefused);
+		edytor.announcer.say(labelsOf(edytor, 'editor', editorEnglish).notSuggested);
 		return [];
 	}
 	const runs = parts(edytor, request);

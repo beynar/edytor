@@ -1,7 +1,8 @@
 /**
  * Shared suggestions under concurrency (`sugg.*`): seeded random schedules
- * of three replicas — one suggesting (text, splits, merges, block deletes,
- * retypes, formats; moves refused), two editing and deciding (accept or
+ * of three replicas — one suggesting (text, splits, block deletes; retypes
+ * and formats written on its own pending blocks and refused elsewhere, as
+ * moves are), two editing and deciding (accept or
  * reject a random pending change) — with undo and redo on every replica,
  * and every update delivered in a random order, some held back and
  * delivered late. After a full sync:
@@ -114,7 +115,7 @@ const run = (seed: number) => {
 										: f.prepare.moveBlocks([block], { parent: null, index: 0 });
 			const { result } = S(suggester).apply(record!, plan);
 			log.push(`${step} suggest ${kind} ${block}@${offset} → ${result.status}`);
-			if (kind === 9 && 'writes' in plan && plan.writes.some((w) => w.op === 'moveBlocks'))
+			if ('writes' in plan && plan.writes.some((w) => w.op === 'moveBlocks'))
 				expect(result.status).toBe('refused');
 		} else if (roll < 60 && block !== null) {
 			// A plain edit by a reviewer.

@@ -27,8 +27,8 @@ export type EditorLabels = {
 	/** A move to a place (a drop). */
 	moved: (what: string) => string;
 	deleted: (what: string) => string;
-	/** Announced when a move is refused because the view is suggesting. */
-	moveRefused: string;
+	/** Announced when a change is refused because the view is suggesting (a move, a merge, a retype, a data change, a format). */
+	notSuggested: string;
 };
 
 /** The rich text kinds and marks: their names, the document's own words, placeholders. */
@@ -269,7 +269,7 @@ export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
 	outdented: (what) => `Outdented ${what}`,
 	moved: (what) => `Moved ${what}`,
 	deleted: (what) => `Deleted ${what}`,
-	moveRefused: 'Blocks do not move in a suggestion'
+	notSuggested: 'Only text and blocks can be suggested'
 });
 
 /** The `richText` section in English. */

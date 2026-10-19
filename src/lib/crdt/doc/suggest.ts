@@ -16,9 +16,11 @@
  * - **An operation** (a block delete, a merge, a retype, a data change, a
  *   format) is the plan step's operation and its arguments (`argsOf`), run
  *   again by the reviewer on accept.
- * - **A decision** writes only what changes: the text that goes is the
- *   reviewer's hold (a `deleteText`), the text that stays a settled id list
- *   written by the reviewer into the record (its client is the decider).
+ * - **A decision** writes only what changes, one engine call over the
+ *   change's ids (`YNode#hold`): the text that goes is the reviewer's hold
+ *   (fork patch YP20, the root records list), the text that stays a settled
+ *   id list written by the reviewer into the record (its client is the
+ *   decider).
  *
  * What is pending is a function of the replicated state (items, records,
  * settled ranges), so replicas converge in any delivery order. It is read
@@ -26,7 +28,13 @@
  * proposals are in: a document with no suggestion pays nothing.
  */
 import type { EngineNode } from '../engine-api.js';
-import { ATTRIBUTION_ROOT, CONTENT_NODE, isNodeLike, SUGGEST_ROOT } from '../schema.js';
+import {
+	ATTRIBUTION_ROOT,
+	CONTENT_NODE,
+	isNodeLike,
+	SUGGEST_ROOT,
+	TEXT_DELETES_ROOT
+} from '../schema.js';
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
 import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
 import { canonKey } from '../text/ranges.js';
@@ -92,9 +100,15 @@ export type SuggestionRecord = {
 	readonly writer: number;
 };
 
-/** One part of a decision: a settled id list, or a document operation's calls (their arguments read when it runs). */
+/**
+ * One part of a decision: an id list written into suggestion `into`'s
+ * record (settled: it stays) or, `into` null, the decider's hold of the
+ * text that goes (fork patch YP20, the root records list): one engine
+ * call either way (`YNode#hold`); or a document operation's calls (their
+ * arguments read when it runs).
+ */
 export type DecisionPart =
-	| { settle: string; ids: IdRange[] }
+	| { into: string | null; ids: number[] }
 	| { op: string; calls: () => unknown[][] };
 
 type Op = SuggestedOp & { k: number };
@@ -122,8 +136,8 @@ type Pending = { changes: SuggestedChange[]; inserted: number[] };
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const OPS = ['deleteBlock', 'mergeBlocks', 'setBlockType', 'patchData', 'formatRange'];
-/** The order a decision runs its operations in: text first, structure last. */
-const RANK: Record<string, number> = { deleteText: 0, mergeBlocks: 2, deleteBlock: 3 };
+/** The order a decision runs its operations in: the id lists first, structure last. */
+const RANK: Record<string, number> = { mergeBlocks: 2, deleteBlock: 3 };
 
 /** The list `map` keeps at `key` (made empty when absent). */
 const listOf = <K, V>(map: Map<K, V[]>, key: K): V[] => map.get(key) ?? map.set(key, []).get(key)!;
@@ -158,6 +172,8 @@ const without = (content: (JSONText | JSONInlineBlock)[], offsets: readonly numb
 export type SuggestContext = DocBase &
 	DocReads & {
 		write: <R>(fn: () => R) => R;
+		/** Write in one transaction and one attribution frame (the funnel's). */
+		framed: (fn: () => void) => boolean;
 		apply: (p: Prepared) => OpResult;
 		anchorAt: (id: BlockId, offset: number, affinity?: 'left' | 'right') => DocAnchor | null;
 		resolveAnchor: (anchor: DocAnchor) => { blockId: BlockId; offset: number } | null;
@@ -521,7 +537,7 @@ export const docSuggest = (c: SuggestContext) => {
 
 	/** Append an id list (YP31) or an operation to record `rec`'s list, as the current client. */
 	const entry = (rec: Rec, value: number[] | SuggestedOp) => {
-		const node = rec.node as EngineNode & { hold(ids: number[]): void };
+		const { node } = rec;
 		if (Array.isArray(value)) node.hold(value);
 		else node.insert(node.length, [value]);
 		version++;
@@ -624,61 +640,46 @@ export const docSuggest = (c: SuggestContext) => {
 		return { result, ...(caret && { at: caret }) };
 	};
 
-	/** Settle `ids` of suggestion `id`: written by the current client (the decider). */
-	const settle = (id: string, ids: readonly IdRange[]): void =>
-		write(() => void (ids.length && entry(recOf(id), ids.flat())));
-
-	/**
-	 * The `deleteText` calls of the units `ids` names that `b` still shows,
-	 * one per run shown in one piece, from the end (so each call's offset
-	 * holds), read when they run.
-	 */
-	const deleteRun = (b: BlockId, ids: readonly IdRange[]): DecisionPart => ({
-		op: 'deleteText',
-		calls: () => {
-			const named = idSet();
-			for (const [client, clock, len] of ids) named.add(client, clock, len);
-			const runs: [BlockId, number, number][] = [];
-			for (const u of unitsOf(b))
-				if (!named.has(u.client, u.clock)) continue;
-				else if (runs[0] && runs[0][1] + runs[0][2] === u.offset) runs[0][2]++;
-				else runs.unshift([b, u.offset, 1]);
-			return runs;
-		}
-	});
+	/** Write decision part `part` (an id list) by the current client: settled in its record, or held. */
+	const hold = ({ into, ids }: { into: string | null; ids: number[] }): void =>
+		void (into === null
+			? c.framed(() => doc.get(TEXT_DELETES_ROOT).hold(ids))
+			: write(() => entry(recOf(into), ids)));
 
 	/**
 	 * What accepting (`accept`) or rejecting `changes` writes, in the order
-	 * it runs: the settled id lists first, then the operations, text before
-	 * structure, each reading its arguments when it runs.
+	 * it runs: the id lists first (what stays settled in its record, the
+	 * text that goes held by the decider), then the operations, structure
+	 * last, each reading its arguments when it runs.
 	 */
 	const decide = (changes: readonly SuggestedChange[], accept: boolean): DecisionPart[] => {
-		const settles = new Map<string, IdRange[]>();
+		const lists = new Map<string | null, number[]>();
 		const ops: DecisionPart[] = [];
 		for (const ch of changes) {
 			const b = ch.block!;
 			const keep = ch.kind === 'op' || (ch.kind === 'delete' ? !accept : accept);
-			if (keep) listOf(settles, ch.suggestion).push(...ch.ids);
-			if (ch.kind === 'insert' || ch.kind === 'delete') {
-				if (!keep) ops.push(deleteRun(b, ch.ids));
-			} else if (ch.kind === 'op') {
+			// A rejected block goes with its operation; a rejected split's writer text is held.
+			if (keep || ch.kind !== 'block')
+				listOf(lists, keep ? ch.suggestion : null).push(
+					...(keep || ch.kind !== 'split' ? ch.ids : ch.ids.slice(1)).flat()
+				);
+			if (ch.kind === 'op' && accept) {
 				const { op, args } = ch.op!;
-				if (accept)
-					ops.push({
-						op,
-						calls: () => {
-							if (op !== 'formatRange') return [args];
-							const [from, to] = [args[1], args[2]].map((a) => c.resolveAnchor(a as DocAnchor));
-							return from && to?.blockId === from.blockId
-								? [[from.blockId, from.offset, to.offset - from.offset, args[3]]]
-								: [];
-						}
-					});
-			} else if (!accept && ch.kind === 'block')
+				ops.push({
+					op,
+					calls: () => {
+						if (op !== 'formatRange') return [args];
+						const [from, to] = [args[1], args[2]].map((a) => c.resolveAnchor(a as DocAnchor));
+						return from && to?.blockId === from.blockId
+							? [[from.blockId, from.offset, to.offset - from.offset, args[3]]]
+							: [];
+					}
+				});
+			} else if (!keep && ch.kind === 'block')
 				ops.push({ op: 'deleteBlock', calls: () => (c.live(b) ? [[b]] : []) });
-			else if (!accept)
-				// Its writer's text goes, then the block joins the one it was split from.
-				ops.push(deleteRun(b, ch.ids.slice(1)), {
+			else if (!keep && ch.kind === 'split')
+				// The block joins the one it was split from.
+				ops.push({
 					op: 'mergeBlocks',
 					calls: () => {
 						const into = sourceOf(b);
@@ -686,20 +687,27 @@ export const docSuggest = (c: SuggestContext) => {
 					}
 				});
 		}
-		const rank = (part: DecisionPart) => ('op' in part ? (RANK[part.op] ?? 1) : -1);
+		const rank = (part: DecisionPart) => ('op' in part ? (RANK[part.op] ?? 1) : 0);
 		return [
-			...[...settles].map(([settle, ids]) => ({ settle, ids })),
+			...[...lists].map(([into, ids]) => ({ into, ids })),
 			...ops.sort((a, b) => rank(a) - rank(b))
 		];
 	};
 
-	/** Write decision `parts` raw, by the current client, in one transaction (a bare document's decision). */
-	const run = (parts: readonly DecisionPart[]) =>
+	/**
+	 * Write decision `parts` by the current client, in one transaction: the
+	 * id lists, then each operation through `exec` (the bare document's own
+	 * operation by default; a view passes its dispatched one).
+	 */
+	const run = (
+		parts: readonly DecisionPart[],
+		exec: (op: string, args: unknown[]) => unknown = c.run
+	) =>
 		write(() =>
 			doc.transact(() => {
 				for (const part of parts)
-					if ('op' in part) for (const args of part.calls()) c.run(part.op, args);
-					else settle(part.settle, part.ids);
+					if ('op' in part) for (const args of part.calls()) exec(part.op, args);
+					else hold(part);
 			})
 		);
 
@@ -788,7 +796,6 @@ export const docSuggest = (c: SuggestContext) => {
 		writer,
 		open,
 		apply,
-		settle,
 		decide,
 		run,
 		withdraw,

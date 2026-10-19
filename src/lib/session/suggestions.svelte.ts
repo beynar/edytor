@@ -389,9 +389,10 @@ export class Suggestions {
 	/**
 	 * Accept (`accept`) or reject shared `changes`: one command
 	 * (`acceptSuggestion`, `rejectSuggestion`, its payload `{ changes }`),
-	 * one undo step, refused unless this view decides. Its writes are the
-	 * document's operations (`deleteText`, `deleteBlock`, `mergeBlocks`, a
-	 * proposed one run again) and the settled id lists.
+	 * one undo step, refused unless this view decides. Its writes are id
+	 * lists (the text that stays settled in its record, the text that goes
+	 * held by this view's user) and the view's operations (`deleteBlock`,
+	 * `mergeBlocks`, a proposed one run again).
 	 */
 	decide = (changes: readonly SuggestedChange[], accept: boolean): OpResult =>
 		this.#decide(changes, accept);
@@ -409,13 +410,9 @@ export class Suggestions {
 			this.#deciding = true;
 			try {
 				if (own !== undefined) return suggest.withdraw(changes[0]!.suggestion, own);
-				for (const part of suggest.decide(changes, accept))
-					if (!('op' in part)) suggest.settle(part.settle, part.ids);
-					else
-						for (const args of part.calls())
-							(edytor as unknown as Record<string, (...a: unknown[]) => unknown>)[part.op]!(
-								...args
-							);
+				suggest.run(suggest.decide(changes, accept), (op, args) =>
+					(edytor as unknown as Record<string, (...a: unknown[]) => unknown>)[op]!(...args)
+				);
 			} finally {
 				this.#deciding = false;
 			}

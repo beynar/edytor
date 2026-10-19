@@ -206,12 +206,23 @@ export const writeFunnel = (c: FunnelContext) => {
 		if (p.version !== runsView.version()) {
 			throw new Error('[edytor-doc] stale plan: prepared against another document version');
 		}
-		return write(() =>
+		return framed((f) => p.writes.forEach((w) => writeStep(w, f)))
+			? { status: 'applied', ids: p.ids }
+			: NOOP;
+	};
+
+	/**
+	 * Write `fn` in one transaction and one attribution frame (a plan's
+	 * steps, or a decision's hold of the text that goes, which stamps as a
+	 * text delete does). Whether it wrote anything.
+	 */
+	const framed = (fn: (f: Frame) => void): boolean =>
+		write(() =>
 			doc.transact(() => {
 				const frame = runsView.track();
 				const f: Frame = { inherit: new Map(), bounds: new Map(), unions: [], quiet: frame.quiet };
 				try {
-					for (const w of p.writes) writeStep(w, f);
+					fn(f);
 				} catch (error) {
 					// The frame would otherwise fold every later commit.
 					frame.end();
@@ -219,14 +230,14 @@ export const writeFunnel = (c: FunnelContext) => {
 				}
 				const folded = frame.end();
 				close(f, folded);
-				return folded.wrote ? { status: 'applied', ids: p.ids } : NOOP;
+				return folded.wrote;
 			})
 		);
-	};
 
 	return {
 		write,
 		apply,
+		framed,
 		/** Disposal is terminal for writes. */
 		dispose: (): void => {
 			disposed = true;

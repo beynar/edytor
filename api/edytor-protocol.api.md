@@ -736,9 +736,8 @@ declare const bindCrdt: (Y: EngineApi) => {
                         offset: number;
                     };
                 };
-                settle: (id: string, ids: readonly import("./doc/suggest.js").IdRange[]) => void;
                 decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
-                run: (parts: readonly import("./doc/suggest.js").DecisionPart[]) => void;
+                run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown) => void;
                 withdraw: (id: string, w: number) => void;
                 records: () => import("./doc/suggest.js").SuggestionRecord[];
                 any: () => boolean;

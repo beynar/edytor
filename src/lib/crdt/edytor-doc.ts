@@ -356,6 +356,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			...reads,
 			write,
 			apply,
+			framed: funnel.framed,
 			anchorAt,
 			resolveAnchor,
 			run: (op, args) =>

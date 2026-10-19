@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 3.0.0
+
 #### Breaking changes
 
 - **Schema generation 10: stored documents and rooms start over.** A text delete is now its writer's own record, kept in the document; a merge is one item in the text of the block it joins, so a block no longer carries a list of the blocks merged into it; a block's place is its slot in its parent's order, written once when the block is created, with a move one record naming the moved blocks — the engine orders them, nothing is ranked; and the engine's update encoding writes each string and each client id once per update, a block's id is only its key (its node no longer repeats it, nor does its attribution record's key), and a formatting mark is written in a few bytes (wire word `14010`, browser database `edytor-v14-g10:<name>`). Rooms, browser stores, history versions and peers of generation 6 to 9 are refused (`GenerationMismatchError`, `schema-mismatch`), never converted: a browser's local copy is not read and the page fetches the room's state again; a room or a stored state of an earlier generation must be re-created from its JSON (`toJSON` with the previous release, then `createDocument({ value })`). Update every client and the room together.

@@ -237,6 +237,33 @@ about half again over that estimate, mostly in the document part (the
 decisions as plans, the document without suggestions, withdrawal, proposals
 of every operation kind) and in the live streaming diff of the session.
 
+**The diet (after review, the user's ask: cut first, behaviour unchanged).**
+One cut per commit, measured, kept only at 0.3 KB or more:
+
+| Cut | Measured (minimal, min / gzip) | Kept |
+| --- | --- | --- |
+| The engine's IdSet for a record's proposed and settled ranges and a decision's units, instead of a class of the part's own | −404 / −139 B | yes |
+| One builder for a change object (insert, delete, block, split, operation) and one span read for a proposed format | −5 B | no |
+| A view's decision run through the part's `run` (one loop for a bare document and a view) | −74 B | no |
+
+What each part of the code costs, minified (each member removed from the
+file, the file minified again): in `crdt/doc/suggest`, `apply` 1.78 KB
+(a plan written as a suggestion: insertions, proposed deletions over the
+offsets the plan counts gone, formats as anchors, operations), the records'
+read 1.07 KB, the pending changes of a block 0.95 KB, the document without
+its suggestions about 0.9 KB (+0.35 KB for its run joining), decisions
+0.74 KB, the blocks to read 0.69 KB, `open` 0.42 KB, a block's units
+0.38 KB; in the session, the live write of an AI answer 0.97 KB (+0.25 KB
+for the text extension), the accept of a view-local suggestion 0.83 KB
+(master's), the grouping of a suggesting view's writes 0.6 KB. None of them
+repeats another: the remaining cuts need a behaviour change (the text
+extension of a streamed answer, formats proposed by offset rather than
+anchors, splits proposed as blocks), which the review did not take.
+
+After the diet, shared suggestions cost **+17.0 KB min / +5.95 KB gzip** in
+the minimal app (+18.4 / +6.35 KB for the whole branch, with the press
+fixes).
+
 The leaner ways that were measured on their own:
 
 | # | Measured |

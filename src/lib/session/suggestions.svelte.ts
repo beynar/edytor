@@ -350,7 +350,7 @@ export class Suggestions {
 		const near =
 			block === last || (!!last && [facade.next(last), facade.previous(last)].includes(block));
 		const out = facade.suggest.apply(
-			near && facade.suggest.records().some((r) => r.id === this.#open) ? this.#open : null,
+			near ? this.#open : null,
 			plan,
 			(this.#writer ||= facade.suggest.writer())
 		);
@@ -413,10 +413,10 @@ export class Suggestions {
 	};
 
 	/** @internal The colour of suggestion `id`'s author (its profile's), for its runs. */
-	colorOf = (id: string): string | undefined => {
-		const by = this.edytor.facade.suggest.records().find((r) => r.id === id)?.by;
-		return by === undefined ? undefined : this.edytor.document.attribution.actors.get(by)?.color;
-	};
+	colorOf = (id: string): string | undefined =>
+		this.edytor.document.attribution.actors.get(
+			this.edytor.facade.suggest.records().find((r) => r.id === id)?.by as string
+		)?.color;
 
 	/** Accept (or reject) every pending shared suggestion: one command, one undo step. */
 	acceptAll = (): OpResult => this.decide(this.changes(), true);
@@ -459,10 +459,10 @@ export class Suggestions {
 	/** Where a shared suggestion's blocks go: its position's slot (a `replace`: after what it replaces). */
 	#slot = (at: ResolvedAt) => {
 		const { facade } = this.edytor;
-		const [side, id] = sideOf(at) ?? ['after', this.#blocks(at).toSorted(facade.compare).at(-1)!];
-		if (side === 'inside') return { parent: id, index: facade.childrenIds(id).length };
-		const pos = facade.positionOf(id);
-		return pos && { parent: pos.parent, index: pos.index + (side === 'before' ? 0 : 1) };
+		const target = this.#target(at, { lines: [] });
+		if ('slot' in target) return target.slot;
+		const pos = facade.positionOf(this.#blocks(at).toSorted(facade.compare).at(-1)!);
+		return pos && { parent: pos.parent, index: pos.index + 1 };
 	};
 
 	/**

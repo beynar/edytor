@@ -4,13 +4,15 @@
 
 	/**
 	 * A run of text the overlay marks: its ends, whether it is the current one
-	 * (`data-current`), and a colour (`--edytor-range-color`: a suggestion's author's).
+	 * (`data-current`), a colour (`--edytor-range-color`: a suggestion's
+	 * author's) and its own name (`data-edytor-<name>`, the layer's by default).
 	 */
 	export type MarkedRange = {
 		start: PresencePoint;
 		end: PresencePoint;
 		current?: boolean;
 		color?: string;
+		name?: string;
 	};
 
 	/** The run of `length` at block offset `offset` of block `id` (none where it is not shown). */
@@ -20,11 +22,12 @@
 		offset: number,
 		length: number,
 		current?: boolean,
-		color?: string
+		color?: string,
+		name?: string
 	): MarkedRange[] => {
 		const block = edytor.idToBlock.get(id);
 		const [start, end] = [block?.textAtOffset(offset), block?.textAtOffset(offset + length)];
-		return start && end ? [{ start, end, current, color }] : [];
+		return start && end ? [{ start, end, current, color, name }] : [];
 	};
 </script>
 
@@ -47,12 +50,12 @@
 		ranges
 	}: { edytor: Edytor; name: string; z: number; ranges: () => MarkedRange[] } = $props();
 
-	let rects: (RemoteSelectionRect & { current?: boolean; color?: string })[] = $state([]);
+	let rects: (RemoteSelectionRect & Omit<MarkedRange, 'start' | 'end'>)[] = $state([]);
 
 	onMount(() =>
 		edytor.overlay.add((origin) => {
-			const next = ranges().flatMap(({ start, end, current, color }) =>
-				rangeRects(edytor, start, end, origin).map((rect) => ({ ...rect, current, color }))
+			const next = ranges().flatMap(({ start, end, ...marks }) =>
+				rangeRects(edytor, start, end, origin).map((rect) => ({ ...rect, ...marks }))
 			);
 			if (next.length || rects.length) return () => (rects = next);
 		})
@@ -67,7 +70,7 @@
 <div data-edytor-ranges={name} contenteditable="false" aria-hidden="true" style:z-index={z}>
 	{#each rects as rect, index (index)}
 		<span
-			{...{ [`data-edytor-${name}`]: '' }}
+			{...{ [`data-edytor-${rect.name ?? name}`]: '' }}
 			data-current={rect.current || undefined}
 			style:left={`${rect.left}px`}
 			style:top={`${rect.top}px`}

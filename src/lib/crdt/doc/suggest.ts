@@ -486,8 +486,8 @@ export const docSuggest = (c: SuggestContext) => {
 	};
 
 	/**
-	 * Write plan `p` as suggestion `id` (a new one of writer `w` when `null`:
-	 * the view's suggesting mode), by the suggestion's writer, in one frame:
+	 * Write plan `p` as suggestion `id` (a new one of writer `w` when `null`
+	 * or gone: the view's suggesting mode), by the suggestion's writer, in one frame:
 	 * insertions are written; a text delete proposes the units that are not
 	 * its author's pending ones (those go), the engine hiding them until the
 	 * plan ends so its later steps read the offsets they were prepared with
@@ -517,7 +517,7 @@ export const docSuggest = (c: SuggestContext) => {
 				}
 			// A promoted child's retype follows its deletion: read again when it is accepted.
 			else if (s.op !== 'setBlockType' || at(s) === s.id) return { result: refused('suggesting') };
-		const rec = recOf(id ?? open({ writer: w }));
+		const rec = (id !== null && recOf(id)) || recOf(open({ writer: w }));
 		return write(() =>
 			doc.transact((tr: unknown) =>
 				as(w, () => {

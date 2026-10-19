@@ -37,7 +37,7 @@ import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
 import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
-import Ranges, { runOf } from './components/Ranges.svelte';
+import Ranges, { runOf, type MarkedRange } from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -705,30 +705,38 @@ export class Edytor {
 		if (values.length > 0) callEach('[edytor] onChange', values, this.value);
 	};
 
-	/** The text each range `replace` suggestion removes when accepted (`Ranges`). */
-	#replaced = () => {
-		void this.suggestions.revision;
-		return this.suggestions.list.flatMap(({ at, shared }) => {
-			if (shared || !at || !('replace' in at) || Array.isArray(at.replace)) return [];
-			const { anchor, focus } = at.replace as SuggestionRange;
-			const [start, end] = [anchor, focus].map(this.selection.resolveTextAnchor);
-			return start && end ? [{ start, end }] : [];
-		});
-	};
-
 	/**
-	 * A shared suggestion's runs (`sugg.view.runs`): the deleted ones
-	 * (`deleted`), else the inserted ones and the ranges a format proposal
-	 * names, each in its author's colour.
+	 * The suggestions' runs in the overlay (`Ranges`): the text each range
+	 * `replace` removes when accepted, and a shared suggestion's inserted and
+	 * deleted runs (`sugg.view.runs`), each in its author's colour.
 	 */
-	#suggested = (deleted: boolean) => () =>
-		this.suggestions
-			.changes()
-			.flatMap((c) =>
-				c.block && c.length && c.kind === (deleted ? 'delete' : 'insert')
-					? runOf(this, c.block, c.offset, c.length, false, this.suggestions.colorOf(c.suggestion))
-					: []
-			);
+	#suggested = (): MarkedRange[] => {
+		const { suggestions } = this;
+		void suggestions.revision;
+		return [
+			...suggestions.list.flatMap(({ at, shared }) => {
+				if (shared || !at || !('replace' in at) || Array.isArray(at.replace)) return [];
+				const { anchor, focus } = at.replace as SuggestionRange;
+				const [start, end] = [anchor, focus].map(this.selection.resolveTextAnchor);
+				return start && end ? [{ start, end }] : [];
+			}),
+			...suggestions
+				.changes()
+				.flatMap((c) =>
+					c.length && (c.kind === 'insert' || c.kind === 'delete')
+						? runOf(
+								this,
+								c.block,
+								c.offset,
+								c.length,
+								false,
+								suggestions.colorOf(c.suggestion),
+								`suggestion-${c.kind === 'insert' ? 'inserted' : 'deleted'}`
+							)
+						: []
+				)
+		];
+	};
 
 	/**
 	 * The placeholder block `id` shows: its cell has one empty
@@ -1024,15 +1032,7 @@ export class Edytor {
 		// The text a `replace` suggestion removes, and a shared suggestion's runs, marked beside the host.
 		const ranges = mount(Ranges, {
 			target: this.overlay.layer!,
-			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }
-		});
-		const inserted = mount(Ranges, {
-			target: this.overlay.layer!,
-			props: { edytor: this, name: 'suggestion-inserted', z: 19, ranges: this.#suggested(false) }
-		});
-		const deleted = mount(Ranges, {
-			target: this.overlay.layer!,
-			props: { edytor: this, name: 'suggestion-deleted', z: 19, ranges: this.#suggested(true) }
+			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#suggested }
 		});
 		// The polite live region: what this view's block moves and deletes did.
 		const live = mount(Announcer, {
@@ -1042,8 +1042,6 @@ export class Edytor {
 		this.off.push(
 			() => unmount(presence),
 			() => unmount(ranges),
-			() => unmount(inserted),
-			() => unmount(deleted),
 			() => unmount(live),
 			detachOverlay
 		);

@@ -639,6 +639,42 @@ release before the providers' teardown, P-L2 bfcache, P-L3 offline),
 own, a later tick writes nothing, a version restores), the hosted
 `releases its deletes` row (three engines).
 
+### Timings, the bundle, after the decisions
+
+`pnpm bench:crdt`, `master` (8b0e11aa) and this tree alternating, three runs
+each, medians; started at a 1-minute load of 3.4, 3.4–4.7 during the runs:
+
+| Measure (ms) | `master` | Branch |
+| --- | --- | --- |
+| Keystroke, 1,000 blocks (facade p50) / 5,000 (scale) | 1.29 / 0.04 | 1.28 / 0.03 |
+| Remote keystroke, 5,000 blocks | 0.02 | 0.03 |
+| Enter, 1,000 / 5,000 blocks | 0.17 / 0.14 | 0.26 / 0.28 |
+| Backspace, 1,000 / 5,000 blocks | 0.05 / 0.07 | 0.06 / 0.14 |
+| Range delete of 40 blocks, 1,000 / 5,000 blocks | 1.61 / 1.26 | 1.52 / 1.66 |
+| Delete of 1,000 blocks, range / selected blocks | 10.4 / 15.0 | 11.5 / 12.0 |
+| Load 1,000 / 5,000 blocks (scale) | 10.9 / 43.5 | 11.8 / 35.9 |
+| Construct 1,000 / 5,000 blocks | 38.5 / 137 | 37.1 / 123 |
+| Encode 1,000 blocks (p50) | 0.79 | 0.61 |
+| Encode / load after 5,000 history steps | 0.60 / 2.76 | 0.47 / 2.46 |
+| Undo, last of 10 / after 5,000 steps | 0.07 / 0.21 | 0.07 / 0.18 |
+| Block delete, 1,000 blocks (facade p50) | 1.27 | 1.14 |
+| Heap retained, 1,000 / 5,000 blocks (MB) | 18.7 / 97.5 | 16.7 / 87.4 |
+
+Enter, Backspace and the range delete at 5,000 blocks are bimodal again
+(the branch's first run read 0.14 / 0.06 / 1.08, its second and third 0.28 /
+0.14 / 1.7; five cold samples a row). Timed warm, 200 samples a row, six
+rounds alternating at 5,000 blocks: Enter 0.099 / 0.103 ms (`master` /
+branch), Backspace 0.074 / 0.078, the range delete 0.893 / 0.924 — a few
+microseconds, the encoding cuts' (against the branch before the decisions,
+three rounds: 0.095 / 0.098, 0.072 / 0.074, 0.928 / 0.930, equal). The
+binding's `beforeCommit` check costs nothing measurable.
+
+Bundle (`node scripts/bundle-size.mjs --only minimal,all,export`, edytor's
+own minified bytes): `minimal` 425.3 → 426.8 KB (gzip of the app 162.2 →
+163.1), `all` 654.7 → 656.2, `export` 51.0 → 51.0, against the branch before
+the decisions (the binding, the history's end and its record, the purge's
+release rule, the page-leave coordinator).
+
 ### 4. Declined
 
 Purging sooner (a shorter default horizon), dropping tombstones and removed

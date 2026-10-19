@@ -629,6 +629,18 @@ export const bindText = (_Y: EngineApi) => ({
 export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
 
 /**
+ * The suggestion writers this replica minted on a doc (`doc/suggest.ts`):
+ * client ids it writes under besides its own, bound to its actor with their
+ * first write; a history replays their steps under them.
+ */
+export const writersOf = (doc: EngineDoc): Set<number> => {
+	let set = suggestionWriters.get(doc);
+	if (set === undefined) suggestionWriters.set(doc, (set = new Set()));
+	return set;
+};
+const suggestionWriters = new WeakMap<EngineDoc, Set<number>>();
+
+/**
  * Each history's open step on a doc (`doc/history.ts` registers them): what
  * the step still capturing inserted, `null` when none is open.
  */

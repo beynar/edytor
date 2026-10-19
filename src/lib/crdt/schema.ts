@@ -54,6 +54,15 @@ export const HORIZON_ATTR = 'h';
  */
 export const RELEASE_ROOT = 'released';
 
+/**
+ * The shared suggestions (`crdt/doc/suggest.ts`): attr `<id>` is one
+ * suggestion's record node, written by its writer (a client id bound to its
+ * author): its creation time `at`, `via` and `lbl`, and a list of id lists
+ * (fork patch YP31: its writer's proposed deletions, anyone else's settled
+ * ranges) and proposed operations. In the history's scope.
+ */
+export const SUGGEST_ROOT = 'suggest';
+
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';

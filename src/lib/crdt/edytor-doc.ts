@@ -98,6 +98,7 @@ import { splitMergeOps } from './doc/split-merge.js';
 import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
+import { docSuggest } from './doc/suggest.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path
 // (`api/` reports the difference), so no value of the module reads them.
@@ -286,6 +287,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		const dispose = (): void => {
 			funnel.dispose();
 			events.close();
+			suggest.dispose();
 		};
 		const { createUndoManager } = docHistory({ ...base, ...funnel, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
@@ -349,6 +351,17 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			...flowOps(ops)
 		};
 
+		/** The shared suggestions (`doc/suggest.ts`): records, pending changes, decisions. */
+		const suggest = docSuggest({
+			...reads,
+			write,
+			apply,
+			anchorAt,
+			resolveAnchor,
+			run: (op, args) =>
+				apply((prepare as unknown as Record<string, (...a: unknown[]) => Prepared>)[op]!(...args))
+		});
+
 		/**
 		 * Plans prepared at one version, as one plan (refused if any part is;
 		 * stamped with the oldest part's version, so `apply` refuses a stale
@@ -377,12 +390,13 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		 * omitted when empty): the one serializer, {@link blockJSON}, over the
 		 * root's visible children.
 		 */
-		const toJSON = (): JSONDoc => {
+		const toJSON = (options?: { suggestions?: boolean }): JSONDoc => {
 			const data = docData();
+			const own = Object.keys(data).length > 0 ? (data as JSONDoc['data']) : undefined;
+			// Without its pending suggestions, unless asked (`sugg.json.base`).
+			if (!options?.suggestions && suggest.any()) return suggest.base(own);
 			const children = childrenIds(null).map(blockJSON);
-			return Object.keys(data).length > 0
-				? { data: data as JSONDoc['data'], children }
-				: { children };
+			return own ? { data: own, children } : { children };
 		};
 
 		// ── facade object ─────────────────────────────────────────────────
@@ -412,6 +426,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
+			/** @internal The shared suggestions (`doc/suggest.ts`): a view's `edytor.suggestions` reads them. */
+			suggest,
 			// reads — every id argument normalizes at ingress
 			project: () => project(doc),
 			toJSON,
@@ -523,7 +539,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			 * post-write state — this is the read-your-writes contract.
 			 */
 			get version() {
-				return runsView.version();
+				// A suggestion's decision may change nothing shown, yet the document without it.
+				return runsView.version() + suggest.version();
 			}
 		};
 		return facade;

@@ -34,6 +34,7 @@
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
+import { writersOf } from '../text/model.js';
 import { blockAttributionOf, type BlockAttribution } from './block.js';
 
 /** Reserved replicated root for all attribution metadata (`SCHEMA.roots.attribution`). */
@@ -182,9 +183,26 @@ export const bindAttribution = (_Y: EngineApi) => {
 				insertSet: { clients: Map<number, unknown> };
 				changed: Map<unknown, Set<string | null>>;
 			};
+			if (destroyed || !tr.local) return;
 			const client = doc.clientID;
-			if (destroyed || bound === client || !tr.local || !tr.insertSet.clients.has(client)) return;
-			bound = client;
+			if (bound !== client && tr.insertSet.clients.has(client)) {
+				bound = client;
+				publish(tr);
+			}
+			// A suggestion writer this replica minted binds itself, written by itself (`sugg.writer.binding`).
+			for (const writer of writersOf(doc))
+				if (tr.insertSet.clients.has(writer) && !root.getAttr(`${CLIENT_PREFIX}${writer}`)) {
+					doc.clientID = writer;
+					try {
+						publish(tr);
+					} finally {
+						doc.clientID = client;
+					}
+				}
+		};
+		/** This replica's binding (`c/<clientID>`), and its profile when the stored one differs. */
+		const publish = (tr: { changed: Map<unknown, Set<string | null>> }): void => {
+			const client = doc.clientID;
 			if (root.getAttr(`${CLIENT_PREFIX}${client}`) !== undefined) return;
 			root.setAttr(`${CLIENT_PREFIX}${client}`, actor.id);
 			// A profile this transaction wrote (`setProfile`) stands.

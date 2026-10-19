@@ -378,6 +378,9 @@ const warnLines = (
 	}
 };
 
+/** What a document's user may do in its room (`EdytorDocument.access`). */
+export type DocumentAccess = 'write' | 'suggest' | 'comment' | 'read';
+
 /** Internal constructor bag — use {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 export type EdytorDocumentInit = {
 	doc: YDoc;
@@ -606,6 +609,13 @@ export class EdytorDocument {
 	get destroyed(): boolean {
 		return this._destroyed;
 	}
+
+	/**
+	 * What this document's user may do, as its room said (`'write'` until a
+	 * room says otherwise): `'suggest'` writes only suggestions (its views
+	 * suggest and decide nothing), `'comment'` and `'read'` write nothing.
+	 */
+	access: DocumentAccess = 'write';
 
 	/**
 	 * `false` while the document carries a schema stamp this build cannot

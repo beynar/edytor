@@ -96,7 +96,12 @@ export interface DocumentWrites {
 
 /** The document's reads (transaction-aware where the reference says so). */
 export interface DocumentReads {
-	toJSON(): JSONDoc;
+	/**
+	 * The document as JSON, without its pending suggestions (their inserted
+	 * text and blocks left out, their proposals not applied); with
+	 * `suggestions: true`, as shown, pending suggestions included.
+	 */
+	toJSON(options?: { suggestions?: boolean }): JSONDoc;
 	docData(): JsonObj;
 	dataItemIds(target: DataTarget, path: readonly string[]): string[];
 	/** @internal A data as it reads once `pending` patches apply (nothing written), with its items' ids. */

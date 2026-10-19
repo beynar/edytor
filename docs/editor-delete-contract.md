@@ -2894,6 +2894,15 @@ writer (whose id lists propose), so the room admits it and what it
 deleted reads settled. Nothing of it stays pending; its undo brings it
 back.
 
+### `sugg.ai.live` — a shared answer is written live, whole each time
+
+An app's shared suggestion (`add(…, { shared: true })`) is one suggestion
+of its own writer, written as it streams: the first time at its position
+(a `replace` proposed for deletion), then each update in place of what it
+wrote before, whole: those blocks are removed for real (their home slots
+and registry entries: no history step holds them), so their content is
+collected, and the answer so far is inserted again.
+
 ### `sugg.json.base` — the document without its pending suggestions
 
 `toJSON()` (and the room's `onSave` value, `edytor.value`) leaves pending

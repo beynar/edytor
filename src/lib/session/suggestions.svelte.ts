@@ -24,7 +24,7 @@
  * The layer owns the list; the surface renders it.
  */
 import { DEV } from 'esm-env';
-import type { BlockId, DocAnchor, OpResult } from '../crdt/index.js';
+import type { BlockId, BlockSpec, DocAnchor, OpResult } from '../crdt/index.js';
 import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
 import { NOOP, REFUSED, refused } from '../crdt/doc/plan.js';
@@ -36,9 +36,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import { textToBlocks } from '../clipboard/textBlocks.js';
 import { selectedMembers, viewOf } from '../selection/visibility.js';
 import { project, textSelection } from './selection.js';
-import { cloneJson, jsonBlockToSpec, type JSONBlock, type JSONText } from '../utils/json.js';
-import { canonKey } from '../crdt/text/ranges.js';
-import type { InlineSpec } from '../crdt/placement/model.js';
+import { cloneJson, jsonBlockToSpec, type JSONBlock } from '../utils/json.js';
 import { id as mint } from '../utils.js';
 
 /** A text range, by its anchors (a text selection's). */
@@ -118,31 +116,6 @@ const sideOf = (at: ResolvedAt) => {
 /** A block change's mark (`marked`): its kind's, but for these. */
 const MARKS: Record<string, string> = { block: 'inserted', remove: 'removed' };
 
-/** Two blocks alike but for their ids. */
-const same = (a: JSONBlock, b: JSONBlock) =>
-	canonKey({ ...a, id: 0 }) === canonKey({ ...b, id: 0 });
-/**
- * The runs `next` adds after `prev`'s content when it extends it (one kind
- * and data, `prev`'s content its start), else `null`.
- */
-const grown = (prev: JSONBlock, next: JSONBlock) => {
-	const [a, b] = [prev.content ?? [], next.content ?? []];
-	if (!same({ ...prev, content: [] }, { ...next, content: [] }) || b.length < a.length) return null;
-	const last = a.at(-1) as JSONText | undefined;
-	const tail = b[a.length - 1] as JSONText | undefined;
-	const head = a.length - (last && 'text' in last && tail && 'text' in tail ? 1 : 0);
-	if (a.slice(0, head).some((run, i) => canonKey(run) !== canonKey(b[i]))) return null;
-	if (
-		head < a.length &&
-		(canonKey(last!.marks) !== canonKey(tail!.marks) || !tail!.text.startsWith(last!.text))
-	)
-		return null;
-	const rest = b.slice(a.length);
-	return head < a.length && tail!.text.length > last!.text.length
-		? [{ ...tail!, text: tail!.text.slice(last!.text.length) }, ...rest]
-		: rest;
-};
-
 export class Suggestion {
 	readonly id: string;
 	/**
@@ -161,8 +134,8 @@ export class Suggestion {
 	#kind: string;
 	#onRetry: SuggestionOptions['onRetry'];
 	#via: string | undefined;
-	/** @internal A shared one this view writes: the blocks written so far (with their ids). */
-	written: JSONBlock[] | null = null;
+	/** @internal A shared one this view writes: the blocks it wrote last. */
+	written: BlockId[] = [];
 
 	constructor(
 		layer: Suggestions,
@@ -451,17 +424,15 @@ export class Suggestions {
 	/**
 	 * @internal Write shared `suggestion`'s content as it is now (`update`,
 	 * `append`), live (`sugg.ai.live`): the first time at its position (a
-	 * `replace` proposed for deletion), then only what changed — its equal
-	 * blocks kept, its last block's text extended when the new one extends
-	 * it, the rest replaced. Its own writer's blocks, outside the undo history.
+	 * `replace` proposed for deletion), then each time in place of what it
+	 * wrote before, whole. Its own writer's blocks, outside the undo history.
 	 */
 	write = (suggestion: Suggestion) => {
 		this.revision++;
 		const { facade, dispatcher } = this.edytor;
-		const { id, at, content: next } = suggestion;
+		const { id, at } = suggestion;
 		if (!suggestion.shared || !at || !dispatcher.permits()) return;
 		const { prepare, suggest } = facade;
-		const prev = (suggestion.written ??= []);
 		const put = (plan: Prepared) => void suggest.apply(id, plan);
 		dispatcher.outside(() => {
 			if (!suggest.records().some((r) => r.id === id)) {
@@ -473,30 +444,14 @@ export class Suggestions {
 				if (range) put(prepare.replaceRange(range.start, range.end));
 				else if ('replace' in at) put(prepare.deleteBlocks(at.replace as BlockId[]));
 			}
-			let p = 0;
-			while (p < prev.length && p < next.length && same(prev[p]!, next[p]!)) p++;
-			const runs = p === prev.length - 1 && p < next.length ? grown(prev[p]!, next[p]!) : null;
-			if (runs) {
-				const block = prev[p]!.id!;
-				for (const run of runs) {
-					const offset = facade.displayLength(block);
-					put(
-						'text' in run
-							? prepare.insertText(block, offset, run.text, run.marks ?? {})
-							: prepare.insertInline(block, offset, run as InlineSpec)
-					);
-				}
-				prev[p] = { ...next[p]!, id: block };
-				p++;
-			}
-			const doomed = prev.splice(p).map((b) => b.id!);
-			if (doomed.length) put(prepare.deleteBlocks(doomed));
-			const specs = next.slice(p).map((b) => jsonBlockToSpec(b, true));
-			const dest = p ? facade.positionOf(prev[p - 1]!.id!) : this.#slot(at);
-			if (specs.length && dest) {
-				put(prepare.insertBlocks({ parent: dest.parent, index: dest.index + (p ? 1 : 0) }, specs));
-				prev.push(...specs.map((spec, i) => ({ ...next[p + i]!, id: spec.id })));
-			}
+			// What it wrote last goes for real: its writer's alone, in no history step.
+			suggest.erase(suggestion.written);
+			const specs = suggestion.content.map((b) => jsonBlockToSpec(b, true));
+			const dest = this.#slot(at);
+			if (specs.length && dest) put(prepare.insertBlocks(dest, specs));
+			const ids = (specs: readonly BlockSpec[]): BlockId[] =>
+				specs.flatMap((spec) => [spec.id, ...ids(spec.children ?? [])]);
+			suggestion.written = ids(specs);
 		});
 	};
 

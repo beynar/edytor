@@ -37,6 +37,7 @@ import {
 	TEXT_DELETES_ROOT
 } from '../schema.js';
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
+import { removeUnit } from '../placement/slots.js';
 import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
 import { canonKey } from '../text/ranges.js';
 import {
@@ -612,6 +613,22 @@ export const docSuggest = (c: SuggestContext) => {
 		return { result, ...(caret && { at: caret }) };
 	};
 
+	/**
+	 * Remove blocks `ids` for real: their home slots and registry entries,
+	 * so their content is collected (a live answer's last chunk, which its
+	 * writer rewrites whole and no history step holds).
+	 */
+	const erase = (ids: readonly BlockId[]) =>
+		write(() =>
+			doc.transact(() => {
+				for (const id of ids) {
+					const home = view().blocks.get(id)?.home;
+					if (home) removeUnit(doc, home);
+					registryOf(doc).deleteAttr(id);
+				}
+			})
+		);
+
 	/** Write decision part `part` (an id list) by the current client: settled in its record, or held. */
 	const hold = ({ into, ids }: { into: string | null; ids: number[] }): void =>
 		void (into === null
@@ -735,6 +752,7 @@ export const docSuggest = (c: SuggestContext) => {
 		open,
 		refuses,
 		apply,
+		erase,
 		decide,
 		run,
 		/** The suggestions the document holds, oldest first. */

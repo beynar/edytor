@@ -1384,6 +1384,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                         offset: number;
                     };
                 };
+                erase: (ids: readonly import("./index.js").BlockId[]) => void;
                 decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
                 run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown, w?: number) => void;
                 records: () => import("./doc/suggest.js").SuggestionRecord[];
@@ -2542,6 +2543,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                     offset: number;
                 };
             };
+            erase: (ids: readonly BlockId[]) => void;
             decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
             run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown, w?: number) => void;
             records: () => import("./doc/suggest.js").SuggestionRecord[];

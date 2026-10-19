@@ -571,6 +571,34 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		await expect(remoteCursor(d.page, idB)).toHaveCount(0);
 	});
 
+	test("presence: a tab closed with its unload handlers leaves through the room's close (room.depart.unload)", async ({
+		browser
+	}, testInfo) => {
+		// B closes its tab as a user does: the browser runs its unload
+		// handlers, and the provider sends its departure frame from them.
+		// WebKit drops that frame (a socket's frames still queued at the
+		// page's teardown, and every frame sent from `pagehide`): its
+		// departure is the room's announcement at the socket's close. The
+		// peers drop B's caret well before the 30 s awareness expiry in every
+		// engine.
+		const room = roomName('unload', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const a = await openPeer(browser, room, baseURL);
+		const b = await openPeer(browser, room, baseURL);
+		const c = await openPeer(browser, room, baseURL);
+		peers = [a, b, c];
+		await expectConverged(peers.map((p) => p.page));
+
+		const idB = await clientIdOf(b.page);
+		await setSelectionByTextIndex(b.page, 1, 2);
+		await expect(remoteCursor(a.page, idB).first()).toBeVisible();
+		await expect(remoteCursor(c.page, idB).first()).toBeVisible();
+
+		await b.page.close({ runBeforeUnload: true });
+		await expect(remoteCursor(a.page, idB)).toHaveCount(0, { timeout: 5000 });
+		await expect(remoteCursor(c.page, idB)).toHaveCount(0, { timeout: 5000 });
+	});
+
 	test('eviction: sockets survive, late edits and a late joiner converge from storage, a closed peer is removed', async ({
 		browser
 	}, testInfo) => {

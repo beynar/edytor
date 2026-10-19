@@ -2895,6 +2895,35 @@ rate (`room.presence.quota`) enter the same path when released. What
 waits is lost at a wake (a hibernation, an eviction), as the presence
 snapshot is (`room-load.test.ts`).
 
+### `room.depart.unload` — a departure a page sends while it unloads is best-effort
+
+A provider announces its presence removal when its page starts to unload
+(`beforeunload`, `initLifecycle` in `crdt/providers/room.ts`) and again at
+its teardown (`pagehide`, `onPageLeave`). Those frames are best-effort.
+WebKit drops the frames a socket still has queued when the page tears
+down, and every frame sent from `pagehide`. Measured over the opaque test
+relay, 10 or 20 closes each: a frame sent at the start of `beforeunload`
+arrived 20/20 in the three engines; one sent 150 ms later in the same
+handler 0/10 in WebKit, 10/10 in Chromium and Firefox; one sent from
+`pagehide` 0/20 in WebKit, 20/20 in the others.
+
+So in WebKit the departure comes from the socket's close, not from a frame
+sent at unload: the room announces a socket's departure when it closes
+(`webSocketClose` and `webSocketError` → `presence.depart`,
+`cloudflare/DocumentRoom.ts`), whatever the page sent, and that is the
+departure every peer can rely on in every engine. Behind a relay that
+announces nothing (the opaque test relay), a departed WebKit peer's caret
+goes when its awareness entry expires (30 s). No product change: sending
+the frame earlier does not help, as WebKit loses even one sent 150 ms into
+`beforeunload`.
+
+Rows: `tests/hosted/hosted.spec.ts` "presence: a tab closed with its unload
+handlers leaves through the room's close (room.depart.unload)" in the three
+engines, WebKit's proof (B closes with its unload handlers run; A and C drop
+its caret); `tests/editor-dom/collaboration-websocket.spec.ts` (F-T9)
+asserts the page's own frame over the opaque relay in Chromium and Firefox,
+skipped in WebKit with this row named.
+
 ### `room.access` — revocation and credential expiry (WU-06)
 
 `authorize` decides at the dial; the room holds what it decided in each

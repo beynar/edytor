@@ -102,9 +102,11 @@ export const SCHEMA = {
 	// YP21), a block has no `claims` list; 9: a block's place is its home slot
 	// in its parent's sequence and a move is a move record (fork patch YP22),
 	// a block has no `at` map and an array item no rank; 10: the update encoding
-	// writes each distinct string once (fork patch YP24). A container or frame
-	// of an earlier generation is refused.
-	version: 10,
+	// writes each distinct string once (fork patch YP24); 11: a hold record
+	// inside a nested node holds nothing (fork patch YP31: a suggestion's
+	// proposals and decisions). A container or frame of an earlier generation
+	// is refused.
+	version: 11,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

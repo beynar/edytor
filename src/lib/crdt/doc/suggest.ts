@@ -30,7 +30,15 @@ import { ATTRIBUTION_ROOT, CONTENT_NODE, isNodeLike, SUGGEST_ROOT } from '../sch
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
 import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
 import { canonKey } from '../text/ranges.js';
-import { changedUnder, clientsOf, engineOps, firstItem, itemOf, storeOf } from '../structs.js';
+import {
+	changedUnder,
+	clientsOf,
+	engineOps,
+	firstItem,
+	itemOf,
+	storeOf,
+	type IdSetOf
+} from '../structs.js';
 import { nonceOf } from '../rand.js';
 import { id as mint } from '../../utils.js';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '../../utils/json.js';
@@ -94,8 +102,8 @@ type Rec = SuggestionRecord & {
 	node: EngineNode;
 	start: number;
 	end: number;
-	settled: Ids;
-	proposed: Ids;
+	settled: IdSetOf;
+	proposed: IdSetOf;
 	ops: Op[];
 };
 type Item = {
@@ -119,31 +127,6 @@ const RANK: Record<string, number> = { deleteText: 0, mergeBlocks: 2, deleteBloc
 
 /** The list `map` keeps at `key` (made empty when absent). */
 const listOf = <K, V>(map: Map<K, V[]>, key: K): V[] => map.get(key) ?? map.set(key, []).get(key)!;
-
-/** Id ranges per client, sorted and merged once sealed. */
-class Ids {
-	readonly by = new Map<number, number[]>();
-	add(client: number, clock: number, len: number): void {
-		listOf(this.by, client).push(clock, clock + len);
-	}
-	seal(): this {
-		for (const [client, list] of this.by) {
-			const out: number[] = [];
-			const pairs = list.flatMap((v, i) => (i % 2 ? [] : [[v, list[i + 1]!] as const]));
-			for (const [a, b] of pairs.sort((x, y) => x[0] - y[0]))
-				if (a <= out[out.length - 1]!) out[out.length - 1] = Math.max(out[out.length - 1]!, b);
-				else out.push(a, b);
-			this.by.set(client, out);
-		}
-		return this;
-	}
-	has(client: number, clock: number): boolean {
-		const list = this.by.get(client) ?? [];
-		for (let i = 0; i < list.length && list[i]! <= clock; i += 2)
-			if (clock < list[i + 1]!) return true;
-		return false;
-	}
-}
 
 /** Append unit `client:clock` to `runs`, joining the last range when it continues it (`next`: shown right after it). */
 const push = (runs: IdRange[], client: number, clock: number, next = true) => {
@@ -185,6 +168,7 @@ export type SuggestContext = DocBase &
 /** The document's shared suggestions (`facade.suggest`). */
 export const docSuggest = (c: SuggestContext) => {
 	const { Y, doc, runsView, view, write } = c;
+	const idSet = engineOps(Y).idSet;
 	const root = (): EngineNode => doc.get(SUGGEST_ROOT);
 	const actorOf = (client: number): string | undefined => {
 		const bound = doc.get(ATTRIBUTION_ROOT).getAttr(`c/${client}`);
@@ -240,8 +224,8 @@ export const docSuggest = (c: SuggestContext) => {
 				at: Number(node.getAttr('at')) || 0,
 				start: item.id.clock,
 				end: Infinity,
-				settled: new Ids(),
-				proposed: new Ids(),
+				settled: idSet(),
+				proposed: idSet(),
 				ops: []
 			};
 			for (let it = firstItem<Item>(node); it !== null; it = it.right) {
@@ -257,8 +241,7 @@ export const docSuggest = (c: SuggestContext) => {
 						if (OPS.includes(o?.op)) rec.ops.push({ ...o, k: it!.id.clock + j });
 					});
 			}
-			rec.settled.seal();
-			if (rec.proposed.seal().by.size) t.proposing.push(rec);
+			if (rec.proposed.clients.size) t.proposing.push(rec);
 			for (const op of rec.ops) {
 				const target = op.args[0] as BlockId | null | { block: BlockId };
 				if (!rec.settled.has(writer, op.k))
@@ -434,8 +417,8 @@ export const docSuggest = (c: SuggestContext) => {
 		};
 		for (const [writer, recs] of t.byWriter) each(writer, recs[0]!.start, Infinity);
 		for (const rec of t.proposing)
-			for (const [client, list] of rec.proposed.by)
-				for (let i = 0; i < list.length; i += 2) each(client, list[i]!, list[i + 1]!);
+			for (const [client, ranges] of rec.proposed.clients)
+				for (const { clock, len } of ranges.getIds()) each(client, clock, clock + len);
 		const { own } = view();
 		for (const text of texts) {
 			const home = (text._item?.parent as EngineNode | undefined)?._item?.parentSub;
@@ -511,7 +494,7 @@ export const docSuggest = (c: SuggestContext) => {
 				})
 			);
 			// No history step captures the record's creation: its clocks stay its own.
-			if (!ownTextIds.has(doc)) ownTextIds.set(doc, engineOps(Y).idSet());
+			if (!ownTextIds.has(doc)) ownTextIds.set(doc, idSet());
 			ownTextIds.get(doc)!.add(w, from, storeOf(doc).getClock(w) - from);
 			version++;
 			return id;
@@ -653,9 +636,8 @@ export const docSuggest = (c: SuggestContext) => {
 	const deleteRun = (b: BlockId, ids: readonly IdRange[]): DecisionPart => ({
 		op: 'deleteText',
 		calls: () => {
-			const named = new Ids();
+			const named = idSet();
 			for (const [client, clock, len] of ids) named.add(client, clock, len);
-			named.seal();
 			const runs: [BlockId, number, number][] = [];
 			for (const u of unitsOf(b))
 				if (!named.has(u.client, u.clock)) continue;

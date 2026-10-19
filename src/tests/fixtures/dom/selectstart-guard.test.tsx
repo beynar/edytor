@@ -10,7 +10,8 @@
  * (including void captions that re-enable contenteditable) keep theirs.
  */
 import { describe, expect, test } from 'vitest';
-import { renderDomEdytor } from '../../dom/test.utils.js';
+import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { image as createImagePlugin, richTextPlugin } from '$registry/edytor/chrome/plugins.js';
 
 const dispatchSelectStart = (target: Element) => {
 	const event = new Event('selectstart', { bubbles: true, cancelable: true });
@@ -52,5 +53,55 @@ describe('selectstart guard', () => {
 		const text = editor.querySelector('[data-edytor-text="true"]');
 		expect(text).not.toBeNull();
 		expect(dispatchSelectStart(text!)).toBe(false);
+	});
+});
+
+describe('a press in a nested editable (sel.press.nested-editable)', () => {
+	const src =
+		'data:image/svg+xml,' +
+		encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"/>');
+	const mount = () =>
+		renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{
+				plugins: [richTextPlugin, createImagePlugin({})],
+				value: {
+					children: [
+						{ id: 'p', type: 'paragraph', content: [{ text: 'before' }] },
+						{ id: 'img', type: 'image', data: { src }, content: [{ text: 'a caption' }] }
+					]
+				},
+				autoSelectFixture: false
+			}
+		);
+	const press = (target: Element) => {
+		const event = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+		target.dispatchEvent(event);
+		return event.defaultPrevented;
+	};
+	const caret = (edytor: Awaited<ReturnType<typeof mount>>['edytor']) => {
+		const at = edytor.selection.caret;
+		return at && [at.block.id, at.offset];
+	};
+
+	test('the caption is no chrome: its press and its drag are the browser’s; the image’s are chrome', async () => {
+		const { edytor, editor } = await mount();
+		edytor.selection.setCaret({ block: edytor.idToBlock.get('p')!, offset: 2 });
+		await flushDomUpdates();
+		const caption = editor.querySelector('[data-edytor-type="image"] [data-edytor-text="true"]')!;
+		const wrapper = editor.querySelector('[data-edytor-image]')!;
+		// The nearest boundary of the caption is its own editable span, inside the void's chrome.
+		expect(caption.closest('[contenteditable="false"]')).not.toBeNull();
+		expect(press(caption)).toBe(false);
+		await flushDomUpdates();
+		expect(caret(edytor)).toEqual(['p', 2]);
+		expect(dispatchSelectStart(caption)).toBe(false);
+		// The image: chrome. The model answers, the caret at the caption's start.
+		expect(press(wrapper)).toBe(true);
+		await flushDomUpdates();
+		expect(caret(edytor)).toEqual(['img', 0]);
+		expect(dispatchSelectStart(wrapper)).toBe(true);
 	});
 });

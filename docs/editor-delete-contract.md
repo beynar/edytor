@@ -2377,6 +2377,36 @@ throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
 
+### `sel.press.nested-editable` — a press in a caption is the browser's
+
+A void block's text (an image's caption, a video's, a file's) is a nested
+editable: its element is `contenteditable="true"` inside the block's
+non-editable chrome. What a press there means is decided by the nearest
+`contenteditable` boundary of the press's target (`editableBoundary` in
+`selection/selection.utils.ts`), the one rule the chrome press
+(`pointer.chromePress`, from `events/onFocus.ts`) and the `selectstart`
+guard (`pointer.onSelectStart`) read:
+
+- the nearest boundary is `false` (the image, the block's wrapper, an
+  atom, a control's icon): chrome. The model answers the press: it is
+  cancelled and the caret goes to the start of the block's first text, as
+  before; a drag starting there is the block selection's;
+- the nearest boundary is a nested editable (`true`, `plaintext-only` or
+  `''`): the press is the browser's. It places the caret at the press in
+  one step, focusing the nested editable, and the selection adopts it at
+  its `selectionchange`; a drag selects its text natively.
+
+The first boundary at or above the host decides nothing (a readonly
+host's `false` keeps its text selectable).
+
+Rows: `tests/editor-dom/image.spec.ts` "a press in an image caption
+(sel.press.nested-editable)" in three engines (every caret reported from
+the press to the release and after it is the click's offset, never the
+caption's start nor the document's; a press on the image gives the
+caption's start); `src/tests/fixtures/dom/selectstart-guard.test.tsx`
+(jsdom: the caption's press is not cancelled and moves no model caret,
+the image's is, and gives the caption's start).
+
 ## Navigation
 
 ### `nav.trailing.exit` — ArrowDown leaves the document's last stop (Notion)

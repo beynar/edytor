@@ -21,7 +21,7 @@ import {
 } from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
 import {
-	getElementFromNode,
+	editableBoundary,
 	isTextBoundSelectionPoint,
 	offsetIn,
 	SUGGESTION
@@ -66,15 +66,16 @@ export class SelectionPointer {
 		this.#held = true;
 	};
 
+	/**
+	 * The block whose non-editable chrome `node` is in: its nearest
+	 * `contenteditable` boundary is `false`. A nested editable between them
+	 * (a void block's caption) is no chrome: the browser places the caret
+	 * at the press, in one step (`sel.press.nested-editable`).
+	 */
 	#chromeBlock = (node: Node | null) => {
-		const element = getElementFromNode(node);
-		const nonEditableElement = element?.closest('[contenteditable="false"]');
-		if (
-			!(nonEditableElement instanceof HTMLElement) ||
-			!this.selection.edytor.node?.contains(nonEditableElement)
-		) {
-			return null;
-		}
+		const boundary = editableBoundary(node, this.selection.edytor.node);
+		if (!boundary || boundary.editable) return null;
+		const nonEditableElement = boundary.element;
 		// A suggestion's preview is no block's chrome: a press there is its own (cancelled).
 		if (isNativeInteractiveControl(nonEditableElement) || nonEditableElement.closest(SUGGESTION)) {
 			return null;
@@ -434,39 +435,19 @@ export class SelectionPointer {
 	 * anchor) would anchor the DOM selection on nodes the model cannot
 	 * represent — block-level selection owns that surface instead.
 	 *
-	 * The NEAREST `[contenteditable]` boundary decides: `false` means
-	 * non-editable chrome, while a nested `true` (void-block captions
-	 * re-enable editing on their text spans) keeps native selection.
-	 * The root itself is excluded so readonly mode stays selectable.
+	 * The nearest `[contenteditable]` boundary decides (`editableBoundary`,
+	 * the chrome press's rule too): `false` means non-editable chrome, while
+	 * a nested editable (void-block captions re-enable editing on their text
+	 * spans) keeps native selection. The root itself is excluded so readonly
+	 * mode stays selectable.
 	 * @internal
 	 */
 	onSelectStart = (event: Event) => {
 		// Native controls (todo checkboxes, plugin inputs…) keep their own
 		// selection behavior.
-		if (isNativeInteractiveEvent(event)) {
-			return;
-		}
-		const element = getElementFromNode(event.target instanceof Node ? event.target : null);
-		if (!element || !this.selection.edytor.node?.contains(element)) {
-			return;
-		}
-		// Walk ancestors to the nearest contenteditable boundary. Both the
-		// attribute and the `contentEditable` property are checked — the
-		// attach hooks of inline/void blocks set the property, which jsdom
-		// does not reflect onto the attribute.
-		let boundary: HTMLElement | null = element instanceof HTMLElement ? element : null;
-		while (boundary && boundary !== this.selection.edytor.node) {
-			const state = boundary.getAttribute('contenteditable') ?? boundary.contentEditable;
-			if (state === 'false') {
-				event.preventDefault();
-				return;
-			}
-			if (state === 'true' || state === 'plaintext-only' || state === '') {
-				// Nested editable region (e.g. void-block captions re-enabling
-				// editing on their text spans) keeps native selection.
-				return;
-			}
-			boundary = boundary.parentElement;
-		}
+		if (isNativeInteractiveEvent(event)) return;
+		const target = event.target instanceof Node ? event.target : null;
+		if (editableBoundary(target, this.selection.edytor.node)?.editable === false)
+			event.preventDefault();
 	};
 }

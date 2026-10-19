@@ -1532,7 +1532,7 @@ export declare class CommentsController {
 - `resolved`: The resolved threads.
 - `shown`: The threads the sidebar shows: the open ones, the resolved ones on demand, the active one.
 - `anchor`: Where the thread being written, else the active one, stands (`ChromeAnchor`): the first line of its text, by which a card may place itself (the sidebar places its cards in the margin).
-- `canComment`: The view may write: it may start, answer, resolve and delete comments.
+- `canComment`: The view may start, answer, resolve and delete comments: it may write, or its user may comment without writing (`document.access` `comment`, a readonly view's: the room writes a new thread's anchor).
 - `thread`: One thread, by id.
 - `userOf`: A user as the sidebar shows them: their name (else their id), avatar and color.
 - `mayDelete`: Whether the current user may delete `comment` of `thread` (its author).
@@ -5949,7 +5949,7 @@ export declare class Suggestions {
     get list(): readonly Suggestion[];
     get latest(): Suggestion | undefined;
     get: (id: string) => Suggestion | undefined;
-    decide: (changes: readonly SuggestedChange[], accept: boolean, own?: number) => OpResult;
+    decide: (changes: readonly SuggestedChange[], accept: boolean) => OpResult;
     acceptAll: () => OpResult;
     rejectAll: () => OpResult;
     add: (at: SuggestionAt, content?: SuggestionContent, options?: SuggestionOptions) => Suggestion;

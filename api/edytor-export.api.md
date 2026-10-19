@@ -3100,7 +3100,7 @@ export declare class Suggestions {
     get list(): readonly Suggestion[];
     get latest(): Suggestion | undefined;
     get: (id: string) => Suggestion | undefined;
-    decide: (changes: readonly SuggestedChange[], accept: boolean, own?: number) => OpResult;
+    decide: (changes: readonly SuggestedChange[], accept: boolean) => OpResult;
     acceptAll: () => OpResult;
     rejectAll: () => OpResult;
     add: (at: SuggestionAt, content?: SuggestionContent, options?: SuggestionOptions) => Suggestion;

@@ -117,6 +117,7 @@ import {
 } from './history.js';
 import { CLOSE } from '../crdt/providers/room.js';
 import type { LockOptions } from './locks.js';
+import type { DocumentAccessLevel } from './routeDocumentSocket.js';
 import type {
 	CommitResult,
 	ExportedBlocks,
@@ -324,7 +325,13 @@ export type SocketIdentity = {
 	user: string;
 	/** `null` until bound — by `authorize`, or by the socket's first presence entry. */
 	replica: number | null;
+	/** It writes nothing to the document (a `read` or `comment` access). */
 	readOnly: boolean;
+	/**
+	 * Less than `write`, more than `read`: `suggest` writes only suggestions
+	 * (`room.access.suggest`), `comment` only comments (`room.access.comment`).
+	 */
+	access?: 'suggest' | 'comment';
 	/**
 	 * When its credential expires (ms since the epoch, the room's clock):
 	 * the room closes it `4401` then (`room.access`). `null` or absent: never.
@@ -371,6 +378,9 @@ export type Refusal = {
 		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
 		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
 		| 'mark'
+		// What a suggest-only socket may not write, stripped ({ user, writers, ranges }): structs
+		// that are no suggestion's, deletes of another user's items; the rest of the frame applies.
+		| 'suggest-only'
 		// Attribution entries the sender may not write or delete ({ user, keys }): another
 		// replica's binding (`c/<n>`) or another user's profile (`u/<id>`), collected
 		// from the frame (a write) or dropped (a delete); the rest of the frame applies.
@@ -1093,7 +1103,7 @@ export class AttachedDocument {
 	 * socket `4403` (`access revoked`), as {@link closeUser}. Your `authorize` must decide the
 	 * same from then on. Returns how many sockets it changed.
 	 */
-	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
+	setAccess(userId: string, access: DocumentAccessLevel | 'none'): { sockets: number } {
 		return this.room.access.setAccess(userId, access);
 	}
 
@@ -1408,7 +1418,7 @@ export class DocumentRoom<
 		return this.room.closeUser(userId, code, reason);
 	}
 	/** Change a user's access on its sockets, also over RPC — see {@link AttachedDocument.setAccess}. */
-	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
+	setAccess(userId: string, access: DocumentAccessLevel | 'none'): { sockets: number } {
 		return this.room.setAccess(userId, access);
 	}
 

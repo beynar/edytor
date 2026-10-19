@@ -21,13 +21,16 @@ import {
 	BINDING_PREFIX,
 	forgedAttributionDeletes,
 	forgedDeletes,
-	forgedWriters
+	forgedWriters,
+	selfBound
 } from './forged.js';
+import { suggestOnly } from './suggest.js';
 import {
 	MalformedFrame,
 	decode,
 	readOnlyDenialFrame,
 	savedFrame,
+	suggestOnlyDenialFrame,
 	step1Frame,
 	storedStep2,
 	updateFrame
@@ -396,7 +399,8 @@ export class Admission {
 		}
 		const sv = stateVector(doc);
 		const orphans = new Set<number>();
-		const stripped = replicas.attribute(attachment, newWriters(decoded, sv), sv, orphans);
+		const bound = selfBound(doc, decoded.structs, attachment.user);
+		const stripped = replicas.attribute(attachment, newWriters(decoded, sv), sv, orphans, bound);
 		// Per-writer block marks: only `n` writes or deletes `del.<n>` /
 		// `wd.<n>`. A client writing another's is stripped whole, as a client
 		// under another user's id is; a delete of another's mark is dropped.
@@ -416,6 +420,23 @@ export class Admission {
 				reason: 'mark',
 				detail: { user: attachment.user, writers: [...forgers], ranges: rangeCount(forgedMarks) }
 			});
+		}
+		// A user who may only suggest writes only suggestions (`room.access.suggest`).
+		const suggest =
+			attachment.access === 'suggest'
+				? suggestOnly(doc, decoded, stripped, (client) => mayDelete(client), attachment.replica)
+				: null;
+		if (suggest && (suggest.strip.size > 0 || !suggest.deletes.isEmpty())) {
+			for (const client of suggest.strip) stripped.add(client);
+			room.note({
+				reason: 'suggest-only',
+				detail: {
+					user: attachment.user,
+					writers: [...suggest.strip],
+					ranges: rangeCount(suggest.deletes)
+				}
+			});
+			room.send(ws, suggestOnlyDenialFrame());
 		}
 		// Attribution (`room.attribution.trust`): a replica binds only
 		// itself, to its verified user, and a user writes only its own
@@ -468,12 +489,19 @@ export class Admission {
 				detail: { user: attachment.user, ranges: rangeCount(overflow) }
 			});
 		}
+		const suggestDeletes = suggest?.deletes ?? Y.createIdSet();
 		const dropped =
-			overflow === null && forgedMarks.isEmpty() && forgedEntries.ids.isEmpty()
+			overflow === null &&
+			forgedMarks.isEmpty() &&
+			forgedEntries.ids.isEmpty() &&
+			suggestDeletes.isEmpty()
 				? null
 				: addIds(
-						addIds(addIds(Y.createIdSet(), overflow ?? Y.createIdSet()), forgedMarks),
-						forgedEntries.ids
+						addIds(
+							addIds(addIds(Y.createIdSet(), overflow ?? Y.createIdSet()), forgedMarks),
+							forgedEntries.ids
+						),
+						suggestDeletes
 					);
 		const admitted =
 			stripped.size === 0 && dropped === null && attribution.collected.size === 0

@@ -616,6 +616,12 @@ export class EdytorDocument {
 	 * suggest and decide nothing), `'comment'` and `'read'` write nothing.
 	 */
 	access: DocumentAccess = 'write';
+	readonly #accessListeners = new Set<(access: DocumentAccess) => void>();
+	/** Be told when the room changes {@link access}. Returns the unsubscribe. */
+	onAccessChange = (listener: (access: DocumentAccess) => void): (() => void) => {
+		this.#accessListeners.add(listener);
+		return () => void this.#accessListeners.delete(listener);
+	};
 
 	/**
 	 * `false` while the document carries a schema stamp this build cannot
@@ -1050,7 +1056,12 @@ export class EdytorDocument {
 					bound = setTimeout(decide, DEFAULT_READINESS_BOUND);
 				},
 				holdBound: () => clearTimeout(bound),
-				attach: (companion) => this.attachSync(companion, opts)
+				attach: (companion) => this.attachSync(companion, opts),
+				access: (access) => {
+					if (this.access === access) return;
+					this.access = access;
+					callEach('[edytor-document] access', [...this.#accessListeners], access);
+				}
 			});
 		} catch (error) {
 			settle();

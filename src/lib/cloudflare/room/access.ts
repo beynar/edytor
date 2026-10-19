@@ -18,7 +18,8 @@ import {
 	noTimers
 } from './shared.js';
 import { STORAGE_FAILURE, type RoomContext } from './context.js';
-import { readOnlyFrame, step1Frame } from './frames.js';
+import { accessFrame, readOnlyFrame, step1Frame } from './frames.js';
+import type { DocumentAccessLevel } from '../routeDocumentSocket.js';
 import { StorageFault } from './replicas.js';
 import { stateVector } from './updates.js';
 
@@ -38,6 +39,18 @@ export const parseReplica = (raw: unknown): number | null => {
 	return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
 };
 
+const LEVELS: readonly DocumentAccessLevel[] = ['read', 'comment', 'suggest', 'write'];
+
+/** An access level as a socket's identity carries it (`readOnly`, and `access` between read and write). */
+const levelOf = (level: DocumentAccessLevel): Pick<SocketIdentity, 'readOnly' | 'access'> => ({
+	readOnly: level === 'read' || level === 'comment',
+	...((level === 'suggest' || level === 'comment') && { access: level })
+});
+
+/** A socket identity's level. */
+const levelIn = (identity: SocketIdentity): DocumentAccessLevel =>
+	identity.access ?? (identity.readOnly ? 'read' : 'write');
+
 /** The user id `routeDocumentSocket` encoded into its header, or `null`. */
 const readUser = (raw: string | null): string | null => {
 	try {
@@ -55,11 +68,14 @@ const readIdentity = (headers: Headers): SocketIdentity | null => {
 	const rawExpires = headers.get(IDENTITY_HEADERS.expires);
 	const expiresAt = rawExpires === null ? null : Number(rawExpires);
 	if (!user || user.length > 256 || (rawReplica && replica === null)) return null;
-	if (access !== 'read' && access !== 'write') return null;
+	if (!LEVELS.includes(access as DocumentAccessLevel)) return null;
 	if (expiresAt !== null && !Number.isFinite(expiresAt)) return null;
-	const identity: SocketIdentity = { user, replica, readOnly: access === 'read' };
-	if (expiresAt !== null) identity.expiresAt = expiresAt;
-	return identity;
+	return {
+		user,
+		replica,
+		...levelOf(access as DocumentAccessLevel),
+		...(expiresAt !== null && { expiresAt })
+	};
 };
 
 export class RoomAccess {
@@ -145,6 +161,8 @@ export class RoomAccess {
 			// to give. It gets the read-only notice instead (not a refusal),
 			// so its provider tracks nothing.
 			room.send(server, identity.readOnly ? readOnlyFrame() : step1Frame(doc));
+			// Suggest-only and comment-only sockets are told their access (`room.access.suggest`).
+			if (identity.access) room.send(server, accessFrame(identity.access));
 			if (room.state.presence.size > 0) room.send(server, room.presence.snapshot());
 		}
 		return new Response(null, { status: 101, webSocket: client });
@@ -164,7 +182,7 @@ export class RoomAccess {
 	/** Close `sockets` with `code`, their departure announced, the change logged (`access`). */
 	endAccess(
 		sockets: WebSocket[],
-		access: 'expired' | 'closed' | 'write' | 'none',
+		access: 'expired' | 'closed' | 'none' | DocumentAccessLevel,
 		code: number,
 		reason: string
 	) {
@@ -206,32 +224,37 @@ export class RoomAccess {
 		});
 	}
 
-	/** Change `userId`'s access on its open sockets (`AttachedDocument.setAccess`). */
-	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
+	/**
+	 * Change `userId`'s access on its open sockets (`AttachedDocument.setAccess`):
+	 * a downgrade to `read` in place, any other change by a `1012` close
+	 * the provider redials (so `authorize` grants the new access).
+	 */
+	setAccess(userId: string, access: DocumentAccessLevel | 'none'): { sockets: number } {
 		const room = this.room;
-		if (access !== 'write' && access !== 'read' && access !== 'none') {
+		if (access !== 'none' && !LEVELS.includes(access)) {
 			throw new RangeError(`setAccess: unknown access ${String(access)}`);
 		}
 		if (access === 'none') return this.revoke(userId, 'none', CLOSE.denied, 'access revoked');
 		return noTimers(() => {
 			const sockets = this.socketsOf(userId).filter(
-				({ attachment }) => attachment.readOnly !== (access === 'read')
+				({ attachment }) => levelIn(attachment) !== access
 			);
-			if (access === 'write') {
-				this.endAccess(
-					sockets.map(({ ws }) => ws),
-					'write',
-					CLOSE.accessChanged,
-					'access changed'
-				);
-				return { sockets: sockets.length };
-			}
-			for (const { ws, attachment } of sockets) {
+			const inPlace = sockets.filter(
+				({ attachment }) => access === 'read' && levelIn(attachment) === 'write'
+			);
+			const closed = sockets.filter((socket) => !inPlace.includes(socket));
+			this.endAccess(
+				closed.map(({ ws }) => ws),
+				'write',
+				CLOSE.accessChanged,
+				'access changed'
+			);
+			for (const { ws, attachment } of inPlace) {
 				ws.serializeAttachment({ ...attachment, readOnly: true } satisfies Attachment);
 				room.send(ws, readOnlyFrame());
 			}
-			if (sockets.length > 0) {
-				room.note({ reason: 'access', detail: { user: userId, access, sockets: sockets.length } });
+			if (inPlace.length > 0) {
+				room.note({ reason: 'access', detail: { user: userId, access, sockets: inPlace.length } });
 			}
 			return { sockets: sockets.length };
 		});

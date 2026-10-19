@@ -658,7 +658,8 @@ export class Edytor {
 		const offCommit = this.facade.onChange(this.#onCommit);
 		// A suggestion's decision changes nothing shown: its list re-reads.
 		const offSuggest = this.facade.suggest.onChange(() => this.suggestions.revision++);
-		this.#offCommit = () => (offCommit(), offSuggest());
+		const offAccess = this.document.onAccessChange(() => this.suggestions.revision++);
+		this.#offCommit = () => (offCommit(), offSuggest(), offAccess());
 		// A document that is already empty shows its virtual paragraph with the caret in it.
 		this.selection?.restoreDeadSelectionEndpoints();
 	};

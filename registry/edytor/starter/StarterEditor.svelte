@@ -143,14 +143,13 @@
 		edytor.focus();
 	};
 
-	// Review: suggesting mode, and the pending shared suggestions a writer decides.
-	const suggestOnly = $derived(live && edytor!.document.access === 'suggest');
-	const suggesting = $derived(live && (suggestOnly || edytor!.suggestions.suggesting));
+	// Review: suggesting mode (always, for a user who may only suggest), and the pending
+	// shared suggestions this view may decide.
+	const suggesting = $derived(live && edytor!.suggestions.suggesting);
+	const suggestOnly = $derived(
+		live && (edytor!.suggestions.revision, edytor!.document.access === 'suggest')
+	);
 	const pending = $derived(live && edytor!.suggestions.list.some((s) => s.shared && s.canDecide));
-	$effect(() => {
-		if (suggestOnly && edytor && !edytor.suggestions.suggesting)
-			edytor.suggestions.suggesting = true;
-	});
 
 	const coverPayload: StarterCoverPayload = $derived({
 		cover: data.cover,

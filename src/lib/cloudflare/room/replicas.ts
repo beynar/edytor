@@ -87,7 +87,9 @@ export class ReplicaRegistry {
 	 * stripped from its frame (the rest of the frame is applied: never
 	 * refused whole). Written: its user's ids, and its own replica (the
 	 * dialed or bound one), which claims an unowned id or a fresh one, as
-	 * `bind` would. A socket with no replica claims fresh ids it writes.
+	 * `bind` would. A socket with no replica claims fresh ids it writes, and
+	 * any socket a fresh id that binds itself to its user in the frame
+	 * (`bound`: a suggestion's writer).
 	 * Any other id is relayed — another replica's structs, which a restore
 	 * from a lagging snapshot may have lost: kept, and left unowned (`''`,
 	 * claimable only by its own dial), when the room holds none of that id's
@@ -98,7 +100,8 @@ export class ReplicaRegistry {
 		{ user, replica }: Attachment,
 		writers: Set<number>,
 		sv: Map<number, number>,
-		orphans: Set<number>
+		orphans: Set<number>,
+		bound: Set<number> = new Set()
 	): Set<number> {
 		const room = this.room;
 		const claimed: ReplicaOwner[] = [];
@@ -109,7 +112,12 @@ export class ReplicaRegistry {
 			if (owner === user) continue;
 			const held = (sv.get(client) ?? 0) > 0;
 			const fresh = owner === undefined && !held;
-			if (client === replica ? fresh || owner === '' : replica === null && fresh) {
+			// A fresh id the frame binds to its user by itself (a suggestion's writer) is the user's.
+			if (
+				client === replica
+					? fresh || owner === ''
+					: (replica === null || bound.has(client)) && fresh
+			) {
 				claimed.push({ replica: client, user });
 				if (owner === '') orphans.add(client);
 			} else if ((fresh || owner === '') && !held) {

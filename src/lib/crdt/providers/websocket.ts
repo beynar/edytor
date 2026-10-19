@@ -54,8 +54,10 @@ import { Awareness, removeAwarenessStates } from '../protocols/awareness.js';
 import { IsolatedObservable } from '../protocols/observable.js';
 import {
 	messagePermissionDenied,
+	messageAccess,
 	messageReadOnly,
 	READ_ONLY_DENIAL,
+	SUGGEST_ONLY_DENIAL,
 	readAuthMessage
 } from '../protocols/auth.js';
 import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
@@ -108,6 +110,8 @@ const defaultConnectTimeout = 10000;
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
+	/** What the room says this connection's user may do (`write` at each open, until it says less). */
+	access: (access: 'write' | 'suggest' | 'comment' | 'read', provider: unknown) => void;
 	synced: (state: boolean) => void;
 	'connection-close': (event: CloseEvent | null, provider: unknown) => void;
 	'connection-error': (event: Event, provider: unknown) => void;
@@ -255,12 +259,23 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 						const readOnly = reason === READ_ONLY_DENIAL;
 						if (readOnly) provider._writes.deny();
 						provider.emit('permission-denied', [reason, provider]);
-						if (!readOnly) emitFailed(provider, new Error(`permission denied: ${reason}`));
+						// What a suggest-only socket may not write is stripped: the socket stays.
+						if (!readOnly && reason !== SUGGEST_ONLY_DENIAL)
+							emitFailed(provider, new Error(`permission denied: ${reason}`));
 					},
 					// The room's notice at the join: a state, not a refusal (no event).
-					() => provider._writes.deny()
+					() => {
+						provider._writes.deny();
+						provider.emit('access', ['read', provider]);
+					},
+					// Less than write, more than read (`suggest`, `comment`).
+					(access) => provider.emit('access', [access as 'suggest' | 'comment', provider])
 				);
-				if (authType !== messagePermissionDenied && authType !== messageReadOnly) {
+				if (
+					authType !== messagePermissionDenied &&
+					authType !== messageReadOnly &&
+					authType !== messageAccess
+				) {
 					// An auth type we do not speak inside a valid v14 envelope is
 					// protocol skew — reported, never dropped silently.
 					provider.emit('message-error', [
@@ -621,6 +636,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
 				provider.wsconnected = true;
 				provider.emit('status', [{ status: 'connected' }]);
+				provider.emit('access', ['write', provider]);
 				// The join rule: say hello; the members answer what we lack.
 				for (const buf of room.hello(provider)) sendOn(provider, websocket, buf);
 				// The room's comment threads, while someone listens (`watchComments`).

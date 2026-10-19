@@ -142,7 +142,8 @@ export class RoomPurge {
 			'records',
 			'claims',
 			'merged',
-			'released'
+			'released',
+			'suggestions'
 		] as const;
 		// Nothing an ended session deleted was left: no compaction, no run.
 		if (horizon === null && !wrote) return null;

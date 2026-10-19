@@ -50,6 +50,8 @@ export type EdytorSyncPayload = {
 	 * websocket sync's local store. `document.attachSync` passes it.
 	 */
 	attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+	/** What the room says the document's user may do (`EdytorDocument.access`). */
+	access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 
 export type EdytorSyncCleanup = () => void | Promise<void>;
@@ -182,7 +184,7 @@ export const bindProviders = (Y: EngineApi) => {
 		const persistName =
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
 		const sync = (payload: EdytorSyncPayload) => {
-			const { doc, awareness, synced, failed, attach, armBound, holdBound } = payload;
+			const { doc, awareness, synced, failed, attach, armBound, holdBound, access } = payload;
 			const {
 				params,
 				WebSocketPolyfill,
@@ -206,6 +208,7 @@ export const bindProviders = (Y: EngineApi) => {
 				maxFrameBytes
 			});
 			if (onExpired) provider.on('expired', (state) => onExpired(state));
+			if (access) provider.on('access', (level) => access(level));
 			provider.on('synced', (isSynced) => {
 				if (isSynced) synced(provider);
 			});

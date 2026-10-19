@@ -16,6 +16,8 @@ export const messagePermissionDenied = 0;
 
 /** The denial of a read-only socket's write: that socket still syncs (not a terminal refusal). */
 export const READ_ONLY_DENIAL = 'read-only';
+/** The denial of what a suggest-only socket wrote that is no suggestion's: it still syncs. */
+export const SUGGEST_ONLY_DENIAL = 'suggest-only';
 
 export const writePermissionDenied = (encoder: encoding.Encoder, reason: string): void => {
 	encoding.writeVarUint(encoder, messagePermissionDenied);
@@ -27,6 +29,17 @@ export const messageReadOnly = 1;
 
 export const writeReadOnly = (encoder: encoding.Encoder): void => {
 	encoding.writeVarUint(encoder, messageReadOnly);
+};
+
+/**
+ * The socket's access, when it is `suggest` or `comment` (the string that
+ * follows): sent when it joins, after the read-only notice of a `comment` one.
+ */
+export const messageAccess = 2;
+
+export const writeAccess = (encoder: encoding.Encoder, access: string): void => {
+	encoding.writeVarUint(encoder, messageAccess);
+	encoding.writeVarString(encoder, access);
 };
 
 export type PermissionDeniedHandler = (ydoc: unknown, reason: string) => void;
@@ -41,7 +54,8 @@ export const readAuthMessage = (
 	decoder: decoding.Decoder,
 	y: unknown,
 	permissionDeniedHandler: PermissionDeniedHandler,
-	readOnlyHandler?: (ydoc: unknown) => void
+	readOnlyHandler?: (ydoc: unknown) => void,
+	accessHandler?: (access: string) => void
 ): number => {
 	const authMessageType = decoding.readVarUint(decoder);
 	switch (authMessageType) {
@@ -51,6 +65,9 @@ export const readAuthMessage = (
 		case messageReadOnly:
 			// Unclaimed, it is returned like any subtype the caller does not speak.
 			readOnlyHandler?.(y);
+			break;
+		case messageAccess:
+			accessHandler?.(decoding.readVarString(decoder));
 	}
 	return authMessageType;
 };

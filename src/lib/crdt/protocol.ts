@@ -80,8 +80,10 @@ export {
 } from './protocols/sync.js';
 
 export {
+	messageAccess,
 	messagePermissionDenied,
 	messageReadOnly,
+	writeAccess,
 	writePermissionDenied,
 	writeReadOnly
 } from './protocols/auth.js';

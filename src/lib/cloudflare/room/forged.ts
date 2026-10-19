@@ -12,6 +12,7 @@ import {
 	DEL_PREFIX,
 	HORIZON_ROOT,
 	REGISTRY_KEY,
+	SUGGEST_ROOT,
 	WITHDRAW_PREFIX
 } from '../../crdt/schema.js';
 import type { YDoc } from '../../crdt/index.js';
@@ -36,7 +37,7 @@ type Id = { client: number; clock: number };
 /** Where an item sits: its map key (`null` in a sequence) and its parent (a room type, a root name, or a parent id). */
 type Place = { key: string | null; parent: unknown };
 
-const isId = (value: unknown): value is Id =>
+export const isId = (value: unknown): value is Id =>
 	typeof value === 'object' &&
 	value !== null &&
 	typeof (value as Id).client === 'number' &&
@@ -231,6 +232,32 @@ export const attributionWrites = (
 		}
 	}
 	return writes;
+};
+
+/**
+ * The suggestion writers of a frame that bind themselves to `user`: `n`
+ * writes a record in the suggestions' root and `c/<n>` naming `user` — a
+ * suggestion writer's first frame registers it as the user's
+ * (`sugg.writer.binding`). Any other self-bound id stays a replica's,
+ * claimed only by its own dial.
+ */
+export const selfBound = (doc: YDoc, structs: Struct[], user: string): Set<number> => {
+	const frame = runsOf(structs);
+	const records = new Set<number>();
+	const bound = new Set<number>();
+	for (const struct of structs) {
+		if (!(struct instanceof Y.Item)) continue;
+		const place = placeOf(doc, frame, struct.id);
+		if (place?.key == null) continue;
+		const { parent } = place;
+		if (parent === SUGGEST_ROOT || (parent != null && parent === doc.share.get(SUGGEST_ROOT)))
+			records.add(struct.id.client);
+		if (!isAttribution(doc, parent)) continue;
+		const content = struct.content.getContent();
+		if (boundReplica(place.key) === struct.id.client && content[content.length - 1] === user)
+			bound.add(struct.id.client);
+	}
+	return new Set([...bound].filter((client) => records.has(client)));
 };
 
 /**

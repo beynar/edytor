@@ -320,7 +320,9 @@ export class Suggestions {
 	constructor(readonly edytor: Edytor) {}
 
 	get suggesting(): boolean {
-		return this.#suggesting;
+		// A user who may only suggest always does (`room.access.suggest`).
+		void this.revision;
+		return this.#suggesting || this.edytor.document?.access === 'suggest';
 	}
 	set suggesting(on: boolean) {
 		// A switch ends the undo step and the open suggestion.
@@ -368,7 +370,7 @@ export class Suggestions {
 	 * that one last wrote in or a neighbour; a move is refused, announced.
 	 */
 	written = (plan: Plan): { result: OpResult; at?: DocPosition } | null => {
-		if (!this.#suggesting || this.#deciding) return null;
+		if (!this.suggesting || this.#deciding) return null;
 		const { facade, announcer } = this.edytor;
 		if (plan.writes.some((w) => w.op === 'moveBlocks')) {
 			announcer.say(labelsOf(this.edytor, 'editor', editorEnglish).moveRefused);

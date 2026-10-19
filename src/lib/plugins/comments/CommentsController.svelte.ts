@@ -350,16 +350,19 @@ export class CommentsController {
 	submit = async (body: string): Promise<boolean> => {
 		const draft = this.draft;
 		if (!draft || !body.trim()) return false;
+		// A user who may only comment sends its anchors: the room writes the mark.
+		const commentOnly = this.edytor.document.access === 'comment';
 		const result = await this.#send({
 			op: 'add',
 			thread: draft.id,
 			body,
 			quote: draft.quote,
-			block: draft.block
+			block: draft.block,
+			...(commentOnly && { anchors: draft.spans })
 		});
 		if (!result) return false;
 		if (this.draft === draft) this.draft = null;
-		this.#anchor(draft.id, this.draftRuns(draft));
+		if (!commentOnly) this.#anchor(draft.id, this.draftRuns(draft));
 		this.active = draft.id;
 		this.#refocus();
 		return true;

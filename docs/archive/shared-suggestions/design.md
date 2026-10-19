@@ -1,6 +1,6 @@
 # Shared suggestions — design
 
-Status: building (branch `shared-suggestions`, 2026-10-19). Started from the
+Status: built (branch `shared-suggestions`, 2026-10-19). Started from the
 study ([`study.md`](study.md), its prototype measured there), adapted to the
 user's decisions (below) and to a leaner design: the alternatives and what
 each costs are in [§2](#2-leaner-ways-measured); what was built and measured
@@ -212,14 +212,64 @@ document.toJSON({ suggestions: true });        // as shown
 
 ## 9. Measured
 
-Filled as each step lands.
+Measured on this Mac with `node scripts/bundle-size.mjs --only minimal,all,export`
+(minified, gzip -9) and the stored-bytes rows of
+`src/tests/crdt/suggest/shared-suggestions.test.ts` and
+`src/tests/collaboration/suggesting-mode.test.tsx` (raw `encode()` bytes).
 
 ### 9.1 Bundle
 
-| Step | minimal own (min) | minimal total (min / gzip) | all own (min) | all total (min / gzip) | export (min / gzip) |
-| --- | --- | --- | --- | --- | --- |
-| master `569823b5` | 427.7 KB | 474.4 / 163.4 KB | 657.1 KB | 705.7 / 246.3 KB | 76.6 / 28.9 KB |
+| Step | minimal own (min) | minimal total (min / gzip) | all own (min) | all total (min / gzip) | export (min / gzip) | minimal own, against master (min / gzip) |
+| --- | --- | --- | --- | --- | --- | --- |
+| master `569823b5` | 427.7 KB | 474.4 / 163.4 KB | 657.1 KB | 705.7 / 246.3 KB | 76.6 / 28.9 KB | — |
+| 1 engine (YP31) | 427.7 KB | 474.5 / 163.4 KB | 657.1 KB | 705.7 / 246.3 KB | 76.6 / 28.9 KB | +44 B / +0 B |
+| 2 document part | 438.4 KB | 485.2 / 167.4 KB | 667.9 KB | 716.5 / 250.3 KB | 76.6 / 28.9 KB | +11.0 KB / +4.1 KB |
+| 3–6 index, session, surface, room access | 444.6 KB | 491.4 / 169.3 KB | 674.3 KB | 723.0 / 252.4 KB | 76.6 / 28.9 KB | +17.4 KB / +6.1 KB |
+| PR head (with the caption and void-press fixes, +1.4 KB, not suggestions) | 446.0 KB | 492.8 / 169.7 KB | 676.0 KB | 724.6 / 253.0 KB | 76.6 / 28.9 KB | +18.8 KB / +6.5 KB |
+
+Shared suggestions cost **+17.4 KB min / +6.1 KB gzip** in the minimal app
+(+17.7 / +6.3 KB in the app with every plugin); `edytor/export` is unchanged.
+By file (minimal, min): `crdt/doc/suggest.js` 10.2 KB, `session/suggestions`
++4.8 KB, `crdt/doc/plan.js` +0.6 KB, the view's wiring and overlay layers
++0.9 KB, history, attribution, moves and the document's access +0.9 KB. The
+study estimated +11–12 KB min / +4 KB gzip for the full feature: the build is
+about half again over that estimate, mostly in the document part (the
+decisions as plans, the document without suggestions, withdrawal, proposals
+of every operation kind) and in the live streaming diff of the session.
+
+The leaner ways that were measured on their own:
+
+| # | Measured |
+| --- | --- |
+| L1 | The study's proposal content type (ref 14, its reader and `YNode#propose`) costs +340 B min against YP31's +44 B (+296 B min / +81 B gzip saved), and no JSON settle entries are read |
+| L2 | A decision writes one id list or one hold: §9.3 |
+| L3 | A second suggestion by the same view costs 36 B against 89 B for the first (a new writer): §9.3 |
+| L4 | No index part: pending is read per block from the records, a document with no suggestion reads nothing (`debug` counts 0), a keystroke costs the same at 5,000 blocks as at 1,000 |
+| L5, L6, L8 | The bar plugin grew +0.3 KB min (`SuggestionBars`), the range overlay +0.3 KB (`Ranges`); no review plugin, no lens module |
 
 ### 9.2 Engine
 
+Fork patch YP31 (a hold record inside a nested node holds nothing): +44 B
+min, no gzip change; no new content type, no new reader.
+
 ### 9.3 Storage
+
+Raw `encode()` bytes, against the same edit made directly:
+
+| | Suggested | Direct |
+| --- | --- | --- |
+| A typed character (100 typed one by one) | 1.07 B | 1.80 B |
+| A typed character (1,000) | 1.007 B | 1.08 B |
+| A Backspace (100) | 0.14 B (proposed) | 0.97 B |
+| A Backspace (1,000) | 0.017 B (proposed) | 0.10 B |
+| A suggestion's fixed cost | 89 B (its record, the writer's binding, a new client); another by the same writer 36 B | — |
+| Accept an insertion / reject a deletion (a settled id list) | 11 / 12 B | — |
+| Reject an insertion / accept a deletion (the reviewer's hold) | 37 / 37 B | — |
+
+A streamed AI answer (markdown, streamed word by word through the export's
+`textToBlocks(…, { streaming: true })`, a peer applying every chunk):
+
+| Answer | Chunks | Synced (all chunks) | Stored | The same blocks written at once |
+| --- | --- | --- | --- | --- |
+| 257 characters (a heading, a paragraph with a bold run, a list, a table, a paragraph) | 60 | 3,509 B (58 B a chunk) | 2,080 B | 1,796 B |
+| 1,034 characters (the same, four times) | 243 | 13,546 B (56 B a chunk) | 7,244 B | 6,670 B |

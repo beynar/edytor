@@ -16,6 +16,7 @@ This file is the overview: the contexts, the owners table, where to fix what, th
 | [`docs/agents/plugins-and-chrome.md`](docs/agents/plugins-and-chrome.md)   | a plugin, the headless chrome and the demo's (handles, menus, toolbar, overlay), labels, accessibility, suggestions                                             |
 | [`docs/agents/room-and-protocol.md`](docs/agents/room-and-protocol.md)     | `src/lib/cloudflare/`, `crdt/providers`, `crdt/protocols`, `collaboration/`, anything that must stay Worker-safe                                                |
 | [`docs/agents/release.md`](docs/agents/release.md)                         | the version, the docs site's rules, the tarball, a release or a deploy                                                                                          |
+| [docs/agents/bundle-trim.md](docs/agents/bundle-trim.md)                   | any work whose goal is size, and a feature before it lands: the thesis, the rules, the tools, the step-by-step procedure, the size budget                       |
 
 The normative contract rows (`del.range.*`, `layout.*`, `table.*`, `room.*`, …) are in `docs/editor-delete-contract.md`; the planning history, with its ticket ids, is in `docs/archive/` (comments in `src/lib` name contract rows, never ticket ids: `scripts/ticket-ids.mjs`).
 

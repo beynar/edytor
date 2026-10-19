@@ -655,20 +655,24 @@ export const docSuggest = (c: SuggestContext) => {
 	};
 
 	/**
-	 * Write decision `parts` by the current client, in one transaction: the
-	 * id lists, then each operation through `exec` (the bare document's own
+	 * Write decision `parts` by client `w` (the current one by default; its
+	 * author's rejection, by a writer of theirs), in one transaction: the id
+	 * lists, then each operation through `exec` (the bare document's own
 	 * operation by default; a view passes its dispatched one).
 	 */
 	const run = (
 		parts: readonly DecisionPart[],
-		exec: (op: string, args: unknown[]) => unknown = c.run
+		exec: (op: string, args: unknown[]) => unknown = c.run,
+		w = doc.clientID
 	) =>
 		write(() =>
-			doc.transact(() => {
-				for (const part of parts)
-					if ('op' in part) for (const args of part.calls()) exec(part.op, args);
-					else hold(part);
-			})
+			doc.transact(() =>
+				as(w, () => {
+					for (const part of parts)
+						if ('op' in part) for (const args of part.calls()) exec(part.op, args);
+						else hold(part);
+				})
+			)
 		);
 
 	/** Every pending change, in document order. */
@@ -676,30 +680,6 @@ export const docSuggest = (c: SuggestContext) => {
 		const map = pending();
 		return [...map.keys()].sort(c.compare).flatMap((b) => map.get(b)!.changes);
 	};
-
-	/**
-	 * Withdraw suggestion `id` (its author's), written by `w`, a writer of
-	 * its author: its pending text and blocks go as a rejection takes them
-	 * (its author's own, so directly) and its author's entries are deleted
-	 * (a decider's settled lists stay). Nothing of it stays pending.
-	 */
-	const withdraw = (id: string, w: number) =>
-		write(() =>
-			doc.transact(() => {
-				const { node, writer } = recOf(id);
-				const mine = changes().filter(
-					(ch) => ch.suggestion === id && ch.kind !== 'delete' && ch.kind !== 'remove'
-				);
-				as(w, () => {
-					run(decide(mine, false));
-					for (let it = firstItem<Item>(node), at = 0; it; it = it.right)
-						if (it.deleted) continue;
-						else if (sameAuthor(it.id.client, writer)) node.delete(at, it.length);
-						else at += it.length;
-				});
-				version++;
-			})
-		);
 
 	/**
 	 * The document without its pending suggestions (`toJSON`'s default):
@@ -757,7 +737,6 @@ export const docSuggest = (c: SuggestContext) => {
 		apply,
 		decide,
 		run,
-		withdraw,
 		/** The suggestions the document holds, oldest first. */
 		records: (): SuggestionRecord[] => records().recs,
 		/** Whether the document holds any suggestion record. */

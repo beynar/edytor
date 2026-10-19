@@ -2885,12 +2885,14 @@ under that writer (`crdt/doc/history.ts`): the suggester's undo of typing
 holds it as the writer, of a proposal deletes the entry; its redo writes
 the entry again under the writer, still a proposal, never a decision.
 
-### `sugg.withdraw` — the author takes a suggestion back
+### `sugg.withdraw` — the author takes a suggestion back by rejecting it
 
-The author withdraws, written by a writer of theirs: the suggestion's
-pending text and blocks go as a rejection takes them and the author's
-entries in the record are deleted (a decider's settled lists stay).
-Nothing of it stays pending.
+The author's removal of their own suggestion is a reject (`sugg.decide`):
+the same writes, one command. A view that may not decide (a suggest-only
+user's) writes it by a writer of its author's that is not the record's
+writer (whose id lists propose), so the room admits it and what it
+deleted reads settled. Nothing of it stays pending; its undo brings it
+back.
 
 ### `sugg.json.base` — the document without its pending suggestions
 

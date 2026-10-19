@@ -264,12 +264,14 @@ describe('shared suggestions (sugg.*)', () => {
 		]);
 	});
 
-	it('the author withdraws a suggestion: nothing of it is pending, the text is as before', () => {
+	it('its author rejects it, by a writer of theirs: nothing of it is pending, the text is as before (sugg.withdraw)', () => {
 		const ana = peer('ana');
 		const s = S(ana).open();
 		insert(ana, s, 4, 'very ');
 		erase(ana, s, 15, 6);
-		S(ana).withdraw(s, S(ana).records()[0]!.writer);
+		// Not the record's writer, whose id lists would propose: another writer of hers.
+		const other = S(ana).writer();
+		S(ana).run(S(ana).decide(S(ana).changes(), false), undefined, other);
 		expect(text(ana)).toBe('The quick brown fox');
 		expect(S(ana).changes()).toEqual([]);
 	});

@@ -5823,7 +5823,7 @@ export declare class Suggestion {
 - `via`: Who wrote a shared one for its author (`'ai'`).
 - `changes`: A shared one's pending changes, in document order (reactive); a view-local one has none.
 - `canDecide`: This view may accept or reject it (a view-local one: may write).
-- `mine`: Its author is this view's actor (it may withdraw a shared one).
+- `mine`: Its author is this view's actor (it may reject a shared one).
 - `content`: The proposed blocks (reactive).
 - `retryable`: An `onRetry` was given: the UI offers "Try again".
 - `live`: Listed: not accepted, discarded or dropped (a shared one: with a change pending).
@@ -5832,7 +5832,7 @@ export declare class Suggestion {
 - `done`: The stream ended: `status` is `ready`.
 - `accept`: Accept it: one command, one undo step (see `Suggestions`).
 - `reject`: Reject it: a shared one's changes, one command; a view-local one is dropped.
-- `discard`: Drop it (writes nothing); a shared one its author withdraws, anyone else rejects.
+- `discard`: Drop it (writes nothing); a shared one is rejected.
 - `retry`: Empty it, stream again, and ask the app for another answer (`onRetry`).
 
 ## SuggestionAt

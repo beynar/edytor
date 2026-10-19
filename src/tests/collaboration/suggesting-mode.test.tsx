@@ -157,16 +157,28 @@ describe('suggesting mode (sugg.*)', () => {
 		expect(edytor.facade.blockText(p1)).toBe('The quick brown fox');
 	});
 
-	it('the author withdraws its suggestion (discard): nothing of it is pending', () => {
+	it('its author rejects it (discard), a suggest-only one too: nothing of it is pending (sugg.withdraw)', () => {
 		const { edytor, p1 } = view();
 		edytor.suggestions.suggesting = true;
 		edytor.insertText(p1, 4, 'very ');
 		edytor.deleteText(p1, 15, 6);
 		const [suggestion] = edytor.suggestions.list;
 		expect(suggestion!.mine).toBe(true);
+		edytor.document.access = 'suggest';
+		expect(suggestion!.canDecide).toBe(false);
 		suggestion!.discard();
+		expect(edytor.dispatcher.last).toMatchObject({
+			operation: 'rejectSuggestion',
+			status: 'applied'
+		});
 		expect(edytor.facade.blockText(p1)).toBe('The quick brown fox');
 		expect(edytor.facade.suggest.changes()).toEqual([]);
+		// Its undo brings it back.
+		edytor.historyUndo();
+		expect(kinds(edytor.facade.suggest.changes())).toEqual([
+			['insert', 'very '],
+			['delete', 'brown ']
+		]);
 	});
 });
 

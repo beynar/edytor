@@ -19,7 +19,7 @@
  *   app's `add(…, { shared: true })` writes its content live as it streams,
  *   one suggestion of its own (`via: 'ai'`). Accepting and rejecting are
  *   one command each (`acceptSuggestion`, `rejectSuggestion`) of a view
- *   that may decide; the author's `discard` withdraws.
+ *   that may decide; its author may reject it too (`discard`).
  *
  * The layer owns the list; the surface renders it.
  */
@@ -204,7 +204,7 @@ export class Suggestion {
 	get canDecide(): boolean {
 		return this.#layer.decides();
 	}
-	/** Its author is this view's actor (it may withdraw a shared one). */
+	/** Its author is this view's actor (it may reject a shared one). */
 	get mine(): boolean {
 		return !this.shared || this.by === this.#layer.edytor.document.actor.id;
 	}
@@ -277,9 +277,11 @@ export class Suggestion {
 	reject = (): OpResult =>
 		this.shared ? this.#layer.decide(this.changes, false) : (this.#layer.drop(this), NOOP);
 
-	/** Drop it (writes nothing); a shared one its author withdraws, anyone else rejects. */
-	discard = (): void =>
-		void (this.shared && this.mine ? this.#layer.withdraw(this) : this.reject());
+	/** Drop it (writes nothing); a shared one is rejected. */
+	discard = (): void => {
+		this.#layer.drop(this);
+		if (this.shared) this.reject();
+	};
 
 	/** Empty it, stream again, and ask the app for another answer (`onRetry`). */
 	retry = () => {
@@ -306,6 +308,8 @@ export class Suggestions {
 	/** This view's writer, its open suggestion and the block it last wrote in (the grouping). */
 	#writer = 0;
 	#open: string | null = null;
+	/** The writer its author's rejections are written by when this view may not decide (never a record's writer, whose id lists propose). */
+	#decider = 0;
 	#last: BlockId | null = null;
 	/** A decision runs: its writes are the decider's, never suggested. */
 	#deciding = false;
@@ -391,24 +395,28 @@ export class Suggestions {
 	 * held by this view's user) and the view's operations (`deleteBlock`,
 	 * `mergeBlocks`, a proposed one run again).
 	 */
-	decide = (changes: readonly SuggestedChange[], accept: boolean): OpResult =>
-		this.#decide(changes, accept);
-
-	/** {@link decide}, or with `own` (a writer of this view's) the author's withdrawal. */
-	#decide = (changes: readonly SuggestedChange[], accept: boolean, own?: number): OpResult => {
+	decide = (changes: readonly SuggestedChange[], accept: boolean): OpResult => {
 		const { edytor } = this;
 		const { suggest } = edytor.facade;
 		const operation = accept ? 'acceptSuggestion' : 'rejectSuggestion';
 		if (!changes.length) return NOOP;
-		if (own === undefined && !this.decides())
+		// Its author may reject it, written by a writer of theirs (a suggest-only user's view too).
+		const author =
+			!this.decides() &&
+			!accept &&
+			changes.every((c) => this.get(c.suggestion)?.mine) &&
+			(this.#decider ||= suggest.writer());
+		if (!this.decides() && !author)
 			return (void edytor.dispatcher.record({ operation, status: 'refused' }), REFUSED);
-		const block = edytor.idToBlock.get(changes[0]!.block ?? '') ?? edytor.root!;
+		const block = edytor.idToBlock.get(changes[0]!.block) ?? edytor.root!;
 		edytor.dispatcher.dispatch(operation, { changes }, { block }, () => {
 			this.#deciding = true;
 			try {
-				if (own !== undefined) return suggest.withdraw(changes[0]!.suggestion, own);
-				suggest.run(suggest.decide(changes, accept), (op, args) =>
-					(edytor as unknown as Record<string, (...a: unknown[]) => unknown>)[op]!(...args)
+				suggest.run(
+					suggest.decide(changes, accept),
+					(op, args) =>
+						(edytor as unknown as Record<string, (...a: unknown[]) => unknown>)[op]!(...args),
+					author || undefined
 				);
 			} finally {
 				this.#deciding = false;
@@ -439,13 +447,6 @@ export class Suggestions {
 	/** Accept (or reject) every pending shared suggestion: one command, one undo step. */
 	acceptAll = (): OpResult => this.decide(this.changes(), true);
 	rejectAll = (): OpResult => this.decide(this.changes(), false);
-
-	/** @internal The author withdraws shared `suggestion` (its `discard`): one command, written by this view's writer. */
-	withdraw = (suggestion: Suggestion): OpResult => {
-		const { facade } = this.edytor;
-		this.drop(suggestion);
-		return this.#decide(suggestion.changes, false, (this.#writer ||= facade.suggest.writer()));
-	};
 
 	/**
 	 * @internal Write shared `suggestion`'s content as it is now (`update`,

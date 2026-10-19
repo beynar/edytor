@@ -1385,8 +1385,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     };
                 };
                 decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
-                run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown) => void;
-                withdraw: (id: string, w: number) => void;
+                run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown, w?: number) => void;
                 records: () => import("./doc/suggest.js").SuggestionRecord[];
                 any: () => boolean;
                 changes: () => import("./doc/suggest.js").SuggestedChange[];
@@ -2544,8 +2543,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                 };
             };
             decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
-            run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown) => void;
-            withdraw: (id: string, w: number) => void;
+            run: (parts: readonly import("./doc/suggest.js").DecisionPart[], exec?: (op: string, args: unknown[]) => unknown, w?: number) => void;
             records: () => import("./doc/suggest.js").SuggestionRecord[];
             any: () => boolean;
             changes: () => import("./doc/suggest.js").SuggestedChange[];

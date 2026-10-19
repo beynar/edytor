@@ -39,7 +39,6 @@ import {
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
 import { removeUnit } from '../placement/slots.js';
 import { isRowMark, newNode, openRangeCursor, ownTextIds, writersOf } from '../text/model.js';
-import { canonKey } from '../text/ranges.js';
 import {
 	changedUnder,
 	clientsOf,
@@ -51,7 +50,6 @@ import {
 } from '../structs.js';
 import { nonceOf } from '../rand.js';
 import { id as mint } from '../../utils.js';
-import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '../../utils/json.js';
 import { effectOf, NOOP, refused } from './plan.js';
 import type { OpResult, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
@@ -122,8 +120,8 @@ type Item = {
 };
 /** A shown unit of a block: its id, display offset and character (`￼` for an atom). */
 type Unit = { client: number; clock: number; offset: number; char: string };
-/** A block's pending changes, and the units the document without suggestions leaves out. */
-type Pending = { changes: SuggestedChange[]; inserted: number[] };
+/** A block's pending changes. */
+type Pending = SuggestedChange[];
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 /** What a suggestion refuses, unless on its author's own pending block (`sugg.refused`). */
@@ -139,26 +137,6 @@ const push = (runs: IdRange[], client: number, clock: number, next = true) => {
 	const last = runs[runs.length - 1];
 	if (next && last && last[0] === client && last[1] + last[2] === clock) last[2]++;
 	else runs.push([client, clock, 1]);
-};
-
-/** `content` without the units at the (sorted) display `offsets`, equal neighbours joined. */
-const without = (content: (JSONText | JSONInlineBlock)[], offsets: readonly number[]) => {
-	const out: (JSONText | JSONInlineBlock)[] = [];
-	let [at, k] = [0, 0];
-	for (const part of content) {
-		let text = '';
-		for (const char of 'text' in part ? part.text : '￼')
-			for (let j = 0; j < char.length; j++)
-				if (offsets[k] === at++) k++;
-				else text += char[j];
-		const last = out[out.length - 1];
-		if (!text) continue;
-		if (!('text' in part)) out.push(part);
-		else if (last && 'text' in last && canonKey(last.marks) === canonKey(part.marks))
-			out[out.length - 1] = { ...last, text: last.text + text };
-		else out.push({ ...part, text });
-	}
-	return out;
 };
 
 export type SuggestContext = DocBase &
@@ -315,7 +293,6 @@ export const docSuggest = (c: SuggestContext) => {
 		const split = sourceOf(b);
 		const maker = born && split !== null ? pendingIn(born.client, born.clock) : undefined;
 		const changes: SuggestedChange[] = [];
-		const inserted: number[] = [];
 		const made: IdRange[] = maker ? [[born!.client, born!.clock, 1]] : [];
 		const open = new Map<string, Mutable<SuggestedChange> & { ids: IdRange[] }>();
 		const touch = (rec: Rec, kind: 'insert' | 'delete', u: Unit) => {
@@ -353,7 +330,6 @@ export const docSuggest = (c: SuggestContext) => {
 				push(made, u.client, u.clock, last === u.offset - 1);
 				last = u.offset;
 			} else if (rec) touch(rec, 'insert', u);
-			if (rec) inserted.push(u.offset);
 			for (const r of t.proposing)
 				if (r.proposed.has(u.client, u.clock) && !r.settled.has(u.client, u.clock))
 					touch(r, 'delete', u);
@@ -365,7 +341,7 @@ export const docSuggest = (c: SuggestContext) => {
 		for (const r of born ? t.proposing : [])
 			if (r.proposed.has(born!.client, born!.clock) && !r.settled.has(born!.client, born!.clock))
 				changes.push(whole(r.id, 'remove', [[born!.client, born!.clock, 1]]));
-		return changes.length ? { changes, inserted } : null;
+		return changes.length ? changes : null;
 	};
 
 	/** Every block the records' writers and proposals are in (a proposal naming a block's node included). */
@@ -695,55 +671,7 @@ export const docSuggest = (c: SuggestContext) => {
 	/** Every pending change, in document order. */
 	const changes = (): SuggestedChange[] => {
 		const map = pending();
-		return [...map.keys()].sort(c.compare).flatMap((b) => map.get(b)!.changes);
-	};
-
-	/**
-	 * The document without its pending suggestions (`toJSON`'s default):
-	 * pending inserted units and blocks left out (a pending block's children
-	 * take its place), a split's block joined to the block it was split from
-	 * (its text after that block's, in their text's order, its children
-	 * after that block's own, as a merge shows them), proposals not applied.
-	 */
-	const base = (data: JSONDoc['data'] | undefined): JSONDoc => {
-		const map = pending();
-		const kind = (b: BlockId) => map.get(b)?.changes[0]?.kind;
-		const emitted = new Map<BlockId, JSONBlock>();
-		const joins = new Map<BlockId, [number, JSONBlock['content'], JSONBlock[]][]>();
-		const blocks = (ids: readonly BlockId[]): JSONBlock[] =>
-			ids.flatMap((id): JSONBlock[] => {
-				const kids = blocks(c.childrenIds(id));
-				if (kind(id) === 'block') return kids;
-				const own = runsView.contentJSON(id) as (JSONText | JSONInlineBlock)[];
-				const content = without(own, map.get(id)?.inserted ?? []);
-				const into = kind(id) === 'split' && sourceOf(id, (b) => kind(b) === 'split');
-				if (into) {
-					const { own: o } = view();
-					const at = o.streamsIn(o.streamOf(id)!.home).findIndex((s) => s.block === id);
-					listOf(joins, into).push([at, content, kids]);
-					return [];
-				}
-				const json: JSONBlock = {
-					type: c.blockTypeOf(id) ?? '',
-					id,
-					data: (c.blockDataOf(id) ?? {}) as JSONBlock['data']
-				};
-				if (content.length) json.content = content;
-				if (kids.length) json.children = kids;
-				emitted.set(id, json);
-				return [json];
-			});
-		const children = blocks(c.childrenIds(null));
-		for (const [into, list] of joins) {
-			const json = emitted.get(into);
-			if (!json) continue;
-			list.sort((a, b) => a[0] - b[0]);
-			const content = without([...(json.content ?? []), ...list.flatMap((j) => j[1] ?? [])], []);
-			const kids = [...(json.children ?? []), ...list.flatMap((j) => j[2])];
-			if (content.length) json.content = content;
-			if (kids.length) json.children = kids;
-		}
-		return data ? { data, children } : { children };
+		return [...map.keys()].sort(c.compare).flatMap((b) => map.get(b)!);
 	};
 
 	return {
@@ -762,8 +690,7 @@ export const docSuggest = (c: SuggestContext) => {
 		/** Every pending change, in document order. */
 		changes,
 		/** The pending changes of block `b` (`[]`: none). */
-		at: (b: BlockId): readonly SuggestedChange[] => pending().get(b)?.changes ?? [],
-		base,
+		at: (b: BlockId): readonly SuggestedChange[] => pending().get(b) ?? [],
 		/** Bumped by every change of the records. */
 		version: () => version,
 		/** Be told of every change of the records. Returns the unsubscribe. */

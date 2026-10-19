@@ -1391,7 +1391,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 any: () => boolean;
                 changes: () => import("./doc/suggest.js").SuggestedChange[];
                 at: (b: import("./index.js").BlockId) => readonly import("./doc/suggest.js").SuggestedChange[];
-                base: (data: import("./index.js").JSONDoc["data"] | undefined) => import("./index.js").JSONDoc;
                 version: () => number;
                 onChange: (f: () => void) => () => undefined;
                 debug: {
@@ -2550,7 +2549,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             any: () => boolean;
             changes: () => import("./doc/suggest.js").SuggestedChange[];
             at: (b: BlockId) => readonly import("./doc/suggest.js").SuggestedChange[];
-            base: (data: JSONDoc["data"] | undefined) => JSONDoc;
             version: () => number;
             onChange: (f: () => void) => () => undefined;
             debug: {

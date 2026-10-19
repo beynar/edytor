@@ -49,7 +49,7 @@
 import { setMarkEdges } from './text/marks.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
-import { clientsOf } from './structs.js';
+import { asYDoc, clientsOf } from './structs.js';
 import { SCHEMA } from './schema.js';
 import {
 	bindModel,
@@ -206,7 +206,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	const BA = bindBlockAttribution(Y);
 	const { init, seed } = bindSeed(Y, BA);
 
-	return (doc: EngineDoc, config: EdytorDocConfig = {}) => {
+	const create = (doc: EngineDoc, config: EdytorDocConfig = {}) => {
 		adoptRules(doc);
 		setMarkEdges(doc, config.markEdge ?? (() => undefined));
 		const roleOf = config.roleOf ?? (() => undefined);
@@ -390,12 +390,24 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		 * root's visible children.
 		 */
 		const toJSON = (options?: { suggestions?: boolean }): JSONDoc => {
+			// Without its pending suggestions, unless asked (`sugg.json.base`): the
+			// document on a copy with every pending suggestion rejected.
+			if (!options?.suggestions && suggest.any() && suggest.changes().length) {
+				const copy = adoptRules(new Y.Doc());
+				Y.applyUpdate(copy, Y.encodeStateAsUpdate(asYDoc(doc)));
+				const other = create(copy as EngineDoc, { ...config, actor: undefined });
+				const { suggest: all } = other;
+				all.run(all.decide(all.changes(), false));
+				const json = other.toJSON({ suggestions: true });
+				other.dispose();
+				copy.destroy();
+				return json;
+			}
 			const data = docData();
-			const own = Object.keys(data).length > 0 ? (data as JSONDoc['data']) : undefined;
-			// Without its pending suggestions, unless asked (`sugg.json.base`).
-			if (!options?.suggestions && suggest.any()) return suggest.base(own);
 			const children = childrenIds(null).map(blockJSON);
-			return own ? { data: own, children } : { children };
+			return Object.keys(data).length > 0
+				? { data: data as JSONDoc['data'], children }
+				: { children };
 		};
 
 		// ── facade object ─────────────────────────────────────────────────
@@ -544,6 +556,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		};
 		return facade;
 	};
+	return create;
 };
 
 /**

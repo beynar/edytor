@@ -2906,10 +2906,12 @@ collected, and the answer so far is inserted again.
 ### `sugg.json.base` — the document without its pending suggestions
 
 `toJSON()` (and the room's `onSave` value, `edytor.value`) leaves pending
-suggestions out: inserted units and blocks are not there (a pending
-block's children take its place, a split's block joins the block before
-it), proposals are not applied. `toJSON({ suggestions: true })` is the
-document as shown. A document with no record pays nothing.
+suggestions out: it is the document as shown, on a copy of the document
+with every pending suggestion rejected (inserted units and blocks gone, a
+split's block joined to the block before it, proposed deletions kept). A
+whole-document cost (the copy and its index) while any suggestion is
+pending; a document with no pending change reads the document directly.
+`toJSON({ suggestions: true })` is the document as shown.
 
 ## The room (server, `edytor/cloudflare`)
 

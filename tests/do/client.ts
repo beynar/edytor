@@ -148,7 +148,7 @@ export class RawClient {
 	readonly denied: string[] = [];
 	/** The room said, when this socket joined, that it may read but not write. */
 	readOnly = false;
-	/** The access the room said this socket has when it joined (`suggest`, `comment`), if it did. */
+	/** The access the room said this socket has when it joined (`write`, `suggest`, `comment`; `null`: a reader). */
 	access: string | null = null;
 	/** The room's comment messages (snapshots and changes), in order. */
 	readonly comments: CommentMessage[] = [];

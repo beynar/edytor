@@ -19,7 +19,7 @@ import { env } from 'cloudflare:workers';
 import { SELF, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
-import { E, ORIGIN, RawClient, crdt, para, readFacade } from './client';
+import { E, ORIGIN, RawClient, SelfWebSocket, crdt, para, readFacade } from './client';
 import { setNow, type CommentRoom, type TimedRoom } from './worker';
 
 declare global {
@@ -75,6 +75,40 @@ const join = async (name: string, user: string, access: 'suggest' | 'comment' | 
 	const document = E.attachDocument(doc, { actor: { id: user } });
 	return { document, client };
 };
+
+describe('the access the room tells a document (room.access.suggest)', () => {
+	it("the shipped provider sets document.access to the socket's level as it joins", async () => {
+		const name = 'access-levels';
+		const ada = await writer(name, 'ada');
+		const seen: Record<string, string[]> = {};
+		for (const access of ['write', 'suggest', 'comment', 'read'] as const) {
+			const document = E.createDocument({ actor: { id: access } });
+			seen[access] = [];
+			document.onAccessChange((level) => seen[access]!.push(level));
+			const release = document.attachSync(
+				crdt.providers.createWebsocketSync({
+					server: `${ORIGIN.replace('https', 'wss')}/rooms`,
+					room: name,
+					params: { user: access, access, replica: String(document.doc.clientID) },
+					persist: false,
+					WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
+				})
+			);
+			await vi.waitFor(() => expect(document.facade.blockText('p1')).toBe('The quick brown fox'));
+			expect(document.access).toBe(access);
+			release?.();
+			document.destroy();
+		}
+		// Told once each: a writer hears nothing it did not already have.
+		expect(seen).toEqual({
+			write: [],
+			suggest: ['suggest'],
+			comment: ['read', 'comment'],
+			read: ['read']
+		});
+		ada.client.close();
+	});
+});
 
 describe('a user who may only suggest (room.access.suggest)', () => {
 	it('is told so; what it suggests is stored and relayed, with its author', async () => {

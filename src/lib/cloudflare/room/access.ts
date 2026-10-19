@@ -157,12 +157,19 @@ export class RoomAccess {
 		if (doc === null) {
 			room.refuseContainer(server);
 		} else {
-			// A read-only socket is never asked for its state: it has nothing
-			// to give. It gets the read-only notice instead (not a refusal),
-			// so its provider tracks nothing.
-			room.send(server, identity.readOnly ? readOnlyFrame() : step1Frame(doc));
-			// Suggest-only and comment-only sockets are told their access (`room.access.suggest`).
-			if (identity.access) room.send(server, accessFrame(identity.access));
+			// Every socket is told its access as it joins (`room.access.suggest`),
+			// before anything else it reads. A read-only socket is never asked
+			// for its state: it has nothing to give. It gets the read-only
+			// notice instead (not a refusal), so its provider tracks nothing;
+			// a comment-only one hears its level after it.
+			const level = levelIn(identity);
+			if (identity.readOnly) {
+				room.send(server, readOnlyFrame());
+				if (level !== 'read') room.send(server, accessFrame(level));
+			} else {
+				room.send(server, accessFrame(level));
+				room.send(server, step1Frame(doc));
+			}
 			if (room.state.presence.size > 0) room.send(server, room.presence.snapshot());
 		}
 		return new Response(null, { status: 101, webSocket: client });

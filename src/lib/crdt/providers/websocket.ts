@@ -110,7 +110,7 @@ const defaultConnectTimeout = 10000;
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
-	/** What the room says this connection's user may do (`write` at each open, until it says less). */
+	/** What the room says this connection's user may do, as it joins (and at a downgrade to `read`). */
 	access: (access: 'write' | 'suggest' | 'comment' | 'read', provider: unknown) => void;
 	synced: (state: boolean) => void;
 	'connection-close': (event: CloseEvent | null, provider: unknown) => void;
@@ -268,8 +268,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 						provider._writes.deny();
 						provider.emit('access', ['read', provider]);
 					},
-					// Less than write, more than read (`suggest`, `comment`).
-					(access) => provider.emit('access', [access as 'suggest' | 'comment', provider])
+					// The room's word at the join (`write`, `suggest`, `comment`).
+					(access) => provider.emit('access', [access as 'write' | 'suggest' | 'comment', provider])
 				);
 				if (
 					authType !== messagePermissionDenied &&
@@ -636,7 +636,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
 				provider.wsconnected = true;
 				provider.emit('status', [{ status: 'connected' }]);
-				provider.emit('access', ['write', provider]);
 				// The join rule: say hello; the members answer what we lack.
 				for (const buf of room.hello(provider)) sendOn(provider, websocket, buf);
 				// The room's comment threads, while someone listens (`watchComments`).

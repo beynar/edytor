@@ -32,8 +32,10 @@ export const writeReadOnly = (encoder: encoding.Encoder): void => {
 };
 
 /**
- * The socket's access, when it is `suggest` or `comment` (the string that
- * follows): sent when it joins, after the read-only notice of a `comment` one.
+ * The socket's access (the string that follows: `write`, `suggest` or
+ * `comment`), sent when it joins, before anything else it reads; a
+ * `comment` one's after its read-only notice (a `read` one has only the
+ * notice).
  */
 export const messageAccess = 2;
 

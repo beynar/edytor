@@ -252,6 +252,7 @@ export class SurfaceObserver {
 			this.signal();
 		}));
 		for (const child of root.childNodes) this.#rooted.add(child);
+		this.#rendering = false;
 		mo.observe(root, {
 			attributes: true,
 			attributeOldValue: true,

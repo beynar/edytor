@@ -97,12 +97,12 @@
 	}
 	:global(.demo-widget-hint) {
 		margin-top: 10px;
-		color: rgba(55, 53, 47, 0.55);
+		color: rgb(95, 94, 91);
 		font-size: 13px;
 	}
 	:global(.demo-widget-caption) {
 		margin-top: 4px;
-		color: rgba(55, 53, 47, 0.65);
+		color: rgb(95, 94, 91);
 		font-size: 14px;
 	}
 </style>

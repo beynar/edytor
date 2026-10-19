@@ -81,7 +81,9 @@ test.describe('controls inside a void block keep their press (the demo widget)',
 		await expect(page.locator(`${widget} [data-edytor-control]`)).toContainText('1 taps');
 		await expect(block).not.toHaveAttribute('data-edytor-selected', 'true');
 		// The card's empty area: the block is selected, the host focused.
-		const hint = (await page.locator(`${widget} .demo-widget-hint`).boundingBox())!;
+		const hintArea = page.locator(`${widget} .demo-widget-hint`);
+		await hintArea.scrollIntoViewIfNeeded();
+		const hint = (await hintArea.boundingBox())!;
 		await page.mouse.click(hint.x + hint.width - 4, hint.y + hint.height / 2);
 		await expect(block).toHaveAttribute('data-edytor-selected', 'true');
 		await expect(page.locator('[data-edytor]')).toBeFocused();

@@ -1303,7 +1303,9 @@ test.describe('browser composition and selection resilience', () => {
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 2, 1, 2);
 		await dispatchComposition(page, [{ type: 'compositionstart', data: '' }]);
-		await setSelectionByTextIndex(page, 2, 0);
+		// The range across blocks was replaced at the start: the empty last line
+		// is the second text now. The drift moves the DOM caret there.
+		await setSelectionByTextIndex(page, 1, 0);
 		await dispatchComposition(page, [{ type: 'compositionend', data: 'に' }]);
 
 		await expect

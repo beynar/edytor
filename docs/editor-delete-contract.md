@@ -2245,7 +2245,8 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
 - **The projector is the only DOM-selection writer** (`surface/projector.svelte.ts`,
   arch-v2 V4): `post()` after every flush, and `park`, the one write made
   while a composition is live (the caret a composition over a block or
-  atom selection gets before the IME writes). The named exceptions are
+  atom selection, or over a text range across blocks, gets before the IME
+  writes). The named exceptions are
   listed in `docs/agents/selection-and-input.md` (DOM selection exceptions): a snapshot read
   replaces a multi-range selection (Firefox) with its bounding range
   (`selection/domSelection.ts`), and a few sites clear it
@@ -2567,6 +2568,44 @@ layout's few columns one by one): never a walk of the page. Row:
 `marquee.test.tsx` ("a move's work does not grow with the page"): one
 move in the middle of 1,000 and of 5,000 top-level paragraphs reads the
 same boxes and handles within a binary search's difference.
+
+## Composition (IME)
+
+### `ime.range.blocks` — a composition over a range across blocks replaces it at its start
+
+A composition that starts over a text range whose ends lie in different
+blocks replaces the range at `compositionstart`, as one over a block or an
+atom selection does (`Composition.#rangeless`,
+`session/composition.svelte.ts`): one command through the dispatcher
+(hooks, veto; `replaceSelectionForInsertion` merges the blocks around the
+range's start), rendered at once (`flushSync`), and the DOM caret parked at
+the range's start (`projector.park`) before the IME writes. The IME then
+composes at a caret in one text and never runs its own delete across
+blocks. The visible result is unchanged: the range is replaced by the
+composed text, and the replacement, the previews and the commit are one
+undo step, whose undo brings back the blocks and the range. A composition
+canceled or abandoned before its first preview leaves that replacement,
+one undo step, as one over selected blocks does (over a range inside one
+block it writes nothing). A refused replacement (a hook's veto) writes
+nothing: the IME writes at the range's start and the tail restores it, as
+typing over the range is refused. A range inside one block (across an
+inline atom) keeps the first-write path (`pin.merge`: the rest of the
+block's text follows the host in its own element).
+
+Why: Firefox's `insertText` (and any script that writes across the blocks
+in the same task) is a composition whose native delete runs before the
+model's change renders. It joins the blocks' elements and removes the
+render's anchors between them, so a dead block's element stayed in the host
+or the host's text went missing (the extensive DST lane's Firefox
+`dom-block-count` and `dom-text-projection` seeds).
+
+Rows: `tests/editor-dom/composition-across-blocks.spec.ts` (three engines:
+two lines either way, over and before an atom; one DOM block per model
+block; the host is its cells' projection), `composition-session.test.tsx`
+("ime.range.blocks": the blocks merged and the DOM caret parked before the
+first write, one undo step; a cancel before the first preview) and
+`composition.spec.ts` ("keeps a cross-block composition-start range after
+selection drift").
 
 ## Host DOM ownership (D-25)
 

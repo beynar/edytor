@@ -3,9 +3,11 @@
  *
  * One IME composition is one session. Its start target (the selection at
  * `compositionstart`) is replaced at its first write through an ordinary
- * command (hooks, veto, tracked) — over a block or atom selection, which
- * shows no DOM range, at the start, so the IME writes in its place — and
- * the marks of the composed text are captured once, at the start. Previews are mechanical tracked writes (no
+ * command (hooks, veto, tracked) — at the start over a block or atom
+ * selection, which shows no DOM range, and over a text range across blocks,
+ * whose native replacement would join the blocks' elements (`ime.range.blocks`),
+ * so the IME writes in its place — and the marks of the composed text are
+ * captured once, at the start. Previews are mechanical tracked writes (no
  * hooks) inside one capture group: the group opens with the session's first
  * write and is held open before each later one (`UndoManager.lastChange`),
  * so the session and its ending are one undo step. Like a typed
@@ -113,11 +115,11 @@ export class Composition {
 	 */
 	targetless = false;
 	/**
-	 * The start target is a range across texts: across blocks, or across an inline
-	 * atom inside one block (`block`). Its first write merges the rest into
-	 * the host text.
+	 * The start target is a range across texts inside one block (across an
+	 * inline atom): its first write merges the rest into the host text. A range
+	 * across blocks is replaced at the start (`#rangeless`).
 	 */
-	#across: false | 'blocks' | 'block' = false;
+	#across = false;
 	/** That rest, shown in the host once the IME wrote its first preview. */
 	#merged: JSONText[] | null = null;
 	/** A model command moved the caret during the session: the ending keeps it. */
@@ -179,18 +181,19 @@ export class Composition {
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const shown = selection.value.kind;
-		this.#across =
-			shown === 'text' && startText !== endText
-				? startText?.parent === endText?.parent
-					? 'block'
-					: 'blocks'
-				: false;
+		// A range across blocks is replaced now, as a block selection is: the
+		// IME then writes at a parked caret in one text, never its own delete
+		// across blocks (Firefox's joins the blocks' elements and removes the
+		// render's anchors between them before the change renders).
+		const blocks =
+			shown === 'text' && !!startText && !!endText && startText.parent !== endText.parent;
+		this.#across = shown === 'text' && startText !== endText && !blocks;
 		// With no target, the caret the browser parked for the IME.
 		const parked = targetless && dom?.anchorNode;
 		const point = parked ? this.edytor.ports.surface.pointAt(parked, dom.anchorOffset) : null;
 		const at = targetless
 			? point && { text: point.text, from: point.offset, to: point.offset }
-			: shown === 'blocks' || shown === 'atom'
+			: shown === 'blocks' || shown === 'atom' || blocks
 				? this.#rangeless()
 				: startText && {
 						text: startText,
@@ -283,7 +286,7 @@ export class Composition {
 			// range with it: the screen shows what the document holds.
 			const [merged, host] = [this.#merged, this.host];
 			const cell = merged && host && this.edytor.cells?.get(host.parent.id);
-			if (cell) this.edytor.pin.merge(cell, merged, this.#across === 'block');
+			if (cell) this.edytor.pin.merge(cell, merged);
 			this.#merged = null;
 			return 'live';
 		}
@@ -356,13 +359,17 @@ export class Composition {
 
 	/**
 	 * A block or atom selection shows no DOM range, so the IME has no caret
-	 * of its own and would write at the editable's start. Its start
-	 * target is replaced now (blocks: `flow.slot`, one empty block in their
-	 * place; an atom: removed), the change rendered and the DOM caret parked
-	 * where the preview goes before the IME writes (`projector.park`, the
-	 * DOM-selection writer). When the replacement is
+	 * of its own and would write at the editable's start; over a text range
+	 * across blocks the IME's own replacement would join the blocks' elements
+	 * and remove the render's anchors between them before the change renders
+	 * (Firefox, `ime.range.blocks`). Its start target is replaced now (blocks:
+	 * `flow.slot`, one empty block in their place; an atom: removed; a range:
+	 * its blocks merged around the caret), the change rendered and the DOM
+	 * caret parked where the preview goes before the IME writes
+	 * (`projector.park`, the DOM-selection writer). When the replacement is
 	 * refused, the IME writes where Escape leaves for (`selectedBlocksExit`;
-	 * an atom: before it) and the tail restores it: nothing is written.
+	 * an atom or a range: before it) and the tail restores it: nothing is
+	 * written.
 	 */
 	#rangeless() {
 		const { edytor } = this;

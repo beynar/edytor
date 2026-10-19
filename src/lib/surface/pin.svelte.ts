@@ -37,10 +37,8 @@ type Held = {
 	/** The frozen render before and after the start target (the preview goes between). */
 	head: Item[];
 	tail: Item[];
-	/** What the first write merged in after the host's own text (a range across texts). */
+	/** What the first write merged in after the host's own text, shown after its element (`merge`). */
 	merged: Item[];
-	/** `merged` is shown after the host element, not inside it (`merge`). */
-	beside: boolean;
 	/** The element the IME owns, and the session's preview (none before the first). */
 	element: HTMLElement | null;
 	preview: Preview | null;
@@ -84,7 +82,6 @@ export class Pin {
 			head: cut(frozen, from)[0],
 			tail: cut(frozen, Math.max(from, to))[1],
 			merged: [],
-			beside: false,
 			element,
 			// Until the first preview the render stays as the IME found it: a
 			// write now would collapse its DOM range before it replaces it.
@@ -101,17 +98,17 @@ export class Pin {
 	};
 
 	/**
-	 * The first write replaced a range across texts: the host's
-	 * cell lost the segments and atoms it covered, and the rest of its end text
-	 * now follows the preview in the host, as its own nodes, so the IME's node
-	 * is never rewritten. Across blocks they follow the frozen render inside the
-	 * host element; inside one block (`beside`: across an inline atom) they go
-	 * in their own element right after it (`rest`), as there the IME's write
-	 * moves the host element's render anchors into the next segment's (Chromium).
+	 * The first write replaced a range across an inline atom inside one block:
+	 * the host's cell lost the segments and atoms it covered, and the rest of
+	 * its end text now follows the preview in its own element right after the
+	 * host (`rest`), so the IME's node is never rewritten (the IME's write
+	 * moves the host element's render anchors into the next segment's,
+	 * Chromium). A range across blocks never merges: the session replaces it
+	 * at its start (`Composition.#rangeless`).
 	 */
-	merge = (cell: Cell, items: Item[], beside: boolean) => {
+	merge = (cell: Cell, items: Item[]) => {
 		const held = this.#held;
-		if (held) this.#held = { ...held, parts: partsOf(cell.runs), merged: items, beside };
+		if (held) this.#held = { ...held, parts: partsOf(cell.runs), merged: items };
 	};
 
 	/** The session ended: the host renders from its cell again (the catch-up patch). */
@@ -128,14 +125,9 @@ export class Pin {
 	render = (block: BlockId, key: string): { deltas: RenderDelta[]; empty: boolean } | null => {
 		const held = this.#held;
 		if (!held || held.block !== block || held.key !== key) return null;
-		const { preview, head, tail, beside } = held;
-		const merged = beside ? [] : held.merged;
-		if (!preview || preview.native)
-			return {
-				deltas: [...held.frozen, ...renderDeltas(merged)],
-				empty: held.empty && !textOf(merged)
-			};
-		const items = [...head, preview, ...tail, ...merged];
+		const { preview, head, tail } = held;
+		if (!preview || preview.native) return { deltas: [...held.frozen], empty: held.empty };
+		const items = [...head, preview, ...tail];
 		return { deltas: renderDeltas(items), empty: !textOf(items) };
 	};
 
@@ -146,11 +138,10 @@ export class Pin {
 			empty: segment.text === ''
 		};
 
-	/** What follows the pinned segment `key` of `block` in its own element (`merge`, `beside`). */
+	/** What follows the pinned segment `key` of `block` in its own element (`merge`). */
 	rest = (block: BlockId, key: string): RenderDelta[] => {
 		const held = this.#held;
-		const shown = held?.beside && held.block === block && held.key === key;
-		return shown ? renderDeltas(held.merged) : [];
+		return held?.block === block && held.key === key ? renderDeltas(held.merged) : [];
 	};
 
 	/**
@@ -164,8 +155,7 @@ export class Pin {
 		if (!held?.element) return null;
 		const dom = (held.element.textContent ?? '').replace(/\u200B/g, '');
 		if (!held.preview && dom === textOf(held.frozen)) return null;
-		const inside = held.beside ? held.tail : [...held.tail, ...held.merged];
-		const [head, tail] = [textOf(held.head), textOf(inside)];
+		const [head, tail] = [textOf(held.head), textOf(held.tail)];
 		if (dom.length < head.length + tail.length) return null;
 		return dom.startsWith(head) && dom.endsWith(tail)
 			? dom.slice(head.length, dom.length - tail.length)

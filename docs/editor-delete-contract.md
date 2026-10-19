@@ -2630,6 +2630,32 @@ is the only interpreter of DOM changes.
   restored when the view becomes editable again; divergence during an
   open model-owned attempt window waits until the window closes.
 
+### `dom.anchors.foreign` — the render's anchors a foreign range took return
+
+Svelte keeps comment anchors between the blocks of a list (the root, a
+block's children) and inside each block and text element; it inserts and
+removes a block's nodes from them. A page script or an extension calling
+`Range.deleteContents()` (or any write) over a range from one block's text
+into another's leaves the two block elements (the range only enters them)
+and takes the anchors between them: from their list, and inside the two
+blocks after the range's start and before its end. The text it deleted is
+adopted as input (each block keeps its own text); the anchors are the
+render's and return at their recorded siblings, as a removed element does
+(`#restore`, `surface/observer.svelte.ts`). Without them, the render's next
+removal of either block starts at a detached anchor and leaves its element
+in the host, and a child added to the first block finds no anchor to render
+before.
+
+Provenance: the observer takes the records the editor's own writes made —
+from the root's pre pass to the end of its compare pass, and a pass's own
+repairs — as the render's, never undone (an item leaving a list removes its
+anchors with it). When a foreign record took only anchors from a block list,
+gone from the page (not moved), every foreign anchor-only record of that
+batch is inverted. Rows: `tests/editor-dom/observer-divergence.spec.ts` "a
+foreign delete across two blocks keeps the render's anchors" (top level and
+nested, three engines: the anchors' count, then a child added and three
+blocks deleted, the host its cells' projection after each).
+
 ## Oracle and checkpoint contract
 
 - The wire-replay reference proves delivery/convergence, not editing

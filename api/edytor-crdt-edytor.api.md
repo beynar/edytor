@@ -644,6 +644,7 @@ export declare class EdytorDocument {
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
     access: DocumentAccess;
+    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -707,6 +708,7 @@ export type EdytorSyncPayload = {
     armBound?: () => void;
     holdBound?: () => void;
     attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+    access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 ```
 
@@ -1320,7 +1322,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").OpResult;
+            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
             unNestBlock: (id: string) => import("./edytor-doc.js").OpResult;
@@ -1490,6 +1492,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         purge: (doc: import("./engine-api.js").EngineDoc, facade: {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
+            suggest?: Pick<import("./doc/suggest.js").DocSuggest, "records" | "changes">;
         }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
         restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
@@ -1715,11 +1718,11 @@ declare const bindCrdt: (Y: EngineApi) => {
                 destroy(): void;
                 disconnect(): void;
                 connect(): void;
-                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
+                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
-                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
-                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
+                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
         watchComments: (server: string | null, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
@@ -2478,7 +2481,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | JSONBlock)[]) => OpResult;
+        insertBlocks: (dest: import("./index.js").Destination, specs: readonly (JSONBlock | import("./index.js").BlockSpec)[]) => OpResult;
         moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
         unNestBlock: (id: string) => OpResult;
@@ -2648,6 +2651,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
     purge: (doc: EngineDoc, facade: {
         model: import("./placement/model.js").PlacementModel;
         text: import("./text/model.js").TextEngine;
+        suggest?: Pick<import("./doc/suggest.js").DocSuggest, "records" | "changes">;
     }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
     horizonOf: (doc: EngineDoc) => import("./purge.js").Horizon | null;
     restoreTo: <Plan>(doc: EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: JSONDoc) => import("./restore.js").RestoreReport;
@@ -3041,11 +3045,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string | null, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);
@@ -3089,6 +3093,7 @@ export type WebsocketProviderEvents = {
     status: (event: {
         status: 'connected' | 'disconnected' | 'connecting';
     }) => void;
+    access: (access: 'write' | 'suggest' | 'comment' | 'read', provider: unknown) => void;
     synced: (state: boolean) => void;
     'connection-close': (event: CloseEvent | null, provider: unknown) => void;
     'connection-error': (event: Event, provider: unknown) => void;

@@ -1367,6 +1367,10 @@ export type CommentRequest = {
     quote?: string;
     block?: string | null;
     comment?: string;
+    anchors?: {
+        start: unknown;
+        end: unknown;
+    }[];
 } | {
     op: 'reply';
     thread: string;
@@ -2689,6 +2693,7 @@ export declare class EdytorDocument {
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
     access: DocumentAccess;
+    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -2734,6 +2739,7 @@ export declare class EdytorDocument {
 - `ready`: `true` once the document's content state is decided — seeded locally or hydrated then synced.
 - `readiness`: `pending` | `local` | `hydrated` — distinguishes a locally-seeded ready from a provider-hydrated/restored ready (the contract consumers need to tell "I decided this content" from "sync brought it").
 - `access`: What this document's user may do, as its room said (`'write'` until a room says otherwise): `'suggest'` writes only suggestions (its views suggest and decide nothing), `'comment'` and `'read'` write nothing.
+- `onAccessChange`: Be told when the room changes `access`.
 - `writable`: `false` while the document carries a schema stamp this build cannot own (a foreign stamp got in despite the transport's inbound refusal): every write refuses with a `SchemaMismatchError`, and the providers neither persist nor broadcast it.
 - `onWritableChange`: Subscribe to `writable` transitions — the visible signal that the document turned read-only (once per transition, not per refused edit).
 - `historyLimit`: The undo steps this document's history keeps: the configured `history.limit`, else `DEFAULT_HISTORY_LIMIT`.
@@ -3032,12 +3038,14 @@ export type EdytorSyncPayload = {
     armBound?: () => void;
     holdBound?: () => void;
     attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+    access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 ```
 
 - `armBound`: (Re)start this provider's readiness bound (`DEFAULT_READINESS_BOUND` ms from now) — for a factory whose `bound` is `Infinity` because only its transport knows when waiting starts to count (the websocket sync: from the socket's open, or its first failed dial).
 - `holdBound`: Stop this provider's readiness bound: an empty document waits for it to settle (or for the next `armBound()`), as the websocket sync does after expired credentials on a first visit.
 - `attach`: Attach another sync to the same document as its own provider (its own target, bound and settle): how a sync brings a companion, e.g.
+- `access`: What the room says the document's user may do (`EdytorDocument.access`).
 
 ## EMBED_ALLOW
 

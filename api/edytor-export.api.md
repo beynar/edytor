@@ -949,6 +949,7 @@ export declare class EdytorDocument {
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
     access: DocumentAccess;
+    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -1346,6 +1347,7 @@ export type EdytorSyncPayload = {
     armBound?: () => void;
     holdBound?: () => void;
     attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+    access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 ```
 

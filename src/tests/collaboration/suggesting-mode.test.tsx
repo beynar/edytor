@@ -11,6 +11,15 @@ import { Y } from '$lib/crdt/engine.js';
 import { createDocument } from '$lib/crdt/index.js';
 import type { EdytorDocument } from '$lib/crdt/document.js';
 import { createOperationEdytor } from '../test.utils.js';
+import { textToBlocks } from '$lib/export/index.js';
+import { jsonBlockToSpec, type JSONBlock } from '$lib/utils/json.js';
+
+/** A block without its ids (and its children's) and empty data. */
+const stripIds = ({ id: _, children, data, ...rest }: JSONBlock): JSONBlock => ({
+	...rest,
+	...(data && Object.keys(data).length ? { data } : {}),
+	...(children?.length ? { children: children.map(stripIds) } : {})
+});
 
 const deliver = (from: { doc: unknown }, to: { doc: unknown }) =>
 	Y.applyUpdate(
@@ -221,6 +230,80 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		]);
 		// The second update extends the first block's text: no block rewritten.
 		expect(updates[1]).toBeLessThan(updates[0]!);
+	});
+
+	it("a markdown answer streamed word by word through the export's reader: the peer watches it, the bytes it costs", () => {
+		const { edytor, p1 } = view();
+		const peer = peerOf(edytor.document);
+		const answer = [
+			'## Plan for the launch',
+			'',
+			'The team ships **the editor** on Monday. Before that:',
+			'',
+			'- Review the open pull requests',
+			'- Run the browser lanes on every engine',
+			'- Write the changelog',
+			'',
+			'| Task | Owner |',
+			'| --- | --- |',
+			'| Docs | Ada |',
+			'| Tests | Ben |',
+			'',
+			'Then we announce it.'
+		].join('\n');
+		const words = answer.split(/(?<=[ \n])/);
+		const suggestion = edytor.suggestions.add({ after: p1 }, undefined, {
+			shared: true,
+			label: 'AI'
+		});
+		const synced: number[] = [];
+		edytor.document.doc.on('update', (u: Uint8Array) => synced.push(u.length));
+		const stored = edytor.document.encode().length;
+		const shown = (d: EdytorDocument) =>
+			d
+				.toJSON({ suggestions: true })
+				.children.slice(1, -2)
+				.map((b) => stripIds(b));
+		let markdown = '';
+		for (const word of words) {
+			markdown += word;
+			const blocks = textToBlocks(markdown, { streaming: true });
+			suggestion.update(blocks);
+			deliver(edytor.document, peer);
+			// The peer reads the answer so far, as the view wrote it.
+			expect(shown(peer)).toEqual(blocks.map((b) => stripIds(b)));
+		}
+		suggestion.update(textToBlocks(markdown));
+		suggestion.done();
+		deliver(edytor.document, peer);
+		const final = textToBlocks(markdown).map((b) => stripIds(b));
+		expect(shown(peer)).toEqual(final);
+		// One suggestion of the AI's; the document without it is as it was.
+		expect(peer.facade.suggest.records()).toHaveLength(1);
+		expect(peer.toJSON().children).toHaveLength(3);
+		// The same blocks written at once, plainly, for comparison.
+		const plain = view();
+		const plain0 = plain.edytor.document.encode().length;
+		plain.edytor.insertBlocks(
+			{ parent: null, index: 1 },
+			textToBlocks(markdown).map((b) => jsonBlockToSpec(b, true))
+		);
+		const report = {
+			characters: markdown.length,
+			chunks: words.length,
+			syncedBytes: synced.reduce((a, b) => a + b, 0),
+			storedBytes: edytor.document.encode().length - stored,
+			plainBytes: plain.edytor.document.encode().length - plain0
+		};
+		process.stdout.write(`\nSTREAMED ${JSON.stringify(report)}\n`);
+		// Accepted by the peer: the answer is the document's.
+		peer.facade.suggest.run(peer.facade.suggest.decide(peer.facade.suggest.changes(), true));
+		expect(
+			peer
+				.toJSON()
+				.children.slice(1, -2)
+				.map((b) => stripIds(b))
+		).toEqual(final);
 	});
 
 	it('a readonly view lists pending shared suggestions, which it cannot decide', () => {

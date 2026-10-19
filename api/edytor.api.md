@@ -1001,6 +1001,10 @@ export type CommentRequest = {
     quote?: string;
     block?: string | null;
     comment?: string;
+    anchors?: {
+        start: unknown;
+        end: unknown;
+    }[];
 } | {
     op: 'reply';
     thread: string;
@@ -1662,6 +1666,7 @@ export declare class EdytorDocument {
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
     access: DocumentAccess;
+    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -1882,6 +1887,7 @@ export type EdytorSyncPayload = {
     armBound?: () => void;
     holdBound?: () => void;
     attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+    access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 ```
 
@@ -5474,11 +5480,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string | null, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);
@@ -5516,6 +5522,7 @@ export type WebsocketProviderEvents = {
     status: (event: {
         status: 'connected' | 'disconnected' | 'connecting';
     }) => void;
+    access: (access: 'write' | 'suggest' | 'comment' | 'read', provider: unknown) => void;
     synced: (state: boolean) => void;
     'connection-close': (event: CloseEvent | null, provider: unknown) => void;
     'connection-error': (event: Event, provider: unknown) => void;

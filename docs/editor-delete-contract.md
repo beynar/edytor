@@ -814,54 +814,49 @@ a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2 a3 q`; before, 34 of 40 pairs
   child in memory. Documents, rooms and stores of generation 8 and earlier
   are refused, never converted (`reference/migration.mdx`).
   27-bit client id; with a 53-bit one 165, 446 and 72).
-- Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
-  gestures above are ordered by source (the engine's sort classes, fork
-  patch YP22: in one gap a split's pieces, then the records of blocks
+- Claimed since fork patch YP22 (schema generation 9; EW-05, EW-11,
+  pinned in `order-scope.test.ts` on 48 client-id pairs a row): the
+  engine's sort classes (a split's pieces, then the records of blocks
   leaving a block for the gap after it, then those leaving one for the gap
-  before it — `moveTo`'s `side`; and `order.split.text`); every other
-  placement is a slot or a record in the gap, ordered among a peer's
-  concurrent ones by client id (YATA), so its order against a peer's
-  concurrent block follows the client ids.
-  Both replicas converge and no text is lost. That covers:
-  - a block inserted beside one (`insertBlocks`): Enter at the start or
-    end of a block (`insertBlocks` before or after it; at the end of
-    a block with children and text, not a container header, Enter splits
-    it, `liftContent`), a container header's new first child
-    (`insertBlocks` at index 0) or its text after the caret when Enter splits it
-    (`splitKeepingChildren`: an open toggle, a callout or quote
-    with children), Duplicate (`duplicateBlock`) and the handle's +
-    button. Enter at the end of X and typing "foo" ‖ Enter after "hello"
-    in X → "foo" can read before " world";
-  - a paste of whole blocks (a block-selection copy, `insertFlow`'s
-    `whole`: after the caret's block) and a paste or typing over selected
-    blocks (`replace`: the first one's slot), both `atSlot` →
-    `insertBlocks` (DR-crdt-1): a whole paste with the caret in X ‖ Enter
-    after "hello" in X → " world" can read before the pasted blocks (since
-    `order.insert.run`, never between them).
-    (Ranking them by source, before fork patch YP22, kept the order but grew
-    ranks 5 to 7 times as fast under repeated pastes in one place, EW-02;
-    now nothing grows, and the claim is not made.)
-  - several structural gestures by one peer before it syncs (text edits
-    before one's split point are fine, DR-crdt-7; one after it is the
-    residual above): two Enters ‖ a first-item lift,
-    a new line or Duplicate after X then a split of X ‖ a split of X.
-    That includes Turn into over several blocks (`convertBlocks`: one
-    `convertToKind`/`liftOut` plan per block): turning `a` and `b` of
-    `[p, ul > [a, b, c, d, e], q]` into headings ‖ Shift+Tab on `c` → `b`
-    can read after `c` (`unNestBlocks` over adjacent siblings is one plan
-    and keeps the order), and Shift+Tab over selected items with an
-    unselected one between them (`moveRoots`: one `unNestBlocks` plan per
-    run of adjacent siblings): `a` and `c` ‖ Shift+Tab on `d` → `d` can
-    read before `b` (SW15-crdt-1). One headless `unNestBlocks` call over
-    non-adjacent siblings (`edytor.moveBlocks` with `direction: 'out'`
-    makes one per run, GX-05) is not covered either: `unNestBlocks([a, c])` ‖ an
-    outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
-    is `p|b|a|c|d|e|q` (DR-rest-2);
-  - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
-    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (createArrowMovePlugin()), the
-    block menu's Move up/down and Tab (`nestBlock` at the parent's end:
-    Tab on `y` ‖ Enter at the end of the last child of the block above →
-    the new line can read after `y`).
+  before it — `moveTo`'s `side`), `order.split.text` and
+  `order.insert.run` give the serial order to the gestures this row listed
+  as not claimed before: a block inserted beside one
+  (`insertBlocks` before or after it; at the end of a block with children
+  and text, not a container header, Enter splits it, `liftContent`) —
+  Enter at the end of
+  X and typing "foo" ‖ Enter after "hello" in X → `P|hello| world|foo|Q`
+  only; a container header's text after the caret becoming its first
+  child (`splitKeepingChildren`: an open toggle, a callout or quote with
+  children) ‖ another such Enter → the text's order; Duplicate (`duplicateBlock`)
+  then Enter in X ‖ Enter earlier in X; a paste of whole blocks
+  (`insertFlow`'s `whole`) or a paste or typing over selected blocks
+  (`replace`) ‖ Enter in X → the split's piece first, the pasted run after
+  it; a list pasted at a line's start (`flow.apart`) ‖ Enter above;
+  several structural gestures by one peer before it syncs (two Enters ‖ a
+  first-item lift); Turn into over several blocks
+  (`convertBlocks`: one `convertToKind`/`liftOut` plan per block, one
+  writer's records keeping one priority) ‖ Shift+Tab on the next item;
+  Shift+Tab over selected items with an unselected one between them
+  (`moveRoots`: one `unNestBlocks` plan per run of adjacent siblings) ‖
+  Shift+Tab on another; Tab on `y` (`nestBlock` at the parent's end) ‖
+  Enter at the end of the last child of the block above → `x|k|n|y` only.
+  Both replicas converge and no text is lost in every race. Not claimed:
+  - which of two peers' blocks inserted at one place comes first: both
+    orders are serial ones, and the client ids pick one (`order.insert.run`
+    keeps each peer's run together);
+  - two flows into one gap from both sides: a list pasted at the start of
+    `B` ‖ a list pasted at the end of the line above → `one|two` or
+    `two|one` by client id, where the serial order reads `two|one`;
+  - one headless `unNestBlocks` call over non-adjacent siblings
+    (`edytor.moveBlocks` with `direction: 'out'` makes one per run, GX-05;
+    `unNestBlocks` over adjacent siblings is one plan and keeps the order):
+    `unNestBlocks([a, c])` ‖ an outdent of `d` → `p|a|b|c|d|e|q` on some
+    pairs, where the serial result is `p|b|a|c|d|e|q` (DR-rest-2);
+  - moves other than Tab (`moveBlocks`, `nestBlock`): a drag, the handle's
+    Alt+↑/↓/→ (Alt+← is the outdent, `unNestBlocks`), Mod+Shift+↑/↓
+    (createArrowMovePlugin()), the block menu's Move up/down: they
+    converge, but no sweep runs them against a peer's edit next to the
+    moved block.
 - Nothing is minted (fork patch YP22, schema generation 9): a block's
   place is its home slot in its parent's sequence, written once at its
   creation after its left neighbour's unit, and a move is one record at the

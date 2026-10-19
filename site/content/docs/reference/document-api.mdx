@@ -113,14 +113,23 @@ The table operations (`insertTableRow`, `deleteTableColumn`, …) come with the 
 
 ### Order of new blocks between peers
 
-The blocks two replicas put into one gap at the same time keep the order either call made first would give, whatever their client ids, when each makes one or several of these calls between syncs: `splitBlock` and a multi-line `insertFlow` into a block (also after text the replica typed or deleted in it, on either side of the split point), `insertBlocks` beside a block, `duplicateBlock`, an `insertFlow` at a block's start whose first line stands apart (a list, a code block, a divider or an image) or that is `whole` (a block-selection copy) or `replace`s blocks (a paste or typing over selected blocks), `unNestBlock` and `unNestBlocks` over one run of adjacent siblings, `liftOut`, `mergeBackward`, and `nestBlock` against a block inserted after the last child of the block it nests under. The blocks one replica inserts one after another in a gap stay together; two replicas' inserts at one place come one replica's after the other's, in client-id order.
+The blocks two replicas put into one gap at the same time keep the order either call made first would give, whatever their client ids, when each makes one or several of these calls between syncs:
+
+- `splitBlock` and a multi-line `insertFlow` into a block (also after text typed or deleted before the split point, or typed or deleted after one's own split point);
+- `insertBlocks` beside a block and `duplicateBlock`;
+- an `insertFlow` at a block's start whose first line stands apart (a list, a code block, a divider or an image), or that is `whole` (a block-selection copy) or `replace`s blocks (a paste or typing over selected blocks);
+- `unNestBlock`, and `unNestBlocks` over adjacent siblings (`unNestBlocks` over adjacent siblings is one plan), `liftOut` and `mergeBackward`;
+- `nestBlock`, against a block inserted after the last child of the block it nests under;
+- several structural calls by one replica, where the tests run them: two `splitBlock`s, an `insertBlocks` or a `duplicateBlock` then a `splitBlock`, the editor's Turn into over several blocks (one `liftOut` plan per block) and its Shift+Tab (one `unNestBlocks` plan per run of adjacent blocks).
+
+The blocks one replica inserts one after another in a gap stay together; two replicas' inserts at one place come one replica's after the other's, in client-id order.
 
 Two cases still follow the client ids:
 
 - two `insertFlow` calls into one gap from both sides: one at the start of a block whose first line stands apart, one at the end of the block before it;
 - one `unNestBlocks` call over non-adjacent siblings: call it once per run of adjacent siblings, as <kbd>Shift+Tab</kbd> and `edytor.moveBlocks` with `direction: 'out'` do.
 
-The other moves (`moveBlocks`, `nestBlock`: a drag, the handle's Alt+↑/↓/→, Mod+Shift+↑/↓, the block menu's Move up/down) converge, but the sweeps do not run them on every client-id pair. The residuals that place a block elsewhere (a new line beside a block a peer moves, and the list edge cases) are listed in [Concurrent editing](/docs/collaboration/concurrent-editing#which-races-keep-the-text-order).
+The other moves (`moveBlocks`, `nestBlock`: a drag, the handle's Alt+↑/↓/→, Mod+Shift+↑/↓, the block menu's Move up/down; the handle's Alt+← is the outdent, `unNestBlocks`) converge, but the sweeps do not run them on every client-id pair. The residuals that place a block elsewhere (a new line beside a block a peer moves, and the list edge cases) are listed in [Concurrent editing](/docs/collaboration/concurrent-editing#which-races-keep-the-text-order).
 
 ## Text operations
 

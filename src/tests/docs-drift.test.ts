@@ -830,7 +830,11 @@ describe('docs drift', () => {
 		const section = read('site/content/docs/collaboration/concurrent-editing.mdx').split(
 			'## Which races keep the text order'
 		)[1];
-		const notClaimed = read('docs/editor-delete-contract.md').split('- Not claimed')[1];
+		// Since fork patch YP22 the gestures this row listed as not claimed are
+		// claimed (pinned in order-scope.test.ts), and the row names them all.
+		const notClaimed = read('docs/editor-delete-contract.md').split(
+			'- Claimed since fork patch YP22'
+		)[1];
 		for (const [page, text, names] of [
 			[
 				'concurrent-editing',

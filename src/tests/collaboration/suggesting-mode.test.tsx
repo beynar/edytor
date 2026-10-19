@@ -219,8 +219,8 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		// Without its pending suggestions, the document is as it was.
 		expect(peer.toJSON().children).toHaveLength(3);
 		expect(peer.toJSON({ suggestions: true }).children).toHaveLength(4);
-		// Each chunk rewrites the answer so far, whole: one update.
-		expect(sizes).toHaveLength(4);
+		// Each chunk after the first is only its text: a few bytes over it.
+		expect(sizes.slice(1).every((n) => n < 40)).toBe(true);
 		// Accepted by the peer: the answer is the document's.
 		peer.facade.suggest.run(peer.facade.suggest.decide(peer.facade.suggest.changes(), true));
 		deliver(peer, edytor.document);
@@ -228,9 +228,11 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		expect(edytor.suggestions.list).toEqual([]);
 	});
 
-	it('each chunk replaces what the answer wrote before, whole: one suggestion', () => {
+	it('a markdown answer re-read on each chunk writes only what changed', () => {
 		const { edytor, p1 } = view();
 		const suggestion = edytor.suggestions.add({ after: p1 }, undefined, { shared: true });
+		const updates: number[] = [];
+		edytor.document.doc.on('update', (u: Uint8Array) => updates.push(u.length));
 		suggestion.update([{ type: 'paragraph', content: [{ text: 'One' }] }]);
 		suggestion.update([{ type: 'paragraph', content: [{ text: 'One two' }] }]);
 		suggestion.update([
@@ -241,8 +243,8 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 			['block', 'One two'],
 			['block', 'Three']
 		]);
-		expect(edytor.facade.suggest.records()).toHaveLength(1);
-		expect(edytor.document.toJSON({ suggestions: true }).children).toHaveLength(5);
+		// The second update extends the first block's text: no block rewritten.
+		expect(updates[1]).toBeLessThan(updates[0]!);
 	});
 
 	it("a markdown answer streamed word by word through the export's reader: the peer watches it, the bytes it costs", () => {

@@ -233,7 +233,7 @@ export const askShared = async (edytor: EdytorInstance, response: Response) => {
 };
 ```
 
-- **Each update rewrites the answer whole.** What the answer wrote before is removed (no history holds it, so its content is collected) and the answer so far is written again. A markdown answer of 257 characters streamed word by word (60 chunks) syncs about 35 KB in all and stores 8.7 KB, against 1.8 KB for the same blocks written at once: stream in chunks of a sentence or more, not word by word.
+- **Only what changed is written.** Each `update` keeps the blocks that are the same, extends the last block's text when the new one extends it, and replaces the rest. A markdown answer of 257 characters streamed word by word (60 chunks) syncs about 3.5 KB in all, 58 bytes a chunk, and stores 2.1 KB, against 1.8 KB for the same blocks written at once.
 - **Positions.** `after`, `before`, `inside` and a `replace` of blocks or of a text range (proposed for deletion, the answer after it). An `end` suggestion is a completion of this view's line, never shared: `shared` is ignored there.
 - The answer is its own suggestion: the user's edits meanwhile, suggested or not, are not part of it. It is written outside the user's undo history; `discard()` rejects it.
 

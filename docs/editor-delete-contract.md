@@ -2894,14 +2894,15 @@ writer (whose id lists propose), so the room admits it and what it
 deleted reads settled. Nothing of it stays pending; its undo brings it
 back.
 
-### `sugg.ai.live` — a shared answer is written live, whole each time
+### `sugg.ai.live` — a shared answer is written live, only what changed
 
 An app's shared suggestion (`add(…, { shared: true })`) is one suggestion
-of its own writer, written as it streams: the first time at its position
-(a `replace` proposed for deletion), then each update in place of what it
-wrote before, whole: those blocks are removed for real (their home slots
-and registry entries: no history step holds them), so their content is
-collected, and the answer so far is inserted again.
+of its own writer, written as it streams, outside the history: the first
+time at its position (a `replace` proposed for deletion), then at each
+update only what changed: the blocks equal to the ones it wrote are kept,
+its last block's text is extended when the new one extends it (an
+insertion of the new runs only), and the rest is replaced (the writer's
+own pending blocks deleted, the new ones inserted after the kept ones).
 
 ### `sugg.json.base` — the document without its pending suggestions
 

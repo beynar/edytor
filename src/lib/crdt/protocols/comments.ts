@@ -69,6 +69,13 @@ export type CommentRequest =
 			block?: string | null;
 			/** The first comment's id (default: one the store makes). */
 			comment?: string;
+			/**
+			 * The text it is made on, as anchors (`DocAnchor`s, each span's
+			 * ends): the room writes its anchor mark over them for a user who
+			 * may only comment (`room.access.comment`); a writer's view writes
+			 * it itself.
+			 */
+			anchors?: { start: unknown; end: unknown }[];
 	  }
 	| { op: 'reply'; thread: string; body: string; comment?: string }
 	| { op: 'resolve'; thread: string }
@@ -76,8 +83,17 @@ export type CommentRequest =
 	/** Without `comment`, the whole thread; a thread's first comment takes its thread with it. */
 	| { op: 'delete'; thread: string; comment?: string };
 
-/** Who asks: a verified user, read-only or not; a moderator may delete anyone's comment. */
-export type CommentActor = { user: string; readOnly?: boolean; moderator?: boolean };
+/**
+ * Who asks: a verified user, read-only or not; a moderator may delete
+ * anyone's comment; `anchors`: the store writes a new thread's anchor (a
+ * user who may only comment).
+ */
+export type CommentActor = {
+	user: string;
+	readOnly?: boolean;
+	moderator?: boolean;
+	anchors?: boolean;
+};
 
 /** What one request changed (the room broadcasts it, `onComment` receives it). */
 export type CommentChange = {
@@ -142,13 +158,23 @@ export const parseCommentRequest = (value: unknown): CommentRequest | null => {
 		case 'add':
 			if (typeof v.body !== 'string' || !optional('quote')) return null;
 			if (v.block !== undefined && v.block !== null && typeof v.block !== 'string') return null;
+			if (
+				v.anchors !== undefined &&
+				(!Array.isArray(v.anchors) ||
+					v.anchors.length > 64 ||
+					v.anchors.some((a) => typeof a?.start !== 'object' || typeof a?.end !== 'object'))
+			)
+				return null;
 			return {
 				op: 'add',
 				thread: v.thread,
 				body: v.body,
 				...(v.quote === undefined ? {} : { quote: v.quote as string }),
 				...(v.block === undefined ? {} : { block: v.block as string | null }),
-				...(v.comment === undefined ? {} : { comment: v.comment as string })
+				...(v.comment === undefined ? {} : { comment: v.comment as string }),
+				...(v.anchors === undefined
+					? {}
+					: { anchors: v.anchors as { start: unknown; end: unknown }[] })
 			};
 		case 'reply':
 			if (typeof v.body !== 'string') return null;

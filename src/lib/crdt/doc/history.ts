@@ -14,7 +14,7 @@
  */
 import { getUnixTime } from 'lib0-v14/time';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import { openSteps, ownTextIds } from '../text/model.js';
+import { openSteps, ownTextIds, writersOf } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
 	BLOCK_NODE,
@@ -26,6 +26,7 @@ import {
 	INLINE_NODE,
 	LAST_CHANGED_ATTR,
 	RELEASE_ROOT,
+	SUGGEST_ROOT,
 	TEXT_DELETES_ROOT,
 	TYPE,
 	WITHDRAW_PREFIX
@@ -335,12 +336,35 @@ export class UndoManager {
 	 * repaired. A step that changes nothing is skipped for the one below.
 	 */
 	#pop(stack: StackItem[]): StackItem | null {
-		const ops = this.#ops;
-		const { records, withdraw, repair } = this.#rules;
 		const deletedByHistory = (id: { client: number; clock: number }) =>
 			[this.undoStack, this.redoStack].some((s) =>
 				s.some((step) => step.deletes.has(id.client, id.clock))
 			);
+		// A suggesting step replays under the writer that wrote it (`sugg.history.writer`).
+		const top = stack.at(-1);
+		const writer =
+			top &&
+			[...writersOf(this.doc)].find(
+				(w) => top.inserts.clients.has(w) || top.deletes.clients.has(w)
+			);
+		const local = this.doc.clientID;
+		if (writer !== undefined) this.doc.clientID = writer;
+		try {
+			this.#replay(stack, deletedByHistory);
+		} finally {
+			this.doc.clientID = local;
+		}
+		const step = this.currStackItem;
+		this.currStackItem = null;
+		return step;
+	}
+
+	#replay(
+		stack: StackItem[],
+		deletedByHistory: (id: { client: number; clock: number }) => boolean
+	) {
+		const ops = this.#ops;
+		const { records, withdraw, repair } = this.#rules;
 		this.doc.transact((transaction: unknown) => {
 			const tr = transaction as Tr;
 			while (stack.length > 0 && this.currStackItem === null) {
@@ -388,9 +412,6 @@ export class UndoManager {
 				if (keys.has(null)) dropSearchMarkers(node);
 			});
 		}, this);
-		const step = this.currStackItem;
-		this.currStackItem = null;
-		return step;
 	}
 
 	/**
@@ -433,7 +454,11 @@ export class UndoManager {
 			const own = ops.idSet();
 			for (const step of dropped)
 				walkIdSet(Y, doc, step.inserts, (st, from, to) => {
-					if (st.parent === records && !st.deleted && st.id.client === doc.clientID)
+					if (
+						st.parent === records &&
+						!st.deleted &&
+						(st.id.client === doc.clientID || writersOf(doc).has(st.id.client))
+					)
 						own.add(st.id.client, from, to - from);
 				});
 			const held = ops.idSet();
@@ -532,7 +557,7 @@ export const historyRules = (Y: EngineApi, doc: EngineDoc): Rules => {
 	return {
 		Y,
 		doc,
-		scope: [registryOf(doc), records, doc.get(DOC_DATA_ROOT)],
+		scope: [registryOf(doc), records, doc.get(DOC_DATA_ROOT), doc.get(SUGGEST_ROOT)],
 		records,
 		withdraw: withdrawOnUndo(doc),
 		repair: repairAttrs

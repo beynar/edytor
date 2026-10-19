@@ -1,6 +1,7 @@
 /**
- * Schema generation 10: the update encoding writes each distinct string once
- * (fork patch YP24, generation 10), a block's place is its home slot and a
+ * Schema generation 11: a hold record inside a nested node holds nothing
+ * (fork patch YP31, generation 11), the update encoding writes each
+ * distinct string once (fork patch YP24, generation 10), a block's place is its home slot and a
  * move a move record (fork patch YP22, generation 9), a merge claim is an
  * item in a backing text (fork patch YP21, generation 8), a text delete is
  * its writer's hold record (fork patch YP20, generation 7), and one update
@@ -9,7 +10,7 @@
  * fixture `fixtures/generation-4/state.v2.bin` was written by 0.1.0-next.24
  * (its state in upstream's columnar encoding).
  *
- * - frames and containers of generations 5 to 9 are refused before decode,
+ * - frames and containers of generations 5 to 10 are refused before decode,
  *   as any other generation's;
  * - a state of an earlier generation is never loaded as this one's: one in
  *   an earlier encoding (up to generation 9) is refused before it is
@@ -37,10 +38,11 @@ const fixture = (name: string) =>
 	new Uint8Array(readFileSync(new URL(`../fixtures/generation-4/${name}`, import.meta.url)));
 const VALUE = JSON.parse(new TextDecoder().decode(fixture('value.json')));
 
-describe('generation 10', () => {
-	it('is schema 10, wire word 14010; no other generation’s record is this one’s', () => {
-		expect(SCHEMA_VERSION).toBe(10);
-		expect(GENERATION).toBe(14010);
+describe('generation 11', () => {
+	it('is schema 11, wire word 14011; no other generation’s record is this one’s', () => {
+		expect(SCHEMA_VERSION).toBe(11);
+		expect(GENERATION).toBe(14011);
+		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 10 })).toBe(false);
 		expect(isGenerationRecord(GENERATION_RECORD)).toBe(true);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 9 })).toBe(false);
 		expect(isGenerationRecord({ ...GENERATION_RECORD, schema: 8 })).toBe(false);
@@ -51,8 +53,8 @@ describe('generation 10', () => {
 		expect(isGenerationRecord({ engine: 'yjs-v14', protocol: 14 })).toBe(false);
 	});
 
-	it('a frame of generation 5 to 9 is refused before anything is decoded', () => {
-		for (const word of [14005, 14006, 14007, 14008, 14009]) {
+	it('a frame of generation 5 to 10 is refused before anything is decoded', () => {
+		for (const word of [14005, 14006, 14007, 14008, 14009, 14010]) {
 			const old = encoding.encode((e) => {
 				encoding.writeVarUint(e, word);
 				encoding.writeVarUint(e, 0);

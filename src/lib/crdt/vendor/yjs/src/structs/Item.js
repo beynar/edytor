@@ -1134,17 +1134,18 @@ export class ContentHold {
 
   /**
    * @param {Transaction} transaction
-   * @param {Item} _item
+   * @param {Item} item
    */
-  integrate (transaction, _item) {
-    holdIds(transaction, this.ids, 1)
+  integrate (transaction, item) {
+    if (holding(item)) holdIds(transaction, this.ids, 1) // YP31
   }
 
   /**
    * @param {Transaction} transaction
+   * @param {Item} item
    */
-  delete (transaction) {
-    holdIds(transaction, this.ids, -1)
+  delete (transaction, item) {
+    if (holding(item)) holdIds(transaction, this.ids, -1) // YP31
   }
 
   /**
@@ -1169,6 +1170,18 @@ export class ContentHold {
   }
 }
 // YP20 end
+
+// YP31 begin (edytor fork: id lists — see UPSTREAM.md YP31)
+/**
+ * Whether the hold record `item` holds what it names: one in a root's
+ * sequence does (the document's records list, YP20); one in a nested node's
+ * sequence is a list of ids, the same codec, that holds nothing.
+ *
+ * @param {Item} item
+ * @return {boolean}
+ */
+const holding = item => /** @type {YNode} */ (item.parent)._item === null
+// YP31 end
 
 // YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
 /**

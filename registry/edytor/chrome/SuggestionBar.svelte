@@ -5,29 +5,44 @@
 
 	/**
 	 * Notion AI's bar under a block suggestion, drawn for
-	 * `createSuggestionsPlugin({ bar })`: its label, Accept, Discard, and Try
-	 * again when the app passed `onRetry`.
+	 * `createSuggestionBarPlugin({ bar })`: its label, Accept, Discard, and Try
+	 * again when the app passed `onRetry`. Under a shared suggestion: its
+	 * author ("Ada (AI)"), Accept and Reject for a view that may decide,
+	 * Withdraw for its author, and "Suggested" for a view that only reads.
 	 */
 	let { bar }: { bar: SuggestionBarPayload } = $props();
-	const { suggestion } = $derived(bar);
+	const { suggestion, author } = $derived(bar);
 	const labels = $derived(words.suggestions);
 	const keep = (event: MouseEvent) => event.preventDefault();
+	const name = $derived(author && labels.author(author.name ?? author.id, suggestion.via));
 </script>
 
 <div data-suggestion-bar>
-	<span data-edytor-suggestion-label
+	<span data-edytor-suggestion-label style:--edytor-range-color={author?.color}
 		>{suggestion.status === 'streaming'
 			? labels.writing(suggestion.label)
-			: (suggestion.label ?? labels.suggestion)}</span
+			: suggestion.shared
+				? name
+				: (suggestion.label ?? labels.suggestion)}</span
 	>
-	{#if !bar.readonly}
+	{#if bar.canDecide}
 		<Button variant="ghost" data-edytor-suggestion-accept onmousedown={keep} onclick={bar.accept}
-			>{labels.accept} <kbd>{bar.mac ? '⌘↵' : `${labels.ctrl}+↵`}</kbd></Button
+			>{labels.accept}
+			{#if !suggestion.shared}<kbd>{bar.mac ? '⌘↵' : `${labels.ctrl}+↵`}</kbd>{/if}</Button
 		>
 	{/if}
-	<Button variant="ghost" data-edytor-suggestion-discard onmousedown={keep} onclick={bar.discard}
-		>{labels.discard} <kbd>{labels.escape}</kbd></Button
-	>
+	{#if suggestion.shared && bar.canDecide && !suggestion.mine}
+		<Button variant="ghost" data-edytor-suggestion-reject onmousedown={keep} onclick={bar.reject}
+			>{labels.reject}</Button
+		>
+	{:else if !suggestion.shared || !bar.readonly}
+		<Button variant="ghost" data-edytor-suggestion-discard onmousedown={keep} onclick={bar.discard}
+			>{suggestion.shared ? labels.withdraw : labels.discard}
+			{#if !suggestion.shared}<kbd>{labels.escape}</kbd>{/if}</Button
+		>
+	{:else}
+		<span data-edytor-suggestion-pending>{labels.pending}</span>
+	{/if}
 	{#if bar.retry && !bar.readonly}
 		<Button variant="ghost" data-edytor-suggestion-retry onmousedown={keep} onclick={bar.retry}
 			>{labels.retry}</Button
@@ -54,8 +69,12 @@
 	}
 	[data-edytor-suggestion-label] {
 		padding: 0 6px;
-		color: var(--edytor-suggestion-accent, var(--primary));
+		color: var(--edytor-range-color, var(--edytor-suggestion-accent, var(--primary)));
 		font-weight: 500;
+	}
+	[data-edytor-suggestion-pending] {
+		padding: 0 6px;
+		color: var(--muted-foreground);
 	}
 	[data-suggestion-bar] :global(button) {
 		display: inline-flex;

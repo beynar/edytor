@@ -42,14 +42,24 @@ export type DocumentNamespace = {
 };
 
 /**
+ * What a user may do in a document: `read`; `comment` (read, and comment:
+ * the room writes a thread's anchor); `suggest` (read, comment, and write
+ * suggestions, which a writer accepts or rejects); `write` (everything,
+ * deciding suggestions included).
+ */
+export type DocumentAccessLevel = 'read' | 'comment' | 'suggest' | 'write';
+
+/**
  * What the host verified. `userId` owns every Yjs client id the socket
  * writes under; `replica` is the client's `doc.clientID` (read it from a
  * query parameter with {@link requestedReplica}; omitted, the socket's
- * first presence entry binds it); `readOnly` refuses every write.
+ * first presence entry binds it); `access` what the user may do (default
+ * `write`; `readOnly: true` is `access: 'read'`).
  */
 export type DocumentIdentity = {
 	userId: string;
 	replica?: number | null;
+	access?: DocumentAccessLevel;
 	readOnly?: boolean;
 	/**
 	 * When the credential expires, ms since the epoch (a token's `exp` ×
@@ -224,6 +234,10 @@ const authorized = async (
 	return identity;
 };
 
+/** What `identity` may do: its `access`, else `read` for `readOnly`, else `write`. */
+const accessOf = (identity: DocumentIdentity): DocumentAccessLevel =>
+	identity.access ?? (identity.readOnly ? 'read' : 'write');
+
 /** A refusal as an HTTP status (a probe, a history request). */
 const statusOf = (code: number, reason: string): Response =>
 	new Response(reason, { status: PROBE_STATUS[code] ?? 403 });
@@ -232,7 +246,7 @@ const statusOf = (code: number, reason: string): Response =>
 const identityHeaders = (identity: DocumentIdentity): Headers => {
 	const headers = new Headers({
 		[IDENTITY_HEADERS.user]: encodeURIComponent(identity.userId),
-		[IDENTITY_HEADERS.access]: identity.readOnly ? 'read' : 'write'
+		[IDENTITY_HEADERS.access]: accessOf(identity)
 	});
 	const replica = identity.replica ?? null;
 	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));
@@ -293,7 +307,7 @@ async function routeHistory(
 	if (op === null) return new Response('method not allowed', { status: 405 });
 	const identity = await authorized(request, documentId, authorize, statusOf, options);
 	if (identity instanceof Response) return identity;
-	if ((op === 'restore' || op === 'undo') && identity.readOnly) {
+	if ((op === 'restore' || op === 'undo') && accessOf(identity) !== 'write') {
 		return new Response('read-only', { status: 403 });
 	}
 	const headers = identityHeaders(identity);
@@ -378,7 +392,8 @@ async function routeComments(
 	if (op === null) return new Response('method not allowed', { status: 405 });
 	const identity = await authorized(request, documentId, authorize, statusOf, options);
 	if (identity instanceof Response) return identity;
-	if (op === 'post' && identity.readOnly) return new Response('read-only', { status: 403 });
+	if (op === 'post' && accessOf(identity) === 'read')
+		return new Response('read-only', { status: 403 });
 	let body: string | null = null;
 	if (op === 'post') {
 		const declared = Number(request.headers.get('Content-Length') ?? 0);

@@ -28,6 +28,7 @@
 		toolbarPlugin
 	} from '$registry/edytor/chrome/plugins.js';
 	import type { Plugin } from '$lib/plugins.js';
+	import { demoWidgetPlugin } from './DemoWidget.svelte';
 	import { page } from '$app/state';
 	import '$lib/themes/notion.css';
 	import './demo.css';
@@ -102,6 +103,8 @@
 		suggestionsPlugin,
 		suggestionBarPlugin,
 		calloutIconsPlugin,
+		// A custom void kind with controls inside, to try presses by hand (the demo's own).
+		demoWidgetPlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -253,6 +256,24 @@
 					},
 					{ text: ', or as a block:' }
 				]
+			},
+			{
+				id: 'page-image',
+				type: 'image',
+				data: {
+					src:
+						'data:image/svg+xml,' +
+						encodeURIComponent(
+							'<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160"><rect width="480" height="160" rx="8" fill="#dbe7f3"/><text x="240" y="88" font-family="sans-serif" font-size="18" text-anchor="middle" fill="#4a6079">Press me: the image block is selected</text></svg>'
+						)
+				},
+				content: [{ text: 'A caption: click in it to type at the click' }]
+			},
+			{
+				id: 'page-widget',
+				type: 'widget',
+				data: { count: 0, note: '', taps: 0 },
+				content: [{ text: 'The widget’s caption' }]
 			},
 			{
 				id: 'page-equation',

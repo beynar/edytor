@@ -23,6 +23,29 @@ export const getElementFromNode = (node: Node | null) =>
 				? node.parentElement
 				: null;
 
+/**
+ * The nearest `contenteditable` boundary of `node` inside `host` (the host
+ * itself excluded), and whether it is editable: `false` is non-editable
+ * chrome (a void block's wrapper, an atom, a control's icon); a nested
+ * `true`, `plaintext-only` or `''` (a void block's caption, which turns
+ * editing on again for its text) is an editable region whose presses and
+ * drags are the browser's (`sel.press.nested-editable`). The attribute or,
+ * without one, the property (an attach hook sets it; jsdom reflects
+ * neither way). `null`: no boundary below the host.
+ */
+export const editableBoundary = (node: Node | null, host: Element | null | undefined) => {
+	if (!host) return null;
+	for (let at = getElementFromNode(node); at && at !== host; at = at.parentElement) {
+		if (!host.contains(at)) return null;
+		const attribute = at.getAttribute('contenteditable');
+		const state = attribute?.toLowerCase() ?? (at as HTMLElement).contentEditable;
+		if (state === 'false') return { element: at, editable: false };
+		if (state === 'true' || state === 'plaintext-only' || state === '')
+			return { element: at, editable: true };
+	}
+	return null;
+};
+
 /** The element around `node` (itself included) matching `selector`. */
 const closestTo = (node: Node | null, selector: string) =>
 	getElementFromNode(node)?.closest<HTMLElement>(selector) ?? null;

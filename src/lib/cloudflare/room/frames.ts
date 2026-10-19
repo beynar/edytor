@@ -4,7 +4,7 @@
  * room's.
  */
 import * as encoding from 'lib0-v14/encoding';
-import { READ_ONLY_DENIAL } from '../../crdt/protocols/auth.js';
+import { READ_ONLY_DENIAL, SUGGEST_ONLY_DENIAL } from '../../crdt/protocols/auth.js';
 import * as E from '../../crdt/protocol.js';
 import type { AwarenessEntry } from '../../crdt/protocol.js';
 import type { YDoc } from '../../crdt/index.js';
@@ -70,6 +70,14 @@ export const readOnlyFrame = (): Uint8Array => E.frame(E.messageAuth, (e) => E.w
 /** The denial of a read-only socket's write: it stays, and still syncs. */
 export const readOnlyDenialFrame = (): Uint8Array =>
 	E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, READ_ONLY_DENIAL));
+
+/** The denial of what a suggest-only socket may not write (stripped): it stays, and still syncs. */
+export const suggestOnlyDenialFrame = (): Uint8Array =>
+	E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, SUGGEST_ONLY_DENIAL));
+
+/** The socket's access at the join when it is less than `write` and more than `read` (`suggest`, `comment`). */
+export const accessFrame = (access: string): Uint8Array =>
+	E.frame(E.messageAuth, (e) => E.writeAccess(e, access));
 
 /** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
 export const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array =>

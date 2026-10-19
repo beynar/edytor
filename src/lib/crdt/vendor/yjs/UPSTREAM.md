@@ -1515,6 +1515,47 @@ Oracle: `src/tests/crdt/attribution/first-write-binding.test.ts` (the first
 local edit's one update carries the binding; a remote update writes none),
 the upstream suite.
 
+### YP31 — a hold record inside a nested node holds nothing (`src/structs/Item.js`)
+
+Reason: edytor's shared suggestions keep, inside each suggestion's record
+node, the id ranges it proposes to delete and the ranges its reviewers
+settled: lists of `client, clock, len` ranges that must hide nothing until a
+reviewer accepts. YP20's hold record is exactly that codec (one unit per
+range, a left id and a length, consecutive records of one writer merging
+as typed runs do), but it holds whatever it names wherever it integrates.
+The study's prototype added a sibling content type that held nothing
+(content ref 14, `ContentPropose`, a `YNode#propose` writer, about 0.3 KB);
+the rule here keeps one record type and one reader. Design:
+`docs/archive/shared-suggestions/design.md`. Edytor's schema generation 11
+is the cutover (no conversion: a generation-10 replica would hold what a
+proposal names).
+
+Patch (new code delimited by `// YP31 begin` / `// YP31 end`, edits marked `// YP31`):
+
+- **`holding(item)`**: a hold record holds what it names iff its item is an
+  entry of a root's sequence (`item.parent._item === null`: the document's
+  records list, `textdel`). `ContentHold#integrate` and `ContentHold#delete`
+  hold and release only then; inside a nested node's sequence the record is
+  a list of ids: it moves no length, waits in no `pendingHolds`, logs
+  nothing in `transaction.holds`, and its delete (an undo, a reviewer's
+  withdrawal, its node's delete) releases nothing. `YNode#hold(ids)` on a
+  nested node appends one such list entry.
+
+Plain deletes and the root records list (every upstream test, every YP20
+row) are untouched: no other code path writes a hold record into a nested
+node.
+
+Edytor side: a suggestion's record node (root `suggest`) keeps its writer's
+proposed deletions and its reviewers' settled ranges as such entries
+(`crdt/doc/suggest.ts`); accepting a deletion writes a real hold record in
+the root list.
+
+Oracle: `src/tests/crdt/yp31-id-lists.test.ts` (written, deleted, merged,
+split, synced, reloaded, received before the items it names, deleted with
+its node: nothing hidden or released; the root list still holds), the YP20
+rows and the shared-suggestion rows, the upstream suite unchanged
+(`encoding.tests.js` still pins 14 content refs).
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

@@ -88,7 +88,15 @@ export const frWords: ChromeWords = {
 		discard: 'Ignorer',
 		retry: 'Réessayer',
 		ctrl: 'Ctrl',
-		escape: 'Échap'
+		escape: 'Échap',
+		author: (name, via) => (via ? `${name} (${via === 'ai' ? 'IA' : via})` : name),
+		reject: 'Refuser',
+		withdraw: 'Retirer',
+		pending: 'Proposé',
+		suggesting: 'Suggestion',
+		editing: 'Modification',
+		acceptAll: 'Tout accepter',
+		rejectAll: 'Tout refuser'
 	},
 	mention: {
 		menu: 'Personnes',

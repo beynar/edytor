@@ -30,7 +30,7 @@ const REMOTE = Symbol('remote');
 export type Dial = {
 	user?: string;
 	replica?: number;
-	access?: 'read' | 'write';
+	access?: 'read' | 'comment' | 'suggest' | 'write';
 	/** When the credential expires (ms since the epoch; `?expires=`, WU-06). */
 	expires?: number | string;
 };
@@ -148,6 +148,8 @@ export class RawClient {
 	readonly denied: string[] = [];
 	/** The room said, when this socket joined, that it may read but not write. */
 	readOnly = false;
+	/** The access the room said this socket has when it joined (`write`, `suggest`, `comment`; `null`: a reader). */
+	access: string | null = null;
 	/** The room's comment messages (snapshots and changes), in order. */
 	readonly comments: CommentMessage[] = [];
 	/** Step1 frames the room sent (it asks write sockets only). */
@@ -267,11 +269,14 @@ export class RawClient {
 			return;
 		}
 		if (type === E.messageAuth) {
-			if (E.readVarUint(decoder) === E.messageReadOnly) {
+			const sub = E.readVarUint(decoder);
+			if (sub === E.messageReadOnly) {
 				this.readOnly = true;
 				return;
 			}
-			this.denied.push(new TextDecoder().decode(E.readVarUint8Array(decoder)));
+			const text = new TextDecoder().decode(E.readVarUint8Array(decoder));
+			if (sub === E.messageAccess) this.access = text;
+			else this.denied.push(text);
 			return;
 		}
 		if (type === E.messageSync) {

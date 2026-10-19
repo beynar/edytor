@@ -163,7 +163,17 @@ const english = {
 		discard: 'Discard',
 		retry: 'Try again',
 		ctrl: 'Ctrl',
-		escape: 'Esc'
+		escape: 'Esc',
+		/** A shared suggestion's author: "Ada", "Ada (AI)". */
+		author: (name: string, via: string | undefined) =>
+			via ? `${name} (${via.toUpperCase()})` : name,
+		reject: 'Reject',
+		withdraw: 'Withdraw',
+		pending: 'Suggested',
+		suggesting: 'Suggesting',
+		editing: 'Editing',
+		acceptAll: 'Accept all',
+		rejectAll: 'Reject all'
 	},
 	comments: {
 		placeholder: 'Add a comment…',

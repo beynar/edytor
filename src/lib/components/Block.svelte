@@ -178,6 +178,9 @@
 			'data-edytor-selected': selected ? 'true' : undefined,
 			'data-edytor-focused': focused ? 'true' : undefined,
 			'data-edytor-suggestion-replaced': shown ? (replacedMark(shown) ?? undefined) : undefined,
+			// A shared suggestion made it, or proposes an operation on it (`sugg.view.block`).
+			'data-edytor-suggested':
+				preview || id === undefined ? undefined : edytor.suggestions.marked(id),
 			contenteditable: definition?.void ? ('false' as const) : undefined,
 			// Its direction from its own text (`blockDir`, bidi), absent without one: none in a preview.
 			dir: (!preview && blockDir(ownText(cell?.runs ?? []))) || undefined

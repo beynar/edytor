@@ -111,6 +111,7 @@ export {
 	type AuthorizeDocumentSocket,
 	type ExpiredCredential,
 	type DocumentNamespace,
+	type DocumentAccessLevel,
 	type DocumentIdentity,
 	type RouteDocumentOptions
 } from './routeDocumentSocket.js';

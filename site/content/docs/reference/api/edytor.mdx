@@ -1367,6 +1367,10 @@ export type CommentRequest = {
     quote?: string;
     block?: string | null;
     comment?: string;
+    anchors?: {
+        start: unknown;
+        end: unknown;
+    }[];
 } | {
     op: 'reply';
     thread: string;
@@ -1528,7 +1532,7 @@ export declare class CommentsController {
 - `resolved`: The resolved threads.
 - `shown`: The threads the sidebar shows: the open ones, the resolved ones on demand, the active one.
 - `anchor`: Where the thread being written, else the active one, stands (`ChromeAnchor`): the first line of its text, by which a card may place itself (the sidebar places its cards in the margin).
-- `canComment`: The view may write: it may start, answer, resolve and delete comments.
+- `canComment`: The view may start, answer, resolve and delete comments: it may write, or its user may comment without writing (`document.access` `comment`, a readonly view's: the room writes a new thread's anchor).
 - `thread`: One thread, by id.
 - `userOf`: A user as the sidebar shows them: their name (else their id), avatar and color.
 - `mayDelete`: Whether the current user may delete `comment` of `thread` (its author).
@@ -2028,7 +2032,9 @@ declare const createSlashMenuPlugin: (options?: SlashMenuOptions) => Plugin;
 
 The suggestion bar (Notion AI's): your `bar` under each block
 suggestion (Accept, Discard, and Try again when the app passed
-`onRetry`); its keys are the suggestions plugin's.
+`onRetry`) and under each shared suggestion's last block (its author,
+Accept and Reject for a view that decides, Withdraw for its author);
+its keys are the suggestions plugin's.
 
 ```ts
 declare const createSuggestionBarPlugin: ({ bar }: SuggestionBarOptions) => Plugin;
@@ -2451,7 +2457,9 @@ The document's reads (transaction-aware where the reference says so).
 
 ```ts
 export interface DocumentReads {
-    toJSON(): JSONDoc;
+    toJSON(options?: {
+        suggestions?: boolean;
+    }): JSONDoc;
     docData(): JsonObj;
     dataItemIds(target: DataTarget, path: readonly string[]): string[];
     project(): ProjectedDoc;
@@ -2513,6 +2521,8 @@ export interface DocumentReads {
     } | null;
 }
 ```
+
+- `toJSON`: The document as JSON, without its pending suggestions (their inserted text and blocks left out, their proposals not applied); with `suggestions: true`, as shown, pending suggestions included.
 
 ## DocumentSemanticsConfig
 
@@ -2632,6 +2642,7 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
+    moveRefused: string;
 };
 ```
 
@@ -2639,6 +2650,7 @@ export type EditorLabels = {
 - `block`: One block in an announcement, by its kind's label ("Heading 1 block").
 - `blocks`: Several blocks in an announcement ("3 blocks").
 - `moved`: A move to a place (a drop).
+- `moveRefused`: Announced when a move is refused because the view is suggesting.
 
 ## Edytor
 
@@ -2680,6 +2692,8 @@ export declare class EdytorDocument {
     get ready(): boolean;
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
+    access: DocumentAccess;
+    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -2724,6 +2738,8 @@ export declare class EdytorDocument {
 - `clientID`: The replica id (`doc.clientID`) — identifies the replica, not the actor.
 - `ready`: `true` once the document's content state is decided — seeded locally or hydrated then synced.
 - `readiness`: `pending` | `local` | `hydrated` — distinguishes a locally-seeded ready from a provider-hydrated/restored ready (the contract consumers need to tell "I decided this content" from "sync brought it").
+- `access`: What this document's user may do, as its room said (`'write'` until a room says otherwise): `'suggest'` writes only suggestions (its views suggest and decide nothing), `'comment'` and `'read'` write nothing.
+- `onAccessChange`: Be told when the room changes `access`.
 - `writable`: `false` while the document carries a schema stamp this build cannot own (a foreign stamp got in despite the transport's inbound refusal): every write refuses with a `SchemaMismatchError`, and the providers neither persist nor broadcast it.
 - `onWritableChange`: Subscribe to `writable` transitions — the visible signal that the document turned read-only (once per transition, not per refused edit).
 - `historyLimit`: The undo steps this document's history keeps: the configured `history.limit`, else `DEFAULT_HISTORY_LIMIT`.
@@ -3022,12 +3038,14 @@ export type EdytorSyncPayload = {
     armBound?: () => void;
     holdBound?: () => void;
     attach?: (sync: EdytorSync) => EdytorSyncCleanup | void;
+    access?: (access: 'write' | 'suggest' | 'comment' | 'read') => void;
 };
 ```
 
 - `armBound`: (Re)start this provider's readiness bound (`DEFAULT_READINESS_BOUND` ms from now) — for a factory whose `bound` is `Infinity` because only its transport knows when waiting starts to count (the websocket sync: from the socket's open, or its first failed dial).
 - `holdBound`: Stop this provider's readiness bound: an empty document waits for it to settle (or for the next `armBound()`), as the websocket sync does after expired credentials on a first visit.
 - `attach`: Attach another sync to the same document as its own provider (its own target, bound and settle): how a sync brings a companion, e.g.
+- `access`: What the room says the document's user may do (`EdytorDocument.access`).
 
 ## EMBED_ALLOW
 
@@ -5776,9 +5794,15 @@ declare const storableImageSrc: (value: unknown) => string | null;
 export declare class Suggestion {
     #private;
     readonly id: string;
-    readonly at: ResolvedAt;
+    readonly at: ResolvedAt | null;
     readonly label: string | undefined;
-    constructor(layer: Suggestions, at: ResolvedAt, kind: string, options: SuggestionOptions, status: SuggestionStatus);
+    readonly shared: boolean;
+    constructor(layer: Suggestions, at: ResolvedAt | null, kind: string, options: SuggestionOptions, status: SuggestionStatus);
+    get by(): string | undefined;
+    get via(): string | undefined;
+    get changes(): readonly SuggestedChange[];
+    get canDecide(): boolean;
+    get mine(): boolean;
     get content(): readonly JSONBlock[];
     get status(): SuggestionStatus;
     get retryable(): boolean;
@@ -5787,20 +5811,28 @@ export declare class Suggestion {
     append: (text: string) => void;
     done: () => void;
     accept: () => OpResult;
+    reject: () => OpResult;
     discard: () => void;
     retry: () => void;
 }
 ```
 
-- `at`: The position, resolved: `replace: 'selection'` is the selection's blocks or text range.
+- `at`: The position, resolved: `replace: 'selection'` is the selection's blocks or text range; `null` for a shared suggestion another view made (its `changes` say where it is).
+- `shared`: In the document: every collaborator sees it and reviews it.
+- `by`: A shared one's author (an actor id).
+- `via`: Who wrote a shared one for its author (`'ai'`).
+- `changes`: A shared one's pending changes, in document order (reactive); a view-local one has none.
+- `canDecide`: This view may accept or reject it (a view-local one: may write).
+- `mine`: Its author is this view's actor (it may withdraw a shared one).
 - `content`: The proposed blocks (reactive).
 - `retryable`: An `onRetry` was given: the UI offers "Try again".
-- `live`: Listed: not accepted, discarded or dropped.
+- `live`: Listed: not accepted, discarded or dropped (a shared one: with a change pending).
 - `update`: Replace the content (call it on each streamed chunk); no-op once not live.
 - `append`: Append streamed text to the last block's text (a new paragraph when there is none); away from an `end`, a blank line starts a new paragraph.
 - `done`: The stream ended: `status` is `ready`.
-- `accept`: Place the content in the document: one command, one undo step (see `Suggestions`).
-- `discard`: Drop it; writes nothing.
+- `accept`: Accept it: one command, one undo step (see `Suggestions`).
+- `reject`: Reject it: a shared one's changes, one command; a view-local one is dropped.
+- `discard`: Drop it (writes nothing); a shared one its author withdraws, anyone else rejects.
 - `retry`: Empty it, stream again, and ask the app for another answer (`onRetry`).
 
 ## SuggestionAt
@@ -5835,21 +5867,32 @@ export type SuggestionBarOptions = {
 
 ## SuggestionBarPayload
 
-What a `bar` snippet receives: one block suggestion and its actions.
+What a `bar` snippet receives: one suggestion (a block suggestion, or a shared one) and its actions.
 
 ```ts
 export type SuggestionBarPayload = {
     suggestion: Suggestion;
     accept: () => void;
     discard: () => void;
+    reject: () => void;
     retry: (() => void) | undefined;
     readonly: boolean;
+    canDecide: boolean;
+    author: {
+        id: string;
+        name?: string;
+        color?: string;
+    } | undefined;
     mac: boolean;
 };
 ```
 
-- `accept`: Place it in the document and give the editor its focus back.
+- `accept`: Accept it (a view-local one: place it in the document) and give the editor its focus back.
+- `discard`: Drop it (a shared one: its author withdraws it, a decider rejects it).
+- `reject`: Reject a shared one (a view-local one: drop it).
 - `retry`: Ask for another answer (`onRetry`); `undefined` without one.
+- `canDecide`: This view may accept or reject it (a shared one; else: not readonly).
+- `author`: A shared one's author, as their profile names them ("Ada", with `suggestion.via`: "Ada (AI)").
 - `mac`: The view's keys are a Mac's: Mod is ⌘ (name the Accept key with it).
 
 ## SuggestionContent
@@ -5868,6 +5911,8 @@ export type SuggestionOptions = {
     status?: SuggestionStatus;
     label?: string;
     onRetry?: (suggestion: Suggestion) => void;
+    shared?: boolean;
+    via?: string;
 };
 ```
 
@@ -5875,6 +5920,8 @@ export type SuggestionOptions = {
 - `status`: Default `ready` with content, `streaming` without.
 - `label`: A name for the UI (an app's suggestion bar shows it).
 - `onRetry`: Offer "Try again": called by `retry()` once the content is emptied.
+- `shared`: Write it in the document as it streams: every collaborator sees it written and reviews it (a block position or a `replace`; an `end` is always this view's).
+- `via`: Who wrote a shared one for its author (default `'ai'`): a reviewer sees "Ada (AI)".
 
 ## SuggestionRange
 
@@ -5894,12 +5941,17 @@ The view's suggestions (`edytor.suggestions`).
 ```ts
 export declare class Suggestions {
     #private;
-    private edytor;
+    readonly edytor: Edytor;
     revision: number;
-    constructor(edytor: Edytor);
+    get suggesting(): boolean;
+    set suggesting(on: boolean);
+    changes: () => readonly SuggestedChange[];
     get list(): readonly Suggestion[];
     get latest(): Suggestion | undefined;
     get: (id: string) => Suggestion | undefined;
+    decide: (changes: readonly SuggestedChange[], accept: boolean) => OpResult;
+    acceptAll: () => OpResult;
+    rejectAll: () => OpResult;
     add: (at: SuggestionAt, content?: SuggestionContent, options?: SuggestionOptions) => Suggestion;
     clear: () => void;
     prune: () => void;
@@ -5908,9 +5960,12 @@ export declare class Suggestions {
 }
 ```
 
-- `revision`: Bumped by every change of a suggestion: the surface's passes re-run.
-- `list`: Every live suggestion, oldest first (reactive).
-- `latest`: The newest one: what the keys act on.
+- `revision`: Bumped by every change of a suggestion (and of the document's): the surface's passes re-run.
+- `changes`: Every pending change of a shared suggestion, in document order (reactive).
+- `list`: Every suggestion, view-local and shared, oldest first (reactive).
+- `latest`: The newest one this view added: what the keys act on.
+- `decide`: Accept (`accept`) or reject shared `changes`: one command (`acceptSuggestion`, `rejectSuggestion`, its payload `{ changes }`), one undo step, refused unless this view decides.
+- `acceptAll`: Accept (or reject) every pending shared suggestion: one command, one undo step.
 - `add`: Propose `content` at `at`.
 - `clear`: Discard every suggestion.
 - `prune`: After a commit: a suggestion whose block (or range) died is dropped.

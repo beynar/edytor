@@ -2377,6 +2377,87 @@ throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
 
+### `sel.press.nested-editable` — a press in a caption is the browser's
+
+A void block's text (an image's caption, a video's, a file's) is a nested
+editable: its element is `contenteditable="true"` inside the block's
+non-editable chrome. What a press there means is decided by the nearest
+`contenteditable` boundary of the press's target (`editableBoundary` in
+`selection/selection.utils.ts`), the one rule the chrome press
+(`pointer.chromePress`, from `events/onFocus.ts`) and the `selectstart`
+guard (`pointer.onSelectStart`) read:
+
+- the nearest boundary is `false` (the image, the block's wrapper, an
+  atom, a control's icon): chrome. The model answers the press: it is
+  cancelled; a void block's is `sel.press.void`, any other block's puts
+  the caret at the start of its first text, as before; a drag starting
+  there is the block selection's;
+- the nearest boundary is a nested editable (`true`, `plaintext-only` or
+  `''`): the press is the browser's. It places the caret at the press in
+  one step, focusing the nested editable, and the selection adopts it at
+  its `selectionchange`; a drag selects its text natively.
+
+The first boundary at or above the host decides nothing (a readonly
+host's `false` keeps its text selectable).
+
+Rows: `tests/editor-dom/image.spec.ts` "a press in an image" in three
+engines (every caret reported from the press to the release and after it
+is the click's offset, never the caption's start nor the document's);
+`src/tests/fixtures/dom/selectstart-guard.test.tsx` (jsdom: the caption's
+press is not cancelled and moves no model caret).
+
+### `sel.press.void` — a press on a void block selects it
+
+A press on a void block's chrome (its nearest `contenteditable` boundary
+`false`, the block void by its role: an image, a bookmark's card, a file's
+row, an embed's frame, a divider, an equation, a table of contents, a
+custom void kind's card) selects the block, as Notion does: a block
+selection of it, committed by the press (`pointer.chromePress`
+`#voidPress`), the host focused, the press cancelled (no native caret,
+focus or selection), no text drag. No caret goes to the caption. Shift or
+Mod adds it to a block selection. The block selection's keys then act on
+it (Delete and Backspace remove it, the arrows leave it, Enter goes below,
+copy copies it, Escape clears it). A press on the line of the block's text
+beside that text (a caption's line wider than its words) puts the caret at
+the nearest point of the text.
+
+A press a control owns is the control's, whole (`ownsPress` in
+`events/nativeInteractiveControl.ts`, the one rule every press handler
+asks first: `placingPress`, `pressInside`, `tripleClick`,
+`preventTripleClick`, `onSelectStart`): the editor does nothing with it,
+its clicks and multi-clicks, its `selectstart` or its drag — no `pressed`,
+no `capture` (no `data-selecting`), no caret, no block selection, no
+triple-click selection — and leaves the control's focus and click alone.
+The controls of a block's chrome: a native form control, an element whose
+role is interactive (`button`, `link`, `checkbox`, `switch`, `menuitem`,
+`tab`, `option`, `slider`, `textbox`, `combobox`) or that takes the focus
+(`tabindex` ≥ 0), an element the app marks `data-edytor-control`, an
+element that keeps the selection (`data-edytor-keep-selection`), and a
+link, but never an element inside the text or an inline atom (a link mark
+is the text's). `isKindControl`/`ownsEvent` take the same controls, so
+their keys and input are theirs too. A click is never cancelled: an
+unmarked clickable element still gets its click, and its press also
+selects the block.
+
+A link inside a block's chrome is a control too: a bookmark's card, a
+file's row, an unplayable embed's link keep their press, and a plain click
+opens them, in an editable and a readonly view alike. The rest of the
+block's chrome selects it; the block handle and the keyboard select it as
+any block. In a readonly view a press elsewhere on the chrome selects the
+block as well (a block selection is the view's, not a write).
+
+Rows: `tests/editor-dom/void-press.spec.ts` in three engines (a plain
+click on a bookmark's card and a file's row opens the link in a new tab and
+selects nothing; the demo's widget: its button counts five fast clicks, a triple click
+included, its input's triple click selects its own text, its marked
+element counts its clicks, none shows `data-selecting` or selects the
+block, the card's empty area selects it, its caption takes a caret);
+`tests/editor-dom/image.spec.ts` (a press on the image selects it, no caret
+reported in the caption, Delete removes it);
+`src/tests/fixtures/dom/selectstart-guard.test.tsx` (jsdom: each kind of
+control keeps its press and its `selectstart`, the empty area's press
+selects the block, a link mark is no control).
+
 ## Navigation
 
 ### `nav.trailing.exit` — ArrowDown leaves the document's last stop (Notion)
@@ -2715,6 +2796,118 @@ The undo manager's replay (`crdt/doc/history.ts`) may consume a dead/obsolete st
 neutralized by remote edits) without applying a change or growing the
 opposite stack. The legal oracle is **source stack shrank OR opposite
 grew** — not both. A dead command shows neither and still fails.
+
+## Shared suggestions
+
+A suggestion lives in the document (`crdt/doc/suggest.ts`, design:
+`docs/archive/shared-suggestions/design.md`): every replica, the room, a
+reload and a history version hold it. Pins:
+`src/tests/crdt/suggest/shared-suggestions.test.ts` (the document),
+`src/tests/crdt/suggest/suggest-random.test.ts` (random schedules under
+concurrency), `src/tests/collaboration/suggesting-mode.test.tsx` (a view).
+
+### `sugg.record` — a suggestion is a record its writer wrote
+
+A suggestion is one record node under the root `suggest` (its id the attr
+key), written by its **writer**: a client id minted for a suggesting
+session (a view's, or an AI answer's), bound `c/<writer>` to its author by
+the writer itself with its first write (`sugg.writer.binding`, as any
+replica's, `attr.binding.first-write`). The record's own item opens the
+writer's clocks it owns, up to the writer's next record. Its creation is in
+no history step (`ownTextIds`), so no undo or redo moves those clocks. The
+record holds `at` (ms), `via` (an agent: `'ai'`) and `lbl` (a label), and
+a list: its writer's id lists (fork patch YP31: hold records that hold
+nothing inside a nested node) propose deletions, anyone else's settle
+ranges (the decider is the entry's client), and its writer's JSON entries
+`{ op, args }` propose operations. What is pending is a function of that
+state, so replicas converge in any delivery order.
+
+### `sugg.insert` — an insertion is its writer's text
+
+A shown unit whose client is a record's writer, its clock in the record's
+clocks and not settled, is a pending insertion; a block whose node it
+created there is a pending block (`split` when its stream lies in another
+block's text). Text a peer types inside a suggested insertion is the
+peer's (another client): it splits the run in two and survives a reject.
+
+### `sugg.delete` — a deletion names the units it saw
+
+Deleting in a suggestion writes nothing to the text: the units that are
+not its author's pending ones are named by one id list in the record (its
+own pending units are deleted for real: held, or removed when the open
+step wrote them). Text typed inside the range later is not in it and
+survives an accept. Units the record already proposes are skipped, so a
+second Delete over struck text proposes nothing new.
+
+### `sugg.op` — any other step is a proposed operation
+
+A suggesting plan's `deleteBlock`, `mergeBlocks`, `setBlockType`,
+`patchData` and `formatRange` steps on content that is not its author's
+pending one are written as the step's operation and its arguments
+(`formatRange`: its block, two anchors and the marks); on accept the
+reviewer runs the operation again (prepared then, so a target gone leaves
+nothing pending and runs nothing). Steps on its author's pending content
+are written directly. A later step's offsets, prepared with the proposed
+text gone, step over it; an insertion at a proposed deletion lands after
+the struck text.
+
+### `sugg.move.refused` — nothing moves through a suggestion
+
+A plan holding a `moveBlocks` step is refused whole (`refused`,
+`'suggesting'`), nothing written; a view in suggesting mode cannot move
+blocks (a drag, a move key, a handle move) and announces it.
+
+### `sugg.decide` — a decision writes only what changes
+
+Accepting an insertion or rejecting a deletion settles its ids (the text
+stays); rejecting an insertion or accepting a deletion is the decider's
+`deleteText` (a hold: the text goes); a rejected block is deleted (its
+children promote), a rejected split joins the block it was split from (its
+writer's text held); an accepted operation runs, and settles. One command
+and one undo step of the decider (`acceptSuggestion`, `rejectSuggestion`),
+never written as a suggestion; an undo makes the change pending again.
+
+Accept overwrites: an accepted operation runs again with the arguments it
+was proposed with (a `setBlockType`'s kind, a `patchData`'s values, a
+`formatRange`'s marks over its anchors), through the decider's
+dispatcher. A field a collaborator changed since the proposal gets the
+proposed value, as the same edit made at the decision would write it; the
+reviewer accepts what the suggestion shows.
+
+### `sugg.decide.concurrent` — decisions compose
+
+Two deciders of one change: an accept and a reject are a settle and a
+hold, so the text goes, in either order and either delivery; each undoes
+only their own step.
+
+### `sugg.over` — a suggestion over a suggestion
+
+A suggestion may propose deleting another's pending insertion: both show
+over the same units. Rejecting the insertion hides them, so the proposal
+names nothing shown and is not pending (nothing written for it); accepting
+the deletion first holds them.
+
+### `sugg.history.writer` — the suggester's history is its writer's
+
+A history replays a step that a suggestion writer of this replica wrote
+under that writer (`crdt/doc/history.ts`): the suggester's undo of typing
+holds it as the writer, of a proposal deletes the entry; its redo writes
+the entry again under the writer, still a proposal, never a decision.
+
+### `sugg.withdraw` — the author takes a suggestion back
+
+The author withdraws, written by a writer of theirs: the suggestion's
+pending text and blocks go as a rejection takes them and the author's
+entries in the record are deleted (a decider's settled lists stay).
+Nothing of it stays pending.
+
+### `sugg.json.base` — the document without its pending suggestions
+
+`toJSON()` (and the room's `onSave` value, `edytor.value`) leaves pending
+suggestions out: inserted units and blocks are not there (a pending
+block's children take its place, a split's block joins the block before
+it), proposals are not applied. `toJSON({ suggestions: true })` is the
+document as shown. A document with no record pays nothing.
 
 ## The room (server, `edytor/cloudflare`)
 

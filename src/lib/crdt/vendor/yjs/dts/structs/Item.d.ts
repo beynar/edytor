@@ -427,13 +427,14 @@ export class ContentHold {
     mergeWith(right: ContentHold): boolean;
     /**
      * @param {Transaction} transaction
-     * @param {Item} _item
+     * @param {Item} item
      */
-    integrate(transaction: Transaction, _item: Item): void;
+    integrate(transaction: Transaction, item: Item): void;
     /**
      * @param {Transaction} transaction
+     * @param {Item} item
      */
-    delete(transaction: Transaction): void;
+    delete(transaction: Transaction, item: Item): void;
     /**
      * @param {Transaction} _tr
      */

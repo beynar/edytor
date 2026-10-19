@@ -47,6 +47,58 @@ export const isNativeTextControl = (target: EventTarget | null) =>
 export const isNativeTextControlEvent = (event: Event) =>
 	Boolean(findNativeControlInEvent(event, NATIVE_TEXT_SELECTOR));
 
+/**
+ * The controls of a block's chrome (`sel.press.void`): a native form
+ * control, an element whose role says it is interactive or that takes the
+ * focus, and one the app marks as its own (`data-edytor-control`, for any
+ * other element). Their press and its whole gesture, their keys and their
+ * input are theirs: the editor does nothing with them.
+ */
+const CHROME_CONTROL_SELECTOR = [
+	'input, textarea, select, button',
+	'[role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"]',
+	'[role="tab"], [role="option"], [role="slider"], [role="textbox"], [role="combobox"]',
+	'[tabindex]:not([tabindex^="-"])',
+	'[data-edytor-control]'
+].join(', ');
+
+/**
+ * The control of a block's chrome holding `target` inside the host, by
+ * `selector`: never the host, nor an element inside the editor's text or an
+ * inline atom (a link mark, a mention: the text's own presses).
+ */
+const chromeControl = (
+	editorRoot: Element | null | undefined,
+	target: EventTarget | null,
+	selector = CHROME_CONTROL_SELECTOR
+) => {
+	const control = getElementFromTarget(target)?.closest(selector);
+	return control &&
+		editorRoot &&
+		control !== editorRoot &&
+		editorRoot.contains(control) &&
+		!control.closest('[data-edytor-text], [data-edytor-inline-block]')
+		? control
+		: null;
+};
+
+/**
+ * Whether a press inside the host, and its whole gesture (its clicks and
+ * multi-clicks, its `selectstart`, its drag), is its target's own
+ * (`sel.press.void`): a control of a block's chrome, a link there (a
+ * bookmark's card, a file's row: its click opens it), or an element that
+ * keeps the selection (`data-edytor-keep-selection`). The one rule every
+ * press handler asks.
+ */
+export const ownsPress = (editorRoot: Element | null | undefined, event: Event) =>
+	Boolean(
+		chromeControl(
+			editorRoot,
+			event.target,
+			`${CHROME_CONTROL_SELECTOR}, [data-edytor-keep-selection], a[href]`
+		)
+	);
+
 // Any non-"false" contenteditable value — attribute selectors are
 // case-sensitive, and "TRUE"/"Plaintext-Only"/"inherit"/garbage values
 // all still establish a nested editable context the guard must catch.
@@ -54,7 +106,8 @@ const EDITABLE_TARGET_SELECTOR = '[contenteditable]:not([contenteditable="false"
 
 /**
  * A kind's own control: a form control (`input` of any type, `textarea`,
- * `select`, `button`) or a nested editable island inside the host (a plugin
+ * `select`, `button`), a control of a block's chrome (an interactive role,
+ * a focusable element, `data-edytor-control`) or a nested editable island inside the host (a plugin
  * chrome editor, an embedded code field: it owns its input and composition
  * lifecycle), never the root nor the editor's own text elements (they carry
  * their own `contentEditable="true"`). It owns its focus, selection and
@@ -68,6 +121,7 @@ export const isKindControl = (
 	const editable = findClosestElement(target, EDITABLE_TARGET_SELECTOR);
 	const control =
 		findClosestElement(target, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
+		chromeControl(editorRoot, target) ??
 		(editable?.hasAttribute('data-edytor-text') ? null : editable);
 	return Boolean(control && editorRoot && control !== editorRoot && editorRoot.contains(control));
 };

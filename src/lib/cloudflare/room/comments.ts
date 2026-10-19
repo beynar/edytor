@@ -296,6 +296,9 @@ export class RoomComments {
 			this.store(decided.change);
 			this.broadcast(decided.change);
 			if (decided.change.type === 'removed') this.#removeAnchors(decided.change.thread.id);
+			// A user who may comment but not write: the room writes the thread's anchor (`room.access.comment`).
+			if (decided.change.type === 'added' && actor.anchors && request.op === 'add')
+				this.#writeAnchors(decided.change.thread.id, request.anchors ?? []);
 			room.log({
 				edytor: 'comment',
 				type: decided.change.type,
@@ -313,6 +316,26 @@ export class RoomComments {
 			}
 		}
 		return outcome;
+	}
+
+	/** A new thread's anchor over `spans` (anchors), written by the room: one room transaction. */
+	#writeAnchors(id: string, spans: { start: unknown; end: unknown }[]) {
+		const room = this.room;
+		if (room.live === null || room.busy || spans.length === 0) return;
+		try {
+			const mark = `${COMMENT_MARK}:${id}`;
+			room.transact((facade) => {
+				for (const { start, end } of spans) {
+					const [from, to] = [start, end].map((a) => facade.resolveAnchor(a as never));
+					if (from && to && from.blockId === to.blockId && to.offset > from.offset)
+						facade.formatRange(from.blockId, from.offset, to.offset - from.offset, {
+							[mark]: { id }
+						});
+				}
+			});
+		} catch (error) {
+			room.log({ edytor: 'fault', reason: 'internal', detail: `comment anchor: ${String(error)}` });
+		}
 	}
 
 	/** A removed thread's anchor: its marks leave the document, as one room transaction. */
@@ -399,9 +422,12 @@ export class RoomComments {
 			}
 			const request = parseCommentRequest(json);
 			if (request === null) return new Response('invalid request', { status: 400 });
+			// A user who may comment but not write: the room writes what its view may not (the anchor).
+			const anchors = identity.access === 'comment' || identity.access === 'suggest';
 			const outcome = await this.apply(request, {
 				user: identity.user,
-				readOnly: identity.readOnly
+				readOnly: identity.readOnly && !anchors,
+				...(anchors && { anchors })
 			});
 			if (outcome.status === 'refused')
 				return new Response(outcome.message, { status: COMMENT_STATUS[outcome.reason] });

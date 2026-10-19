@@ -143,6 +143,8 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 	 */
 	const placingPress = (event: MouseEvent) => {
 		const { pointer } = edytor.selection;
+		// A control of a block's chrome owns its whole press (`sel.press.void`).
+		if (pointer.ownPress(event)) return void (pointer.claimed = false);
 		if (pointer.marginPress(event)) return;
 		if (!pointer.belowPress(event)) pointer.chromePress(event);
 	};
@@ -153,8 +155,9 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		edytor.composition.abandon();
 		lastPointerDownInsideEditorAt = event.timeStamp;
 		const { pointer } = edytor.selection;
-		// The margin gesture's press places no caret and starts no text drag.
-		if (pointer.claimed) return;
+		// The margin gesture's press places no caret and starts no text drag; a
+		// control's press is the control's (`sel.press.void`).
+		if (pointer.claimed || pointer.ownPress(event)) return;
 		edytor.projector.pressed();
 		pointer.capture(event);
 		edytor.selection.clearInlineBlockSelection();

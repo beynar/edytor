@@ -41,10 +41,12 @@ import {
 	HORIZON_ROOT,
 	REGISTRY_KEY,
 	RELEASE_ROOT,
+	SUGGEST_ROOT,
 	TEXT_DELETES_ROOT,
 	WITHDRAW_PREFIX
 } from './schema.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
+import type { DocSuggest, SuggestionRecord } from './doc/suggest.js';
 import { attrItems, dropSearchMarkers, engineOps, firstItem, holdsIds } from './structs.js';
 
 /** Engine ids `c:k … c:k+n-1`. */
@@ -73,6 +75,11 @@ export type PurgeReport = {
 	merged: number;
 	/** Release records the horizon covers (`hist.release.end`): deleted. */
 	released: number;
+	/**
+	 * Suggestions decided before the horizon (`sugg.purge`): nothing of them
+	 * pending, their records' entries older than it: their records deleted.
+	 */
+	suggestions: number;
 };
 
 type Item = {
@@ -88,6 +95,8 @@ type Item = {
 };
 
 const mapOf = (node: EngineNode): Map<string, Item> => attrItems<Item>(node);
+/** The clock a suggestion's record opened at (its writer's clocks it owns start there). */
+const clockOf = (rec: SuggestionRecord): number => (rec as { start?: number }).start ?? 0;
 
 /**
  * The ended histories a document holds (`hist.release.end`): per writer,
@@ -196,7 +205,11 @@ export const bindPurge = (Y: EngineApi) => {
 	 */
 	const purge = (
 		doc: EngineDoc,
-		facade: { model: PlacementModel; text: TextEngine },
+		facade: {
+			model: PlacementModel;
+			text: TextEngine;
+			suggest?: Pick<DocSuggest, 'records' | 'changes'>;
+		},
 		horizon: Horizon | null
 	): PurgeReport => {
 		const report: PurgeReport = {
@@ -206,7 +219,8 @@ export const bindPurge = (Y: EngineApi) => {
 			records: 0,
 			claims: 0,
 			merged: 0,
-			released: 0
+			released: 0,
+			suggestions: 0
 		};
 		const vector =
 			horizon === null
@@ -482,6 +496,31 @@ export const bindPurge = (Y: EngineApi) => {
 				if (it.deleted || !old(it.id.client, it.id.clock + it.length - 1)) continue;
 				it.delete(tr);
 				report.released++;
+			}
+		}
+		// Suggestions decided before the horizon (`sugg.purge`): the decision
+		// trail goes with them. A writer's oldest record first, so no record's
+		// clocks pass to another.
+		const suggest = facade.suggest;
+		const records = suggest?.records() ?? [];
+		if (records.length > 0) {
+			const pending = new Set(suggest!.changes().map((c) => c.suggestion));
+			const root = doc.get(SUGGEST_ROOT);
+			const seen = new Set<number>();
+			for (const rec of [...records].sort((a, b) => clockOf(a) - clockOf(b))) {
+				if (seen.has(rec.writer)) continue;
+				seen.add(rec.writer);
+				const node = root.getAttr(rec.id) as EngineNode;
+				const items = [node._item as unknown as Item];
+				for (let it = firstItem<Item>(node); it; it = it.right) if (!it.deleted) items.push(it);
+				if (
+					pending.has(rec.id) ||
+					!items.every((it) => old(it.id.client, it.id.clock + it.length - 1))
+				)
+					continue;
+				root.deleteAttr(rec.id);
+				seen.delete(rec.writer);
+				report.suggestions++;
 			}
 		}
 		// The horizon record, last.

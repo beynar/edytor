@@ -7,7 +7,13 @@
  * come from the plan (WU-21) and Notion, not from running the code.
  */
 import { expect, test, type Page } from './editorTest';
-import { modKey, readJsonByTestId, trackPageIssues, waitForEditorReady } from './helpers';
+import {
+	getCaretPoint,
+	modKey,
+	readJsonByTestId,
+	trackPageIssues,
+	waitForEditorReady
+} from './helpers';
 
 type Value = { children: Array<{ type: string; data?: Record<string, unknown> }> };
 
@@ -96,6 +102,107 @@ test.describe('image resize (WU-21)', () => {
 		// The pointer left the image: the chrome is no longer held on it.
 		await page.mouse.move(1, 1);
 		await expect(page.locator('[data-edytor-image-toolbar]')).toHaveCount(0);
+	});
+});
+
+/** The model caret, as `[block id, offset]`. */
+const modelCaret = (page: Page) =>
+	page.evaluate(() => {
+		const caret = (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection.caret;
+		return caret ? [caret.block.id as string, caret.offset as number] : null;
+	});
+
+/**
+ * Record every caret the page reports from the next press on: the DOM
+ * selection at each `selectionchange`, as its offset in the image's
+ * caption (`null` outside it) and the model caret at that moment.
+ */
+const recordCarets = (page: Page) =>
+	page.evaluate(() => {
+		const w = window as Window & { __EDYTOR__?: any; __carets?: unknown[] };
+		const caption = document.querySelector<HTMLElement>(
+			'[data-edytor-type="image"] [data-edytor-text="true"]'
+		)!;
+		let pressed = false;
+		w.__carets = [];
+		window.addEventListener('pointerdown', () => (pressed = true), { capture: true });
+		document.addEventListener('selectionchange', () => {
+			if (!pressed) return;
+			const selection = document.getSelection()!;
+			const { anchorNode, anchorOffset } = selection;
+			let offset: number | null = null;
+			if (anchorNode && caption.contains(anchorNode)) {
+				const range = document.createRange();
+				range.setStart(caption, 0);
+				range.setEnd(anchorNode, anchorOffset);
+				offset = range.toString().length;
+			}
+			const caret = w.__EDYTOR__?.selection.caret;
+			w.__carets!.push({ offset, model: caret ? [caret.block.id, caret.offset] : null });
+		});
+	});
+const recorded = (page: Page) =>
+	page.evaluate(
+		() =>
+			(window as Window & { __carets?: unknown[] }).__carets as {
+				offset: number | null;
+				model: [string, number] | null;
+			}[]
+	);
+
+test.describe('a press in an image (sel.press.nested-editable, sel.press.void)', () => {
+	test('a click in the middle of the caption puts the caret there in one step', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const caption = page.locator('[data-edytor-type="image"] [data-edytor-text="true"]');
+		await expect(caption).toHaveText('caption');
+		await caption.scrollIntoViewIfNeeded();
+		const point = await getCaretPoint(page, 0, 4);
+		await recordCarets(page);
+		await page.mouse.move(point.x, point.y);
+		await page.mouse.down();
+		// The press's own caret is reported before the release (a user holds the button).
+		await expect.poll(async () => (await recorded(page)).length).toBeGreaterThan(0);
+		await page.mouse.up();
+		await expect.poll(() => modelCaret(page)).toEqual(['img', 4]);
+		// Every caret reported from the press to the release, and after it, is
+		// the click's: never the caption's start, never the document's.
+		const carets = await recorded(page);
+		expect(carets.length).toBeGreaterThan(0);
+		expect(carets.map((c) => c.offset)).toEqual(carets.map(() => 4));
+		expect(carets.filter((c) => c.model).every((c) => c.model![1] === 4)).toBe(true);
+		await page.keyboard.type('X');
+		await expect(caption).toHaveText('captXion');
+		issues.assertClean();
+	});
+
+	test('a press on the image selects its block, no caret in the caption; Delete removes it (sel.press.void)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const img = page.locator('[data-edytor-image] img').first();
+		await img.scrollIntoViewIfNeeded();
+		const image = (await img.boundingBox())!;
+		await recordCarets(page);
+		await page.mouse.click(image.x + image.width / 2, image.y + image.height / 2);
+		await expect
+			.poll(() =>
+				page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection.value)
+			)
+			.toMatchObject({ kind: 'blocks', ids: ['img'] });
+		await expect(page.locator('[data-edytor-id="img"][data-edytor-block]')).toHaveAttribute(
+			'data-edytor-selected',
+			'true'
+		);
+		expect(await modelCaret(page)).toBeNull();
+		// No caret ever reported in the caption from the press on.
+		expect((await recorded(page)).filter((c) => c.offset !== null)).toEqual([]);
+		await page.keyboard.press('Delete');
+		await expect(page.locator('[data-edytor-type="image"]')).toHaveCount(0);
+		issues.assertClean();
 	});
 });
 

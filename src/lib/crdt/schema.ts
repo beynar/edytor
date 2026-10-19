@@ -54,6 +54,15 @@ export const HORIZON_ATTR = 'h';
  */
 export const RELEASE_ROOT = 'released';
 
+/**
+ * The shared suggestions (`crdt/doc/suggest.ts`): attr `<id>` is one
+ * suggestion's record node, written by its writer (a client id bound to its
+ * author): its creation time `at`, `via` and `lbl`, and a list of id lists
+ * (fork patch YP31: its writer's proposed deletions, anyone else's settled
+ * ranges) and proposed operations. In the history's scope.
+ */
+export const SUGGEST_ROOT = 'suggest';
+
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';
@@ -102,9 +111,11 @@ export const SCHEMA = {
 	// YP21), a block has no `claims` list; 9: a block's place is its home slot
 	// in its parent's sequence and a move is a move record (fork patch YP22),
 	// a block has no `at` map and an array item no rank; 10: the update encoding
-	// writes each distinct string once (fork patch YP24). A container or frame
-	// of an earlier generation is refused.
-	version: 10,
+	// writes each distinct string once (fork patch YP24); 11: a hold record
+	// inside a nested node holds nothing (fork patch YP31: a suggestion's
+	// proposals and decisions). A container or frame of an earlier generation
+	// is refused.
+	version: 11,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

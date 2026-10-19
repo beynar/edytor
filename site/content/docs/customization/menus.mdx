@@ -612,7 +612,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 
 ## Suggestion bar
 
-`createSuggestionBarPlugin({ bar })`: `bar` draws the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement, the default suggestions plugin its keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards; without a bar, the keys still do). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly` and `mac` (Mod is ⌘).
+`createSuggestionBarPlugin({ bar })`: `bar` draws the bar under each block [suggestion](/docs/editor/suggestions) and under the last block a [shared suggestion](/docs/editor/suggestions#reviewing) changes; the plugin keeps its placement, the default suggestions plugin its keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards a view-local one; without a bar, the keys still do). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `reject`, `retry` (when the app passed `onRetry`), `readonly`, `canDecide` (this view may accept or reject it), `author` (a shared one's `{ id, name?, color? }`) and `mac` (Mod is ⌘).
 
 ```svelte title="SuggestionsEditor.svelte" check
 <script lang="ts">

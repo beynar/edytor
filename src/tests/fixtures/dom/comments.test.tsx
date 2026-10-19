@@ -25,7 +25,12 @@ import {
 	type CommentsPluginOptions
 } from '$lib/plugins/comments/commentsPlugin.js';
 import { createMemoryCommentsClient } from '$lib/collaboration/comments/client.js';
-import { commentAnchors, type CommentChange } from '$lib/crdt/protocols/comments.js';
+import {
+	commentAnchors,
+	type CommentChange,
+	type CommentRequest
+} from '$lib/crdt/protocols/comments.js';
+import type { DocAnchor } from '$lib/crdt/index.js';
 import { EDYTOR_FRAGMENT_MIME } from '$lib/clipboard/types.js';
 import {
 	dispatchCopy,
@@ -349,5 +354,34 @@ describe('comment.readonly', () => {
 		await select(setup.edytor, 'a', 0, 4);
 		expect(setup.comments.start()).toBe(false);
 		expect(draftCard()).toBeNull();
+	});
+
+	it('a user who may comment but not write comments from a read-only view; the room writes the anchor (room.access.comment)', async () => {
+		const memory = createMemoryCommentsClient({ user: 'cy' });
+		const sent: CommentRequest[] = [];
+		const client = { ...memory, send: (r: CommentRequest) => (sent.push(r), memory.send(r)) };
+		const setup = await mount({ client, readonly: true });
+		const { edytor } = setup;
+		for (const access of ['comment', 'suggest'] as const) {
+			edytor.document.access = access;
+			sent.length = 0;
+			await select(edytor, 'a', 4, 9);
+			expect(setup.comments.start()).toBe(true);
+			await flushDomUpdates();
+			const thread = setup.comments.draft!.id;
+			await typeAndEnter(draftCard()!.querySelector('textarea')!, 'Why quick?');
+			// The request carries the text's anchors; this view writes no mark.
+			const [add] = sent;
+			expect(add).toMatchObject({ op: 'add', thread, quote: 'quick' });
+			const anchors = (add as { anchors?: { start: DocAnchor; end: DocAnchor }[] }).anchors!;
+			expect(
+				anchors.map(({ start, end }) => {
+					const [from, to] = [start, end].map((a) => edytor.facade.resolveAnchor(a)!);
+					return edytor.facade.blockText(from.blockId)!.slice(from.offset, to.offset);
+				})
+			).toEqual(['quick']);
+			expect(anchored(edytor, thread)).toEqual([]);
+			expect(edytor.dispatcher.last?.operation).not.toBe('addComment');
+		}
 	});
 });

@@ -627,7 +627,8 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	return {
 		userId,
 		replica: requestedReplica(request),
-		readOnly: query.get('access') === 'read',
+		// `?access=read|comment|suggest|write` (default `write`).
+		access: (query.get('access') ?? 'write') as 'read' | 'comment' | 'suggest' | 'write',
 		// `?expires=<ms since the epoch>`: when the credential expires (WU-06).
 		...(query.has('expires') ? { expiresAt: Number(query.get('expires')) } : {})
 	};

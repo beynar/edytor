@@ -1,10 +1,13 @@
 ---
-title: Suggestions (AI)
-description: Propose text, paragraphs, lists, to-dos and images at a place in the document, shown only in your view until you accept them, the way Notion AI drafts.
+title: Suggestions
+description: Propose changes for review. An AI draft shown only in your view until you accept it, or shared suggestions in the document, which every collaborator sees and a writer accepts or rejects, as in Google Docs.
 icon: sparkles
 ---
 
-A suggestion is content a view proposes at a position: an AI draft, a completion, a rewrite. It shows only in the view that made it, rendered with the document's own kinds inside a tinted, non-editable preview, until it is accepted or discarded. Before `accept()` nothing reaches the document: no other tab or collaborator sees it, presence does not carry it, `onChange` does not fire, and it adds no undo step. `accept()` writes it as one command and one undo step, which then syncs like any edit.
+A suggestion is a change proposed for review. `edytor.suggestions` holds two kinds in one list, told apart by `suggestion.shared`:
+
+- **View-local** (the default): content a view proposes at a position, such as an AI draft, a completion or a rewrite. It shows only in the view that made it, rendered with the document's own kinds inside a tinted, non-editable preview, until it is accepted or discarded. Before `accept()` nothing reaches the document: no other tab or collaborator sees it, presence does not carry it, `onChange` does not fire, and it adds no undo step. `accept()` writes it as one command and one undo step, which then syncs like any edit.
+- **Shared**: a change written into the document as a proposal. Every collaborator sees it with its author, a reload keeps it, and a writer accepts or rejects it. A view in [suggesting mode](#suggesting-mode) writes each of its edits this way, and an AI answer added with `shared: true` [streams into the document](#ai-answers-shared-live) as it arrives.
 
 ```svelte title="Draft.svelte" check
 <script lang="ts">
@@ -48,7 +51,7 @@ A suggestion is content a view proposes at a position: an AI draft, a completion
 - a caret becomes `{ after: block }`;
 - no selection throws.
 
-`suggestion.at` is the position as resolved. A position names blocks by id (a range, by anchors), so it follows them through edits elsewhere, a collaborator's included. `add` throws when the position names no shown block.
+`suggestion.at` is the position as resolved (`null` for a shared suggestion another view made: its `changes` say where it is). A position names blocks by id (a range, by anchors), so it follows them through edits elsewhere, a collaborator's included. `add` throws when the position names no shown block.
 
 The content goes in as a [paste](/docs/editor/clipboard) of those blocks would: in a list, a plain paragraph becomes the list's item; in a code block, lines become code lines; the other kinds keep their kind and data.
 
@@ -134,17 +137,144 @@ Once accepted, the suggestion is gone from the list. Accepting while it streams 
 
 `suggestion.retry()` empties it, sets it `streaming` and calls `options.onRetry(suggestion)`, where you stream another answer into it. Without `onRetry` it does nothing, and `suggestion.retryable` is `false`.
 
+## Suggesting mode
+
+Set `edytor.suggestions.suggesting` and the view's edits become a shared suggestion of its user's, as in Google Docs:
+
+```svelte title="Review.svelte" check
+<script lang="ts">
+	import { Edytor, type EdytorInstance } from 'edytor';
+
+	let edytor = $state<EdytorInstance>();
+	const suggesting = $derived(edytor?.suggestions.suggesting ?? false);
+	// Writers decide; a suggest-only user's view can accept nothing.
+	const pending = $derived(edytor?.suggestions.list.some((s) => s.shared && s.canDecide) ?? false);
+</script>
+
+<button
+	aria-pressed={suggesting}
+	onmousedown={(event) => event.preventDefault()}
+	onclick={() => edytor && (edytor.suggestions.suggesting = !suggesting)}
+>
+	{suggesting ? 'Suggesting' : 'Editing'}
+</button>
+{#if pending}
+	<button onclick={() => edytor?.suggestions.acceptAll()}>Accept all</button>
+	<button onclick={() => edytor?.suggestions.rejectAll()}>Reject all</button>
+{/if}
+<Edytor bind:edytor server="wss://rooms.example.com/rooms" room="doc-1" actor={{ id: 'ada' }} />
+```
+
+Every write of the view goes through it while it suggests, whatever made it: typing, <kbd>Backspace</kbd> and <kbd>Delete</kbd>, an input method, a paste, a drop, Turn into, the toolbar's marks, a find and replace, a plugin's command.
+
+| What the user does | What is written | Shown as | Accepted | Rejected |
+| --- | --- | --- | --- | --- |
+| Types, pastes text | The text, as the suggestion's | An inserted run, in the author's colour | The text stays | The text goes |
+| Deletes someone's text | A proposal naming the text: nothing is deleted yet | A struck run; the caret moves past it as if it were gone | The text goes | The text stays |
+| Deletes text of their own pending suggestion | The deletion itself: nobody else's content changes | — | — | — |
+| Presses <kbd>Enter</kbd>, pastes blocks | The new blocks | The block marked `inserted` (a split's new line: `split`) | The blocks stay | The blocks go (a split joins the line it came from) |
+| Deletes, merges or retypes a block, changes its data, formats text | The operation, proposed | The block marked `removed`, `merged` or `changed`; formatted text as an inserted run | The operation runs | Nothing changes |
+| Moves, nests or outdents blocks (a drag, a move key, a handle move, a beside drop, <kbd>Tab</kbd>) | Nothing: refused, and the view says so | — | — | — |
+
+- **One suggestion per contiguous edit.** Edits continue the suggestion the view is writing while they touch the block it last wrote in or the block before or after it; an edit anywhere else starts another. Switching `suggesting` ends both the undo step and the suggestion.
+- **The suggester's own undo withdraws** what it suggested, and its redo suggests it again.
+- **A move is refused** while the view suggests (`canMove` is `false`), announced to assistive technology with the `editor.moveRefused` [label](/docs/customization/localization). Accept or reject the pending suggestions first, or switch to editing.
+- **A user who may only suggest** (the room's [`suggest` access](/docs/server/authorization#access-levels)) always suggests: `suggesting` reads `true` from the moment the room tells the view, and the room refuses any other write from them. Until the room's word arrives, the view writes as it would, and the room strips those writes: set `suggesting` yourself, from your own permission model, before the view connects (the same one your `authorize` reads).
+
+## Reviewing
+
+A shared suggestion's `changes` are what it proposes, in document order (reactive), and `edytor.suggestions.changes()` is every pending change of the document. Each `SuggestedChange` is one run or block:
+
+<TypeTable
+  type={{
+    suggestion: { type: "string", description: "The suggestion it belongs to (its id)." },
+    kind: { type: "'insert' | 'delete' | 'block' | 'split' | 'op'", description: "Inserted text, text proposed for deletion, an inserted block, the line a split made, or a proposed operation." },
+    block: { type: "string | null", description: "The block it is in or about (null: the document's data)." },
+    offset: { type: "number", description: "Its run's start, in the block's offsets (an atom counts 1)." },
+    length: { type: "number", description: "Its run's length (a block's: the whole block)." },
+    text: { type: "string", description: "Its text." },
+    op: { type: "{ op, args } | undefined", description: "For op: the operation (deleteBlock, mergeBlocks, setBlockType, patchData, formatRange) and its arguments." },
+  }}
+/>
+
+- `suggestion.accept()` and `suggestion.reject()` decide all its changes: one command each, `acceptSuggestion` and `rejectSuggestion` with the payload `{ changes }`, one undo step, which hooks see and can refuse like any [command](/docs/editor/commands). `edytor.suggestions.decide(changes, accept)` decides some of them (one change, the changes of a block), and `acceptAll()` and `rejectAll()` every pending one.
+- **A decision writes only what changes.** The text that goes is deleted by the reviewer (their own delete, which their undo takes back); a proposed operation runs again, through the reviewer's view, with the arguments it was proposed with: accepting a retype or a data change writes the proposed value, even over a value a collaborator wrote since. The text that stays is marked settled, so it reads as ordinary text from then on.
+- **The reviewer's undo** makes the changes pending again.
+- **Who decides.** A view that may write and whose user may write (`document.access` is `'write'`) accepts and rejects (`suggestion.canDecide`). A read-only view and a suggest-only user's view list the pending suggestions and decide nothing: their `accept()` answers `refused`.
+- **The author withdraws.** `suggestion.discard()` on one's own shared suggestion (`suggestion.mine`) takes it back: nothing of it stays pending and the text is as it was. On another's, `discard()` rejects.
+- **Two reviewers at once.** Decisions compose: when one accepts and the other rejects the same change at the same time, the text that one of them takes away goes on every replica.
+- `suggestion.by` is its author's actor id and `suggestion.via` the agent that wrote it for them (`'ai'`); `edytor.document.attribution.actors.get(by)` has their name and colour.
+
+## AI answers shared live
+
+Add a suggestion with `shared: true` and what you stream into it is written into the document as it arrives: every collaborator watches the answer being written, then a writer accepts or rejects it, as one suggestion. It is attributed to the user who asked, with `via: 'ai'` (the bar shows "Ada (AI)"; pass `via` to name another agent):
+
+```ts title="src/lib/askShared.ts" check
+import type { EdytorInstance } from 'edytor';
+import { textToBlocks } from 'edytor/export';
+
+/** Stream the model's markdown answer after the caret's block, shared with everyone as it arrives. */
+export const askShared = async (edytor: EdytorInstance, response: Response) => {
+	const block = edytor.selection.caret?.block;
+	if (!block || !response.body) return;
+	const suggestion = edytor.suggestions.add({ after: block.id }, undefined, {
+		shared: true,
+		label: 'AI'
+	});
+	const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+	let markdown = '';
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		markdown += value;
+		suggestion.update(textToBlocks(markdown, { streaming: true }));
+	}
+	suggestion.update(textToBlocks(markdown));
+	suggestion.done();
+};
+```
+
+- **Only what changed is written.** Each `update` keeps the blocks that are the same, extends the last block's text when the new one extends it, and replaces the rest. A markdown answer of 1,000 characters streamed word by word (243 chunks) syncs about 13.5 KB in all, 56 bytes a chunk, and stores 7.2 KB, 9% over the same blocks written at once.
+- **Positions.** `after`, `before`, `inside` and a `replace` of blocks or of a text range (proposed for deletion, the answer after it). An `end` suggestion is a completion of this view's line, never shared: `shared` is ignored there.
+- The answer is its own suggestion: the user's edits meanwhile, suggested or not, are not part of it. It is written outside the user's undo history; `discard()` withdraws it.
+
+## Who sees what
+
+- **Every view of the document** shows the pending shared suggestions, read-only views and readonly users included: the inserted runs and blocks, the struck runs, the marked blocks, and their bars (Suggested, without Accept).
+- **`toJSON()` is the document without its pending suggestions**: the inserted text and blocks left out (a split's line joined back to the line it came from), the proposed deletions and operations not applied. `toJSON({ suggestions: true })` is the document as shown. `edytor.value`, the room's `onSave` value, a version in the history and the blocks a [move](/docs/server/moves) exports are the document without them; the room's `update`, the browser's copy and a reload keep them. Copying in the editor takes the text as shown.
+- **A version restore drops the pending suggestions**: the restored document has none, and the restore's undo brings them back.
+- **The decision trail** (what was accepted and rejected, by whom) stays in the document until the room's [purge](/docs/server/history#the-purge) removes a suggestion decided before its horizon, as it removes other deleted content.
+
+### What it costs
+
+Measured on the stored document (`document.encode()`), against the same edit made directly:
+
+| | Suggested | Direct |
+| --- | --- | --- |
+| A typed character (1,000 typed one by one) | 1.01 bytes | 1.08 bytes |
+| A deleted character (1,000 Backspaces) | 0.02 bytes (proposed) | 0.10 bytes |
+| A suggestion's fixed cost | 89 bytes (another by the same view: 36) | — |
+| Accepting an insertion, or rejecting a deletion | 11–12 bytes | — |
+| Rejecting an insertion, or accepting a deletion | 37 bytes | — |
+
+A document with no suggestion reads nothing for them, and a keystroke in a suggestion costs the same work at 5,000 blocks as at 1,000.
+
 ## API
 
 `edytor.suggestions` is the view's list:
 
 <TypeTable
   type={{
-    "add(at, content?, options?)": { type: "Suggestion", description: "Propose content at a position. options: { id?, status?, label?, onRetry? }. An id already listed replaces that suggestion." },
-    list: { type: "readonly Suggestion[]", description: "Every suggestion, oldest first. Reactive." },
+    "add(at, content?, options?)": { type: "Suggestion", description: "Propose content at a position. options: { id?, status?, label?, onRetry?, shared?, via? }. An id already listed replaces that suggestion." },
+    list: { type: "readonly Suggestion[]", description: "Every suggestion, view-local and shared, oldest first (this view's first). Reactive." },
+    suggesting: { type: "boolean", description: "Suggesting mode: the view's writes are a shared suggestion. Always true for a suggest-only user." },
+    "changes()": { type: "readonly SuggestedChange[]", description: "Every pending change of a shared suggestion, in document order. Reactive." },
+    "decide(changes, accept)": { type: "OpResult", description: "Accept or reject some changes: one command, one undo step." },
+    "acceptAll()": { type: "OpResult", description: "Accept every pending shared suggestion." },
+    "rejectAll()": { type: "OpResult", description: "Reject every pending shared suggestion." },
     latest: { type: "Suggestion | undefined", description: "The newest one, which the keys act on." },
     "get(id)": { type: "Suggestion | undefined", description: "One by id." },
-    "clear()": { type: "void", description: "Discard every suggestion." },
+    "clear()": { type: "void", description: "Discard every view-local suggestion." },
     "at(blockId)": { type: "SuggestionsAt", description: "What shows at a block: { before, after, inside, end, replaced, inPlace }. inPlace: the replace removes only blocks that hold nothing, so its content shows in their place. Reactive." },
   }}
 />
@@ -154,7 +284,13 @@ A `Suggestion`:
 <TypeTable
   type={{
     id: { type: "string", description: "Its id (options.id, or minted)." },
-    at: { type: "ResolvedAt", description: "The position, resolved." },
+    at: { type: "ResolvedAt | null", description: "The position, resolved; null for a shared suggestion another view made." },
+    shared: { type: "boolean", description: "In the document: every collaborator sees it." },
+    by: { type: "string | undefined", description: "A shared one's author (an actor id)." },
+    via: { type: "string | undefined", description: "The agent that wrote a shared one for its author ('ai')." },
+    changes: { type: "readonly SuggestedChange[]", description: "A shared one's pending changes. Reactive." },
+    canDecide: { type: "boolean", description: "This view may accept or reject it." },
+    mine: { type: "boolean", description: "Its author is this view's user (a view-local one: always)." },
     content: { type: "readonly JSONBlock[]", description: "The proposed blocks. Reactive." },
     status: { type: "'streaming' | 'ready'", description: "Reactive." },
     label: { type: "string | undefined", description: "options.label; the bar shows it." },
@@ -163,8 +299,9 @@ A `Suggestion`:
     "update(content)": { type: "void", description: "Replace the content. Does nothing once not live." },
     "append(text)": { type: "void", description: "Add streamed text to the last block." },
     "done()": { type: "void", description: "status becomes 'ready'." },
-    "accept()": { type: "OpResult", description: "Write it: one command, one undo step." },
-    "discard()": { type: "void", description: "Drop it; writes nothing." },
+    "accept()": { type: "OpResult", description: "Write it (a shared one: accept its changes): one command, one undo step." },
+    "reject()": { type: "OpResult", description: "Reject a shared one's changes (a view-local one: drop it)." },
+    "discard()": { type: "void", description: "Drop it, writing nothing; a shared one its author withdraws, anyone else rejects." },
     "retry()": { type: "void", description: "Empty it and call onRetry." },
   }}
 />
@@ -181,7 +318,7 @@ A `Suggestion`:
 
 The keys claim nothing while there is no suggestion, so <kbd>Mod</kbd> + <kbd>Enter</kbd> still checks to-dos and opens toggles. Plugins listed before it in `plugins` get the keys first ([Plugin order](/docs/plugins#plugin-order)); in a code line, the [code plugin](/docs/plugins/code)'s <kbd>Tab</kbd> accepts an `end` suggestion too.
 
-Render the bar with `createSuggestionBarPlugin({ bar })` (without it, no bar shows). Its placement is the plugin's, the keys the default suggestions plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly` and `mac` (Mod is ⌘); its words are your markup's:
+Render the bar with `createSuggestionBarPlugin({ bar })` (without it, no bar shows). Its placement is the plugin's, the keys the default suggestions plugin's: under a block suggestion's preview, and under the last block a shared suggestion changes. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `reject`, `retry` (with an `onRetry`), `readonly`, `canDecide` (this view may accept or reject it), `author` (a shared one's: `{ id, name?, color? }`, from its profile) and `mac` (Mod is ⌘); its words are your markup's. The keys act on view-local suggestions only: a shared one is decided from its bar or your review controls.
 
 ```svelte title="AiBar.svelte" check
 <script lang="ts">
@@ -199,6 +336,37 @@ Render the bar with `createSuggestionBarPlugin({ bar })` (without it, no bar sho
 
 <Edytor plugins={[createSuggestionBarPlugin({ bar })]} />
 ```
+
+Under a shared suggestion, show its author and Accept and Reject when `canDecide`, Withdraw for its author (`suggestion.mine`, which `discard` does), and a plain "Suggested" otherwise:
+
+```svelte title="ReviewBar.svelte" check
+<script lang="ts">
+	import { Edytor, createSuggestionBarPlugin, type SuggestionBarPayload } from 'edytor';
+</script>
+
+{#snippet bar({ suggestion, author, accept, reject, discard, canDecide }: SuggestionBarPayload)}
+	<div class="review-bar" style:color={author?.color}>
+		{#if suggestion.shared}
+			<span>{author?.name ?? author?.id}{suggestion.via ? ` (${suggestion.via.toUpperCase()})` : ''}</span>
+			{#if canDecide && !suggestion.mine}
+				<button onmousedown={(e) => e.preventDefault()} onclick={accept}>Accept</button>
+				<button onmousedown={(e) => e.preventDefault()} onclick={reject}>Reject</button>
+			{:else if suggestion.mine}
+				<button onmousedown={(e) => e.preventDefault()} onclick={discard}>Withdraw</button>
+			{:else}
+				<span>Suggested</span>
+			{/if}
+		{:else}
+			<button onmousedown={(e) => e.preventDefault()} onclick={accept}>Keep</button>
+			<button onmousedown={(e) => e.preventDefault()} onclick={discard}>Remove</button>
+		{/if}
+	</div>
+{/snippet}
+
+<Edytor plugins={[createSuggestionBarPlugin({ bar })]} />
+```
+
+The [ready-made chrome](/docs/customization/ready-made-menus) draws this bar, and the [starter](/docs/starter/props)'s `review` controls the Editing and Suggesting switch with Accept all and Reject all.
 
 Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `<Edytor labels>` (its `editor.suggestion`) translates a preview's accessible name when the suggestion has no `label` (see [Localization](/docs/customization/localization)). A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
 
@@ -223,6 +391,16 @@ The kinds render their blocks as in the document, images included, with `data-ed
 | `[data-edytor-suggestion-bar]` | Where your bar renders, under its preview (overlay) |
 
 The [Notion theme](/docs/customization/styling#notion-theme) gives the group a tinted background, pulses it while it streams (not with reduced motion), strikes through replaced blocks and greys the ghost text. Its custom properties: `--edytor-suggestion-background`, `--edytor-suggestion-removed` (replaced blocks), `--edytor-suggestion-removed-line` (a range's underline), `--edytor-suggestion-bar-space` (the room under a group for the bar, `40px`).
+
+A shared suggestion is the document's own text and blocks: it renders in place, with nothing of its own inside the host. Its runs are rectangles in the overlay, in its author's colour (`--edytor-range-color` on each), and the blocks it makes or proposes an operation on carry an attribute:
+
+| Selector | What |
+| --- | --- |
+| `[data-edytor-suggestion-inserted]` | A rectangle over inserted text, or text a proposed format covers (overlay) |
+| `[data-edytor-suggestion-deleted]` | A rectangle over text proposed for deletion (overlay) |
+| `[data-edytor-suggested]` | A block a shared suggestion made (`inserted`, `split`) or proposes to delete (`removed`), merge (`merged`), retype or change the data of (`changed`) |
+
+The Notion theme underlines inserted text and strikes deleted text in the author's colour, and marks the blocks with a bar at their start (an inserted block also tinted, a removed one tinted and struck). Its custom properties: `--edytor-suggestion-inserted` and `--edytor-suggestion-inserted-background` (inserted blocks), `--edytor-suggestion-removed` and `--edytor-suggestion-removed-line` (removed blocks), `--edytor-suggestion-accent` (merged and changed blocks).
 
 ## Live example
 
@@ -313,7 +491,12 @@ textToBlocks('## Plan\n- [ ] Ship it\nSee **[the notes](https://example.com)**')
 
 ## Limitations
 
-- **One view only.** A suggestion lives in the view that made it: another tab or a collaborator cannot review it, and a reload loses it. Keep your own copy if it must survive.
+- **A view-local suggestion lives in one view.** Another tab or a collaborator cannot review it, and a reload loses it: add it with `shared: true` when it must be reviewed by others or survive a reload.
+- **Nothing moves through a shared suggestion**: a move, a nest or an outdent is refused while the view suggests, and a beside drop or a table's row and column moves with it.
+- **Accepting a proposed operation applies its stored value**: a retype or a data change proposed on a block a collaborator changed since writes the proposed value over theirs, as the same edit made then would. The reviewer accepts what the suggestion shows.
+- **Writes a plugin makes on its own** (a bookmark's fetched title and image, a page link's title) are direct writes, not suggestions: for a suggest-only user the room refuses them, so the card or the title stays as it was until a writer's view fetches it.
+- **No headless review.** A document without a view (a server, a bot, the room's `transact`) reads its pending suggestions only through `toJSON({ suggestions: true })`: listing, accepting and rejecting them needs a view.
+- **Exports leave pending suggestions out**: `edytor.value`, `onChange`'s value, the room's `onSave` value and a cross-document move are the document without them; a block moved to another document arrives without its pending changes.
 - **A text-range `replace`** is two writes in one command and one undo step: the range's deletion, then the paste at its caret. Hooks see the deletion's steps only.
 - **The preview** applies no `transformText` (a code block's preview is not highlighted) and renders the kinds this view registers; an unknown kind shows as a plain block.
 - **Markdown pasted into the editor** reads with the editor's small reader: a pasted table, a fence's language or nested marks need the full one (`edytor/export`), applied by your app (a plugin's `onPaste`). The full reader keeps no table column alignment (`:---:`), and HTML in markdown stays text.

@@ -216,6 +216,7 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 | `presence` | A presence entry past the size quota, or the start of a socket's burst of presence messages past the rate: one entry per burst, `refusalCounts.presence` counting each message. The socket stays; see [presence](#identity-and-presence). | `{ user, quota: 'size' \| 'rate', … }` |
 | `mark` | Another writer's per-writer block marks a frame wrote or deleted, stripped. | `{ user, writers, ranges }` |
 | `forged` | Attribution entries a frame may not write or delete: another replica's `c/<n>` binding, another user's `u/<id>` profile; removed, see [attribution trust](/docs/server/authorization#attribution-trust). | `{ user, keys }` |
+| `suggest-only` | What a suggest-only user's frame wrote that is no suggestion's, stripped (writers) or dropped (deletes); the rest applied, see [access levels](/docs/server/authorization#access-levels). | `{ user, writers, ranges }` |
 | `history` | A [version](/docs/server/history) the room skipped, or a time zone it does not know. | `{ key, bytes, limit }` past its store's value limit, `{ key, error }` when the store failed |
 
 Four more entries are not refusals:
@@ -223,7 +224,7 @@ Four more entries are not refusals:
 | Entry | What it records | `detail` |
 | --- | --- | --- |
 | `denied` | A frame [`validate`](/docs/server/extending#validate-edits) denied, undone by the room. | `{ user, touched }` |
-| `access` | The room ended or changed a user's access: `expired`, `closed` (`closeUser`), `read`, `write` or `none` (`setAccess`); see [revoking access](/docs/server/authorization#revoking-access). | `{ user, access, sockets }` |
+| `access` | The room ended or changed a user's access: `expired`, `closed` (`closeUser`), or the level `setAccess` set (`read`, `comment`, `suggest`, `write`, `none`); see [revoking access](/docs/server/authorization#revoking-access). | `{ user, access, sockets }` |
 | `orphan` | An unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay). | |
 | `relayed` | Content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)). | |
 

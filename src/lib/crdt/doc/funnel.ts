@@ -23,7 +23,7 @@ import { writeData } from '../data.js';
 import { NOOP } from './plan.js';
 import type { EdytorDocConfig, OpResult, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
-import { claimInto, deleteRange, formatRangeIn, insertIntoText } from '../text/model.js';
+import { claimInto, deleteRange, formatRangeIn, insertIntoText, writersOf } from '../text/model.js';
 
 /**
  * Raised when an operation runs against a torn-down document: every attach
@@ -97,7 +97,8 @@ export const writeFunnel = (c: FunnelContext) => {
 	/** The frame's one attribution pass over the facets the fold saw it write. */
 	const close = (f: Frame, folded: Folded): void => {
 		const actor = actorOf();
-		if (actor === undefined || !folded.wrote) return;
+		// A suggestion's writer stamps nothing: its content is not the block's until accepted.
+		if (actor === undefined || !folded.wrote || writersOf(doc).has(doc.clientID)) return;
 		const created = new Set<BlockId>();
 		const changed = new Set<BlockId>();
 		for (const [id, facets] of folded.touched) {

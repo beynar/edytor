@@ -69,7 +69,7 @@
 			size === undefined ? '' : labelsOf(block?.edytor, 'media', mediaEnglish).fileSize(size),
 		uploading: progress !== undefined,
 		progress: progress ?? null,
-		link: mediaLink({ draggable: 'false', download: name }, block)
+		link: mediaLink({ draggable: 'false', download: name })
 	});
 
 	/** The files each kind takes: a video, an audio track, any other file. */
@@ -179,7 +179,7 @@
 			<Control
 				own={fallbackOf}
 				initial={link}
-				payload={{ block: block.handle, url, link: mediaLink({}, block.handle) }}
+				payload={{ block: block.handle, url, link: mediaLink() }}
 			/>
 		</div>
 	{:else if url && block.type === 'bookmark'}
@@ -191,7 +191,7 @@
 					block: block.handle,
 					url,
 					...previewData(block.data),
-					link: mediaLink({ draggable: 'false' }, block.handle)
+					link: mediaLink({ draggable: 'false' })
 				} as BookmarkCardPayload}
 			/>
 		</div>

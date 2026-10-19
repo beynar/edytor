@@ -85,23 +85,17 @@ const chromeControl = (
 /**
  * Whether a press inside the host, and its whole gesture (its clicks and
  * multi-clicks, its `selectstart`, its drag), is its target's own
- * (`sel.press.void`): a control of a block's chrome, a link there (but a
- * media block's own link, `data-edytor-block-link`, in an editable view:
- * its press is the block's), or an element that keeps the selection
- * (`data-edytor-keep-selection`). The one rule every press handler asks.
+ * (`sel.press.void`): a control of a block's chrome, a link there (a
+ * bookmark's card, a file's row: its click opens it), or an element that
+ * keeps the selection (`data-edytor-keep-selection`). The one rule every
+ * press handler asks.
  */
-export const ownsPress = (
-	editorRoot: Element | null | undefined,
-	event: Event,
-	readonly: boolean
-) =>
+export const ownsPress = (editorRoot: Element | null | undefined, event: Event) =>
 	Boolean(
 		chromeControl(
 			editorRoot,
 			event.target,
-			`${CHROME_CONTROL_SELECTOR}, [data-edytor-keep-selection], ${
-				readonly ? 'a[href]' : 'a[href]:not([data-edytor-block-link])'
-			}`
+			`${CHROME_CONTROL_SELECTOR}, [data-edytor-keep-selection], a[href]`
 		)
 	);
 

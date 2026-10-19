@@ -2,9 +2,8 @@
  * A press on a void block's chrome (`sel.press.void`, Notion): the block is
  * selected, no caret placed; a control inside keeps its whole press (a
  * native control, an interactive role, an element the app marks
- * `data-edytor-control`); a media block's own link (a bookmark's card, a
- * file's row) selects its block and opens nothing on a plain click. The
- * image rows are in `image.spec.ts`; the jsdom rows in
+ * `data-edytor-control`, a link: a bookmark's card and a file's row open
+ * on a plain click). The image rows are in `image.spec.ts`; the jsdom rows in
  * `src/tests/fixtures/dom/selectstart-guard.test.tsx`.
  */
 import { expect, test, type Page } from './editorTest';
@@ -33,27 +32,30 @@ const center = async (page: Page, selector: string) => {
 };
 
 test.describe('a press on a void block (sel.press.void)', () => {
-	for (const [name, id, selector] of [
-		['a bookmark card', 'bm', '[data-edytor-bookmark] a'],
-		['a file row', 'f', '[data-edytor-file] a']
+	for (const [name, id, selector, url] of [
+		['a bookmark card', 'bm', '[data-edytor-bookmark] a', 'https://example.com/'],
+		['a file row', 'f', '[data-edytor-file] a', 'https://example.com/report.pdf']
 	] as const) {
-		test(`a press on ${name} selects its block and opens nothing`, async ({ page, context }) => {
-			const issues = trackPageIssues(page);
+		test(`a plain click on ${name} opens its link and selects nothing`, async ({
+			page,
+			context
+		}) => {
 			await open(page);
 			const opened: string[] = [];
 			context.on('page', (tab) => opened.push(tab.url()));
+			// The new tab opens nothing on the network: the request is answered here.
+			await context.route('https://example.com/**', (route) =>
+				route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' })
+			);
 			const [x, y] = await center(page, selector);
 			await page.mouse.click(x, y);
-			await expect.poll(() => value(page)).toMatchObject({ kind: 'blocks', ids: [id] });
-			await expect(page.locator(`[data-edytor-id="${id}"][data-edytor-block]`)).toHaveAttribute(
+			await expect.poll(() => opened.length).toBe(1);
+			expect(opened[0]).toContain(url.replace('https://', ''));
+			await expect(page.locator(`[data-edytor-id="${id}"][data-edytor-block]`)).not.toHaveAttribute(
 				'data-edytor-selected',
 				'true'
 			);
-			// The block's keys: Delete removes it.
-			await page.keyboard.press('Delete');
-			await expect(page.locator(`[data-edytor-id="${id}"][data-edytor-block]`)).toHaveCount(0);
-			expect(opened).toEqual([]);
-			issues.assertClean();
+			expect((await value(page))?.kind).not.toBe('blocks');
 		});
 	}
 });

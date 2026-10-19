@@ -249,8 +249,7 @@ export class SelectionPointer {
 	 * asks this one rule first.
 	 * @internal
 	 */
-	ownPress = (event: Event) =>
-		ownsPress(this.selection.edytor.node, event, this.selection.edytor.readonly);
+	ownPress = (event: Event) => ownsPress(this.selection.edytor.node, event);
 
 	/** A press on void block `block`'s chrome selects it (`sel.press.void`). */
 	#voidPress = (event: MouseEvent, block: Block) => {

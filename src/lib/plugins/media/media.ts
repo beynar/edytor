@@ -89,21 +89,10 @@ export const LINK_REL = 'noopener noreferrer nofollow';
  * A media block's link's attachment: a new tab without the opener
  * (`target`, `rel`), and `own` (`draggable="false"`: no drag of its own; a
  * file's `download` name). The default markup writes the same, so a server
- * render's link is safe too; its `href` is the markup's. It is the block's
- * own link (`data-edytor-block-link`, `sel.press.void`): in an editable
- * view a press on it selects the block and a plain click opens nothing;
- * Mod or Shift + click, a middle click, or a click in a readonly view opens it.
+ * render's link is safe too; its `href` is the markup's.
  */
-export const mediaLink = (own: { draggable?: 'false'; download?: string } = {}, block?: Block) =>
-	attach(
-		{ target: '_blank', rel: LINK_REL, 'data-edytor-block-link': '', ...own },
-		{
-			click: (event: MouseEvent) => {
-				const plain = !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
-				if (block && !block.edytor.readonly && event.button === 0 && plain) event.preventDefault();
-			}
-		}
-	);
+export const mediaLink = (own: { draggable?: 'false'; download?: string } = {}) =>
+	attach({ target: '_blank', rel: LINK_REL, ...own });
 
 /** The app's markup for a media kind's own control in `view`, if any. */
 export const mediaControl =

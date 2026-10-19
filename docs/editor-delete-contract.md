@@ -2439,16 +2439,16 @@ their keys and input are theirs too. A click is never cancelled: an
 unmarked clickable element still gets its click, and its press also
 selects the block.
 
-A media block's own link (a bookmark's card, a file's row, an unplayable
-embed's link: `data-edytor-block-link`, `mediaLink`) is the block's body:
-in an editable view its press selects the block and its plain click opens
-nothing; Mod or Shift + click, a middle click, or a click in a readonly
-view opens it. In a readonly view a press selects the block as well
-(a block selection is the view's, not a write).
+A link inside a block's chrome is a control too: a bookmark's card, a
+file's row, an unplayable embed's link keep their press, and a plain click
+opens them, in an editable and a readonly view alike. The rest of the
+block's chrome selects it; the block handle and the keyboard select it as
+any block. In a readonly view a press elsewhere on the chrome selects the
+block as well (a block selection is the view's, not a write).
 
-Rows: `tests/editor-dom/void-press.spec.ts` in three engines (a bookmark's
-card and a file's row select their block and open nothing, Delete removes
-it; the demo's widget: its button counts five fast clicks, a triple click
+Rows: `tests/editor-dom/void-press.spec.ts` in three engines (a plain
+click on a bookmark's card and a file's row opens the link in a new tab and
+selects nothing; the demo's widget: its button counts five fast clicks, a triple click
 included, its input's triple click selects its own text, its marked
 element counts its clicks, none shows `data-selecting` or selects the
 block, the card's empty area selects it, its caption takes a caret);

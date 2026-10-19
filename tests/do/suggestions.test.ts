@@ -187,7 +187,7 @@ describe('a user who may only suggest (room.access.suggest)', () => {
 });
 
 describe('a user who may only comment (room.access.comment)', () => {
-	it('writes no document content; its comment’s anchor is written by the room', async () => {
+	it('writes no document content; its comment’s anchor is written by the room (a suggest-only user’s too)', async () => {
 		const name = 'comments-only';
 		const ada = await writer(name, 'ada');
 		const cy = await join(name, 'cy', 'comment');
@@ -213,6 +213,19 @@ describe('a user who may only comment (room.access.comment)', () => {
 				{ kind: 'text', text: 'quick', marks: { 'comment:t1': { id: 't1' } } },
 				{ kind: 'text', text: ' brown fox' }
 			])
+		);
+		// A user who may only suggest comments the same way: the room marks "fox".
+		const byOffset = { start: f.anchorAt('p1', 17, 'right'), end: f.anchorAt('p1', 20, 'left') };
+		const sam = await SELF.fetch(`${ORIGIN}/comments/${name}?user=sam&access=suggest`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ op: 'add', thread: 't3', body: 'A fox?', anchors: [byOffset] })
+		});
+		expect(sam.status, await sam.clone().text()).toBe(200);
+		await vi.waitFor(async () =>
+			expect(
+				(await inRoom(name, (r) => readFacade(r.doc!, (facade) => facade.runs('p1')))).at(-1)
+			).toEqual({ kind: 'text', text: 'fox', marks: { 'comment:t3': { id: 't3' } } })
 		);
 		// A reader still may not comment.
 		const refused = await SELF.fetch(`${ORIGIN}/comments/${name}?user=zed&access=read`, {

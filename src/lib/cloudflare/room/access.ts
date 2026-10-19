@@ -245,7 +245,7 @@ export class RoomAccess {
 			const closed = sockets.filter((socket) => !inPlace.includes(socket));
 			this.endAccess(
 				closed.map(({ ws }) => ws),
-				'write',
+				access,
 				CLOSE.accessChanged,
 				'access changed'
 			);

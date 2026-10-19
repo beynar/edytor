@@ -183,9 +183,14 @@ export class CommentsController {
 		() => this.edytor.node
 	);
 
-	/** The view may write: it may start, answer, resolve and delete comments. */
+	/**
+	 * The view may start, answer, resolve and delete comments: it may write,
+	 * or its user may comment without writing (`document.access` `comment`,
+	 * a readonly view's: the room writes a new thread's anchor).
+	 */
 	get canComment() {
-		return this.edytor.dispatcher.permits();
+		const { access } = this.edytor.document;
+		return access === 'comment' || access === 'suggest' || this.edytor.dispatcher.permits();
 	}
 
 	/** One thread, by id. */
@@ -350,8 +355,9 @@ export class CommentsController {
 	submit = async (body: string): Promise<boolean> => {
 		const draft = this.draft;
 		if (!draft || !body.trim()) return false;
-		// A user who may only comment sends its anchors: the room writes the mark.
-		const commentOnly = this.edytor.document.access === 'comment';
+		// A user who may comment but not write sends its anchors: the room writes the mark.
+		const { access } = this.edytor.document;
+		const commentOnly = access === 'comment' || access === 'suggest';
 		const result = await this.#send({
 			op: 'add',
 			thread: draft.id,

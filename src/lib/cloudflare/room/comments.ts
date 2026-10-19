@@ -296,7 +296,7 @@ export class RoomComments {
 			this.store(decided.change);
 			this.broadcast(decided.change);
 			if (decided.change.type === 'removed') this.#removeAnchors(decided.change.thread.id);
-			// A user who may only comment: the room writes the thread's anchor (`room.access.comment`).
+			// A user who may comment but not write: the room writes the thread's anchor (`room.access.comment`).
 			if (decided.change.type === 'added' && actor.anchors && request.op === 'add')
 				this.#writeAnchors(decided.change.thread.id, request.anchors ?? []);
 			room.log({
@@ -422,12 +422,12 @@ export class RoomComments {
 			}
 			const request = parseCommentRequest(json);
 			if (request === null) return new Response('invalid request', { status: 400 });
-			// A comment-only user comments: the room writes what its view may not (the anchor).
-			const commentOnly = identity.access === 'comment';
+			// A user who may comment but not write: the room writes what its view may not (the anchor).
+			const anchors = identity.access === 'comment' || identity.access === 'suggest';
 			const outcome = await this.apply(request, {
 				user: identity.user,
-				readOnly: identity.readOnly && !commentOnly,
-				...(commentOnly && { anchors: true })
+				readOnly: identity.readOnly && !anchors,
+				...(anchors && { anchors })
 			});
 			if (outcome.status === 'refused')
 				return new Response(outcome.message, { status: COMMENT_STATUS[outcome.reason] });

@@ -462,8 +462,10 @@ export class Dispatcher {
 				this.edytor.history.wrote(inserts(this.kind ?? operation, led));
 				this.active = true;
 				try {
-					// An unplanned command runs after its lead, reading the state it leaves.
-					if (lead && !plan) this.edytor.facade.apply(lead);
+					// An unplanned command runs after its lead, reading the state it leaves
+					// (written as the view's suggestion while it suggests).
+					if (lead && !plan)
+						void (this.edytor.suggestions.written(lead) ?? this.edytor.facade.apply(lead));
 					return body(payload, plan);
 				} finally {
 					this.active = false;

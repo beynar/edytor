@@ -394,7 +394,11 @@ export class Suggestions {
 	 * document's operations (`deleteText`, `deleteBlock`, `mergeBlocks`, a
 	 * proposed one run again) and the settled id lists.
 	 */
-	decide = (changes: readonly SuggestedChange[], accept: boolean, own?: number): OpResult => {
+	decide = (changes: readonly SuggestedChange[], accept: boolean): OpResult =>
+		this.#decide(changes, accept);
+
+	/** {@link decide}, or with `own` (a writer of this view's) the author's withdrawal. */
+	#decide = (changes: readonly SuggestedChange[], accept: boolean, own?: number): OpResult => {
 		const { edytor } = this;
 		const { suggest } = edytor.facade;
 		const operation = accept ? 'acceptSuggestion' : 'rejectSuggestion';
@@ -448,7 +452,7 @@ export class Suggestions {
 	withdraw = (suggestion: Suggestion): OpResult => {
 		const { facade } = this.edytor;
 		this.drop(suggestion);
-		return this.decide(suggestion.changes, false, (this.#writer ||= facade.suggest.writer()));
+		return this.#decide(suggestion.changes, false, (this.#writer ||= facade.suggest.writer()));
 	};
 
 	/**

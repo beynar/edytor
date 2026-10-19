@@ -249,3 +249,58 @@ test.describe('suggestions', () => {
 		await expect.poll(() => texts(page)).toEqual(['Alpha', 'BeZta', 'Gamma']);
 	});
 });
+
+test.describe('suggesting mode (sugg.view.runs)', () => {
+	/** The overlay rectangles of a layer (`inserted`, `deleted`) with a size. */
+	const rects = (page: Page, layer: 'inserted' | 'deleted') =>
+		page
+			.locator(`[data-edytor-suggestion-${layer}]`)
+			.evaluateAll((nodes) =>
+				nodes.filter((n) => n.getBoundingClientRect().width > 0).map((n) => n.textContent)
+			);
+
+	test('typed text and a Backspace over others’ text are shown as the suggestion’s runs; the value is without them', async ({
+		page
+	}) => {
+		await open(page);
+		await clickText(page, 'a');
+		await inPage(page, (edytor) => (edytor.suggestions.suggesting = true));
+		await page.keyboard.type(' one');
+		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alpha one');
+		await expect.poll(async () => (await rects(page, 'inserted')).length).toBeGreaterThan(0);
+		// Backspace past its own text proposes deleting "a": it stays, struck, and the caret goes before it.
+		for (let i = 0; i < 5; i++) await page.keyboard.press('Backspace');
+		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alpha');
+		await expect.poll(async () => (await rects(page, 'deleted')).length).toBeGreaterThan(0);
+		await page.keyboard.type('!');
+		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alph!a');
+		expect(
+			await inPage(page, (edytor) =>
+				edytor.facade.suggest.changes().map((c: any) => [c.kind, c.text])
+			)
+		).toEqual([
+			['insert', '!'],
+			['delete', 'a']
+		]);
+		// The value is the document without its pending suggestions.
+		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
+		// Accepted: the text is the document's, nothing is marked.
+		await inPage(page, (edytor) => edytor.suggestions.acceptAll());
+		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alph!');
+		expect(await texts(page)).toEqual(['Alph!', 'Beta', 'Gamma']);
+		await expect.poll(async () => (await rects(page, 'inserted')).length).toBe(0);
+		await expect.poll(async () => (await rects(page, 'deleted')).length).toBe(0);
+	});
+
+	test('a move is refused while the view suggests, and said', async ({ page }) => {
+		await open(page);
+		await clickText(page, 'b');
+		await inPage(page, (edytor) => (edytor.suggestions.suggesting = true));
+		const moved = await inPage(page, (edytor) =>
+			edytor.move({ blocks: [edytor.idToBlock.get('b')], direction: 'up' }).map((b: any) => b.id)
+		);
+		expect(moved).toEqual([]);
+		await expect(page.locator('[data-edytor-live]')).toContainText('do not move in a suggestion');
+		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
+	});
+});

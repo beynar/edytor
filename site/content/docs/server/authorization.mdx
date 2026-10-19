@@ -1,6 +1,6 @@
 ---
 title: Authorization
-description: Decide who may open a document with authorize, bind client ids to users, grant read-only access, revoke it, and check origins.
+description: Decide who may open a document with authorize, bind client ids to users, grant read, comment, suggest or write access, change it, and check origins.
 icon: shield-check
 ---
 
@@ -21,6 +21,7 @@ type AuthorizeDocumentSocket = (
 type DocumentIdentity = {
   userId: string;
   replica?: number | null;
+  access?: 'read' | 'comment' | 'suggest' | 'write';
   readOnly?: boolean;
   expiresAt?: number | null;
 };
@@ -36,7 +37,8 @@ Return `{ expired: true }` when the credential was valid but has expired. The di
 | --- | --- | --- |
 | `userId` | `string` | The verified user: any string of 1 to 256 characters with no lone surrogate, reaching the room as is (spaces included). The room binds every client id this socket writes under to this user. |
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
-| `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
+| `access` | `DocumentAccessLevel` | What the user may do: `read`, `comment`, `suggest` or `write` (the default). See [access levels](#access-levels). |
+| `readOnly` | `boolean` | `true` is `access: 'read'`: refuse every write on this socket. Reads and presence still work. Ignored when `access` is given. |
 | `expiresAt` | `number \| null` | When the credential expires, in ms since the epoch (a JWT's `exp` × 1000). The room closes the socket with `4401` then, and the provider redials with the `params` it reads again; a dial already past it is closed `4401`. Omitted: the socket keeps its access until it closes or you [revoke it](#revoking-access). |
 
 The document id is the room id the client dials: any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (a URL collapses those segments, and cannot encode a lone surrogate, so the provider refuses them), which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
@@ -52,7 +54,7 @@ A plain `GET <room>?lastUpdated` (no upgrade) is the room's [`lastUpdated`](/doc
 | `4403` `document access denied` | `authorize` returned `null` or an invalid identity: a `userId` that is empty or not a string, over 256 characters or with a lone surrogate, a `replica` that is not a client id, or an `expiresAt` that is not a finite number. | Final: emits `refused` and stops dialing. |
 | `4403` `origin not allowed` | The request's `Origin` is not one [`allowedOrigins`](#origins-and-cookies) lists; `authorize` is not called. | Final: emits `refused` and stops dialing. |
 | `4403` `access revoked` | The room: [`closeUser`](#revoking-access) or `setAccess(user, 'none')`. | Final: emits `refused` and stops dialing. |
-| `1012` `access changed` | The room: `setAccess(user, 'write')` on a read-only socket. | Redials at once, so `authorize` grants the new access. |
+| `1012` `access changed` | The room: [`setAccess`](#revoking-access) to another level, except a writer's down to `read`. | Redials at once, so `authorize` grants the new access. |
 | `4409` `replica bound to another user` | The room: the dial's replica belongs to another user (see [replicas](#replicas)). | Final: emits `refused` and stops dialing. |
 | `4413` `quota: <name>` | The room: a write past a [quota](/docs/server/room#quotas) (`document`, `rate`, `frame`). | Final: emits `refused` and stops dialing. |
 
@@ -62,21 +64,37 @@ Your Worker may turn a dial away itself, before `routeDocumentSocket`: a documen
 if (!(await documentExists(documentId))) return closedSocket(4404, 'unknown document');
 ```
 
+## Access levels
+
+`access` is what the user may do in the document. The room enforces it on every frame, and tells the socket its level as it joins: the view reads it as [`document.access`](/docs/editor/suggestions#suggesting-mode) and behaves accordingly.
+
+| Level | Reads, presence | Comments | Suggests | Edits, decides suggestions, restores versions |
+| --- | --- | --- | --- | --- |
+| `read` | yes | reads them | no | no |
+| `comment` | yes | yes | no | no |
+| `suggest` | yes | yes | yes | no |
+| `write` | yes | yes | yes | yes |
+
+- **`read`** is a [read-only socket](#read-only-sockets).
+- **`comment`** is a read-only socket that may post to the [comments route](/docs/server/comments): a new thread's request carries the anchors of the text it is on, and the room writes the thread's anchor marks itself, since the socket may not. Render the user's view `readonly`: its comments plugin still starts and answers threads.
+- **`suggest`** writes only [suggestions](/docs/editor/suggestions#suggesting-mode): its view is always in suggesting mode and decides nothing. The room keeps from its frames only what a suggestion is: its suggestion records, their text and blocks, their proposals, deletes of its own suggestion's content and the binding of its suggestion writers to the user. Anything else (its replica's direct edits, a decision in another author's suggestion, a mark on another's block) is stripped from the frame, the rest applied, and refused with a `permission-denied` reply (`suggest-only`, logged as a `suggest-only` entry in the room's [refusals](/docs/server/room#diagnostics)); the socket stays open, and the provider does not count it as a failure. Its comments are written by the room, as a `comment` user's.
+- **`write`** may do everything, accept and reject suggestions included. A version [restore](/docs/server/history) and its undo need `write` (`403` otherwise).
+
 ## Revoking access
 
 `authorize` runs at each dial; an open socket keeps the access it was granted. When a user's access to a document changes, tell the room, over Durable Object RPC from wherever your application changes it:
 
 ```ts
 const room = env.ROOMS.getByName(documentId);
-await room.setAccess(userId, 'read'); // 'write', 'read' or 'none'
+await room.setAccess(userId, 'read'); // 'write', 'suggest', 'comment', 'read' or 'none'
 await room.closeUser(userId); // every socket of the user, 4403 'access revoked'
 ```
 
 - `setAccess(userId, 'read')` downgrades each of the user's write sockets in place: the room sends it the read-only notice (the provider's `readOnly` turns `true`) and denies every write it sends from then on. The socket stays open.
-- `setAccess(userId, 'write')` closes each of the user's read-only sockets with `1012` (`access changed`). The provider redials at once, and `authorize` grants the new access, so make it return the new access before you call this.
+- `setAccess(userId, level)` to any other level (`write`, `suggest`, `comment`, or `read` from `suggest` or `comment`) closes each of the user's sockets at another level with `1012` (`access changed`). The provider redials at once, and `authorize` grants the new access, so make it return the new access before you call this.
 - `setAccess(userId, 'none')` and `closeUser(userId)` close every socket of the user with `4403` (`access revoked`), which stops the provider. `closeUser(userId, code, reason?)` takes another close code: `4401` makes the provider redial with fresh `params` (sign-out, a rotated token), `1011` makes it redial with backoff. The code must be one a socket can be closed with (`1000`, `1011`, `1012` or `3000` to `4999`) and the reason at most 123 UTF-8 bytes: anything else throws a `RangeError` before any socket is touched.
 
-Each returns `{ sockets }`, how many it changed, and is logged as an `access` entry in the room's [`refusals`](/docs/server/room#diagnostics) (`access`: `read`, `write`, `none`, or `closed` for `closeUser`). Both read the sockets' attachments, so they work on a hibernated room. With [`attachDocument`](/docs/server/extending), call them on the returned document.
+Each returns `{ sockets }`, how many it changed, and is logged as an `access` entry in the room's [`refusals`](/docs/server/room#diagnostics) (`access`: the level set, `none`, or `closed` for `closeUser`). Both read the sockets' attachments, so they work on a hibernated room. With [`attachDocument`](/docs/server/extending), call them on the returned document.
 
 For credentials that expire, return `expiresAt` from `authorize`: the room closes the socket with `4401` (`expired`) at its first message past that time, or on its alarm when the socket stays silent, and the provider emits `expired` and redials with its `params` read again. Put the refreshed token in `params` when `expired` fires (or before), as for an expired dial.
 
@@ -95,8 +113,12 @@ type Env = {
   JWT_SECRET: string;
 };
 
-// Your permission model: 'edit', 'view', or null.
-declare function accessTo(env: Env, userId: string, documentId: string): Promise<'edit' | 'view' | null>;
+// Your permission model: one of the room's levels, or null.
+declare function accessTo(
+  env: Env,
+  userId: string,
+  documentId: string
+): Promise<'write' | 'suggest' | 'comment' | 'read' | null>;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -120,7 +142,7 @@ export default {
         return {
           userId: payload.sub,
           replica: requestedReplica(request),
-          readOnly: access === 'view',
+          access,
           // The socket closes (4401) when the token expires; the provider redials with a fresh one.
           expiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : null
         };
@@ -174,7 +196,7 @@ After `authorize` succeeds, `routeDocumentSocket` builds a new request for the r
 | --- | --- |
 | `X-Edytor-User` | `userId`, percent-encoded (`encodeURIComponent`) |
 | `X-Edytor-Replica` | `replica`, when known |
-| `X-Edytor-Access` | `read` or `write` |
+| `X-Edytor-Access` | `read`, `comment`, `suggest` or `write` |
 | `X-Edytor-Expires` | `expiresAt`, when given |
 
 Every header the client sent is dropped, cookies and tokens included, and so are forged `X-Edytor-*` headers. The room trusts these headers without checking anything else, and refuses a request without them (401).
@@ -229,11 +251,11 @@ The room does not verify the actor ids inside the block records (`createdBy`, `c
 
 ## Read-only sockets
 
-When `authorize` returns `readOnly: true`:
+When `authorize` returns `access: 'read'` (or `readOnly: true`), and for a `comment` socket:
 
 - the client catches up with the document and receives live edits;
 - it shares presence, so others see its caret;
-- the room never asks it for its state. It sends the socket a read-only notice when it joins (the provider's `readOnly` turns `true`, with no event), and drops every edit it sends with a `permission-denied` reply (`read-only`). The socket stays open, and the provider emits `'permission-denied'` for each dropped edit, which for `read-only` is not a failure. The provider counts nothing as unsaved, so its [`saved`](/docs/collaboration/websocket#saved-state) is `true` once it caught up.
+- the room never asks it for its state. It sends the socket a read-only notice when it joins (the provider's `readOnly` turns `true`, and its `access` event says `read`), and drops every edit it sends with a `permission-denied` reply (`read-only`). The socket stays open, and the provider emits `'permission-denied'` for each dropped edit, which for `read-only` is not a failure. The provider counts nothing as unsaved, so its [`saved`](/docs/collaboration/websocket#saved-state) is `true` once it caught up.
 
 Render read-only users with a read-only view. A `readonly` view connects to its room like an editable one, and the read-only socket keeps it a viewer whatever the page does:
 

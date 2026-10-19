@@ -24,6 +24,7 @@ icon: list
 | `user` | the first of `people` | The current user's id among `people`: the comments' author. |
 | `locale` | `en-US` | The locale a `date` property is shown in (`Oct 13, 2026`), the same on the server and in the browser. |
 | `allowNesting` | `true` | Users may nest blocks (<kbd>Tab</kbd>, drops). |
+| `review` | `true` | The review controls above the blocks: the Editing and Suggesting switch ([suggesting mode](/docs/editor/suggestions#suggesting-mode); a user who may only suggest stays suggesting), and Accept all and Reject all while shared suggestions this view may decide are pending. `false` leaves them out. |
 | `rootClass` | none | A class on the starter's root element (`class` is the editing host's, as on `<Edytor>`). |
 | `bind:edytor` | | The view, once it exists: `edytor.data` is the page's data, `edytor.historyUndo()`… |
 

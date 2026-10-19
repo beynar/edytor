@@ -122,6 +122,9 @@ describe('suggesting mode (sugg.*)', () => {
 		expect(edytor.announcer.message).toBe('Blocks do not move in a suggestion');
 		// A move planned by another command (a nest) is refused at its write.
 		expect(edytor.moveBlocks([p2], { parent: null, index: 0 }).status).toBe('refused');
+		// Nesting (Tab) and outdenting are moves too.
+		const [p1] = edytor.root!.children.map((b) => b.id);
+		expect(edytor.nestBlock(p2, p1!).status).toBe('refused');
 		expect(edytor.root!.children.map((b) => b.id)[1]).toBe(p2);
 		expect(edytor.suggestions.list).toEqual([]);
 	});

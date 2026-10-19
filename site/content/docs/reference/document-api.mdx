@@ -180,7 +180,7 @@ A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its 
 
 | Read | Returns |
 | --- | --- |
-| `toJSON()` | The document as `JSONDoc` (`{ data?, children: JSONBlock[] }`; `data` only when the document has properties). |
+| `toJSON(options?)` | The document as `JSONDoc` (`{ data?, children: JSONBlock[] }`; `data` only when the document has properties), without its pending [shared suggestions](/docs/editor/suggestions#who-sees-what): their inserted text and blocks left out, their proposed deletions and operations not applied. `{ suggestions: true }`: the document as shown, with them. |
 | `docData()` | The document's own data (`{}` when it has none), including writes made earlier in the current transaction. |
 | `dataItemIds(target, path)` | The ids of the items of the array at `path` (keys, item indexes or ids) in a block's (`target` its id), an inline block's (`{ block, atom }`) or the document's (`null`) data, in order; `[]` where there is no array. A `patchData` path can name an item by its id, which reaches it wherever collaborators move it. |
 | `project()` | The visible tree as `{ children: ProjectedBlock[] }` with `ContentItem` content. |
@@ -196,7 +196,7 @@ A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its 
 | `isLayout(id)`, `isLayoutItem(id)` | Whether a block is a layout (its kind's role says `layout`, such as `columns`), and whether it is one of a layout's items (a block of its item kind directly in it, a `column`). See [Columns](/docs/plugins/columns#document-api). |
 | `besideAt(id, kind?)` | The block a beside placement at `id` stands beside, as `placeBeside` resolves it: a layout or a column for itself, a list item's list, a code line's code block, the block itself where a layout of `kind` (else the only layout kind) fits, else its outermost block below the root or a column. |
 | `listBlockIds()` | Every visible block id, in document order. |
-| `version` | A counter that changes on every write that changed the tree. |
+| `version` | A counter that changes on every write that changed the tree (or a shared suggestion's state). |
 
 ## Order and capability
 

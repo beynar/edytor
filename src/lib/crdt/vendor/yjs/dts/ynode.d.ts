@@ -246,22 +246,23 @@ export function nodeMapDelete(transaction: Transaction, parent: YNode, key: stri
 export function nodeMapSet(transaction: Transaction, parent: YNode, key: string, value: YValue): void;
 export function readContentType(decoder: UpdateDecoder): ContentType;
 export function readContentString(decoder: UpdateDecoder): ContentString;
-export function readContentFormat(decoder: UpdateDecoder): ContentFormat;
+export function readContentFormat(decoder: UpdateDecoder, id: import("./utils/ID.js").ID): ContentFormat;
 export function readContentAny(decoder: UpdateDecoder): ContentAny;
 export function readContentBinary(decoder: UpdateDecoder): ContentBinary;
 export function readContentDeleted(decoder: UpdateDecoder): ContentDeleted;
 export function readContentHold(decoder: UpdateDecoder): ContentHold;
 export function readContentMove(decoder: UpdateDecoder): ContentMove;
+export function readContentClass(decoder: UpdateDecoder): ContentDeleted;
 /**
  * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
  * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
  * writes none, so an update holding one is malformed. YP20: 11 is a hold
  * record. YP22: 12 is a move record.
  *
- * @type {Array<function(UpdateDecoder):AbstractContent>}
+ * @type {Array<function(UpdateDecoder, import('./utils/ID.js').ID):AbstractContent>}
  */
-export const contentRefs: Array<(arg0: UpdateDecoder) => AbstractContent>;
-export function readItemContent(decoder: UpdateDecoder, info: number): import("./structs/Item.js").AbstractContent;
+export const contentRefs: Array<(arg0: UpdateDecoder, arg1: import("./utils/ID.js").ID) => AbstractContent>;
+export function readItemContent(decoder: UpdateDecoder, info: number, id: import("./utils/ID.js").ID): import("./structs/Item.js").AbstractContent;
 export function readYNode(decoder: UpdateDecoder): YNode;
 export type YValue = {
     [x: string]: any;

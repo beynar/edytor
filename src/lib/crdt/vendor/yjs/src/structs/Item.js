@@ -428,13 +428,22 @@ export class Item extends AbstractStruct {
     this.content.gc(tr)
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
-    } else if (markClass(this) === 1) {
-      // YP13, YP21, YP22: a paired mark item, a claim item or a move record
-      // keeps its content: its class orders concurrent inserts (`markClass`)
-      // on every replica, collected or not. A block slot a split made keeps
-      // its split key the same way (`splitKey`), trimmed to it.
-      const keys = /** @type {any} */ (this.content).arr?.map((/** @type {any} */ v) => (Array.isArray(v?.s) ? { s: v.s } : null))
-      this.content = keys?.some((/** @type {any} */ k) => k !== null) ? new ContentAny(keys) : new ContentDeleted(this.length)
+    } else {
+      // YP13, YP21, YP22, YP29: an item of another class than content keeps
+      // what orders concurrent inserts at its origin (`markClass`) on every
+      // replica, collected or not: a paired mark item or a claim item its
+      // class, a move record its content (its sort reads its chain). A block
+      // slot a split made keeps its split key the same way (`splitKey`),
+      // trimmed to it.
+      const cls = markClass(this)
+      const arr = /** @type {any} */ (this.content).arr
+      if (cls === 1) {
+        const keys = arr?.map((/** @type {any} */ v) => (Array.isArray(v?.s) ? { s: v.s } : null))
+        this.content = keys?.some((/** @type {any} */ k) => k !== null) ? new ContentAny(keys) : new ContentDeleted(this.length)
+      } else if (cls < 3 || (cls === 3 && arr?.every((/** @type {any} */ v) => typeof v?.m === 'string'))) {
+        // every unit of the item has its class (a mark is one unit; merged claims all are claims)
+        this.content = new ContentDeleted(this.length, cls)
+      }
     }
   }
 
@@ -503,10 +512,15 @@ export class Item extends AbstractStruct {
     const origin = offset > 0 ? createID(this.id.client, this.id.clock + offset - 1) : this.origin
     const rightOrigin = this.rightOrigin
     const parentSub = this.parentSub
-    const info = (this.content.getRef() & binary.BITS5) |
+    const parent = /** @type {any} */ (this.parent)
+    // YP27: an item written with its parent says in bit 5 whether the parent is
+    // a root (its name follows) or an item (its id follows): no parentInfo column
+    const named = origin === null && rightOrigin === null && (parent.constructor === String || parent._item === null)
+    const info = (this.content.getRef() & binary.BITS4) | // YP27: content refs fit four bits
       (origin === null ? 0 : binary.BIT8) | // origin is defined
       (rightOrigin === null ? 0 : binary.BIT7) | // right origin is defined
-      (parentSub === null ? 0 : binary.BIT6) // parentSub is non-null
+      (parentSub === null ? 0 : binary.BIT6) | // parentSub is non-null
+      (named ? binary.BIT5 : 0) // YP27: the parent is a root, by name
     encoder.writeInfo(info)
     if (origin !== null) {
       encoder.writeLeftID(origin)
@@ -515,33 +529,21 @@ export class Item extends AbstractStruct {
       encoder.writeRightID(rightOrigin)
     }
     if (origin === null && rightOrigin === null) {
-      const parent = /** @type {YNode} */ (this.parent)
-      if (parent._item !== undefined) {
-        const parentItem = parent._item
-        if (parentItem === null) {
-          // parent type on y._map
-          // find the correct key
-          const ykey = findRootTypeKey(parent)
-          encoder.writeParentInfo(true) // write parentYKey
-          encoder.writeString(ykey)
-        } else {
-          encoder.writeParentInfo(false) // write parent id
-          encoder.writeLeftID(parentItem.id)
-        }
-      } else if (parent.constructor === String) { // this edge case was added by differential updates
-        encoder.writeParentInfo(true) // write parentYKey
-        encoder.writeString(parent)
+      if (named) {
+        // a root's name (a string parent: an edge case of differential updates)
+        encoder.writeKey(parent.constructor === String ? /** @type {string} */ (parent) : findRootTypeKey(parent)) // YP24
       } else if (parent.constructor === ID) {
-        encoder.writeParentInfo(false) // write parent id
         encoder.writeLeftID(parent)
+      } else if (parent._item) {
+        encoder.writeLeftID(parent._item.id)
       } else {
         error.unexpectedCase()
       }
       if (parentSub !== null) {
-        encoder.writeString(parentSub)
+        encoder.writeKey(parentSub) // YP24
       }
     }
-    this.content.write(encoder, offset, offsetEnd)
+    this.content.write(encoder, offset, offsetEnd, this) // YP25: a format item reads its own id
   }
 
   get ref () {
@@ -635,15 +637,16 @@ export class AbstractContent {
    * @param {UpdateEncoder} _encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
+   * @param {Item} [_item] the item written (YP25: a format item reads its id)
    */
-  write (_encoder, _offset, _offsetEnd) {
+  write (_encoder, _offset, _offsetEnd, _item) {
     throw error.methodUnimplemented()
   }
 
   /**
-   * @return {1|2|3|4|5|6|7|8|9|11|12}
+   * @return {1|2|3|4|5|6|7|8|9|11|12|13}
    */
-  getRef () { // YP20: 11, a hold record; YP22: 12, a move record
+  getRef () { // YP20: 11, a hold record; YP22: 12, a move record; YP29: 13, a collected mark's class
     throw error.methodUnimplemented()
   }
 }
@@ -827,9 +830,19 @@ export class ContentBinary {
 export class ContentDeleted {
   /**
    * @param {number} len
+   * @param {number} [cls] YP29: a collected mark's or claim's sort class
    */
-  constructor (len) {
+  constructor (len, cls) {
     this.len = len
+    /**
+     * YP29: what a collected paired mark item or claim item keeps, for each
+     * of its units: its sort class (`markClass`: `0` a left-side mark, `2` a
+     * right-side one, `3` a claim), which orders concurrent inserts at its
+     * origin on every replica (`undefined`: none, any other deleted content).
+     *
+     * @type {number|undefined}
+     */
+    this.cls = cls
   }
 
   /**
@@ -850,14 +863,14 @@ export class ContentDeleted {
    * @return {boolean}
    */
   isCountable () {
-    return false
+    return this.cls === 3 // YP29: a claim is a unit of its text
   }
 
   /**
    * @return {ContentDeleted}
    */
   copy () {
-    return new ContentDeleted(this.len)
+    return new ContentDeleted(this.len, this.cls)
   }
 
   /**
@@ -865,7 +878,7 @@ export class ContentDeleted {
    * @return {ContentDeleted}
    */
   splice (offset) {
-    const right = new ContentDeleted(this.len - offset)
+    const right = new ContentDeleted(this.len - offset, this.cls)
     this.len = offset
     return right
   }
@@ -875,6 +888,7 @@ export class ContentDeleted {
    * @return {boolean}
    */
   mergeWith (right) {
+    if (right.cls !== this.cls) return false // YP29
     this.len += right.len
     return true
   }
@@ -902,14 +916,15 @@ export class ContentDeleted {
    * @param {number} offsetEnd
    */
   write (encoder, offset, offsetEnd) {
-    encoder.writeLen(this.len - offset - offsetEnd)
+    const len = this.len - offset - offsetEnd
+    encoder.writeLen(this.cls === undefined ? len : len * 4 + this.cls) // YP29
   }
 
   /**
-   * @return {1}
+   * @return {1|13}
    */
   getRef () {
-    return 1
+    return this.cls === undefined ? 1 : 13 // YP29: 13, a collected mark or claim
   }
 }
 
@@ -1329,6 +1344,74 @@ export class ContentMove {
 /**
  * @private
  */
+// YP25 begin (edytor fork: paired marks written natively — see UPSTREAM.md YP25)
+/**
+ * Whether `x` is a non-negative integer (a clock, a client id, a stamp).
+ *
+ * @param {any} x
+ * @return {boolean}
+ */
+const natural = x => Number.isInteger(x) && x >= 0
+
+/**
+ * Write a format item's value. A paired mark's (YP13) is written in parts: a
+ * flags length — bit 0 its side; bit 1 a start's operation id is the item's
+ * own, an end's start is the item's own client (its clock follows as a
+ * distance); bit 2 a start's value is `true`, bit 3 `null` — then a start's
+ * Lamport stamp, the operation id where the flags do not imply it, and a
+ * start's value where it is neither `true` nor `null`. Any other value (a
+ * plain format, a value of another shape) is flagged `16` and written whole.
+ *
+ * @param {UpdateEncoder} encoder
+ * @param {ContentFormat} content
+ * @param {Item} [item]
+ */
+const writeFormatValue = (encoder, content, item) => {
+  const v = /** @type {any} */ (content.value)
+  const role = pairedRole(content)
+  if (role === 0 && Array.isArray(v) && v.length === 5 && natural(v[1]) && natural(v[2]) && natural(v[3]) && (v[4] === 0 || v[4] === 1)) {
+    const own = item !== undefined && v[2] === item.id.client && v[3] === item.id.clock
+    const tail = v[0] === true ? 4 : v[0] === null ? 8 : 0
+    encoder.writeLen(v[4] | (own ? 2 : 0) | tail)
+    encoder.writeLen(v[1])
+    if (!own) encoder.writeLeftID(createID(v[2], v[3]))
+    if (tail === 0) encoder.writeJSON(v[0])
+  } else if (role === 1 && Array.isArray(v) && v.length === 3 && natural(v[0]) && natural(v[1]) && (v[2] === 0 || v[2] === 1)) {
+    const near = item !== undefined && v[0] === item.id.client && v[1] <= item.id.clock
+    encoder.writeLen(v[2] | (near ? 2 : 0))
+    if (near) encoder.writeLen(/** @type {Item} */ (item).id.clock - v[1])
+    else encoder.writeLeftID(createID(v[0], v[1]))
+  } else {
+    encoder.writeLen(16)
+    encoder.writeJSON(v)
+  }
+}
+
+/**
+ * Read a format item's value (`writeFormatValue`): `id` is the item's.
+ *
+ * @param {UpdateDecoder} decoder
+ * @param {string} key
+ * @param {ID} id
+ * @return {any}
+ */
+export const readFormatValue = (decoder, key, id) => {
+  const flags = decoder.readLen()
+  if ((flags & 16) !== 0) return decoder.readJSON()
+  const side = flags & 1
+  const role = pairedRole({ key })
+  if (role === 0) {
+    const l = decoder.readLen()
+    const at = (flags & 2) !== 0 ? id : decoder.readLeftID()
+    const v = (flags & 4) !== 0 ? true : (flags & 8) !== 0 ? null : decoder.readJSON()
+    return [v, l, at.client, at.clock, side]
+  }
+  if (role !== 1) error.unexpectedCase()
+  const at = (flags & 2) !== 0 ? createID(id.client, id.clock - decoder.readLen()) : decoder.readLeftID()
+  return [at.client, at.clock, side]
+}
+// YP25 end
+
 export class ContentFormat {
   /**
    * @param {string} key
@@ -1411,10 +1494,11 @@ export class ContentFormat {
    * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
+   * @param {Item} [item] YP25: the item, whose id a mark's operation id usually is
    */
-  write (encoder, _offset, _offsetEnd) {
+  write (encoder, _offset, _offsetEnd, item) {
     encoder.writeKey(this.key)
-    encoder.writeJSON(this.value)
+    writeFormatValue(encoder, this, item) // YP25
   }
 
   /**

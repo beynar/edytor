@@ -9,6 +9,7 @@
  * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.update
  * @property {function(Doc):void} DocEvents.beforeAllTransactions
  * @property {function(Transaction, Doc):void} DocEvents.beforeTransaction
+ * @property {function(Transaction, Doc):void} DocEvents.beforeCommit
  * @property {function(Transaction, Doc):void} DocEvents.commit
  * @property {function(Transaction, Doc):void} DocEvents.afterTransaction
  * @property {function(Doc, Array<Transaction>):void} DocEvents.afterAllTransactions
@@ -98,6 +99,7 @@ export type DocEvents = {
     update: (arg0: Uint8Array<ArrayBuffer>, arg1: any, arg2: Doc, arg3: Transaction) => void;
     beforeAllTransactions: (arg0: Doc) => void;
     beforeTransaction: (arg0: Transaction, arg1: Doc) => void;
+    beforeCommit: (arg0: Transaction, arg1: Doc) => void;
     commit: (arg0: Transaction, arg1: Doc) => void;
     afterTransaction: (arg0: Transaction, arg1: Doc) => void;
     afterAllTransactions: (arg0: Doc, arg1: Array<Transaction>) => void;

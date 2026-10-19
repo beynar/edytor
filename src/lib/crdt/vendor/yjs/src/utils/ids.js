@@ -514,7 +514,7 @@ export const writeIdSet = (encoder, idSet) => {
     .forEach(([client, _idRanges]) => {
       const idRanges = _idRanges.getIds()
       encoder.resetIdSetCurVal()
-      encoding.writeVarUint(encoder.restEncoder, client)
+      encoder.writeDsClient(client) // YP26
       const len = idRanges.length
       encoding.writeVarUint(encoder.restEncoder, len)
       for (let i = 0; i < len; i++) {
@@ -537,7 +537,7 @@ export const readIdSet = decoder => {
   const numClients = decoding.readVarUint(decoder.restDecoder)
   for (let i = 0; i < numClients; i++) {
     decoder.resetDsCurVal()
-    const client = decoding.readVarUint(decoder.restDecoder)
+    const client = decoder.readDsClient() // YP26
     const numberOfDeletes = decoding.readVarUint(decoder.restDecoder)
     if (numberOfDeletes > 0) {
       /**
@@ -571,7 +571,7 @@ export const readAndApplyDeleteSet = (decoder, transaction, store) => {
   const numClients = decoding.readVarUint(decoder.restDecoder)
   for (let i = 0; i < numClients; i++) {
     decoder.resetDsCurVal()
-    const client = decoding.readVarUint(decoder.restDecoder)
+    const client = decoder.readDsClient() // YP26
     const numberOfDeletes = decoding.readVarUint(decoder.restDecoder)
     const structs = store.clients.get(client) || []
     const state = store.getClock(client)

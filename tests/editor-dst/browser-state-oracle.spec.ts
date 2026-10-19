@@ -2233,4 +2233,65 @@ test.describe('collab deliveries (the post-op gate reads a peer once its frames 
 			await relay.close();
 		}
 	});
+
+	// Collab seed 26 (its first latency step, 137 ms): the room never goes
+	// quiet — each page's resync Step1 every 200 ms and the two Step2s it
+	// draws, which the opaque relay sends to every peer, keep a dozen delayed
+	// writes pending at any time, so a gate that waited for none pending
+	// (`inFlight === 0`) timed out while every count agreed. The gate waits
+	// for what was on its way when it began: the marker frame sent before it.
+	test('awaitDeliveries resolves while the room keeps talking under latency, once what was on its way arrived', async ({
+		browser,
+		baseURL
+	}) => {
+		const relay = await startOpaqueRelay();
+		const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext({ baseURL })));
+		try {
+			const pages = await Promise.all(
+				contexts.map(async (context, index) => {
+					const page = await context.newPage();
+					await installSocketCounter(page, relay.url, `peer-${index}`);
+					await page.goto('/');
+					await page.evaluate(
+						(url) =>
+							new Promise<void>((resolve) => {
+								const w = window as Window & { __socket__?: WebSocket; __markers__?: number };
+								const socket = new WebSocket(`${url}/room`);
+								socket.binaryType = 'arraybuffer';
+								w.__socket__ = socket;
+								w.__markers__ = 0;
+								socket.onmessage = (event) => {
+									if (new Uint8Array(event.data as ArrayBuffer)[0] === 9) w.__markers__!++;
+								};
+								socket.onopen = () => resolve();
+							}),
+						relay.url
+					);
+					return page;
+				})
+			);
+			relay.setLatency('room', 137);
+			// The resync chatter: a frame every 67 ms from each page, for good.
+			for (const page of pages)
+				await page.evaluate(() => {
+					const socket = (window as Window & { __socket__?: WebSocket }).__socket__!;
+					setInterval(() => socket.send(new Uint8Array([0])), 67);
+				});
+			await expect.poll(() => relay.traffic('room').inFlight).toBeGreaterThan(4);
+			await pages[0].evaluate(() =>
+				(window as Window & { __socket__?: WebSocket }).__socket__?.send(new Uint8Array([9]))
+			);
+			await awaitDeliveries(
+				relay,
+				'room',
+				pages.map((page) => ({ page }))
+			);
+			const markers = (index: number) =>
+				pages[index].evaluate(() => (window as Window & { __markers__?: number }).__markers__);
+			expect([await markers(1), await markers(2)]).toEqual([1, 1]);
+		} finally {
+			for (const context of contexts) await context.close();
+			await relay.close();
+		}
+	});
 });

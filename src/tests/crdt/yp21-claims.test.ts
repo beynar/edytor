@@ -13,6 +13,7 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
+import { markClass } from '../../lib/crdt/vendor/yjs/src/utils/marks.js';
 
 const mk = (client: number) => {
 	const doc = new Y.Doc();
@@ -129,17 +130,24 @@ describe('YP21 — a claim item sorts after what a concurrent writer puts at its
 });
 
 describe('YP21 — collection and other items', () => {
-	it('a deleted, collected claim item keeps its content; a deleted character does not', () => {
+	it('a deleted, collected claim item keeps its class (YP29); a deleted character does not', () => {
 		const doc = mk(2);
 		t(doc).insert(0, 'ab');
 		claim(doc, 2);
 		t(doc).delete(0, 3);
-		const kinds = [];
-		for (let it = t(doc)._start; it !== null; it = it.right)
-			kinds.push(it.content.constructor.name);
-		expect(kinds).toContain('ContentAny');
-		expect(kinds).toContain('ContentDeleted');
-		expect(kinds).not.toContain('ContentString');
+		const kept = (d) => {
+			const out = [];
+			for (let it = t(d)._start; it !== null; it = it.right)
+				out.push([it.content.constructor.name, it.deleted, it.content.cls, markClass(it)]);
+			return out;
+		};
+		expect(kept(doc)).toContainEqual(['ContentDeleted', true, 3, 3]);
+		expect(kept(doc)).toContainEqual(['ContentDeleted', true, undefined, 1]);
+		expect(kept(doc).map(([kind]) => kind)).not.toContain('ContentString');
+		// What a replica that receives it integrates: the class, deleted.
+		const back = mk(3);
+		sync(doc, back);
+		expect(kept(back)).toContainEqual(['ContentDeleted', true, 3, 3]);
 	});
 
 	it('a JSON unit without `m`, and a map value with one, keep upstream’s order (by client id)', () => {

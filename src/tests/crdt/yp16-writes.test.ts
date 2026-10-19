@@ -11,9 +11,11 @@
  * pre-integration list replayed on integration, nested detached nodes
  * included), gc on and off — replayed on this fork
  * and on an engine that still writes through `applyDelta`. After EVERY
- * operation both replicas' `encodeStateAsUpdate` bytes must be identical across
- * the engines, and so must their deep content (the baseline's own `toDelta`,
- * the fork's through the test port). Two baselines:
+ * operation both replicas' stores must be identical across the engines (each
+ * engine's own encoding read back: ids, origins, parents, keys, contents and
+ * the delete set, `harness/stored.js` — the fork's encoding writes each string
+ * once since YP24, so the bytes differ), and so must their deep content (the
+ * baseline's own `toDelta`, the fork's through the test port). Two baselines:
  *
  * - the pristine upstream engine (`@y/y@14.0.0-rc.26`, the `@y/protocols`
  *   peer): local writes, the fork running without its search
@@ -44,6 +46,7 @@ import { describe, expect, it } from 'vitest';
 import * as F from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
 import { bool, int, mulberry32, pick } from './harness/rng.js';
+import { storedOf } from './harness/stored.js';
 
 const upstream = async () => {
 	const require = createRequire(import.meta.url);
@@ -157,12 +160,9 @@ const program = (E, seed, gc, exchange, markers) => {
 	};
 };
 
-/** A document's state in the fork's one encoding: upstream's v2 (YP17), the baselines' `…V2`. */
-const stateOf = (E, d) => (E.encodeStateAsUpdateV2 ?? E.encodeStateAsUpdate)(d);
-
 const snapshot = (E, docs) =>
 	docs.map((d) => ({
-		bytes: Buffer.from(stateOf(E, d)).toString('hex'),
+		stored: storedOf(E, d),
 		t: JSON.stringify(toDelta(d.get('t'), { deep: true }).toJSON()),
 		m: JSON.stringify(toDelta(d.get('m'), { deep: true }).toJSON())
 	}));
@@ -214,7 +214,7 @@ describe('YP16, YP19 — the writes store what the delta layer stored', () => {
 			n.setAttr('b', 3); // keeps its first-write slot
 			n.delete(2, 1);
 			doc.get('r').insert(0, [n]);
-			return Buffer.from(stateOf(E, doc)).toString('hex');
+			return storedOf(E, doc);
 		};
 		expect(run(F)).toBe(run(U));
 	});

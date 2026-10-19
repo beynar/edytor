@@ -92,8 +92,8 @@ const underBlockAttr = (doc, type) => {
 
 /**
  * Every attribution write the transactions `fn` runs make: `[kind, key]`
- * where kind is `record-attr` (a `b/` record's `c`, `k/*`, `i`), `ring` (a
- * list insert/delete on a record), `root` (a `b/` key swap) or `l`.
+ * where kind is `record-attr` (a block record's `c`, `k/*`, `i`), `ring` (a
+ * list insert/delete on a record), `root` (a record key swap) or `l`.
  */
 const attributionWrites = (doc: Y.Doc, fn: () => unknown) => {
 	const writes: string[] = [];
@@ -288,6 +288,6 @@ describe('F7 / O23 — the incarnation is the replicated nonce; an undo/redo kee
 		expect(nonceOf(one, 'p')).toBe(nonceOf(two, 'p'));
 		expect(nonceOf(other, 'p')).not.toBe(nonceOf(one, 'p'));
 		// The seed's empty record belongs to the seeded incarnation.
-		expect(one.get('blockattr').getAttr('b/p').getAttr('i')).toBe(nonceOf(one, 'p'));
+		expect(one.get('blockattr').getAttr('p').getAttr('i')).toBe(nonceOf(one, 'p'));
 	});
 });

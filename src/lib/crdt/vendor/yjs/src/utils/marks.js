@@ -137,6 +137,7 @@ export const formatValue = value => value instanceof MarkState ? value.value : v
 export const markClass = item => {
   const content = item.content
   if (content === undefined) return 1
+  if (content.cls !== undefined) return content.cls // YP29: a collected mark or claim (`ContentDeleted`)
   if (typeof content.key !== 'string') {
     // YP22: a move record (its side: 0 after, 1 before)
     if (content.priority !== undefined && content.ids !== undefined) return 4 + content.side

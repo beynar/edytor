@@ -166,6 +166,8 @@ export interface EngineDoc {
     off(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;
     on(name: 'commit', f: (transaction: never) => void): void;
     off(name: 'commit', f: (transaction: never) => void): void;
+    on(name: 'beforeCommit', f: (transaction: never) => void): void;
+    off(name: 'beforeCommit', f: (transaction: never) => void): void;
     on(name: 'destroy', f: () => void): void;
     off(name: 'destroy', f: () => void): void;
     readonly store?: {
@@ -332,7 +334,7 @@ export type ProviderStack = ReturnType<typeof bindProviders>;
 
 ```ts
 // crdt/doc/gate.d.ts
-declare const SCHEMA_VERSION: 9;
+declare const SCHEMA_VERSION: 10;
 ```
 
 ### SchemaMismatchDetail
@@ -530,7 +532,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 9;
+            readonly version: 10;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -541,7 +543,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 9;
+        SCHEMA_VERSION: 10;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -646,7 +648,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
                 itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
                 readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-                computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+                computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
                 flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
                 ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
                 contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -807,7 +809,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         purge: (doc: import("./engine-api.js").EngineDoc, facade: {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
-        }, horizon: import("./purge.js").Horizon) => import("./purge.js").PurgeReport;
+        }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
         restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
         model: {
@@ -857,7 +859,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
             readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+            computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
             contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];

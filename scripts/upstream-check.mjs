@@ -17,9 +17,11 @@
  *    `lib0-v14` this tree installs satisfies the newer engine's `lib0`
  *    range (the differential lanes run the newer engine on it);
  * 3. materializes the newer engine (+ P1) as `bench/vendor-baseline/yjs`,
- *    the baseline the differential lanes read (`bench/lib/interop.mjs`, the
- *    baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`), so
- *    the workflow runs them against it next.
+ *    the baseline the differential lane reads (the baseline leg of
+ *    `src/tests/crdt/hardening/search-marker-format.test.ts`: the stores each
+ *    engine reads back from its own encoding; the fork's encoding is its own
+ *    since its patch YP24, so there is no wire interop to check), so the
+ *    workflow runs it against it next.
  *
  * "Newer" is by semver within the pin's major line (14.x, pre-releases
  * included: the pin is one), never by publish time.
@@ -210,7 +212,7 @@ const lib0Line =
 	lib0Fits === true
 		? `- its \`lib0\` range (\`${lib0Range ?? 'none'}\`) holds the installed \`lib0-v14\` ${lib0Installed};`
 		: lib0Fits === false
-			? `- **lib0 mismatch**: ${newer} asks \`lib0@${lib0Range}\`, this tree installs \`lib0-v14\` ${lib0Installed}; a red interop or differential step may be the older lib0, not the fork (a re-sync bumps \`lib0-v14\` first);`
+			? `- **lib0 mismatch**: ${newer} asks \`lib0@${lib0Range}\`, this tree installs \`lib0-v14\` ${lib0Installed}; a red differential step may be the older lib0, not the fork (a re-sync bumps \`lib0-v14\` first);`
 			: `- its \`lib0\` range \`${lib0Range}\` is a form this script does not read; the installed \`lib0-v14\` is ${lib0Installed};`;
 
 const report = [
@@ -219,7 +221,7 @@ const report = [
 	`- upstream changed ${changed(upstream)} files between ${PIN} and ${newer} (\`upstream.diff\`);`,
 	`- the fork differs from ${newer} in ${changed(fork)} files (\`fork.diff\`: the patches a re-sync re-applies, and upstream's changes the fork does not have yet);`,
 	lib0Line,
-	`- \`bench/vendor-baseline/yjs\` now holds ${newer} + P1: the interop and differential checks that follow run against it.`,
+	`- \`bench/vendor-baseline/yjs\` now holds ${newer} + P1: the differential check that follows runs against it.`,
 	'',
 	'Re-syncing is a manual step: `src/lib/crdt/vendor/yjs/UPSTREAM.md`, "Re-syncing with upstream".'
 ].join('\n');

@@ -10,7 +10,10 @@
  * stored by the room before the horizon's time (`room.purge.timing`). A
  * deletion's time is the struct that made it: a block's oldest live delete
  * mark (a withdrawn block: its withdraw mark, and the records of what it last
- * held), a text hold record, a move record.
+ * held), a text hold record, a move record. A delete of a session whose
+ * history ended (a release record, `hist.release.end`) is past the horizon
+ * whatever its time: a delete or withdraw mark, a text hold record of that
+ * writer below the record's clock. A move or a merge waits for the horizon.
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
 import {
@@ -24,6 +27,7 @@ import { removeUnit, unitOf } from './placement/slots.js';
 import {
 	deleteClaims,
 	purgeStreams,
+	scanText,
 	type Claim,
 	type Stream,
 	type TextEngine
@@ -35,8 +39,8 @@ import {
 	DEL_PREFIX,
 	HORIZON_ATTR,
 	HORIZON_ROOT,
-	REC_PREFIX,
 	REGISTRY_KEY,
+	RELEASE_ROOT,
 	TEXT_DELETES_ROOT,
 	WITHDRAW_PREFIX
 } from './schema.js';
@@ -53,7 +57,7 @@ export type Horizon = { at: number; sv: Uint8Array };
 export type PurgeReport = {
 	/** Blocks removed: registry entry deleted, node collected. */
 	removed: number;
-	/** Deleted blocks kept (they delimit a live text, or a block is placed under them) whose stream, data and claims were deleted. */
+	/** Deleted blocks kept (a live block streams in their text, two boundaries name them, or a block is placed under them) whose stream, data and claims were deleted. */
 	emptied: number;
 	/** Text hold records deleted (what they held deleted with them). */
 	marks: number;
@@ -67,6 +71,8 @@ export type PurgeReport = {
 	 * contributors at the merge): deleted, their registry entries kept.
 	 */
 	merged: number;
+	/** Release records the horizon covers (`hist.release.end`): deleted. */
+	released: number;
 };
 
 type Item = {
@@ -82,6 +88,21 @@ type Item = {
 };
 
 const mapOf = (node: EngineNode): Map<string, Item> => attrItems<Item>(node);
+
+/**
+ * The ended histories a document holds (`hist.release.end`): per writer,
+ * the clock its latest live release record ended at (what it wrote below
+ * it is released).
+ */
+export const releasesOf = (doc: EngineDoc): Map<number, number> => {
+	const out = new Map<number, number>();
+	for (let it = firstItem<Item>(doc.get(RELEASE_ROOT)); it; it = it.right) {
+		if (it.deleted) continue;
+		const { client, clock } = it.id;
+		out.set(client, Math.max(out.get(client) ?? 0, clock + it.length - 1));
+	}
+	return out;
+};
 
 /** The horizon a document holds (`null`: never purged). */
 export const readHorizon = (doc: EngineDoc): Horizon | null => {
@@ -153,21 +174,30 @@ export const bindPurge = (Y: EngineApi) => {
 			it.delete(tr);
 			dropSearchMarkers(it.parent);
 		});
-		ops.iterate<Item>(tr, ids(doomed.map((h) => ({ c: h.client, k: h.clock, n: 1 }))), (it) =>
-			it.delete(tr)
-		);
+		// The records are read first and deleted after: deleting one releases
+		// its holds, which can split items of the store the walk is reading
+		// (its writer's own text), and the walk would then visit the structs
+		// written before the record (a delete mark beside it) as if they were it.
+		const records: Item[] = [];
+		ops.iterate<Item>(tr, ids(doomed.map((h) => ({ c: h.client, k: h.clock, n: 1 }))), (it) => {
+			records.push(it);
+		});
+		for (const it of records) it.delete(tr);
 		return doomed.length;
 	};
 
 	/**
 	 * Purge from `doc` (through `facade`, the facade over it) what was
-	 * deleted before `horizon`, and write the horizon record. Runs inside the
-	 * caller's transaction.
+	 * deleted before `horizon`, and what the sessions whose history ended
+	 * deleted (`hist.release.end`), and write the horizon record. With no
+	 * horizon (`null`: the room's tick found none due), only the ended
+	 * sessions' deletes go, and the horizon record is left as it is. Runs
+	 * inside the caller's transaction.
 	 */
 	const purge = (
 		doc: EngineDoc,
 		facade: { model: PlacementModel; text: TextEngine },
-		horizon: Horizon
+		horizon: Horizon | null
 	): PurgeReport => {
 		const report: PurgeReport = {
 			removed: 0,
@@ -175,12 +205,20 @@ export const bindPurge = (Y: EngineApi) => {
 			marks: 0,
 			records: 0,
 			claims: 0,
-			merged: 0
+			merged: 0,
+			released: 0
 		};
-		const vector = Y.decodeStateVector(horizon.sv) as Map<number, number>;
+		const vector =
+			horizon === null
+				? new Map<number, number>()
+				: (Y.decodeStateVector(horizon.sv) as Map<number, number>);
 		const old = (client: number, clock: number) => clock < (vector.get(client) ?? 0);
+		// A delete of an ended session is past the horizon (`hist.release.end`).
+		const releases = releasesOf(doc);
+		const freed = (client: number, clock: number) =>
+			old(client, clock) || clock < (releases.get(client) ?? 0);
 		const oldItem = (item: Item | undefined) =>
-			item !== undefined && !item.deleted && old(item.id.client, item.id.clock);
+			item !== undefined && !item.deleted && freed(item.id.client, item.id.clock);
 		const view = modelView(doc);
 		const { blocks, own, placements } = view;
 		const marks = (node: EngineNode, prefix: string) =>
@@ -198,6 +236,31 @@ export const bindPurge = (Y: EngineApi) => {
 				const live = !it.deleted && it.countable !== false;
 				if (live && at >= s.end) break;
 				if (inside) out.push({ c: it.id.client, k: it.id.clock, n: it.length });
+				if (live) {
+					at += it.length;
+					if (at === s.start) inside = true;
+				}
+			}
+			return out;
+		};
+		/** The paired mark items of `s`'s region whose start and end both lie in it. */
+		const regionMarks = (s: Stream): Item[] => {
+			const opened = new Map<string, Item>();
+			const out: Item[] = [];
+			let at = 0;
+			let inside = s.start === 0;
+			for (let it = firstItem<Item>(s.text); it !== null; it = it.right) {
+				const live = !it.deleted && it.countable !== false;
+				if (live && at >= s.end) break;
+				const { key, value } = it.content as { key?: unknown; value?: unknown };
+				if (inside && !it.deleted && typeof key === 'string' && Array.isArray(value)) {
+					const role = key.charCodeAt(0);
+					if (role === 1) opened.set(`${value[2]}:${value[3]}`, it);
+					else if (role === 2) {
+						const start = opened.get(`${value[0]}:${value[1]}`);
+						if (start !== undefined) out.push(start, it);
+					}
+				}
 				if (live) {
 					at += it.length;
 					if (at === s.start) inside = true;
@@ -242,7 +305,7 @@ export const bindPurge = (Y: EngineApi) => {
 			for (const id of shells) {
 				if (dead.has(id)) continue;
 				const s = own.streamOf(id);
-				if (s !== undefined && !heldBefore(holds, regionSpans(s), old)) continue;
+				if (s !== undefined && !heldBefore(holds, regionSpans(s), freed)) continue;
 				const left = (children.get(id) ?? []).every((child) =>
 					placements.get(child)?.parent === id ? dead.has(child) : edgeOld(child)
 				);
@@ -256,8 +319,11 @@ export const bindPurge = (Y: EngineApi) => {
 
 		// ── Which of them go whole ────────────────────────────────────────
 		// A text family: the blocks with a stream in one backing text, and the
-		// block owning it. It goes whole or not at all: a stream whose
-		// delimiting block went would join the stream before it.
+		// block owning it. The block owning a text goes only with every block
+		// streaming in it (its text goes with its node). A block streaming in
+		// another's text, owning none, goes alone when one boundary names it:
+		// that boundary stays and delimits the stream the purge empties, which
+		// nobody shows (a removed key's, `text/streams.ts` `removedKeys`).
 		const parent = new Map<BlockId, BlockId>();
 		const root = (id: BlockId): BlockId => {
 			let r = id;
@@ -280,6 +346,23 @@ export const bindPurge = (Y: EngineApi) => {
 		const removable = new Set<BlockId>();
 		for (const family of families.values())
 			if (family.every((id) => dead.has(id))) for (const id of family) removable.add(id);
+		// The live boundaries naming each block, and the keys with losing incarnations.
+		const naming = new Map<BlockId, number>();
+		for (const rec of blocks.values())
+			if (rec.content)
+				for (const b of scanText(rec.id, rec.content).bounds)
+					if (b.m === undefined) naming.set(b.s, (naming.get(b.s) ?? 0) + 1);
+		const incarnated = new Set<BlockId>();
+		for (const id of blocks.keys()) if (isIncarnationId(id)) incarnated.add(baseIdOf(id));
+		const lone = new Set<BlockId>();
+		for (const id of dead) {
+			if (removable.has(id) || isIncarnationId(id) || incarnated.has(id)) continue;
+			const s = own.streamOf(id);
+			if (s === undefined || s.home === id || blocks.get(id)!.content !== undefined) continue;
+			if (naming.get(id) !== 1) continue;
+			lone.add(id);
+			removable.add(id);
+		}
 		// Nothing that stays may be placed under a block that goes, or keep its
 		// home slot in the sequence of one (the slot goes with the node).
 		for (let shrank = true; shrank; ) {
@@ -288,7 +371,10 @@ export const bindPurge = (Y: EngineApi) => {
 				if (removable.has(id)) continue;
 				for (const p of [placements.get(id)?.parent, rec.home?.parent]) {
 					if (typeof p !== 'string' || !removable.has(p)) continue;
-					for (const member of families.get(root(p)) ?? []) removable.delete(member);
+					for (const member of lone.has(p) ? [p] : (families.get(root(p)) ?? [])) {
+						removable.delete(member);
+						lone.delete(member);
+					}
 					shrank = true;
 				}
 			}
@@ -296,14 +382,19 @@ export const bindPurge = (Y: EngineApi) => {
 
 		// ── The writes ────────────────────────────────────────────────────
 		// A deleted block that stays: its stream's text (boundaries kept), its
-		// data leaves and its claims.
+		// data leaves and its claims; a block that goes alone: its stream's
+		// text and its claims (the rest goes with its node).
 		const emptied = [...dead].filter((id) => !removable.has(id));
-		purgeStreams(
-			emptied.flatMap((id) => {
-				const s = own.streamOf(id);
-				return s === undefined || s.end - s.start <= s.inert.length ? [] : [s];
-			})
-		);
+		const purged = [...emptied, ...lone].flatMap((id) => {
+			const s = own.streamOf(id);
+			return s === undefined ? [] : [s];
+		});
+		// Their marks format nothing any reader shows: each pair whose start and
+		// end lie in one of these streams goes (collected, it keeps its class).
+		const tr = (doc as { _transaction?: unknown })._transaction;
+		for (const s of purged) for (const item of regionMarks(s)) item.delete(tr);
+		purgeStreams(purged.filter((s) => s.end - s.start > s.inert.length));
+		for (const id of lone) deleteClaims(doc, blocks.get(id)!.claims);
 		for (const id of emptied) {
 			const rec = blocks.get(id)!;
 			for (const key of [...rec.node.attrKeys()])
@@ -339,8 +430,7 @@ export const bindPurge = (Y: EngineApi) => {
 				continue;
 			}
 			registry.deleteAttr(id);
-			if (attribution.getAttr(`${REC_PREFIX}${id}`) !== undefined)
-				attribution.deleteAttr(`${REC_PREFIX}${id}`);
+			if (attribution.getAttr(id) !== undefined) attribution.deleteAttr(id);
 			report.removed++;
 		}
 		// Blocks merged away before the horizon (`room.purge.merged`): live,
@@ -362,8 +452,8 @@ export const bindPurge = (Y: EngineApi) => {
 			if (rec.deleted || removable.has(id) || dead.has(id) || isIncarnationId(id)) continue;
 			const owner = own.ownerOf(id);
 			if (owner === id || typeof owner !== 'string' || !claimedOld(id)) continue;
-			if (attribution.getAttr(`${REC_PREFIX}${id}`) === undefined) continue;
-			attribution.deleteAttr(`${REC_PREFIX}${id}`);
+			if (attribution.getAttr(id) === undefined) continue;
+			attribution.deleteAttr(id);
 			report.merged++;
 		}
 		// Old move records no block shows at (lost to a newer move, or their blocks
@@ -384,9 +474,19 @@ export const bindPurge = (Y: EngineApi) => {
 				}
 		});
 		// Text hold records past the horizon, with what they hold.
-		report.marks = purgeText(doc, old);
+		report.marks = purgeText(doc, freed);
+		// Release records the horizon covers: what they released is past it.
+		{
+			const tr = (doc as { _transaction?: unknown })._transaction;
+			for (let it = firstItem<Item>(doc.get(RELEASE_ROOT)); it; it = it.right) {
+				if (it.deleted || !old(it.id.client, it.id.clock + it.length - 1)) continue;
+				it.delete(tr);
+				report.released++;
+			}
+		}
 		// The horizon record, last.
-		doc.get(HORIZON_ROOT).setAttr(HORIZON_ATTR, { at: horizon.at, sv: horizon.sv });
+		if (horizon !== null)
+			doc.get(HORIZON_ROOT).setAttr(HORIZON_ATTR, { at: horizon.at, sv: horizon.sv });
 		return report;
 	};
 

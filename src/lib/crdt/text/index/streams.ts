@@ -5,6 +5,7 @@
  */
 import type { BlockId } from '../../placement/model.js';
 import { type Claim, type Stream, byId, cmpStamp, scanText } from '../model.js';
+import { removedKeys } from '../streams.js';
 import {
 	type LiveRow,
 	headOf,
@@ -21,6 +22,7 @@ import type { FoldCtx, IndexState, Placed } from './state.js';
 /** The stream table of one doc's index, over its state and claim graph. */
 export const indexStreams = (ix: IndexState & IndexClaims) => {
 	const {
+		registry,
 		blocks,
 		listConsumers,
 		rows,
@@ -98,16 +100,25 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 		const text = blocks.get(home)?.content;
 		return text === undefined ? undefined : rowOf(scanText(home, text));
 	};
+	/** A removed block's key (`room.purge.what`): its boundary delimits nobody's stretch. */
+	const removed = removedKeys(registry);
+	/** A cut's stretch is nobody's when it names no block (a removed one). */
+	const nobody = (s: BlockId): boolean => !blocks.has(s);
 	/** Re-decide the delimiting boundary of each block in `named`; the rows a change cuts join `homes`. */
 	const refreshDelims = (named: Iterable<BlockId>, homes: Set<BlockId>): void => {
 		for (const s of named) {
-			const n = blocks.get(s)?.n;
+			const rec = blocks.get(s);
+			const gone = rec === undefined && removed(s);
 			let best: string | undefined;
-			if (blocks.has(s))
+			if (rec !== undefined || gone)
 				for (const [key, b] of boundsBy.get(s) ?? [])
-					if (b.n === n && (best === undefined || byId(key, best) < 0)) best = key;
+					if ((gone || b.n === rec!.n) && (best === undefined || byId(key, best) < 0)) best = key;
 			const old = ix.delim.get(s);
-			if (old === best) continue;
+			if (old === best) {
+				// The cut stays, and the block it opens may have come or gone (removed).
+				if (best !== undefined) homes.add(boundsBy.get(s)!.get(best)!.home);
+				continue;
+			}
 			if (best === undefined) ix.delim.delete(s);
 			else ix.delim.set(s, best);
 			const was = old === undefined ? undefined : boundsBy.get(s)?.get(old)?.home;
@@ -127,25 +138,28 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 		const before = placed.get(home) ?? { head: null, keys: [], blocks: [] };
 		const now: Placed = { head: null, keys: [], blocks: [] };
 		if (row !== undefined) {
-			placeRow(row, ix.delim);
+			placeRow(row, ix.delim, nobody);
 			now.head = row.head;
-			for (const j of row.cuts) {
+			row.cuts.forEach((j, k) => {
 				now.keys.push(row.bounds[j].key);
-				now.blocks.push(row.bounds[j].s!);
-			}
+				now.blocks.push(row.heads[k]);
+			});
 		}
 		if (row === undefined) placed.delete(home);
 		else placed.set(home, now);
 		// Its segments' claim items may have changed, or gone to other blocks.
 		for (const x of [before, now]) {
 			if (x.head !== null) reclaim.add(x.head);
-			for (const b of x.blocks) reclaim.add(b);
+			for (const b of x.blocks) if (b !== null) reclaim.add(b);
 		}
 		const [a, b] = [before.keys, now.keys];
+		// A cut is the same when its boundary and the block it opens are (a
+		// removed block's cut opens nobody's stretch).
+		const same = (i: number, j: number) => a[i] === b[j] && before.blocks[i] === now.blocks[j];
 		let p = 0;
-		while (p < a.length && p < b.length && a[p] === b[p]) p++;
+		while (p < a.length && p < b.length && same(p, p)) p++;
 		let q = 0;
-		while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+		while (q < a.length - p && q < b.length - p && same(a.length - 1 - q, b.length - 1 - q)) q++;
 		// Segment k ends at cut k: it changed iff k lies in [p, n - q] (segment 0 also with its block).
 		const from = before.head === now.head ? p : 0;
 		const changed = (blk: BlockId | null): void => {

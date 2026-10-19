@@ -278,48 +278,68 @@ export const installSocketCounter = (page: Page, relayUrl: string, actorId: stri
 		{ relayUrl, actorId }
 	);
 
+/** Each page's socket counts (`installSocketCounter`), by socket name. */
+const pageCounts = async (peers: readonly { page: Page }[]) => {
+	const counted: Record<string, { sent: number; received: number }> = {};
+	for (const peer of peers) {
+		Object.assign(
+			counted,
+			await peer.page
+				.evaluate(
+					() =>
+						(
+							window as Window & {
+								__DST_SOCKETS__?: Record<string, { sent: number; received: number }>;
+							}
+						).__DST_SOCKETS__ ?? {}
+				)
+				.catch(() => ({}))
+		);
+	}
+	return counted;
+};
+
 /**
- * Waits until the relay has delivered everything it took: every open socket
- * of the room has received each frame the relay wrote to it, the relay has
- * read each frame its page sent, and no delayed write is pending. A held
- * frame is not in flight (the relay holds it). The post-op gate reads a peer
- * only then: a frame still on its way when the peer is dumped would land
- * before its update count or its anchors are read, and the gate would compare
- * a caret from before the delivery with the anchors after it.
+ * Waits until what was on its way when it was called has arrived: the relay
+ * has read every frame each page had sent by then, and each open socket has
+ * received every frame the relay took for it by then, those reads included
+ * (written, or still delayed by the latency: `toClient + pending`). A held
+ * frame is not on its way (the relay holds it). The post-op gate reads a
+ * peer only then: a frame still on its way when the peer is dumped would
+ * land before its update count or its anchors are read, and the gate would
+ * compare a caret from before the delivery with the anchors after it.
+ *
+ * Not "until nothing is in flight": under latency the room never goes quiet
+ * (each page's resync Step1 every 200 ms, and the Step2s it draws, which the
+ * opaque relay sends to every peer, keep writes delayed at any time; collab
+ * seed 26, 137 ms), so the frames taken after the call are not waited for. A
+ * socket that closes meanwhile is no longer waited for either.
  */
 export const awaitDeliveries = async (
 	relay: OpaqueRelay,
 	room: string,
 	peers: readonly { page: Page }[]
 ) => {
+	const open = () =>
+		new Map(
+			relay
+				.traffic(room)
+				.sockets.flatMap((socket) => (socket.id === null ? [] : [[socket.id, socket] as const]))
+		);
+	const sent = await pageCounts(peers);
+	await expect
+		.poll(() => [...open()].every(([id, socket]) => socket.fromClient >= (sent[id]?.sent ?? 0)), {
+			timeout: 15_000
+		})
+		.toBe(true);
+	const due = new Map([...open()].map(([id, socket]) => [id, socket.toClient + socket.pending]));
 	await expect
 		.poll(
 			async () => {
-				const counted: Record<string, { sent: number; received: number }> = {};
-				for (const peer of peers) {
-					Object.assign(
-						counted,
-						await peer.page
-							.evaluate(
-								() =>
-									(
-										window as Window & {
-											__DST_SOCKETS__?: Record<string, { sent: number; received: number }>;
-										}
-									).__DST_SOCKETS__ ?? {}
-							)
-							.catch(() => ({}))
-					);
-				}
-				const { inFlight, sockets } = relay.traffic(room);
-				return (
-					inFlight === 0 &&
-					sockets.every(
-						(socket) =>
-							socket.id !== null &&
-							counted[socket.id]?.sent === socket.fromClient &&
-							counted[socket.id]?.received === socket.toClient
-					)
+				const counted = await pageCounts(peers);
+				const still = open();
+				return [...due].every(
+					([id, frames]) => !still.has(id) || (counted[id]?.received ?? 0) >= frames
 				);
 			},
 			{ timeout: 15_000 }

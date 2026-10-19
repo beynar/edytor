@@ -369,7 +369,7 @@ export const indexFold = (
 			if (fresh) {
 				const next = scanRow(home);
 				const same = next !== undefined && row !== undefined && next.key === row.key;
-				if (same) [next.cuts, next.head] = [row.cuts, row.head];
+				if (same) [next.cuts, next.heads, next.head] = [row.cuts, row.heads, row.head];
 				setRow(home, next, ctx.named);
 				if (!same) homes.add(home);
 				gaps = next === undefined ? [] : gapsIn(next, t.edits);

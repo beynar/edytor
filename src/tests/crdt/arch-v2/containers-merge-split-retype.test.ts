@@ -411,12 +411,12 @@ describe('YW-08: a retype into a line kind is re-indexed', () => {
  * malformed record reads as no record.
  */
 describe('SW8-roles-1: a malformed attribution record never breaks reads or edits', () => {
-	it('blockattr b/P = { getAttr: 1 } → attribution reads, edits apply', () => {
+	it('blockattr P = { getAttr: 1 } → attribution reads, edits apply', () => {
 		const document = createDocument({
 			value: { children: [{ id: 'P', type: 'paragraph', content: [{ text: 'p' }] }] }
 		});
 		const ed = document.facade;
-		document.doc.transact(() => document.doc.get('blockattr').setAttr('b/P', { getAttr: 1 }));
+		document.doc.transact(() => document.doc.get('blockattr').setAttr('P', { getAttr: 1 }));
 		expect(() => ed.blockAttribution('P')).not.toThrow();
 		expect(ed.insertText('P', 1, 'q').status).toBe('applied');
 		expect(tree(ed)).toBe('P:"pq"');

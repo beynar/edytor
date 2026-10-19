@@ -24,6 +24,7 @@ import {
 	deepFreeze,
 	delimiters,
 	placeText,
+	removedKeys,
 	scanText
 } from '../../lib/crdt/text/model.js';
 import { CONTENT, hasDeleteMark, NONCE, REGISTRY_KEY, TYPE } from '../../lib/crdt/schema.js';
@@ -58,13 +59,14 @@ export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
 		});
 	});
 	const rows = [...blocks.values()].flatMap((r) => (r.content ? [scanText(r.id, r.content)] : []));
-	const delim = delimiters(blocks, rows);
+	const delim = delimiters(blocks, rows, removedKeys(doc.get(REGISTRY_KEY)));
 	for (const row of rows)
-		for (const st of placeText(row, delim)) blocks.get(st.block)!.claims = claimsIn(row, st);
+		for (const st of placeText(row, delim, (s) => !blocks.has(s)))
+			blocks.get(st.block)!.claims = claimsIn(row, st);
 	// The homes and edges read from the sequences (the cycles need no owners for these).
 	const { homes, edges } = resolveAll(doc, blocks, () => DEAD, kept);
 	for (const [id, home] of homes) blocks.get(id)!.home = home;
-	settleWithdrawn(blocks, edges);
+	settleWithdrawn(doc, blocks, edges);
 	return blocks;
 };
 
@@ -76,6 +78,7 @@ export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
  * nothing changes.
  */
 const settleWithdrawn = (
+	doc: EngineDoc,
 	blocks: Map<BlockId, BlockRec>,
 	edges: ReadonlyMap<BlockId, Edge | null>
 ): void => {
@@ -84,10 +87,10 @@ const settleWithdrawn = (
 	);
 	if (withdrawn.length === 0) return;
 	const rows = [...blocks.values()].flatMap((r) => (r.content ? [scanText(r.id, r.content)] : []));
-	const delim = delimiters(blocks, rows);
+	const delim = delimiters(blocks, rows, removedKeys(doc.get(REGISTRY_KEY)));
 	const units = new Map<BlockId, number>();
 	for (const row of rows)
-		for (const st of placeText(row, delim))
+		for (const st of placeText(row, delim, (s) => !blocks.has(s)))
 			units.set(st.block, st.end - st.start - st.inert.length);
 	for (const r of withdrawn) r.deleted = true;
 	for (let changed = true; changed; ) {

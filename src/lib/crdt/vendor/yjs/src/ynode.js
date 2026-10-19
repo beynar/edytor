@@ -12,6 +12,7 @@ import {
   ContentType,
   ContentHold, // YP20
   ContentMove, // YP22
+  readFormatValue, // YP25
   YXmlFragmentRefID,
   YXmlElementRefID,
   YXmlHookRefID
@@ -1183,9 +1184,13 @@ export const readContentString = decoder => new ContentString(decoder.readString
 
 /**
  * @param {UpdateDecoder} decoder
+ * @param {import('./utils/ID.js').ID} id YP25: the item's id (a paired mark's operation id is usually it)
  * @return {ContentFormat}
  */
-export const readContentFormat = decoder => new ContentFormat(decoder.readKey(), decoder.readJSON())
+export const readContentFormat = (decoder, id) => {
+  const key = decoder.readKey()
+  return new ContentFormat(key, readFormatValue(decoder, key, id)) // YP25
+}
 
 /**
  * @param {UpdateDecoder} decoder
@@ -1256,6 +1261,17 @@ export const readContentMove = decoder => {
   return new ContentMove(word >> 5, word & 1, readIds(decoder), (word >> 1) & 7, at)
 }
 
+/**
+ * YP29: a collected mark or claim, its length and class.
+ *
+ * @param {UpdateDecoder} decoder
+ * @return {ContentDeleted}
+ */
+export const readContentClass = decoder => {
+  const word = decoder.readLen()
+  return new ContentDeleted(Math.floor(word / 4), word % 4)
+}
+
 const refused = () => { error.unexpectedCase() }
 
 /**
@@ -1264,7 +1280,7 @@ const refused = () => { error.unexpectedCase() }
  * writes none, so an update holding one is malformed. YP20: 11 is a hold
  * record. YP22: 12 is a move record.
  *
- * @type {Array<function(UpdateDecoder):AbstractContent>}
+ * @type {Array<function(UpdateDecoder, import('./utils/ID.js').ID):AbstractContent>}
  */
 export const contentRefs = [
   refused, // 0 - GC is not ItemContent
@@ -1279,14 +1295,16 @@ export const contentRefs = [
   refused, // 9 - subdocument
   refused, // 10 - Skip is not ItemContent
   readContentHold, // 11 - a hold record (YP20)
-  readContentMove // 12 - a move record (YP22)
+  readContentMove, // 12 - a move record (YP22)
+  readContentClass // 13 - a collected mark or claim, its class (YP29)
 ]
 
 /**
  * @param {UpdateDecoder} decoder
  * @param {number} info
+ * @param {import('./utils/ID.js').ID} id YP25: the item's id (a format item reads it)
  */
-export const readItemContent = (decoder, info) => contentRefs[info & binary.BITS5](decoder)
+export const readItemContent = (decoder, info, id) => contentRefs[info & binary.BITS4](decoder, id) // YP27: four bits
 
 /**
  * @param {UpdateDecoder} decoder

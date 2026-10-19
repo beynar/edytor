@@ -49,6 +49,7 @@ import * as delta from 'lib0-v14/delta';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
 import { historyOf, type UndoManager } from '../harness/history.js';
+import { storedOf } from '../harness/stored.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 100_000;
@@ -582,17 +583,11 @@ describe('R1 — differential oracle: patched engine vs markers disabled', () =>
 				patched.doc.transact(() => applyDelta(patched.t, RAW_OPS[i](delta.create())));
 				base.doc.transact(() => applyDelta(base.t, RAW_OPS[i](delta.create())));
 				expect(dj(patched.t), `delta diverged from baseline at op ${i}`).toBe(dj(base.t));
-				expect(
-					Buffer.from(Y.encodeStateAsUpdate(patched.doc)).equals(
-						// The fork's one encoding is upstream's v2 (YP17).
-						Buffer.from(
-							(
-								YB as unknown as { encodeStateAsUpdateV2: typeof Y.encodeStateAsUpdate }
-							).encodeStateAsUpdateV2(base.doc)
-						)
-					),
-					`encoded state diverged from baseline at op ${i}`
-				).toBe(true);
+				// The stores, each read back from its own engine's encoding (the
+				// fork's writes each string once, YP24: the bytes differ).
+				expect(storedOf(Y, patched.doc), `stored state diverged from baseline at op ${i}`).toBe(
+					storedOf(YB, base.doc)
+				);
 			}
 		}
 	);

@@ -13,6 +13,9 @@
  * - `code.language.lazy`: a language's grammar loads the first time one of
  *   its lines renders; until then its lines are plain text, then they
  *   highlight. Tokens are decorations: never stored.
+ * - `sel.drift.unreported` (docs/editor-delete-contract.md): a grammar that
+ *   lands under the caret re-renders its line's text nodes with no commit;
+ *   the caret is displayed where it was, not where the removed node left it.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRawSnippet } from 'svelte';
@@ -22,6 +25,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { CODE_LANGUAGES, loadCodeLanguage } from '$lib/plugins/code/languages.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { getYIndex } from '$lib/selection/selection.utils.js';
 import {
 	code as createCodePlugin,
 	codePlugin,
@@ -118,6 +122,43 @@ describe('code.language.lazy: a grammar loads with its first line', () => {
 		await loadCodeLanguage(language('go'));
 		await flushDomUpdates();
 		expect(tokens(editor)).toContainEqual(['th-keyword', 'func']);
+	});
+});
+
+describe('sel.drift.unreported: a grammar that lands under the caret', () => {
+	it('re-renders the line around the caret: the caret is displayed where it was', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => (release = resolve));
+		const yaml = language('yaml');
+		const late = { ...yaml, load: () => held.then(yaml.load!) };
+		const { edytor, editor } = await render(code(['key: value'], { language: 'yaml' }), {
+			plugins: [createCodePlugin({ languages: [late] })]
+		});
+		expect(tokens(editor)).toEqual([]);
+		// jsdom does not focus a contenteditable: a tabindex lets the host hold focus.
+		edytor.node!.tabIndex = -1;
+		edytor.node!.focus();
+		const line = edytor.idToBlock.get('l0')!.firstText!;
+		edytor.selection.selectText(line, line.length);
+		await flushDomUpdates();
+		const shown = () => {
+			const dom = window.getSelection()!;
+			return {
+				leaf: dom.anchorNode?.nodeType === Node.TEXT_NODE,
+				offset: getYIndex(line, dom.anchorNode, dom.anchorOffset)
+			};
+		};
+		expect(shown()).toEqual({ leaf: true, offset: 'key: value'.length });
+		// The grammar lands: the plain text node the caret was in is replaced by tokens.
+		const plain = window.getSelection()!.anchorNode!;
+		release();
+		await loadCodeLanguage(late);
+		await flushDomUpdates();
+		expect(tokens(editor)).not.toEqual([]);
+		expect(plain.isConnected).toBe(false);
+		expect(shown()).toEqual({ leaf: true, offset: 'key: value'.length });
+		expect(edytor.selection.caret?.block.id).toBe('l0');
+		expect(edytor.selection.caret?.offset).toBe('key: value'.length);
 	});
 });
 

@@ -473,9 +473,11 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 
 	it("the shipped provider relaying another user's edits stays connected: the relay is stripped", async () => {
 		const room = 'refused-provider';
-		// Ada's offline edits, copied into Eve's document: Eve's handshake writes under Ada's id.
-		const ada = E.createDocument({ value: { children: [para('p', 'hi')] }, actor: { id: 'ada' } });
+		// Ada's offline edits, copied into Eve's document: Eve's handshake writes under Ada's id,
+		// which Ada's first write, while connected, made hers.
+		const ada = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
 		const tab = await RawClient.connect(room, ada.doc, { user: 'ada' });
+		ada.transact(() => ada.facade.insertText('p', 0, 'hi'));
 		await vi.waitFor(() => expect(tab.stored()).toBe(true));
 		tab.close();
 		ada.transact(() => ada.facade.insertText('p', 2, '!'));

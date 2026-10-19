@@ -1,7 +1,7 @@
 /**
  * U3 — block attribution across every persistence/sync path.
  *
- *   - `encode()` → `loadDocument` round-trips `b/` records + `l` attrs
+ *   - `encode()` → `loadDocument` round-trips block records + `l` attrs
  *     byte-faithfully (per-record attr snapshots, not just read-API parity).
  *   - `IndexeddbPersistence` stores and compacts the same bytes — the
  *     hydration schema gate treats `blockattr` state as supported.
@@ -87,7 +87,7 @@ const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 /**
- * Byte-level snapshot of durable attribution state — every `b/` record's
+ * Byte-level snapshot of durable attribution state — every block record's
  * full attr map plus every block node's surviving `l` value.
  */
 const blockattrSnapshot = (doc: YDoc) => {
@@ -186,7 +186,7 @@ describe('encode → loadDocument', () => {
 		);
 		a.transact(() => a.facade.deleteBlock('p2'));
 		const snap = blockattrSnapshot(a.doc);
-		expect(snap.records['b/p2']).toBeDefined(); // dead block keeps its record
+		expect(snap.records['p2']).toBeDefined(); // dead block keeps its record
 
 		const restored = loadDocument(a.encode(), { actor: carol });
 		expect(blockattrSnapshot(restored.doc)).toEqual(snap);
@@ -227,7 +227,7 @@ describe('IndexedDB persistence + compaction', () => {
 		);
 		await nextTick();
 		// Force compaction: one snapshot row subsumes every update row —
-		// `b/` records and `l` attrs ride the snapshot bytes.
+		// block records and `l` attrs ride the snapshot bytes.
 		await idbProviders.storeState(pA);
 		expect((await readRows(name)).length).toBe(1);
 		const snap = blockattrSnapshot(a.doc);
@@ -266,7 +266,7 @@ describe('IndexedDB persistence + compaction', () => {
 		pB.on('schema-mismatch', (d: unknown) => mismatches.push(d));
 		await pB.whenSynced; // gate accepted — synced fired
 		expect(mismatches).toHaveLength(0);
-		expect(docB.get('blockattr').getAttr(`b/${blockId}`)).toBeDefined();
+		expect(docB.get('blockattr').getAttr(blockId)).toBeDefined();
 
 		// Compaction remains legal on the hydrated doc.
 		await idbProviders.storeState(pB);

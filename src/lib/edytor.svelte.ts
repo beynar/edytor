@@ -8,6 +8,7 @@ import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
 import { attachFocus, selectionIsInside, takeKeys } from './events/onFocus.js';
+import { attachPageHide } from './events/onPageHide.js';
 import { insertLineBreak, runIntent } from './events/beforeInputCommands.js';
 import { textPointAt } from './selection/selection.utils.js';
 import type { SessionPorts } from './session/ports.js';
@@ -967,6 +968,8 @@ export class Edytor {
 			}),
 			// Pointer and focus ownership, and the focus-time caret restore.
 			...attachFocus(this, node),
+			// The page leaving for good ends the session's history.
+			attachPageHide(this),
 			on(node, 'mousedown', this.selection.pointer.preventTripleClick),
 			on(node, 'click', this.selection.pointer.tripleClick),
 			// Settle queued mutation repairs before the native menu opens —

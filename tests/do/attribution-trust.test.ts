@@ -49,7 +49,11 @@ const forged = (stub: DurableObjectStub<Room>) =>
 		r.refusals.filter((refusal) => refusal.reason === 'forged').map((refusal) => refusal.detail)
 	);
 
-/** A writer joining `room` as `user`, its document's actor `actor` (absent: anonymous). */
+/**
+ * A writer joining `room` as `user`, its document's actor `actor` (absent:
+ * anonymous), and its first write (a data leaf of its own on `p`), which
+ * carries its binding and profile; the room acknowledged it.
+ */
 const join = async (room: string, user: string, actor?: { id: string; name?: string }) => {
 	const document = E.createDocument({
 		value: { children: [para('p', '')] },
@@ -59,7 +63,10 @@ const join = async (room: string, user: string, actor?: { id: string; name?: str
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced && client.acks.length > 1).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	document.transact(() => document.facade.patchData('p', [{ path: [user], value: true }]));
+	const own = document.doc.clientID;
+	await vi.waitFor(() => expect(client.acks.at(-1)?.get(own)).toBeGreaterThan(0), SLOW);
 	return { document, client, root: attributionOf(document.doc) };
 };
 

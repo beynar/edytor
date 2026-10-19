@@ -17,8 +17,9 @@
  *    range then GC'd — the linkage check must reject the stale record.
  * 5. SEED GATES: a FORMATTED op0 retain must not seed — verified by
  *    differential. (The renderer gate went with the engine's renderer, YP16.)
- * 6. WIRE INTEROP: v14-encoded updates (with markers active) decode under
- *    real `yjs@13.6.30`; and v13-encoded updates decode under v14.
+ * 6. WIRE: marker-enabled and disabled stores produce identical update bytes
+ *    (markers are ephemeral state); a `yjs@13.6.30` update is refused (the
+ *    fork's encoding is its own since YP24: no wire interop with upstream).
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, test } from 'vitest';
@@ -204,42 +205,16 @@ describe('gateF2/WU9 — seed gates', () => {
 	});
 });
 
-describe('gateF2/WU9 — wire interop', () => {
-	test('v14 update from a marker-active doc decodes under real yjs@13', () => {
-		const doc = newDoc();
-		const t = buildFragmented(doc, 't', 80);
-		// Exercise the marker paths so marker records exist in memory.
-		doc.transact(() => applyDelta(t, delta.create().retain(40).insert('mid')));
-		doc.transact(() => applyDelta(t, delta.create().retain(20).retain(10, { z: true })));
-		expect(t._searchMarker.length).toBeGreaterThan(0);
-		const update = Y.encodeStateAsUpdate(doc);
-		// Decode with real yjs 13 — the wire format must carry no marker state.
-		// v14 list content surfaces as a v13 YText (`doc.get` returns a bare
-		// AbstractType; the typed getter binds the decoded ref correctly).
-		const d13 = new Y13.Doc();
-		Y13.applyUpdateV2(d13, update);
-		const t13 = d13.getText('t');
-		const s13 = t13.toString();
-		expect(s13).toContain('mid');
-		expect(s13.length).toBe(83); // 80 chars + 'mid'
-	});
-
-	test('v13-encoded update decodes under vendored v14', () => {
+describe('gateF2/WU9 — wire', () => {
+	test('a v13-encoded update is refused by vendored v14: another encoding (YP24)', () => {
 		const d13 = new Y13.Doc();
 		const t13 = d13.getText('t');
 		t13.insert(0, 'hello ');
 		t13.insert(6, 'world', { bold: true });
 		const update = Y13.encodeStateAsUpdateV2(d13);
 		const doc = newDoc();
-		Y.applyUpdate(doc, update);
-		const t = doc.get('t');
-		const json = JSON.stringify(toDelta(t).toJSON());
-		expect(json).toContain('hello ');
-		expect(json).toContain('world');
-		// And marker paths still work on the decoded content: retain(5) sits
-		// inside 'hello ' before the trailing space → 'hello! world'.
-		doc.transact(() => applyDelta(t, delta.create().retain(5).insert('!')));
-		expect(JSON.stringify(toDelta(t).toJSON())).toContain('hello! ');
+		expect(() => Y.applyUpdate(doc, update)).toThrow(/an update of another encoding/);
+		expect(doc.get('t').length).toBe(0);
 	});
 
 	test('marker-enabled and disabled stores produce identical update bytes', () => {

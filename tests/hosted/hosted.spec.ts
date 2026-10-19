@@ -492,6 +492,56 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		for (const issue of issues) issue.assertClean();
 	});
 
+	test('a page leaving for good releases its deletes: its release record reaches the room, but from Firefox (hist.release.end)', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('release', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const a = await openPeer(browser, room, baseURL);
+		const b = await openPeer(browser, room, baseURL);
+		peers = [a, b];
+		await expectConverged(peers.map((p) => p.page));
+		const writer = await clientIdOf(a.page);
+		// A deletes a block through its view: one undo step of its session.
+		await a.page.evaluate(() => (window as any).__EDYTOR__.deleteBlocks(['collab-b2']));
+		await expect.poll(() => readIds(b.page)).toEqual(['collab-b1', 'collab-b3']);
+		const released = (page: Page) =>
+			page.evaluate(() => {
+				const list = (window as any).__EDYTOR__.doc.get('released');
+				const out: number[] = [];
+				for (let it = list._start; it; it = it.right) if (!it.deleted) out.push(it.id.client);
+				return out;
+			});
+		expect(await released(b.page)).toEqual([]);
+		// A's page navigates away for good: what its pagehide left in the document.
+		await a.page.evaluate(() =>
+			window.addEventListener('pagehide', (event) => {
+				const doc = (window as any).__EDYTOR__.doc;
+				localStorage.setItem(
+					'edytor-test-leave',
+					JSON.stringify({ persisted: event.persisted, released: doc.get('released').length })
+				);
+			})
+		);
+		await a.page.goto('/test/dom?scenario=collab');
+		const left = await a.page.evaluate(() => localStorage.getItem('edytor-test-leave'));
+		expect(JSON.parse(left!)).toEqual({ persisted: false, released: 1 });
+		if (testInfo.project.name === 'firefox') {
+			// Firefox closes a page's sockets as it starts unloading, before
+			// `pagehide` (and the local store's write does not complete): the
+			// release never leaves the page, and the deletes wait for the purge
+			// horizon, as before. B, resynced with the room, holds no release.
+			await setOnline(b.page, false);
+			await setOnline(b.page, true);
+			await expectProvider(b.page, { wsconnected: true, synced: true });
+			expect(await released(b.page)).toEqual([]);
+		} else {
+			// The release was written before its provider left: the room relays it to B.
+			await expect.poll(() => released(b.page), { timeout: 15_000 }).toEqual([writer]);
+		}
+		expect(await readIds(b.page)).toEqual(['collab-b1', 'collab-b3']);
+	});
+
 	test('presence: a peer caret reaches the others and disappears when the peer closes', async ({
 		browser
 	}, testInfo) => {

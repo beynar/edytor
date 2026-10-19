@@ -1676,6 +1676,7 @@ export declare class EdytorDocument {
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
     clearHistory: () => void;
+    endHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;

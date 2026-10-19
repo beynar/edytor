@@ -42,9 +42,9 @@ function * lazyStructReaderGenerator (decoder) {
           null, // right
           (info & binary.BIT7) === binary.BIT7 ? decoder.readRightID() : null, // right origin
           // @ts-ignore Force writing a string here.
-          cantCopyParentInfo ? (decoder.readParentInfo() ? decoder.readString() : decoder.readLeftID()) : null, // parent
-          cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readString() : null, // parentSub
-          readItemContent(decoder, info) // item content
+          cantCopyParentInfo ? ((info & binary.BIT5) === binary.BIT5 ? decoder.readKey() : decoder.readLeftID()) : null, // parent (YP27: bit 5 a root's name, YP24: a key)
+          cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readKey() : null, // parentSub (YP24: a key)
+          readItemContent(decoder, info, createID(client, clock)) // item content (YP25: with its id)
         )
         yield struct
         clock += struct.length

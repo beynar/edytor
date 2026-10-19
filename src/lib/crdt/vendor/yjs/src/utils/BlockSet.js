@@ -37,7 +37,7 @@ export const readBlockSet = (decoder) => {
     clientRefs.clients.set(client, new BlockRange(refs))
     for (let i = 0; i < numberOfBlocks; i++) {
       const info = decoder.readInfo()
-      switch (binary.BITS5 & info) {
+      switch (binary.BITS4 & info) { // YP27: content refs fit four bits
         case 0: { // GC
           const len = decoder.readLen()
           refs[i] = new GC(createID(client, clock), len)
@@ -68,9 +68,9 @@ export const readBlockSet = (decoder) => {
             (info & binary.BIT8) === binary.BIT8 ? decoder.readLeftID() : null, // origin
             null, // right
             (info & binary.BIT7) === binary.BIT7 ? decoder.readRightID() : null, // right origin
-            cantCopyParentInfo ? (decoder.readParentInfo() ? decoder.readString() : decoder.readLeftID()) : null, // parent
-            cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readString() : null, // parentSub
-            readItemContent(decoder, info) // item content
+            cantCopyParentInfo ? ((info & binary.BIT5) === binary.BIT5 ? decoder.readKey() : decoder.readLeftID()) : null, // parent (YP27: bit 5 a root's name, YP24: a key)
+            cantCopyParentInfo && (info & binary.BIT6) === binary.BIT6 ? decoder.readKey() : null, // parentSub (YP24: a key)
+            readItemContent(decoder, info, createID(client, clock)) // item content (YP25: with its id)
           )
           refs[i] = block
           clock += block.length

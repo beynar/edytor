@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records) and YP23 (a block set's trim)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values), YP29 (a collected mark or claim keeps its class) and YP30 (a transaction's `beforeCommit`)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -55,11 +55,12 @@ applied to both) and `fork.diff` (newer → this tree, both carrying YP1) into
 the run's artifact, says in the summary whether the installed `lib0-v14`
 satisfies the newer engine's `lib0` range (a mismatch is a run warning: a
 red check may then be the older lib0, not the fork), then materializes the newer engine as `bench/vendor-baseline/yjs`
-so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
-wire) and the baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`
-(byte-identical stores after every operation) run against it. A red run
+so the baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`
+(identical stores after every operation, each read back from its own
+engine's encoding) runs against it. There is no wire interop to check since
+YP24: the fork's update encoding is its own. A red run
 means the re-sync needs care; the re-sync itself is the manual recipe under
-YP8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
+YP8. Locally: `node scripts/upstream-check.mjs`, then that check, then
 `bench/lib/mk-baseline.sh` to restore the pinned baseline.
 
 ## Local patches
@@ -833,10 +834,11 @@ Patch:
 - `edytor/crdt` exports `UpdateEncoder`, `UpdateDecoder` and `diffUpdate`
   in place of the V1/V2 pairs (see `src/tests/crdt/yp8-surface.test.ts`).
 
-Interop: an upstream engine reads the fork's bytes with its `…V2`
-functions (`bench/lib/interop.mjs`, the baseline legs of
-`search-marker-format.test.ts` and `yp16-writes.test.ts` compare against
-upstream's `encodeStateAsUpdateV2`). Vendored execution lines 5,123 →
+Interop: an upstream engine read the fork's bytes with its `…V2`
+functions until YP24 (a string table per update) made the encoding the
+fork's own; the baseline legs of `search-marker-format.test.ts` and
+`yp16-writes.test.ts` now compare the stores each engine reads back from
+its own encoding. Vendored execution lines 5,123 →
 4,872. Test side: `compatibility.tests.js` (v1 documents of Yjs 13) is
 removed; the upstream suite's helpers run every program in the one
 encoding (`testHelper.js`, `updates.tests.js`).
@@ -1089,6 +1091,7 @@ For that to give the serial outcome the engine only needs one sort rule:
   mark items, YP13, and claim items): the class orders concurrent inserts on
   every replica, collected or not. The check was YP13's paired-mark test; it
   is now `markClass(this) === 1`, the same answer for every format item.
+  (YP29: a collected mark or claim keeps only its class.)
 
 Plain items (every upstream test) are untouched: a sequence of strings,
 nodes or JSON values without an `m` key, and every map value, read class `1`.
@@ -1277,6 +1280,240 @@ and the structs only where the store has nothing; a replica that
 integrated around a gap takes the full state of the writer that removed the
 subtree without throwing, and ends at its state vector), the random corpus's
 raw adapter (seed 140 passes: its pin is gone).
+
+### YP24 — one string table per update (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/structs/Item.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`)
+
+Reason: the v2 encoding writes every map key, root name and string value
+in full, every time. Upstream's `writeKey` has a cache, commented out
+(`keyMap.set`) because decoders older than its own read format keys with
+`readString`, and map keys and root names do not go through it anyway
+(`writeString` in `Item#write`, `readString` in both struct readers). In an
+edytor document a block's id (12 characters) was written five times (its
+registry key, its `id` attr, its home slot `{ b }`, its record key, the
+boundary of the split that made it), and `"blocks"`, `"blockattr"`, `"id"`,
+`"type"`, `"paragraph"`, an actor's id, once per block each: about a fifth
+of a stored document. Design and measurements:
+`docs/archive/storage-diet/design.md`. Edytor's schema generation 10 is the
+cutover (no conversion).
+
+Patch (new code delimited by `// YP24 begin` / `// YP24 end`, edits marked `// YP24`):
+
+- **The string table.** `UpdateEncoder#writeKey` keeps its cache: a string
+  the update has written is its index. The key column (`keyClockEncoder`)
+  is a `UintOptRleEncoder` saying `0` for a new string (the next in the
+  string column) and the index plus one for a known one, so a key repeated
+  block after block is the same small number each time (gzip finds it; a
+  running difference, upstream's `IntDiffOptRle`, did not).
+  `UpdateDecoder#readKey` reads it back (an index past the table is
+  refused).
+- **Keys and root names through it.** `Item#write` writes a map entry's
+  key, a root parent's name and a string parent with `writeKey`; both
+  struct readers (`updates.js`, `BlockSet.js`) read them with `readKey`.
+  Node names and format keys already went through `writeKey`.
+- **Content values through it.** `writeAny`/`writeJSON` write lib0's
+  `writeAny` layout with every string and object key through the table
+  (`writeValue`); `readAny`/`readJSON` read it back (`readValue`). Numbers,
+  booleans, `null`, `undefined` and binary keep lib0's codec. Text
+  (`ContentString`) stays in the string column, never in the table.
+- **The encoding's name.** The update's first varuint, upstream's reserved
+  feature flag (`0`), says `1` (`UPDATE_ENCODING`); the decoder refuses an
+  update of another encoding before it reads anything (`an update of
+  another encoding`): an upstream update, or one of edytor's generations 6
+  to 9, is refused, never mis-read.
+
+The tables are built in write order, so an update is still a function of
+the store (byte-identical for identical stores, as the fork's differential
+rows check), and every path that re-encodes (`mergeUpdates`, `diffUpdate`,
+a block set's re-write, the room's stripped frames) writes through the
+encoder's own methods.
+
+Plain programs (every upstream test) are untouched in what they store; their
+bytes differ from upstream's.
+
+Measured: see `docs/archive/storage-diet/design.md` ("Prototype: measured").
+
+Oracle: the upstream suite (`updates.tests.js` merges, diffs and re-encodes
+every program), `src/tests/crdt/yp24-values.test.ts` (every value shape), `src/tests/crdt/yp16-writes.test.ts` and the baseline leg
+of `search-marker-format.test.ts` (the stores each engine reads back from
+its own encoding, `src/tests/crdt/harness/stored.js`, after every
+operation), `generation.test.ts` (an earlier encoding is refused before
+decode), `boundary-attacks/envelope.test.ts` (a v13 update inside a v14
+frame no longer integrates), the random corpus (every adapter).
+
+### YP25 — a paired mark's value is written in parts (`src/structs/Item.js`, `src/ynode.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`)
+
+Reason: a paired mark (YP13) is a format item whose value is a JSON array —
+a start's `[v, l, c, k, side]` (its value, Lamport stamp, operation id and
+side), an end's `[c, k, side]` (its start's id) — written through
+`writeAny`, so a 53-bit client was a 9-byte float64 in every one, a start's
+operation id repeated the item's own id, and an end's repeated its start's,
+right before it: 33 bytes an item, 66 a mark. Design and measurements:
+`docs/archive/storage-diet/design.md`. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP25 begin` / `// YP25 end`, edits marked `// YP25`):
+
+- `ContentFormat#write` takes the item (`Item#write` passes itself to its
+  content's `write`) and writes, after its key, `writeFormatValue`: a flags
+  length — bit 0 the side; bit 1, for a start, its operation id is the
+  item's own (a redo's copy keeps the original's: then the id follows), for
+  an end, its start is the item's client's (the distance back to its clock
+  follows), else the start's id; bit 2 a start's value is `true`, bit 3
+  `null` — then a start's stamp (a length) and, unless implied, its id and
+  value. Any other value (a plain format, YP19's inert one; a value of
+  another shape) is flagged `16` and written whole.
+- `readContentFormat(decoder, id)` reads it back (`readFormatValue`, given
+  the item's id): both struct readers pass `readItemContent` the id they
+  create the item with.
+
+The value read back is the array written, so the mark rules (`foldPaired`,
+`markClass`) see what they saw. Plain programs keep their stores.
+
+Oracle: `src/tests/crdt/yp25-marks.test.ts` (every shape — own and copied
+ids, an end of another writer's start, `true`, `null`, string and object
+values, plain formats, values of another shape — read back through
+`applyUpdate`, `decodeUpdate`, `mergeUpdates` and `diffUpdate`, the same
+store giving the same bytes; a mark's cost), the mark rows (`mark.*`), the
+random corpus (every adapter).
+
+### YP26 — one client table per update (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/ids.js`)
+
+Reason: a client id (53 bits since v14: an 8-byte varint) was written in
+full wherever an update names it — each client's struct section, every
+origin, right origin and parent id, the delete set — and the client
+column's run-length code only helps while consecutive structs name one
+client. A document edited over many sessions (each page load is a client)
+names another session's text at most of its origins: 10 to 12 % of its
+bytes were client ids. Design and measurements:
+`docs/archive/storage-diet/design.md`. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP26 begin` / `// YP26 end`, edits marked `// YP26`):
+
+- `UpdateEncoder` keeps a client table: `clientIndex(client)` writes a
+  client's index in it, in first-use order, to the client column, and a new
+  client's index (the table's size) is followed there by its id, once;
+  `writeClient`, `writeLeftID` and `writeRightID` write through it.
+- `UpdateDecoder#readClient` (and `readLeftID`, `readRightID`) reads an
+  index: the table's size is a new client, whose id follows; one past the
+  table is refused (`an unknown client`).
+- The delete set's client goes through the same table: `writeIdSet` writes
+  it with `writeDsClient`, `readIdSet` and `readAndApplyDeleteSet` read it
+  with `readDsClient` (an `IdSetEncoder`/`IdSetDecoder` alone keeps the
+  plain varint).
+
+Every path that writes an update writes its clients through these methods
+(the struct sections, `writeStructs`, the lazy writer of `mergeUpdates` and
+`diffUpdate`, a block set's re-write, the room's stripped frames, the
+delete-only updates), in the order a reader reads them, so an update stays
+a function of the store. The state vector keeps its own encoding.
+
+Oracle: `src/tests/crdt/yp26-clients.test.ts` (twelve 53-bit sessions
+typing, deleting and syncing: their store reads back through `applyUpdate`,
+`decodeUpdate`, `mergeUpdates` and `diffUpdate`; two interleaved writers
+cost their ids once; an index past the table is refused), the upstream
+suite, the random corpus (every adapter).
+
+### YP27 — the parent kind in the info byte (`src/structs/Item.js`, `src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/updates.js`, `src/utils/BlockSet.js`, `src/ynode.js`)
+
+Reason: an item written with its parent (no origin, no right origin: a map
+entry's first value, a list's first item) said in a column of its own,
+`parentInfo` (a run-length code of a flag), whether the parent is a root
+(its name follows) or an item (its id follows). In an edytor document the
+flag alternates block after block (a registry entry under a root, then its
+attrs under the block's node), so the run-length code wrote two bytes a
+change: 8 bytes a block. Content refs fit four bits (0 to 12), so the
+info byte has room. Schema generation 10 (YP24's).
+
+Patch (edits marked `// YP27`): `Item#write` sets bit 5 (`BIT5`) of the
+info byte when the parent it writes is a root's name (or a string parent,
+the differential updates' edge case) and masks the content ref with
+`BITS4`; both struct readers read the bit instead of the column, and
+`readItemContent` masks with `BITS4`. `UpdateEncoder#writeParentInfo`,
+`UpdateDecoder#readParentInfo` and the `parentInfo` column are removed.
+
+Oracle: the upstream suite, every engine row reading stores back
+(`yp16-writes`, `yp25-marks`, `yp26-clients`), the random corpus (every
+adapter).
+
+### YP28 — large integers in content values (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`)
+
+Reason: lib0's `writeAny` writes an integer past 31 bits as a float64 (9
+bytes). Edytor's values hold two kinds of them: a block's incarnation nonce
+(32 bits, written three times a block: the node's `n`, its record's `i`, the
+`n` of the boundary of the split that made it; past 2³¹ half the time) and
+a block slot's split key (`s: [client, clock]`, the id of that boundary: a
+53-bit client). Schema generation 10 (YP24's).
+
+Patch (edits marked `// YP28`, in YP24's value codec): an integer past 31
+bits a varint holds exactly is tag `115` and a varint; a two-element array
+of such an integer and a non-negative integer (an item id) is tag `114`,
+its first through the client table (YP26) and its second a varint. Both
+read back as the same number and the same array, whatever the value means.
+
+Oracle: `src/tests/crdt/yp24-values.test.ts` (every value shape — strings,
+nested objects and arrays, integers either side of 31 bits and of the safe
+range, floats, booleans, `null`, binary, pairs of every kind — reads back
+through `applyUpdate`, `mergeUpdates` and `diffUpdate`; a repeated string
+costs one table entry), the random corpus (every adapter).
+
+### YP29 — a collected mark or claim keeps only its class (`src/structs/Item.js`, `src/utils/marks.js`, `src/ynode.js`)
+
+Reason: YP13, YP21 and YP22 keep the content of every collected item whose
+sort class (`markClass`) is not content's: the class orders concurrent
+inserts at the item's origin on every replica, collected or not. A paired
+mark item's or a claim item's class is all a sort reads of it (two marks or
+two claims of one class at one origin sort by client id), yet each kept its
+key and value. Edytor's purge now deletes the marks of the streams it
+empties (`room.purge.what`), and an undone format operation's marks are
+collected too. A move record still keeps its content: the sort of two
+records at one origin reads their chains. Schema generation 10 (YP24's).
+
+Patch (new code delimited by `// YP29 begin` / `// YP29 end`, edits marked `// YP29`):
+
+- **A collected item's class** (`Item.js`): `ContentDeleted` takes an
+  optional `cls` (`0` a left-side mark, `2` a right-side one, `3` a claim)
+  for each of its units; with one it is content ref 13
+  (`readContentClass` in `ynode.js`'s `contentRefs`, its length and class
+  in one length word: `len · 4 + cls`), countable as the claim it was, not
+  as a mark; it splits and merges with its class, and integrates deleted as
+  any `ContentDeleted`.
+- `Item#gc` (an item of a live parent) gives a collected item of class 0 or
+  2, or a claim item every unit of which is a claim, a `ContentDeleted` of
+  its class; class 1 (content, a block slot's split key) and the move
+  records (4, 5) keep what they kept.
+- `markClass` reads a collected item's class first.
+
+Every reader of a mark or a claim reads live items only (`forward`,
+`findMarker`'s walk, `RangeCursor#_foldItem`, edytor's rows and scans), so
+a collected one's content was never read but by the sort.
+
+Oracle: `src/tests/crdt/yp21-claims.test.ts` (a collected claim item keeps
+its class, and a replica that receives it integrates it deleted, with its
+class), `purge-before-horizon.test.ts` (the marks of a stream the purge
+empties go; a live block keeps its own), the upstream suite
+(`encoding.tests.js` pins ref 13), the mark rows, the random corpus (every
+adapter).
+
+### YP30 — a transaction's `beforeCommit` (`src/utils/Transaction.js`, `src/utils/Doc.js`)
+
+Reason: edytor writes a replica's actor binding (`c/<clientID>`,
+`attr.binding.first-write`) with the replica's first write, inside that
+write's transaction, so a replica that only reads writes nothing and every
+struct a replica writes travels in the update that binds it. No event ran
+inside a transaction after its function: `beforeTransaction` comes before
+anything is written, `commit` after the transaction closed (a write there is
+a transaction of its own, a second update).
+
+Patch (new code delimited by `// YP30 begin` / `// YP30 end`): `transact`,
+for the outermost call, emits `beforeCommit` (transaction, doc) after the
+function returned or threw, while `doc._transaction` is still set, so a
+listener's writes join the transaction (its insert and delete sets, its one
+update, the `commit` fold); then the cleanup runs as before, also when a
+listener throws. Emitted only when the document has a listener. Not
+emitted for a nested call.
+
+Oracle: `src/tests/crdt/attribution/first-write-binding.test.ts` (the first
+local edit's one update carries the binding; a remote update writes none),
+the upstream suite.
 
 ## Generated declarations (`dts/`)
 

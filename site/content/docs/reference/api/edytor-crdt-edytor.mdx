@@ -139,7 +139,7 @@ declare const bindCrdt: (Y: EngineApi) => {
     Awareness: typeof _Awareness;
     doc: {
         SCHEMA: {
-            readonly version: 9;
+            readonly version: 10;
             readonly name: "edytor-doc";
             readonly roots: {
                 readonly registry: "blocks";
@@ -150,7 +150,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 readonly schema: "schema";
             };
         };
-        SCHEMA_VERSION: 9;
+        SCHEMA_VERSION: 10;
         SCHEMA_NAME: "edytor-doc";
         META_KEY: "meta";
         init: (doc: import("./engine-api.js").EngineDoc, opts?: {
@@ -255,7 +255,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
                 itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
                 readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-                computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+                computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
                 flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
                 ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
                 contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -416,7 +416,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         purge: (doc: import("./engine-api.js").EngineDoc, facade: {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
-        }, horizon: import("./purge.js").Horizon) => import("./purge.js").PurgeReport;
+        }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
         restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
         model: {
@@ -466,7 +466,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             openRangeCursor: (text: import("./engine-api.js").EngineNode) => import("./text/model.js").RangeCursor;
             itemsOfRange: (text: import("./engine-api.js").EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
             readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (_doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
+            computeOwnership: (doc: import("./engine-api.js").EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
             flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
             ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
             contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
@@ -1157,9 +1157,9 @@ export type DocumentAttribution = {
 };
 ```
 
-- `actors`: actorId → profile — the replicated actor dictionary (`u/` records).
+- `actors`: actorId → profile — the replicated actor dictionary (`u/` records): the actors whose replicas wrote, each published with its replica's first write (or `setProfile`).
 - `actorOf`: Resolve an item's inserting replica (clientID) to an actor id (`c/` records).
-- `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW).
+- `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW), a write of this replica (its binding goes with it, as with any first write).
 - `block`: Compact per-block attribution for `blockId` (`{createdBy, contributors, lastChangedBy}` — durable actor ids, never replica clientIDs), or `undefined` for system/foreign blocks that carry no record.
 
 ## DocumentDestroyedError
@@ -1450,6 +1450,7 @@ export declare class EdytorDocument {
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
     clearHistory: () => void;
+    endHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;
@@ -1487,6 +1488,7 @@ export declare class EdytorDocument {
 - `trackOrigin`: Track a local-edit transaction origin for history capture — the seam views use to enroll their own `TRANSACTION` instance in this document's history.
 - `untrackOrigin`: Release a previously-tracked origin — the view-teardown counterpart of `trackOrigin`.
 - `clearHistory`: Drop the undo/redo stacks.
+- `endHistory`: End this session's history: the page it was edited in left for good.
 - `transact`: Local document transaction — headless edits, one undo step per call (`origin`: another origin, which the document's history tracks only when it is tracked).
 - `onReady`: Subscribe to the readiness transition — fires once, synchronously, inside `sync` when `_readiness` leaves `'pending'` (every decision path goes through `sync()`: provider `synced`, local seed, explicit call).
 - `syncPending`: Whether an attached provider has neither settled nor reached its bound.
@@ -1564,6 +1566,8 @@ export interface EngineDoc {
     off(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;
     on(name: 'commit', f: (transaction: never) => void): void;
     off(name: 'commit', f: (transaction: never) => void): void;
+    on(name: 'beforeCommit', f: (transaction: never) => void): void;
+    off(name: 'beforeCommit', f: (transaction: never) => void): void;
     on(name: 'destroy', f: () => void): void;
     off(name: 'destroy', f: () => void): void;
     readonly store?: {
@@ -1579,6 +1583,7 @@ export interface EngineDoc {
 ```
 
 - `keepReplaced`: Which node values a concurrent write of the same key replaced keep their subtree (`null`: none, upstream's semantics).
+- `on`: Doc-level `update` channel — fires once per transaction that produced replicated state (local commits AND remote `applyUpdate`s), carrying the transaction's origin and the transaction itself (`transaction.local` distinguishes local commits from remote applies).
 - `on`: Doc-level `update` channel — fires once per transaction that produced replicated state (local commits AND remote `applyUpdate`s), carrying the transaction's origin and the transaction itself (`transaction.local` distinguishes local commits from remote applies).
 - `on`: Doc-level `update` channel — fires once per transaction that produced replicated state (local commits AND remote `applyUpdate`s), carrying the transaction's origin and the transaction itself (`transaction.local` distinguishes local commits from remote applies).
 - `on`: Doc-level `update` channel — fires once per transaction that produced replicated state (local commits AND remote `applyUpdate`s), carrying the transaction's origin and the transaction itself (`transaction.local` distinguishes local commits from remote applies).

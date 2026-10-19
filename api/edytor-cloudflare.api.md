@@ -109,7 +109,7 @@ export declare class AttachedDocument {
         skipped: string[];
     };
     purge(): (PurgeReport & {
-        horizon: number;
+        horizon: number | null;
     }) | null;
     metrics(): RoomMetrics;
     dropWaitingDeletes(): {
@@ -479,7 +479,7 @@ export declare class DocumentRoom<Env = DocumentRoomEnv> extends DurableObject<E
         skipped: string[];
     };
     purge(): (PurgeReport & {
-        horizon: number;
+        horizon: number | null;
     }) | null;
     listComments(): CommentSnapshot;
     comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome>;
@@ -895,6 +895,7 @@ export type PurgeReport = {
     records: number;
     claims: number;
     merged: number;
+    released: number;
 };
 ```
 
@@ -1024,7 +1025,7 @@ export type RoomLogEntry = {
     user: string;
 } | ({
     edytor: 'purge';
-    horizon: number;
+    horizon: number | null;
     bytes: number;
 } & PurgeReport) | {
     edytor: 'quota';

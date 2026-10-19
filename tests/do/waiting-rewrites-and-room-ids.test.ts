@@ -221,7 +221,10 @@ describe('YW-09 · read-only tabs on the channel', () => {
 		const second = viewer(two.doc);
 		second.on('permission-denied', (reason) => denied.push(`two: ${reason}`));
 		await vi.waitFor(() => expect([second.synced, second.readOnly]).toEqual([true, true]));
-		// Each tab heard the other's actor record over the channel.
+		// A viewer writes nothing until it writes: each tab's profile (its
+		// actor records) reaches the other over the channel.
+		one.attribution.setProfile({ name: 'Viv' });
+		two.attribution.setProfile({ name: 'Viv' });
 		await vi.waitFor(() =>
 			expect([
 				one.doc.store.clients.has(two.doc.clientID),

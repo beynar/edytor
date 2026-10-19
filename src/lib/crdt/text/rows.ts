@@ -44,6 +44,8 @@ export type LiveRow = {
 	keyIndex: Map<string, number>;
 	/** Indexes into `bounds` of the delimiting boundaries, ascending ({@link placeRow}). */
 	cuts: number[];
+	/** The block each cut opens the stream of (`null`: a removed block's, nobody's). */
+	heads: (BlockId | null)[];
 	/** The block of segment 0 (`null`: the home is delimited elsewhere). */
 	head: BlockId | null;
 };
@@ -112,6 +114,7 @@ export const rowOf = (scan: TextRow): LiveRow => {
 		key: scan.key,
 		keyIndex,
 		cuts: [],
+		heads: [],
 		head: scan.home
 	};
 };
@@ -211,7 +214,7 @@ export const segmentOfCut = (row: LiveRow, cut: string | null): number => {
 
 /** The block of segment `k` (`null`: nobody's). */
 export const headOf = (row: LiveRow, k: number): BlockId | null =>
-	k === 0 ? row.head : row.bounds[row.cuts[k - 1]].s!;
+	k === 0 ? row.head : row.heads[k - 1];
 
 /** The claims of segment `k`: its claim items, in text order. */
 export const segmentClaims = (row: LiveRow, k: number): Claim[] => {
@@ -238,14 +241,23 @@ export const streamOfSegment = (row: LiveRow, k: number, block: BlockId): Stream
 /**
  * Set the row's segments from the delimiting boundaries (`delim`): the
  * home's head (unless delimited elsewhere), then one per cut — the same
- * streams `placeText` returns for the row's scan.
+ * streams `placeText` returns for the row's scan (a cut of a block `nobody`
+ * names opens nobody's stretch).
  */
-export const placeRow = (row: LiveRow, delim: ReadonlyMap<BlockId, string>): void => {
+export const placeRow = (
+	row: LiveRow,
+	delim: ReadonlyMap<BlockId, string>,
+	nobody: (s: BlockId) => boolean
+): void => {
 	const cuts: number[] = [];
+	const heads: (BlockId | null)[] = [];
 	for (let j = 0; j < row.bounds.length; j++) {
 		const b = row.bounds[j];
-		if (b.m === undefined && delim.get(b.s) === b.key) cuts.push(j);
+		if (b.m !== undefined || delim.get(b.s) !== b.key) continue;
+		cuts.push(j);
+		heads.push(nobody(b.s) ? null : b.s);
 	}
 	row.cuts = cuts;
+	row.heads = heads;
 	row.head = delim.has(row.home) ? null : row.home;
 };

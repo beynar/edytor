@@ -1,8 +1,19 @@
+/**
+ * The update encoding this fork writes and reads, in upstream's reserved
+ * feature-flag varuint (upstream writes `0`): `1`, a string table per update.
+ */
+export const UPDATE_ENCODING: 1;
 export class IdSetEncoder {
     restEncoder: encoding.Encoder;
     dsCurrVal: number;
     toUint8Array(): Uint8Array<ArrayBuffer>;
     resetIdSetCurVal(): void;
+    /**
+     * YP26: the client of a delete set's ranges.
+     *
+     * @param {number} client
+     */
+    writeDsClient(client: number): void;
     /**
      * @param {number} clock
      */
@@ -24,15 +35,28 @@ export class UpdateEncoder extends IdSetEncoder {
      * @type {number}
      */
     keyClock: number;
-    keyClockEncoder: encoding.IntDiffOptRleEncoder;
+    keyClockEncoder: encoding.UintOptRleEncoder;
     clientEncoder: encoding.UintOptRleEncoder;
     leftClockEncoder: encoding.IntDiffOptRleEncoder;
     rightClockEncoder: encoding.IntDiffOptRleEncoder;
     infoEncoder: encoding.RleEncoder<number>;
     stringEncoder: encoding.StringEncoder;
-    parentInfoEncoder: encoding.RleEncoder<number>;
     typeRefEncoder: encoding.UintOptRleEncoder;
     lenEncoder: encoding.UintOptRleEncoder;
+    /**
+     * Each client's index, in first-use order.
+     *
+     * @type {Map<number,number>}
+     */
+    clientTable: Map<number, number>;
+    /**
+     * YP26: write `client` to the client column as its index in the update's
+     * client table, in first-use order: a new client's index (the table's
+     * size) is followed by its id, once.
+     *
+     * @param {number} client
+     */
+    clientIndex(client: number): void;
     /**
      * @param {ID} id
      */
@@ -53,10 +77,6 @@ export class UpdateEncoder extends IdSetEncoder {
      * @param {string} s
      */
     writeString(s: string): void;
-    /**
-     * @param {boolean} isYKey
-     */
-    writeParentInfo(isYKey: boolean): void;
     /**
      * @param {number} info An unsigned 8-bit integer
      */
@@ -84,6 +104,13 @@ export class UpdateEncoder extends IdSetEncoder {
      * occur very often. For a 3d application, the key `position` might occur very often.
      *
      * We cache these keys in a Map and refer to them via a unique number.
+     *
+     * YP24: the cache is on (upstream left it off for decoders older than its
+     * own), and every map key, root name and string of a content value goes
+     * through it: an update writes each distinct string once. The key column
+     * says `0` for a new string (the next in the string column) and the index
+     * of a known one plus one, so a key repeated block after block is the same
+     * small number every time.
      *
      * @param {string} key
      */

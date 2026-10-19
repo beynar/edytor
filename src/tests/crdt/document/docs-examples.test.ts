@@ -121,13 +121,17 @@ describe('docs: attribution + actor reads', () => {
 			value: docValue(),
 			actor: { id: 'user-42', name: 'Ada', color: '#7559ee' }
 		});
+		// A replica that only read wrote nothing: its binding and profile go
+		// with its first write.
+		expect(document.attribution.actorOf(document.clientID)).toBeUndefined();
+		expect(document.attribution.actors.get('user-42')).toBeUndefined();
+		const [block] = document.facade.project().children;
+		document.transact(() => document.facade.insertText(block.id, 5, '!'));
 		expect(document.attribution.actorOf(document.clientID)).toBe('user-42');
 		expect(document.attribution.actors.get('user-42')).toEqual({
 			name: 'Ada',
 			color: '#7559ee'
 		});
-		const [block] = document.facade.project().children;
-		document.transact(() => document.facade.insertText(block.id, 5, '!'));
 		// U1 compact block attribution — the edit's author stamps the block.
 		// The seed itself carries no stamp (R13 §2.1, D-3): no `createdBy`.
 		expect(document.attribution.block(block.id)).toMatchObject({

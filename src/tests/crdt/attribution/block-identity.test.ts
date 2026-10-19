@@ -7,7 +7,7 @@
  *   replica wrote the CURRENT `l` item), not a per-replica value cache —
  *   undo on one device must not hide a later surviving same-actor edit
  *   from another device.
- * - `b/` records are keyed by block INCARNATION (the registry node's
+ * - block records are keyed by block INCARNATION (the registry node's
  *   item id), not the recyclable public id — a delayed update written
  *   against an older incarnation must not contaminate a recreated block.
  * - Paragraph attribution is a block-id LINEAGE contract: contributors

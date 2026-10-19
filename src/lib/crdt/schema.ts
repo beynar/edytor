@@ -16,7 +16,11 @@ export const REGISTRY_KEY = 'blocks';
 export const META_ROOT_KEY = 'meta';
 /** Attribution metadata root (`SCHEMA.roots.attribution`). */
 export const ATTRIBUTION_ROOT = 'attribution';
-/** The per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
+/**
+ * The per-block attribution root — one record per block, keyed by the block's
+ * id (`SCHEMA.roots.blockAttribution`): the string table writes the id once
+ * for its registry entry and its record (fork patch YP24).
+ */
 export const BLOCK_ATTR_ROOT = 'blockattr';
 /**
  * The text hold records (fork patch YP20): a text delete appends one record
@@ -39,13 +43,23 @@ export const DOC_DATA_ROOT = 'docdata';
  */
 export const HORIZON_ROOT = 'horizon';
 export const HORIZON_ATTR = 'h';
+/**
+ * The ended histories (`hist.release.end`): a list of release records, one
+ * item per session whose history ended (its page left for good). A
+ * record's engine id names its writer and the clock it ended at: what that
+ * writer deleted before it (its delete and withdraw marks, its text hold
+ * records) no history can bring back, so the room's purge removes it at
+ * its next tick, past the horizon or not. The purge drops a record the
+ * horizon covers.
+ */
+export const RELEASE_ROOT = 'released';
 
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';
 export const INLINE_NODE = 'inline';
 
-/** Attr keys on a block node (`SCHEMA.blockAttrs`). */
+/** Attr keys on a block node (`SCHEMA.blockAttrs`); `id` is an atom's own (a block's id is its registry key). */
 export const ID = 'id';
 export const TYPE = 'type';
 /** A block's or atom's whole data, as documents before 0.1.0-next.6 stored it: no longer read; the room's purge deletes it. */
@@ -81,18 +95,16 @@ export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }):
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
 
-/** `b/<blockId>` record-key prefix on the `blockattr` root. */
-export const REC_PREFIX = 'b/';
-
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
 	// 7: a text delete is a hold record (fork patch YP20) on the wire and in
 	// storage; 8: a merge claim is an item `{m}` in a backing text (fork patch
 	// YP21), a block has no `claims` list; 9: a block's place is its home slot
 	// in its parent's sequence and a move is a move record (fork patch YP22),
-	// a block has no `at` map and an array item no rank. A container or frame
+	// a block has no `at` map and an array item no rank; 10: the update encoding
+	// writes each distinct string once (fork patch YP24). A container or frame
 	// of an earlier generation is refused.
-	version: 9,
+	version: 10,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

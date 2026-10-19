@@ -3,7 +3,7 @@
  *
  * One block gets one small replicated record plus one block-node attr:
  *
- * - `b/<blockId>` → nested node on the `blockattr` root
+ * - `<blockId>` → nested node on the `blockattr` root
  *   (`SCHEMA.roots.blockAttribution`) carrying `c` (createdBy actorId)
  *   and `k/<actorId>` → true contributor membership.
  * - `l` (lastChangedBy) lives on the block node itself —
@@ -27,7 +27,7 @@
  * again after its creation was undone, or concurrently by two peers), and a
  * delayed remote write always addresses the incarnation its author saw.
  * Every block node carries the replicated nonce `n` of its incarnation;
- * every `b/<id>` record is stamped (`i`) with the nonce it belongs
+ * every record is stamped (`i`) with the nonce it belongs
  * to, and `ensureRecord` swaps in a FRESH record whenever the live node's
  * nonce doesn't match — a late write to a dead incarnation lands on an
  * orphaned record the recreated block never reads. An undo/redo copy of the
@@ -48,7 +48,7 @@
  * - Semantic no-ops (same-value type/data, empty ranges, pure moves)
  *   are suppressed by the CALLERS: ops stamp only after a real write.
  *
- * Known residual: `b/<id>` nodes are LWW map entries — concurrent FIRST
+ * Known residual: record nodes are LWW map entries — concurrent FIRST
  * touches of a record-less block (foreign/migrated docs may lack records)
  * can lose one contributor add. Convergent; heals on the next touch.
  *
@@ -60,7 +60,7 @@
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { REGISTRY_KEY, type BlockId } from '../placement/model.js';
-import { BLOCK_ATTR_ROOT, isNodeLike, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
+import { BLOCK_ATTR_ROOT, isNodeLike, LAST_CHANGED_ATTR, NONCE } from '../schema.js';
 import { attrItems, newNode as makeNode } from '../structs.js';
 
 /** The durable per-block attribution record a replica sees. */
@@ -81,20 +81,18 @@ export type BlockAttribution = {
 	lastChangedBy?: ActorId;
 };
 
-// `BLOCK_ATTR_ROOT`/`LAST_CHANGED_ATTR`/`REC_PREFIX` live in the shared
+// `BLOCK_ATTR_ROOT`/`LAST_CHANGED_ATTR` live in the shared
 // `../schema.js` leaf — re-exported so existing import sites stay.
 export { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR };
 
 const REC_NODE = 'brec';
 const CREATED_KEY = 'c';
 const CONTRIBUTOR_PREFIX = 'k/';
-/** Incarnation stamp on a `b/` record: the nonce `n` of the node it belongs to. */
+/** Incarnation stamp on a record: the nonce `n` of the node it belongs to. */
 const INCARNATION_KEY = 'i';
 
-const recKey = (id: BlockId): string => `${REC_PREFIX}${id}`;
-
 const recordOf = (doc: EngineDoc, id: BlockId): EngineNode | null => {
-	const v = doc.get(BLOCK_ATTR_ROOT).getAttr(recKey(id));
+	const v = doc.get(BLOCK_ATTR_ROOT).getAttr(id);
 	return isNodeLike(v) ? v : null;
 };
 
@@ -104,7 +102,7 @@ const blockNodeOf = (doc: EngineDoc, id: BlockId): EngineNode | null => {
 };
 
 /**
- * Reads resolve whatever record node the `b/<id>` attr currently elects.
+ * Reads resolve whatever record node the block's attr currently elects.
  * Isolation is enforced on the WRITE side — `ensureRecord` swaps a fresh
  * record in when the attr winner's incarnation stamp doesn't match the live
  * block node's nonce — and the attr winner is already convergent.
@@ -163,7 +161,7 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 	const newNode = (name: string): EngineNode => makeNode(Y, name);
 
 	/**
-	 * Get-or-create the `b/<id>` record for `node`'s incarnation (its nonce).
+	 * Get-or-create the record for `node`'s incarnation (its nonce).
 	 * A record stamped for another incarnation is dead state — a fresh record
 	 * replaces it as the attr winner (the orphan stays readable only as the
 	 * last-incarnation fallback). `node` defaults to the id's current registry
@@ -176,7 +174,7 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 			return existing;
 		}
 		const rec = newNode(REC_NODE);
-		doc.get(BLOCK_ATTR_ROOT).setAttr(recKey(id), rec);
+		doc.get(BLOCK_ATTR_ROOT).setAttr(id, rec);
 		if (n !== undefined) rec.setAttr(INCARNATION_KEY, n);
 		return rec;
 	};

@@ -67,6 +67,7 @@ import {
 	pieces,
 	placeText,
 	rangesOf,
+	removedKeys,
 	scanText
 } from './streams.js';
 
@@ -81,6 +82,7 @@ export {
 	ownedLength,
 	pieces,
 	placeText,
+	removedKeys,
 	scanText
 } from './streams.js';
 
@@ -338,15 +340,15 @@ export const readSegs = (segs: readonly Seg[], stats?: RangeReadStats): RangeIte
  * index's oracle): each block's claims are its implicit ones, then the claim
  * items of its stream.
  */
-export const computeOwnership = (_doc: EngineDoc, given: ReadonlyMap<BlockId, TextBlockRec>) => {
+export const computeOwnership = (doc: EngineDoc, given: ReadonlyMap<BlockId, TextBlockRec>) => {
 	const rows: TextRow[] = [];
 	for (const rec of given.values()) if (rec.content) rows.push(scanText(rec.id, rec.content));
-	const delim = delimiters(given, rows);
+	const delim = delimiters(given, rows, removedKeys(doc.get(SCHEMA.roots.registry)));
 	const streams = new Map<BlockId, Stream>();
 	const inText = new Map<BlockId, Stream[]>();
 	const rowOf = new Map<EngineNode, TextRow>();
 	for (const row of rows) {
-		const list = placeText(row, delim);
+		const list = placeText(row, delim, (s) => !given.has(s));
 		inText.set(row.home, list);
 		rowOf.set(row.text, row);
 		for (const s of list) streams.set(s.block, s);

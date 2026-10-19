@@ -137,7 +137,7 @@ export class Item extends AbstractStruct {
      * @return {Item}
      */
     split(transaction: Transaction | null, diff: number): Item;
-    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12;
+    get ref(): 2 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12 | 13;
     /**
      * @type {true}
      */
@@ -197,12 +197,13 @@ export class AbstractContent {
      * @param {UpdateEncoder} _encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
+     * @param {Item} [_item] the item written (YP25: a format item reads its id)
      */
-    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
+    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number, _item?: Item): void;
     /**
-     * @return {1|2|3|4|5|6|7|8|9|11|12}
+     * @return {1|2|3|4|5|6|7|8|9|11|12|13}
      */
-    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12;
+    getRef(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12 | 13;
 }
 export class ContentAny {
     /**
@@ -322,9 +323,19 @@ export class ContentBinary {
 export class ContentDeleted {
     /**
      * @param {number} len
+     * @param {number} [cls] YP29: a collected mark's or claim's sort class
      */
-    constructor(len: number);
+    constructor(len: number, cls?: number);
     len: number;
+    /**
+     * YP29: what a collected paired mark item or claim item keeps, for each
+     * of its units: its sort class (`markClass`: `0` a left-side mark, `2` a
+     * right-side one, `3` a claim), which orders concurrent inserts at its
+     * origin on every replica (`undefined`: none, any other deleted content).
+     *
+     * @type {number|undefined}
+     */
+    cls: number | undefined;
     /**
      * @return {number}
      */
@@ -371,9 +382,9 @@ export class ContentDeleted {
      */
     write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
-     * @return {1}
+     * @return {1|13}
      */
-    getRef(): 1;
+    getRef(): 1 | 13;
 }
 /**
  * A hold record: one unit per held id range (`client, clock, len`). While the
@@ -521,9 +532,7 @@ export class ContentMove {
      */
     getRef(): 12;
 }
-/**
- * @private
- */
+export function readFormatValue(decoder: UpdateDecoder, key: string, id: ID): any;
 export class ContentFormat {
     /**
      * @param {string} key
@@ -575,8 +584,9 @@ export class ContentFormat {
      * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
+     * @param {Item} [item] YP25: the item, whose id a mark's operation id usually is
      */
-    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number, item?: Item): void;
     /**
      * @return {6}
      */

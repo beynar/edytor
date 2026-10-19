@@ -34,7 +34,9 @@
  * the render epoch and the gesture serial: echo, render drift (displayed
  * again), composition, foreign write or intent (adopted). Two named, counted,
  * time-bounded browser rules are the only signatures:
- * the Android post-delete snap-back and the IME post-commit jump.
+ * the Android post-delete snap-back and the IME post-commit jump. A render
+ * that moved the DOM selection with no event to say so is drift too, read
+ * from the observer's records (`rendered`, `sel.drift.unreported`).
  */
 import { untrack } from 'svelte';
 import type { Edytor } from '../edytor.svelte.js';
@@ -115,6 +117,8 @@ export class Projector {
 	#opening = false;
 	/** The gesture serial at the last observation (a display or an adopted `selectionchange`). */
 	#serial = -1;
+	/** Where the DOM selection was at that observation (`#note`; null: no range). */
+	#at: Points | null = null;
 	/** The named rules' evidence: the last model-owned delete and the last IME commit. */
 	#deleted: { attempt: Attempt; serial: number; at: number } | null = null;
 	#committed: { serial: number; at: number } | null = null;
@@ -214,12 +218,50 @@ export class Projector {
 	 * removal re-rendering the text under a range) runs now. The flag is no
 	 * reactive source, so no later flush is owed: without this, the range the
 	 * render moved (Firefox keeps it where the removed element stood) would be
-	 * adopted as the gesture's when its `selectionchange` lands. The observer
-	 * calls it too once it processed DOM records: a display that waits gets a
-	 * pass.
+	 * adopted as the gesture's when its `selectionchange` lands.
 	 */
 	inputHandled = () => {
 		if (this.#pending) this.edytor.surface.update();
+	};
+
+	/**
+	 * The observer compared the records of a DOM change (a render, a browser
+	 * edit): a display that waits on them gets a pass (`inputHandled`), and a
+	 * DOM selection they moved off the last observation with no gesture since
+	 * is render drift no event reports (`sel.drift.unreported`). A render no
+	 * commit asked for (a kind's decoration reading state of its own: a code
+	 * grammar that lands re-tokenizes its lines) replaced the text node the
+	 * caret was in; the browser left the caret where that node stood (the
+	 * line's start) and Chromium and WebKit send no `selectionchange` for it,
+	 * while one that comes would read as foreign (no flush ran the projector
+	 * since). The value is displayed again now, in the render's own task:
+	 * before a key, or its `beforeinput` declaring that caret, can read it.
+	 */
+	rendered = () => {
+		if (this.#unreported()) this.edytor.selection.display();
+		else this.inputHandled();
+	};
+
+	/**
+	 * `rendered`'s drift: a text value, no display waiting, no gesture, drag
+	 * or composition since the last observation, and the DOM selection in the
+	 * host no longer where that observation found it.
+	 */
+	#unreported = () => {
+		const { edytor } = this;
+		const { selection } = edytor;
+		const at = this.#at;
+		const node = edytor.node;
+		if (!at || !node || selection.value.kind !== 'text' || edytor.intentSerial !== this.#serial)
+			return false;
+		if (selection.request !== this.#request || selection.dragging || edytor.composition.live)
+			return false;
+		const dom = getDomSelection(node);
+		if (!dom || !isOwnPoint(node, dom.anchorNode)) return false;
+		return !(
+			samePoint(at.anchor, dom.anchorNode, dom.anchorOffset) &&
+			samePoint(at.focus, dom.focusNode, dom.focusOffset)
+		);
 	};
 
 	/**
@@ -314,8 +356,19 @@ export class Projector {
 	/** The DOM selection is observed now (adopted, or ignored by the adopter's own rules). */
 	#observed = (observation: Observation) => {
 		this.#seen = this.#flushes;
-		this.#serial = this.edytor.intentSerial;
+		this.#note();
 		return observation;
+	};
+
+	/** An observation: its gesture serial, and where the DOM selection is (`#at`). */
+	#note = () => {
+		const { edytor } = this;
+		this.#serial = edytor.intentSerial;
+		const dom = edytor.node && getDomSelection(edytor.node);
+		this.#at =
+			dom?.anchorNode && dom.focusNode
+				? { anchor: [dom.anchorNode, dom.anchorOffset], focus: [dom.focusNode, dom.focusOffset] }
+				: null;
 	};
 
 	/** The DOM selection is our last display unchanged, or a text-bound range that shows the value. */
@@ -391,7 +444,7 @@ export class Projector {
 	observe = () => {
 		this.#parking = false;
 		this.#seen = this.#flushes;
-		this.#serial = this.edytor.intentSerial;
+		this.#note();
 		this.#displayed = null;
 	};
 
@@ -432,7 +485,7 @@ export class Projector {
 			if (clears && this.#ours(requested)) {
 				if (inside) clearDomSelection(node);
 				this.#displayed = null;
-				this.#serial = edytor.intentSerial;
+				this.#note();
 			}
 			return true;
 		}
@@ -465,7 +518,7 @@ export class Projector {
 		selection.scrollOnDisplay = false;
 		this.#displayed = { ...points, epoch: selection.epoch };
 		this.#seen = this.#flushes;
-		this.#serial = edytor.intentSerial;
+		this.#note();
 		selection.observed({
 			edge: isCollapsed ? getMarkEdgeSide(startText, start[0], yStart) : undefined
 		});

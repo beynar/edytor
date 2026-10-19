@@ -15,7 +15,8 @@ export const generateNewClientId = random.uint53
  * minimize the number of messages sent.
  *
  * YP19: a commit is told through the document's events (`commit`, then
- * `afterTransaction`); nodes have no observers.
+ * `afterTransaction`); nodes have no observers. YP30: `beforeCommit` runs
+ * before them, inside the transaction.
  *
  * @public
  */
@@ -187,18 +188,27 @@ export const transact = (doc, f, origin = null, local = true) => {
     result = f(doc._transaction)
   } finally {
     if (initialCall) {
-      const finishCleanup = doc._transaction === transactionCleanups[0]
-      doc._transaction = null
-      if (finishCleanup) {
-        // The first transaction ended, now process observer calls.
-        // Observer call may create new transactions for which we need to call the observers and do cleanup.
-        // We don't want to nest these calls, so we execute these calls one after
-        // another.
-        // Also we need to ensure that all cleanups are called, even if the
-        // observes throw errors.
-        // This file is full of hacky try {} finally {} blocks to ensure that an
-        // event can throw errors and also that the cleanup is called.
-        cleanupTransactions(transactionCleanups, 0)
+      try {
+        // YP30 begin: the outermost function returned (or threw), the
+        // transaction still open: a `beforeCommit` listener's writes join it.
+        if (doc._observers.has('beforeCommit')) {
+          doc.emit('beforeCommit', [doc._transaction, doc])
+        }
+        // YP30 end
+      } finally {
+        const finishCleanup = doc._transaction === transactionCleanups[0]
+        doc._transaction = null
+        if (finishCleanup) {
+          // The first transaction ended, now process observer calls.
+          // Observer call may create new transactions for which we need to call the observers and do cleanup.
+          // We don't want to nest these calls, so we execute these calls one after
+          // another.
+          // Also we need to ensure that all cleanups are called, even if the
+          // observes throw errors.
+          // This file is full of hacky try {} finally {} blocks to ensure that an
+          // event can throw errors and also that the cleanup is called.
+          cleanupTransactions(transactionCleanups, 0)
+        }
       }
     }
   }

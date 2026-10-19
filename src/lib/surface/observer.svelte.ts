@@ -221,7 +221,7 @@ export class SurfaceObserver {
 	#heals = 0;
 	/** The pass wrote the host itself: a render (the projector displays after it). */
 	#wrote = false;
-	/** Records arrived since the last pass (a display waiting on them gets a pass). */
+	/** Records arrived since the last pass (the projector reads what they did: `rendered`). */
 	#fresh = false;
 	#window: ReturnType<typeof setTimeout> | null = null;
 
@@ -556,7 +556,7 @@ export class SurfaceObserver {
 		}
 		if (this.#fresh) {
 			this.#fresh = false;
-			void settle(work).then(edytor.projector.inputHandled);
+			void settle(work).then(edytor.projector.rendered);
 		}
 		return work;
 	};

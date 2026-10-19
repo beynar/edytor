@@ -8,8 +8,9 @@
  * and the text shows again unless another writer's record holds it
  * (`hist.undo.restore`); undoing typing holds the typed text; an undone
  * creation is withdrawn (`hist.undo.withdraw`), an overwritten attr is
- * repaired, the stack keeps `limit` steps, and the purge horizon drops the
- * steps below it (`hist.purge.horizon`).
+ * repaired, the stack keeps `limit` steps, the purge horizon drops the
+ * steps below it (`hist.purge.horizon`), and a session's end releases them
+ * all (`hist.release.end`).
  */
 import { getUnixTime } from 'lib0-v14/time';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
@@ -19,12 +20,15 @@ import {
 	BLOCK_NODE,
 	CONTENT_NODE,
 	DATA_LEAF_PREFIX,
+	DEL_PREFIX,
 	DOC_DATA_ROOT,
 	HORIZON_ROOT,
 	INLINE_NODE,
 	LAST_CHANGED_ATTR,
+	RELEASE_ROOT,
 	TEXT_DELETES_ROOT,
-	TYPE
+	TYPE,
+	WITHDRAW_PREFIX
 } from '../schema.js';
 import {
 	changedUnder,
@@ -136,6 +140,10 @@ export class UndoManager {
 	/** What dropped steps released (an item is released once every step that deleted it is gone). */
 	readonly #released: IdSetOf;
 	readonly #horizon: EngineNode;
+	/** A captured step wrote a block's delete or withdraw mark: the session's end records its release. */
+	#marked = false;
+	/** The session ended (`end()`): nothing more is released. */
+	#ended = false;
 
 	constructor(rules: Rules, options: HistoryOptions = {}) {
 		this.#rules = rules;
@@ -211,6 +219,36 @@ export class UndoManager {
 		this.#release([...this.undoStack.splice(0), ...this.redoStack.splice(0)]);
 	}
 
+	/**
+	 * The session ends: its page left for good (`hist.release.end`). Every
+	 * step is dropped and released as a dropped step is (`#release`: what
+	 * they kept is collected, the text this writer's records hold is
+	 * deleted for good), in one transaction that, when a step marked a block
+	 * deleted or withdrawn, also appends one release record (the
+	 * {@link RELEASE_ROOT} list): its id names this writer and the clock the
+	 * history ended at, so the room's purge removes what those marks hide at
+	 * its next tick, past the horizon or not. Then the manager stops
+	 * capturing (it is destroyed; the document attaches a fresh one if asked).
+	 * A history that captured nothing writes nothing. Only for a page that
+	 * cannot come back: a page the back/forward cache keeps, or one that
+	 * only lost its connection, keeps its history.
+	 */
+	end(): void {
+		if (this.#ended) return;
+		this.#ended = true;
+		const dropped = [...this.undoStack.splice(0), ...this.redoStack.splice(0)];
+		const marked = this.#marked;
+		if (dropped.length > 0 || marked)
+			this.doc.transact(() => {
+				this.#release(dropped);
+				if (marked) {
+					const records = this.doc.get(RELEASE_ROOT);
+					records.insert(records.length, [true]);
+				}
+			}, HISTORY_TRIM);
+		this.destroy();
+	}
+
 	destroy = (): void => {
 		this.trackedOrigins.delete(this);
 		openSteps.get(this.doc)?.delete(this.#open);
@@ -258,6 +296,16 @@ export class UndoManager {
 			open.inserts = ops.merge([open.inserts, tr.insertSet]);
 		} else stack.push(new StackItem(tr.insertSet, tr.deleteSet));
 		if (!undoing && !redoing) this.lastChange = now;
+		// A block's delete or withdraw mark: what it hides waits for this
+		// history (its end releases it to the purge, `end()`).
+		if (!this.#marked)
+			for (const keys of tr.changed.values())
+				for (const key of keys)
+					if (
+						typeof key === 'string' &&
+						(key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX))
+					)
+						this.#marked = true;
 		// What the step deleted is kept from collection while a step may bring it back.
 		ops.iterate(tr, tr.deleteSet, (item) => {
 			if (ops.isItem(item) && this.#inScope(item)) ops.keep(item);

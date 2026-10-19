@@ -4,7 +4,7 @@
  * - `lastChangedBy` (`l`, a block-node attr) lives INSIDE the
  *   registry-scoped UndoManager — the engine restores the previous `l`
  *   item on undo for free.
- * - `createdBy`/`contributors` (`b/<id>` records on the `blockattr`
+ * - `createdBy`/`contributors` (block records on the `blockattr`
  *   root) live OUTSIDE that scope — union membership survives undo.
  *
  * The counterexample these tests encode: alice edits on replica A
@@ -121,7 +121,7 @@ describe('block attribution × undo', () => {
 		});
 		d.history.undo();
 		// The undo withdraws the block (hist.undo.withdraw): hidden, its node
-		// (and in-scope `l`) kept; `b/` records are keyed by block id and out
+		// (and in-scope `l`) kept; block records are keyed by block id and out
 		// of undo scope — the record persists (like tombstone attribution).
 		expect(d.facade.isVisibleBlock('b2')).toBe(false);
 		const attr = d.attribution.block('b2');

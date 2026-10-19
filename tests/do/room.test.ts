@@ -463,7 +463,8 @@ describe('room Durable Object — storage', () => {
 	it('a large update is one record split across rows no larger than the cap', async () => {
 		const room = 'storage-large-update';
 		const a = seeded([para('p1', '')], 'ada');
-		const ca = await RawClient.connect(room, a.doc);
+		// Dialing as its actor: its first write's binding stands (no rebinding record of the room's).
+		const ca = await RawClient.connect(room, a.doc, { user: 'ada' });
 		await vi.waitFor(() => expect(ca.synced).toBe(true));
 		await settle();
 		const before = await rowsOf(room);

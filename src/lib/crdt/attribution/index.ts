@@ -1,6 +1,6 @@
 /**
  * Public surface of the attribution service. `block.ts` holds the
- * compact per-block records (`b/<blockId>` + the block-node `l` attr)
+ * compact per-block records (`blockattr` `<blockId>` + the block-node `l` attr)
  * written inside the owning facade op's transaction. `attribution.ts`
  * holds the actor dictionary (`u/`/`c/`) plus inert reads over
  * pre-existing `a/` per-edit records written by retired builds.

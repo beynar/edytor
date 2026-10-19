@@ -63,6 +63,13 @@ const healthy = (...reps) => {
 };
 
 const registryHas = (r, id: string) => blockNodeOf(r.doc, id) !== null;
+/** The live units of `id`'s own backing text whose value `match` takes. */
+const unitsOf = (r, id: string, match: (v: unknown) => boolean) => {
+	let n = 0;
+	for (let it = blockNodeOf(r.doc, id).getAttr('content')._start; it !== null; it = it.right)
+		if (!it.deleted && it.content.arr?.some(match)) n++;
+	return n;
+};
 /** Whether `text` appears in the bytes a replica would store. */
 const holdsText = (r, text: string) =>
 	new TextDecoder('utf-8', { fatal: false }).decode(Y.encodeStateAsUpdate(r.doc)).includes(text);
@@ -182,26 +189,113 @@ describe('H7: purge what was deleted before the horizon', () => {
 		for (const r of [room, ada, bob]) r.destroy();
 	});
 
-	it('a deleted split-born block keeps its node (its boundary delimits a live text); its text, data and claims go', () => {
+	it('a deleted split-born block goes alone: its boundary stays, delimiting the stream it emptied, which nobody shows', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
 		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
 		ok(ada.ed.mergeBlocks('p4', 'p1b')); // p1b claims p4
-		ok(ada.ed.deleteBlocks(['p1b']));
+		ok(ada.ed.deleteBlocks(['p1b'])); // p4, shown in it, with it
 		syncAll([room, ada]);
 		const before = room.canonical();
+		const report = purge(room, epoch(room));
+		expect(report).toMatchObject({ removed: 2, emptied: 0 });
+		syncAll([room, ada]);
+		expect(room.canonical()).toBe(before);
+		expect(ada.canonical()).toBe(before);
+		for (const r of [room, ada]) {
+			expect(registryHas(r, 'p1b')).toBe(false);
+			expect(registryHas(r, 'p4')).toBe(false);
+			// Its boundary stays in p1's text; the claim item it held on p4 goes.
+			expect(unitsOf(r, 'p1', (v) => v?.s === 'p1b')).toBe(1);
+			expect(unitsOf(r, 'p1', (v) => v?.m === 'p4')).toBe(0);
+		}
+		expect(holdsText(room, 'text')).toBe(false);
+		expect(ada.ed.blockText('p1')).toBe('live ');
+		healthy(room, ada);
+		room.destroy();
+		ada.destroy();
+	});
+
+	it('the marks of a stream the purge empties go; a live block keeps its own', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
+		ok(ada.ed.formatRange('p1b', 0, 4, { bold: true }));
+		ok(ada.ed.formatRange('p1', 0, 4, { italic: true }));
+		ok(ada.ed.deleteBlocks(['p1b']));
+		syncAll([room, ada]);
+		const marks = (r) => {
+			const out: string[] = [];
+			for (let it = blockNodeOf(r.doc, 'p1').getAttr('content')._start; it !== null; it = it.right)
+				if (!it.deleted && typeof it.content.key === 'string') out.push(it.content.key.slice(1));
+			return out.sort();
+		};
+		expect(marks(room)).toEqual(['bold', 'bold', 'italic', 'italic']);
+		const before = room.canonical();
 		purge(room, epoch(room));
+		syncAll([room, ada]);
+		for (const r of [room, ada]) {
+			expect(r.canonical()).toBe(before);
+			expect(marks(r)).toEqual(['italic', 'italic']);
+		}
+		expect(room.ed.runs('p1').some((run) => run.marks?.italic)).toBe(true);
+		healthy(room, ada);
+		room.destroy();
+		ada.destroy();
+	});
+
+	it('a deleted split-born block with a live child keeps its node; its text, data and claims go', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
+		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
+		ok(ada.ed.moveBlocks(['p4'], { parent: 'p1b', index: 0 })); // p4 stays, under p1b
+		ok(ada.ed.deleteBlock('p1b'));
+		syncAll([room, ada]);
+		const before = room.canonical();
+		const report = purge(room, epoch(room));
+		expect(report).toMatchObject({ removed: 0, emptied: 1 });
 		syncAll([room, ada]);
 		expect(room.canonical()).toBe(before);
 		const node = blockNodeOf(room.doc, 'p1b');
 		expect(node).not.toBe(null);
 		expect([...node.attrKeys()].filter((k) => k.startsWith('d/') || k === 'data')).toEqual([]);
-		expect(modelView(room.doc).blocks.get('p1b').claims).toEqual([]);
-		expect(ada.ed.blockText('p1')).toBe('live ');
+		expect(holdsText(room, 'text')).toBe(false);
+		expect(ada.ed.blockText('p4')).toBe('mover');
 		healthy(room, ada);
 		room.destroy();
 		ada.destroy();
+	});
+
+	it('deleting old hold records never deletes the structs their writer wrote beside them: a deleted block stays deleted', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		ok(ada.ed.insertText('p1', 9, ' abcdefghijklmnopqrstuvwxyz'));
+		ok(ada.ed.splitBlock('p1', 36, 'p1b')); // p1b streams in p1's text
+		ok(ada.ed.insertText('p1b', 0, 'gone'));
+		ok(ada.ed.deleteBlocks(['p1b'])); // ada's delete mark, right before her records
+		// Three deletes of ada's own text, the middle one first: one record item
+		// of three, holding one run of ada's text that a load merges back into
+		// one item, so releasing the record splits that item twice.
+		ok(ada.ed.deleteText('p1', 18, 3));
+		ok(ada.ed.deleteText('p1', 15, 3));
+		ok(ada.ed.deleteText('p1', 15, 3));
+		syncAll([room, ada]);
+		const reloaded = replica('reloaded', Y.encodeStateAsUpdate(room.doc), LIVE + 3, {
+			semantics: defaultSemantics
+		});
+		const before = reloaded.canonical();
+		expect(reloaded.ed.isVisibleBlock('p1b')).toBe(false);
+		const report = purge(reloaded, epoch(reloaded));
+		expect(report.marks).toBe(3);
+		expect(reloaded.canonical()).toBe(before);
+		expect(reloaded.ed.isVisibleBlock('p1b')).toBe(false);
+		expect(reloaded.ed.blockText('p1')).toBe('live text abcdeopqrstuvwxyz');
+		healthy(reloaded);
+		room.destroy();
+		ada.destroy();
+		reloaded.destroy();
 	});
 
 	it('a withdrawn creation goes; an old move record no block shows at goes', () => {
@@ -317,7 +411,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ok(bob.ed.mergeBlocks('p4b', 'p4'));
 		syncAll([room, ada, bob]);
 		const before = room.canonical();
-		const record = (r, id) => r.doc.get('blockattr').getAttr(`b/${id}`);
+		const record = (r, id) => r.doc.get('blockattr').getAttr(id);
 		expect(record(room, 'p1b')).toBeDefined();
 		const report = purge(room, horizon);
 		expect(report.merged).toBe(1);

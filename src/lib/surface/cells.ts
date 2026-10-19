@@ -269,17 +269,22 @@ const marksKey = (marks: Record<string, unknown> | undefined) =>
 			)
 		: '[]';
 
-/** One delta per maximal stretch of equal marks; empty runs render nothing. */
+/**
+ * One delta per maximal stretch of equal marks; empty runs render nothing.
+ * A run's shared-suggestion state (`s`) renders as the outermost mark
+ * `suggested` (the view's own, `sugg.view.runs`).
+ */
 export const renderDeltas = (
-	items: readonly { text: string; marks?: Record<string, unknown> }[]
+	items: readonly { text: string; marks?: Record<string, unknown>; s?: string }[]
 ): RenderDelta[] => {
 	const deltas: { text: string; marks: [string, unknown][]; key: string }[] = [];
 	for (const item of items) {
 		if (!item.text) continue;
-		const key = marksKey(item.marks);
+		const marks = item.s ? { suggested: item.s, ...item.marks } : item.marks;
+		const key = marksKey(marks);
 		const last = deltas[deltas.length - 1];
 		if (last?.key === key) last.text += item.text;
-		else deltas.push({ text: item.text, marks: Object.entries(item.marks ?? {}), key });
+		else deltas.push({ text: item.text, marks: Object.entries(marks ?? {}), key });
 	}
 	return deltas.map(({ text, marks }) => ({ text, marks }));
 };

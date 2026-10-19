@@ -809,8 +809,9 @@
 
 /*
  * Shared suggestions: a block a suggestion made or proposes to delete
- * (`data-edytor-suggested`), and its runs in the overlay, in its author's
- * colour (`--edytor-range-color`).
+ * (`data-edytor-suggested`), and its pending runs in the text
+ * (`data-edytor-suggested-run`: `insert`, `delete`, or both), in its
+ * author's colour (`--edytor-suggestion-color`).
  */
 .edytor-notion [data-edytor-suggested='inserted'],
 .edytor-notion [data-edytor-suggested='split'] {
@@ -824,16 +825,13 @@
 	text-decoration: line-through;
 	text-decoration-color: var(--edytor-suggestion-removed-line, rgba(235, 87, 87, 0.6));
 }
-:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-suggestion-inserted] {
-	border-bottom: 2px solid var(--edytor-range-color, rgb(68 131 97));
-	background: color-mix(in srgb, var(--edytor-range-color, rgb(68 131 97)) 10%, transparent);
+.edytor-notion [data-edytor-suggested-run~='insert'] {
+	text-decoration: underline 2px var(--edytor-suggestion-color, rgb(68 131 97));
+	text-underline-offset: 3px;
+	background: color-mix(in srgb, var(--edytor-suggestion-color, rgb(68 131 97)) 10%, transparent);
 }
-:is(.edytor-notion, .edytor-notion + [data-edytor-overlay]) [data-edytor-suggestion-deleted] {
-	background: linear-gradient(
-		transparent calc(50% - 1px),
-		var(--edytor-range-color, rgb(235 87 87)) calc(50% - 1px) calc(50% + 1px),
-		transparent calc(50% + 1px)
-	);
+.edytor-notion [data-edytor-suggested-run~='delete'] {
+	text-decoration: line-through 2px var(--edytor-suggestion-color, rgb(235 87 87));
 }
 
 /* ── Page (a subpage link) and table of contents ────────────────────── */

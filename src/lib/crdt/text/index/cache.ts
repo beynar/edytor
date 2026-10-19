@@ -4,7 +4,14 @@
  */
 import { cloneJsonSafe } from '../../../utils/json.js';
 import type { BlockId } from '../../placement/model.js';
-import { type RangeReadStats, canonKey, deepFreeze, displayOf, readSegs } from '../model.js';
+import {
+	type RangeReadStats,
+	canonKey,
+	deepFreeze,
+	displayOf,
+	readSegs,
+	suggestionState
+} from '../model.js';
 import type { ContentRun, RunViewDebug } from '../runs.js';
 import type { IndexPlacement } from './placement.js';
 import { type Deps, runEquals } from './shared.js';
@@ -110,17 +117,19 @@ export const indexCache = (ix: IndexState & IndexPlacement) => {
 				for (const c of blocks.get(x)?.claims ?? []) deps.lists.add(c.m);
 			}) ?? [];
 		const fresh: ContentRun[] = [];
-		for (const item of readSegs(segs, rangeStats)) {
+		for (const item of readSegs(segs, rangeStats, suggestionState.get(ix.doc)?.())) {
+			const s = item.s === undefined ? {} : { s: item.s };
 			if (item.kind === 'text') {
 				const last = fresh[fresh.length - 1];
 				const marks = item.marks === undefined ? undefined : intern(item.marks);
-				if (last && last.kind === 'text' && last.marks === marks) {
+				if (last && last.kind === 'text' && last.marks === marks && last.s === item.s) {
 					(last as { text: string }).text += item.text;
 				} else {
 					fresh.push({
 						kind: 'text',
 						text: item.text,
-						...(marks === undefined ? {} : { marks })
+						...(marks === undefined ? {} : { marks }),
+						...s
 					} as ContentRun);
 				}
 			} else {
@@ -128,7 +137,8 @@ export const indexCache = (ix: IndexState & IndexPlacement) => {
 					kind: 'inline',
 					id: item.id,
 					type: item.type,
-					...(item.data === undefined ? {} : { data: intern(item.data) })
+					...(item.data === undefined ? {} : { data: intern(item.data) }),
+					...s
 				} as ContentRun);
 			}
 		}

@@ -1138,6 +1138,7 @@ export class ContentHold {
    */
   integrate (transaction, item) {
     if (holding(item)) holdIds(transaction, this.ids, 1) // YP31
+    else touchIds(transaction, this.ids) // YP32
   }
 
   /**
@@ -1146,6 +1147,7 @@ export class ContentHold {
    */
   delete (transaction, item) {
     if (holding(item)) holdIds(transaction, this.ids, -1) // YP31
+    else touchIds(transaction, this.ids) // YP32
   }
 
   /**
@@ -1182,6 +1184,29 @@ export class ContentHold {
  */
 const holding = item => /** @type {YNode} */ (item.parent)._item === null
 // YP31 end
+
+// YP32 begin (edytor fork: an id list marks what it names — see UPSTREAM.md YP32)
+/**
+ * An id list that holds nothing (YP31) changes how edytor reads what it
+ * names (a proposed deletion, a settled range): each present sequence item
+ * it names is logged in `tr.holds` with no length and its parent marked
+ * changed, so the readers of that text read it again. Nothing is split or
+ * hidden; a map value it names is not logged.
+ *
+ * @param {Transaction} tr
+ * @param {Array<number>} ids
+ */
+const touchIds = (tr, ids) => {
+  const store = tr.doc.store
+  for (let i = 0; i < ids.length; i += 3) {
+    for (let k = ids[i + 1]; k < ids[i + 1] + ids[i + 2] && k < store.getClock(ids[i]);) {
+      const struct = store.getItem(createID(ids[i], k))
+      if (struct.isItem && struct.parentSub === null) logHold(tr, struct, 0)
+      k = struct.id.clock + struct.length
+    }
+  }
+}
+// YP32 end
 
 // YP22 begin (edytor fork: move records — see UPSTREAM.md YP22)
 /**

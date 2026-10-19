@@ -59,7 +59,7 @@ export const typeAttr = (node: EngineNode): string => {
 
 export const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 	if (a === b) return true;
-	if (a.kind !== b.kind) return false;
+	if (a.kind !== b.kind || a.s !== b.s) return false;
 	if (a.kind === 'text' && b.kind === 'text') {
 		return a.text === b.text && a.marks === b.marks;
 	}

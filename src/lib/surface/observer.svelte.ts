@@ -1023,12 +1023,15 @@ const shownMarks = (text: Text, at: number) => {
 	return null;
 };
 
-/** The rendered marks the model gives the character at `at` of `text`. */
-const modelMarks = (edytor: Edytor, text: Text, at: number) =>
-	Object.keys(activeMarks(text.getMarksAtRange(at, at + 1)[0]?.marks))
+/** The rendered marks the cell gives the character at `at` of `text` (a pending suggestion's run's included). */
+const modelMarks = (edytor: Edytor, text: Text, at: number) => {
+	let end = 0;
+	return (edytor.deltasOf(text).find((delta) => (end += delta.text.length) > at)?.marks ?? [])
+		.map(([name]) => name)
 		.filter((name) => rendersMark(edytor.marks, name))
 		.sort()
 		.join();
+};
 
 /**
  * Adopt what the browser made of `text` — the only adopter: one

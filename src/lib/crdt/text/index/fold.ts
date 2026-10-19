@@ -205,8 +205,9 @@ export const indexFold = (
 				if (s.parentSub !== null || !isNodeLike(parent)) return;
 				let e = out.get(parent);
 				if (e === undefined) out.set(parent, (e = { edits: [], scan: false, opaque: false }));
-				// A format marker moves no unit; its effect reaches past the edit.
-				if (s.countable !== true) return void (e.opaque = true);
+				// A format marker moves no unit; its effect reaches past the edit, as
+				// an id list's that names a unit does (logged with no length, YP32).
+				if (s.countable !== true || to === from) return void (e.opaque = true);
 				if (holdsBoundary(s, from, to)) return void (e.scan = true);
 				e.edits.push({ item: s as RowItem, len: to - from, del: deleted });
 			};

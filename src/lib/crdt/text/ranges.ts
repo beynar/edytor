@@ -12,7 +12,7 @@ import type { EngineNode } from '../engine-api.js';
 import { ID, TYPE } from '../schema.js';
 import { readData } from '../data.js';
 import { isRowMark } from './items.js';
-import type { RangeCursor, RangeItem, RangeReadStats } from './model.js';
+import type { RangeCursor, RangeItem, RangeReadStats, UnitState } from './model.js';
 
 /** Canonical JSON key (sorted keys, recursive) — mark-set equality/interning. */
 export const canonKey = (v: unknown): string => {
@@ -76,24 +76,38 @@ export const readRange = (
 	i0: number,
 	i1: number,
 	stats?: RangeReadStats,
-	items: RangeItem[] = []
+	items: RangeItem[] = [],
+	state?: UnitState
 ): RangeItem[] => {
 	for (const piece of cur.read(i0, i1, stats)) {
 		if (piece.deleted || piece.len === 0) continue;
 		const c = piece.content;
+		/** Unit `j` of the piece's suggestion state (`state`: a run splits where it changes). */
+		const at = (j: number) => state?.(piece.id.client, piece.id.clock + j);
 		if (typeof c.str === 'string') {
 			const marks = piece.formats;
-			const slice = c.str.slice(piece.offset, piece.offset + piece.len);
-			const last = items[items.length - 1];
-			if (last !== undefined && last.kind === 'text' && marksEqual(last.marks, marks)) {
-				(last as { text: string }).text += slice;
-			} else {
-				items.push({ kind: 'text', text: slice, ...(marks === undefined ? {} : { marks }) });
+			for (let j = 0, k = 1; j < piece.len; j = k++) {
+				const s = at(j);
+				while (state && k < piece.len && at(k) === s) k++;
+				if (!state) k = piece.len;
+				const slice = c.str.slice(piece.offset + j, piece.offset + k);
+				const last = items[items.length - 1];
+				if (last?.kind === 'text' && last.s === s && marksEqual(last.marks, marks)) {
+					(last as { text: string }).text += slice;
+				} else {
+					items.push({
+						kind: 'text',
+						text: slice,
+						...(marks === undefined ? {} : { marks }),
+						...(s && { s })
+					});
+				}
 			}
 		} else if (typeof c.getContent === 'function') {
 			const arr = c.getContent();
 			for (let k = piece.offset; k < piece.offset + piece.len; k++) {
-				if (!isRowMark(arr[k])) items.push(inlineItemOf(arr[k]));
+				const s = at(k - piece.offset);
+				if (!isRowMark(arr[k])) items.push({ ...inlineItemOf(arr[k]), ...(s && { s }) });
 			}
 		}
 	}

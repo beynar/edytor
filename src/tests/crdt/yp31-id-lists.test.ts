@@ -63,7 +63,8 @@ describe('YP31 — a hold record inside a nested node holds nothing', () => {
 		nested(a).hold([1, 1, 2]);
 		expect(text(a)).toBe('abcdef');
 		expect(t(a).length).toBe(6);
-		expect(logs.at(-1)).toEqual([]);
+		// Nothing hidden: the item it names is logged with no length (YP32), its text re-read.
+		expect(logs.at(-1)).toEqual([1, 0, 0]);
 		expect(ids(nested(a))).toEqual([[1, 1, 2]]);
 		// The same ids in the root records list are a hold (YP20, unchanged).
 		a.get('textdel').hold([1, 1, 2]);

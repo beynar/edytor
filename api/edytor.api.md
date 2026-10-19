@@ -1214,7 +1214,7 @@ export type ContentItem = {
 
 ```ts
 // crdt/text/runs.d.ts
-export type ContentRun = {
+export type ContentRun = ({
     kind: 'text';
     text: string;
     marks?: Record<string, unknown>;
@@ -1223,6 +1223,8 @@ export type ContentRun = {
     id: string;
     type: string;
     data?: Record<string, unknown>;
+}) & {
+    s?: string;
 };
 ```
 

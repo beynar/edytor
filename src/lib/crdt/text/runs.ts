@@ -85,7 +85,7 @@ export { CONTENT_ATTR, ENTRY_FACET, SEQ_FACET, indexChecks } from './index/share
  * authorship: runs never split at author boundaries, and durable
  * attribution is the compact per-block record (`blockattr`).
  */
-export type ContentRun =
+export type ContentRun = (
 	| {
 			kind: 'text';
 			text: string;
@@ -96,7 +96,15 @@ export type ContentRun =
 			id: string;
 			type: string;
 			data?: Record<string, unknown>;
-	  };
+	  }
+) & {
+	/**
+	 * Its units' state in the shared suggestions: `+<id>` inserted by
+	 * suggestion `id`, `-<id>` proposed for deletion by it (space-separated);
+	 * absent for the document's own text. Drawn, never exported.
+	 */
+	s?: string;
+};
 
 /**
  * One commit's change report — the fold against the last published

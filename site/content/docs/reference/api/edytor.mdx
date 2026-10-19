@@ -1665,7 +1665,7 @@ authorship: runs never split at author boundaries, and durable
 attribution is the compact per-block record (`blockattr`).
 
 ```ts
-export type ContentRun = {
+export type ContentRun = ({
     kind: 'text';
     text: string;
     marks?: Record<string, unknown>;
@@ -1674,6 +1674,8 @@ export type ContentRun = {
     id: string;
     type: string;
     data?: Record<string, unknown>;
+}) & {
+    s?: string;
 };
 ```
 

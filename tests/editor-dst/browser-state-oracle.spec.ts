@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
 	assertActionEffect,
 	assertBrowserSnapshot,
+	isBidiHorizontalMove,
 	isStickyOutsideEscape,
 	assertSemanticPreservation,
 	assertTrustedAction,
@@ -575,6 +576,16 @@ test.describe('DST v3 effect oracle', () => {
 				{ type: 'paragraph', id: 'b0', data: {}, content: [{ text: 'hello' }] },
 				{ type: 'paragraph', id: 'b1', data: {}, content: [{ text: 'world' }] }
 			]
+		});
+		// Its data stays (`data.retype.keep`): a retype removes no property.
+		const iconed = callout(['paragraph', 'callout']);
+		iconed.value.children[1].data = { icon: '!' };
+		iconed.model.blocks[1].data = { icon: '!' };
+		expect(
+			describeDelete(iconed, { kind: 'wordDelete', direction: 'backward' }, events)
+		).toMatchObject({
+			kind: 'tree',
+			children: [{ id: 'b0' }, { type: 'paragraph', id: 'b1', data: { icon: '!' } }]
 		});
 		// A kind outside the catalogue keeps the structural path: it merges.
 		expect(describeDelete(callout(['paragraph']), { kind: 'backspace' }, [])).toMatchObject({
@@ -1559,6 +1570,128 @@ test.describe('DST v3 effect oracle', () => {
 		// A collapsed caret has nothing to cut — legal no-op.
 		const caret = twoBlockSnapshot({ yStart: 1, yEnd: 1 });
 		expect(() => assertActionEffect('chromium', { kind: 'cut' }, caret, caret)).not.toThrow();
+	});
+});
+
+test.describe('navigation that writes by contract (nav.trailing, body.down)', () => {
+	const down: DstAction = { kind: 'move', key: 'ArrowDown', extend: false };
+	/** `[paragraph "hello", <kind> "world"]`, the caret at the end of the last text. */
+	const lastBlockOf = (type: string) => {
+		const snap = twoBlockSnapshot({ startTextIndex: 1, endTextIndex: 1, yStart: 5, yEnd: 5 });
+		snap.value.children[1].type = type;
+		snap.model.blocks[1].type = type;
+		snap.model.defaultChild = { callout: 'paragraph' };
+		return snap;
+	};
+	const withCaret = (snap: DstBrowserSnapshot, textIndex: number) => {
+		snap.selection = {
+			...(snap.selection as DstTextSelection),
+			startTextIndex: textIndex,
+			endTextIndex: textIndex,
+			yStart: 0,
+			yEnd: 0
+		};
+		return snap;
+	};
+
+	test('nav.trailing.exit: ArrowDown at the last stop adds one empty paragraph, the caret in it', () => {
+		const before = lastBlockOf('quote');
+		const after = withCaret(lastBlockOf('quote'), 2);
+		after.value.children.push({ type: 'paragraph', id: 'fresh', data: {} });
+		expect(() => assertSemanticPreservation('chromium', down, before, after)).not.toThrow();
+		// Anything else a move writes is still a failure: text in the new block,
+		// the caret elsewhere, Shift held.
+		const typed = withCaret(lastBlockOf('quote'), 2);
+		typed.value.children.push({
+			type: 'paragraph',
+			id: 'fresh',
+			data: {},
+			content: [{ text: 'x' }]
+		});
+		expect(() => assertSemanticPreservation('chromium', down, before, typed)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+		const stayed = lastBlockOf('quote');
+		stayed.value.children.push({ type: 'paragraph', id: 'fresh', data: {} });
+		expect(() => assertSemanticPreservation('chromium', down, before, stayed)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+		expect(() =>
+			assertSemanticPreservation('chromium', { ...down, extend: true }, before, after)
+		).toThrow(/non-text-action-mutated-structure/);
+	});
+
+	test('nav.trailing.exit: never from a top-level paragraph, nor above the last stop', () => {
+		const before = lastBlockOf('paragraph');
+		const after = withCaret(lastBlockOf('paragraph'), 2);
+		after.value.children.push({ type: 'paragraph', id: 'fresh', data: {} });
+		expect(() => assertSemanticPreservation('chromium', down, before, after)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+		const above = lastBlockOf('quote');
+		above.selection = {
+			...(above.selection as DstTextSelection),
+			startTextIndex: 0,
+			endTextIndex: 0
+		};
+		expect(() => assertSemanticPreservation('chromium', down, above, after)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+	});
+
+	test('body.down: ArrowDown in a callout without children opens its body', () => {
+		const before = lastBlockOf('callout');
+		const after = withCaret(lastBlockOf('callout'), 2);
+		after.value.children[1].children = [{ type: 'paragraph', id: 'fresh', data: {} }];
+		expect(() => assertSemanticPreservation('chromium', down, before, after)).not.toThrow();
+		// A quote's body does not show empty: no first child.
+		const quote = lastBlockOf('quote');
+		const nested = withCaret(lastBlockOf('quote'), 2);
+		nested.value.children[1].children = [{ type: 'paragraph', id: 'fresh', data: {} }];
+		expect(() => assertSemanticPreservation('chromium', down, quote, nested)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+	});
+
+	test('nav.trailing.press: a press below the only top-level block', () => {
+		const press: DstAction = { kind: 'pointerClick', target: 'padding', index: 0, edge: 'left' };
+		const before = lastBlockOf('quote');
+		before.value.children.splice(0, 1);
+		before.model.blocks.splice(0, 1);
+		before.model.blocks[0].path = [0];
+		before.model.renderedTexts = ['world'];
+		before.selection = {
+			...(before.selection as DstTextSelection),
+			startTextIndex: 0,
+			endTextIndex: 0
+		};
+		const after = structuredClone(before);
+		after.value.children.push({ type: 'paragraph', id: 'fresh', data: {} });
+		after.selection = {
+			...(after.selection as DstTextSelection),
+			startTextIndex: 1,
+			endTextIndex: 1,
+			yStart: 0,
+			yEnd: 0
+		};
+		expect(() => assertSemanticPreservation('chromium', press, before, after)).not.toThrow();
+		const shift: DstAction = { kind: 'shiftClick', target: 'padding', index: 0, edge: 'left' };
+		expect(() => assertSemanticPreservation('chromium', shift, before, after)).toThrow(
+			/non-text-action-mutated-structure/
+		);
+	});
+
+	test('sel.bidi.arrows: a horizontal key over text that mixes directions', () => {
+		const snap = twoBlockSnapshot({ yStart: 1, yEnd: 1 });
+		const left: DstAction = { kind: 'move', key: 'ArrowLeft', extend: false };
+		expect(isBidiHorizontalMove(left, snap)).toBe(false);
+		snap.model.renderedTexts[0] = 'aשלוםon';
+		expect(isBidiHorizontalMove(left, snap)).toBe(true);
+		expect(isBidiHorizontalMove({ kind: 'move', key: 'ArrowDown', extend: false }, snap)).toBe(
+			false
+		);
+		snap.model.renderedTexts[0] = 'שלום';
+		expect(isBidiHorizontalMove(left, snap)).toBe(false);
 	});
 });
 

@@ -544,13 +544,16 @@ unchanged. Expected no-ops are contract results, not skipped tests.
 Caret `item@0` + Backspace over `[paragraph "para", bulleted-list-item "item"]`
 → `[paragraph "para", paragraph "item"]`, caret `item@0`. A block whose kind
 the catalogue offers (it has presets) and that is not its parent's default
-child turns into that default first — one `setBlock`, data reset, text and
-children kept — before the doc-start no-op, the unnest and the merge
-(Notion). The next Backspace merges (`del.merge.backward-head`) or unnests.
-A nested last-child bullet becomes a nested paragraph; an empty only bullet
-becomes the empty paragraph. Kinds without presets (`list-item` in a list,
-`codeLine`) keep the structural path. Pinned in `notion-parity.test.tsx`
-("lists on Backspace").
+child turns into that default first — one `setBlock`, its data kept
+(`data.retype.keep`: the leaves the default kind's preset names are set,
+none removed; the paragraph's names none), text and children kept — before
+the doc-start no-op, the unnest and the merge (Notion). The next Backspace
+merges (`del.merge.backward-head`) or unnests. A nested last-child bullet
+becomes a nested paragraph; an empty only bullet becomes the empty
+paragraph. Kinds without presets (`list-item` in a list, `codeLine`) keep
+the structural path. Pinned in `notion-parity.test.tsx` ("lists on
+Backspace"); a callout's `data.icon` stays through it in the DST delete
+oracle (`tests/editor-dst/browser-state-oracle.spec.ts`).
 
 ### `del.merge.backward-head` — Backspace at a block's head
 
@@ -2438,6 +2441,33 @@ Rows: `trailing-paragraph.test.tsx` ("a press below the last block") and
 listed (`sel.marquee`) the press waits for its release: a click (no move
 past the threshold) does exactly this, a drag selects blocks instead and
 writes nothing.
+
+### `sel.bidi.arrows` — horizontal arrows in mixed-direction text are each engine's
+
+ArrowLeft and ArrowRight, with or without Shift, in a block whose text
+mixes directions (a strong right-to-left letter and a strong left-to-right
+one in a text the selection touches), are the browser's caret movement: the
+editor adopts what lands (`selectionchange`, the classifier's intent) and
+never re-resolves the key in the model, so each engine keeps its native
+movement. The engines differ there, in a bare `contenteditable` as in the
+editor:
+
+- **Firefox** moves visually (its default, `bidi.edit.caret_movement_style`
+  2), collapses a range to its visual edge, and may not move or extend at a
+  logical edge (Shift+ArrowRight at the logical end of a right-to-left line).
+- **Chromium and WebKit** map the keys by the paragraph's direction (`dir`
+  on the block, `blockDir`) and collapse a range to its logical end.
+
+A line of one direction (all Hebrew, all Latin) is the same in the three
+engines (`tests/editor-dom/bidi.spec.ts`, `caret-navigation.spec.ts`).
+Every other key, and these keys over text of one direction, keep the
+cross-engine contract. Rows: the DST corpus compares the engines' selections
+after every step except for these keys over mixed-direction text
+(`isBidiHorizontalMove` in `tests/editor-dst/browserState.ts`, its unit row
+in `browser-state-oracle.spec.ts`); each engine's own legality (the model
+and the DOM agree, the caret stays in the editor) is still asserted, and a
+`preserve` step after such a divergence starts every engine from the
+reference engine's caret.
 
 ### `sel.marquee` — a rectangle from the editor's empty area selects blocks (Notion's rubber band)
 

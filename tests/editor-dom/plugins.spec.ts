@@ -143,7 +143,13 @@ test.describe('browser plugin semantics', () => {
 
 		await page.goto('/test/dom?scenario=void');
 		await waitForEditorReady(page);
+		// The empty panel's button owns its presses, a triple click's too (sel.press.void).
 		await page.locator('figure button').click({ clickCount: 3 });
+		await expectSelection(page, { selectedBlockPaths: [] });
+		await page.goto('/test/dom?scenario=image');
+		await waitForEditorReady(page);
+		// A press on the picture, the block's non-editable body, selects the block.
+		await page.locator('[data-edytor-image] img').click();
 
 		await expectSelection(page, {
 			selectedBlockPaths: [[0]]

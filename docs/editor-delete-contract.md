@@ -2389,8 +2389,9 @@ guard (`pointer.onSelectStart`) read:
 
 - the nearest boundary is `false` (the image, the block's wrapper, an
   atom, a control's icon): chrome. The model answers the press: it is
-  cancelled and the caret goes to the start of the block's first text, as
-  before; a drag starting there is the block selection's;
+  cancelled; a void block's is `sel.press.void`, any other block's puts
+  the caret at the start of its first text, as before; a drag starting
+  there is the block selection's;
 - the nearest boundary is a nested editable (`true`, `plaintext-only` or
   `''`): the press is the browser's. It places the caret at the press in
   one step, focusing the nested editable, and the selection adopts it at
@@ -2399,13 +2400,63 @@ guard (`pointer.onSelectStart`) read:
 The first boundary at or above the host decides nothing (a readonly
 host's `false` keeps its text selectable).
 
-Rows: `tests/editor-dom/image.spec.ts` "a press in an image caption
-(sel.press.nested-editable)" in three engines (every caret reported from
-the press to the release and after it is the click's offset, never the
-caption's start nor the document's; a press on the image gives the
-caption's start); `src/tests/fixtures/dom/selectstart-guard.test.tsx`
-(jsdom: the caption's press is not cancelled and moves no model caret,
-the image's is, and gives the caption's start).
+Rows: `tests/editor-dom/image.spec.ts` "a press in an image" in three
+engines (every caret reported from the press to the release and after it
+is the click's offset, never the caption's start nor the document's);
+`src/tests/fixtures/dom/selectstart-guard.test.tsx` (jsdom: the caption's
+press is not cancelled and moves no model caret).
+
+### `sel.press.void` — a press on a void block selects it
+
+A press on a void block's chrome (its nearest `contenteditable` boundary
+`false`, the block void by its role: an image, a bookmark's card, a file's
+row, an embed's frame, a divider, an equation, a table of contents, a
+custom void kind's card) selects the block, as Notion does: a block
+selection of it, committed by the press (`pointer.chromePress`
+`#voidPress`), the host focused, the press cancelled (no native caret,
+focus or selection), no text drag. No caret goes to the caption. Shift or
+Mod adds it to a block selection. The block selection's keys then act on
+it (Delete and Backspace remove it, the arrows leave it, Enter goes below,
+copy copies it, Escape clears it). A press on the line of the block's text
+beside that text (a caption's line wider than its words) puts the caret at
+the nearest point of the text.
+
+A press a control owns is the control's, whole (`ownsPress` in
+`events/nativeInteractiveControl.ts`, the one rule every press handler
+asks first: `placingPress`, `pressInside`, `tripleClick`,
+`preventTripleClick`, `onSelectStart`): the editor does nothing with it,
+its clicks and multi-clicks, its `selectstart` or its drag — no `pressed`,
+no `capture` (no `data-selecting`), no caret, no block selection, no
+triple-click selection — and leaves the control's focus and click alone.
+The controls of a block's chrome: a native form control, an element whose
+role is interactive (`button`, `link`, `checkbox`, `switch`, `menuitem`,
+`tab`, `option`, `slider`, `textbox`, `combobox`) or that takes the focus
+(`tabindex` ≥ 0), an element the app marks `data-edytor-control`, an
+element that keeps the selection (`data-edytor-keep-selection`), and a
+link, but never an element inside the text or an inline atom (a link mark
+is the text's). `isKindControl`/`ownsEvent` take the same controls, so
+their keys and input are theirs too. A click is never cancelled: an
+unmarked clickable element still gets its click, and its press also
+selects the block.
+
+A media block's own link (a bookmark's card, a file's row, an unplayable
+embed's link: `data-edytor-block-link`, `mediaLink`) is the block's body:
+in an editable view its press selects the block and its plain click opens
+nothing; Mod or Shift + click, a middle click, or a click in a readonly
+view opens it. In a readonly view a press selects the block as well
+(a block selection is the view's, not a write).
+
+Rows: `tests/editor-dom/void-press.spec.ts` in three engines (a bookmark's
+card and a file's row select their block and open nothing, Delete removes
+it; the demo's widget: its button counts five fast clicks, a triple click
+included, its input's triple click selects its own text, its marked
+element counts its clicks, none shows `data-selecting` or selects the
+block, the card's empty area selects it, its caption takes a caret);
+`tests/editor-dom/image.spec.ts` (a press on the image selects it, no caret
+reported in the caption, Delete removes it);
+`src/tests/fixtures/dom/selectstart-guard.test.tsx` (jsdom: each kind of
+control keeps its press and its `selectstart`, the empty area's press
+selects the block, a link mark is no control).
 
 ## Navigation
 

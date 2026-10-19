@@ -7,11 +7,13 @@
  * selection's DOM adoption reads `dragging` and `across` and asks `hold()`.
  */
 import type { Text } from '../text/text.svelte.js';
+import type { Block } from '../block/block.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
 import { toTrailingParagraph } from '$lib/session/navigation.js';
 import {
 	isNativeInteractiveControl,
-	isNativeInteractiveEvent
+	isNativeInteractiveEvent,
+	ownsPress
 } from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
 import {
@@ -130,10 +132,11 @@ export class SelectionPointer {
 	#margin: MarginClaim | null = null;
 
 	/**
-	 * The host's last press went to the margin gesture (`marginPress`), until
-	 * its release: its compatibility `mousedown` is cancelled (no native
-	 * caret, focus or selection), and it places no caret (`pressed`) and
-	 * starts no text drag (`capture`).
+	 * The host's last press went to a gesture of the model's (the margin
+	 * gesture's, `marginPress`; a void block's selection, `chromePress`),
+	 * until its release: its compatibility `mousedown` is cancelled (no
+	 * native caret, focus or selection), and it places no caret (`pressed`)
+	 * and starts no text drag (`capture`).
 	 * @internal
 	 */
 	claimed = false;
@@ -208,10 +211,23 @@ export class SelectionPointer {
 		this.selection.selectText(point.text, point.offset);
 	};
 
-	/** @internal */
+	/**
+	 * A press on a block's non-editable chrome. A void block's
+	 * (`sel.press.void`, Notion): the block is selected, the host focused,
+	 * no caret placed — unless the press is a control's of its own
+	 * (`ownsPress`: a native control, an interactive role, an element the
+	 * app marks `data-edytor-control`), which keeps it whole; Shift or Mod
+	 * adds the block to a block selection. On the line of the block's text
+	 * (a caption's, beside its text), the caret at the nearest point of it.
+	 * Any other block's: the caret at the start of its text. A press a
+	 * control owns (`ownPress`) never reaches it.
+	 * @internal
+	 */
 	chromePress = (event: MouseEvent) => {
 		const targetNode = event.target instanceof Node ? event.target : null;
 		const targetBlock = this.#chromeBlock(targetNode);
+		if (targetBlock && this.selection.edytor.facade.isVoid(targetBlock.id))
+			return this.#voidPress(event, targetBlock);
 		const targetText = targetBlock?.firstText;
 		// A native control inside the chrome (a void block's input) owns its press.
 		if (!targetText || isNativeInteractiveEvent(event)) {
@@ -227,13 +243,52 @@ export class SelectionPointer {
 	};
 
 	/**
+	 * A press (and its whole gesture: its clicks, multi-clicks, `selectstart`
+	 * and drag) a control of a block's chrome owns (`ownsPress`,
+	 * `sel.press.void`): the editor does nothing with it. Every press handler
+	 * asks this one rule first.
+	 * @internal
+	 */
+	ownPress = (event: Event) =>
+		ownsPress(this.selection.edytor.node, event, this.selection.edytor.readonly);
+
+	/** A press on void block `block`'s chrome selects it (`sel.press.void`). */
+	#voidPress = (event: MouseEvent, block: Block) => {
+		const { edytor, value } = this.selection;
+		if (event.button !== 0) return;
+		// The model answers it: no native caret, focus or selection; no text drag (`claimed`).
+		event.preventDefault();
+		this.claimed = true;
+		edytor.expectInternalFocus();
+		edytor.node?.focus({ preventScroll: true });
+		// On the line of its text (a caption's, beside the text): the caret at the nearest point there.
+		const target =
+			event.target instanceof Element && event.target !== block.node ? event.target : null;
+		const line = target?.querySelector<HTMLElement>('[data-edytor-text]');
+		const text = line && this.selection.getTextOfNode(line);
+		const box = line?.getBoundingClientRect();
+		if (
+			text &&
+			text.parent === block &&
+			box &&
+			event.clientY >= box.top &&
+			event.clientY <= box.bottom
+		)
+			return this.placeAt(text, event.clientX, event.clientY);
+		const adding = (event.shiftKey || event.metaKey || event.ctrlKey) && value.kind === 'blocks';
+		this.selection.select(
+			blockSelection(adding ? [...new Set([...value.ids, block.id])] : [block.id])
+		);
+	};
+
+	/**
 	 * A triple click selects the block's content in the model; the browser's
 	 * own multi-click selection is cancelled at its `mousedown`
 	 * (`preventTripleClick`), so no native selection competes with the display.
 	 * @internal
 	 */
 	tripleClick = (e: MouseEvent) => {
-		if (e.detail < 3) return;
+		if (e.detail < 3 || this.ownPress(e)) return;
 		const targetNode = e.target instanceof Node ? e.target : null;
 		const clickedBlock = this.selection.getBlockOfNode(targetNode);
 		if (clickedBlock?.definition.void && !isTextBoundSelectionPoint(targetNode)) {
@@ -251,7 +306,7 @@ export class SelectionPointer {
 
 	/** @internal */
 	preventTripleClick = (e: MouseEvent) => {
-		if (e.detail >= 3) e.preventDefault();
+		if (e.detail >= 3 && !this.ownPress(e)) e.preventDefault();
 	};
 
 	/** The text point under the pointer, if any. */
@@ -445,7 +500,7 @@ export class SelectionPointer {
 	onSelectStart = (event: Event) => {
 		// Native controls (todo checkboxes, plugin inputs…) keep their own
 		// selection behavior.
-		if (isNativeInteractiveEvent(event)) return;
+		if (isNativeInteractiveEvent(event) || this.ownPress(event)) return;
 		const target = event.target instanceof Node ? event.target : null;
 		if (editableBoundary(target, this.selection.edytor.node)?.editable === false)
 			event.preventDefault();

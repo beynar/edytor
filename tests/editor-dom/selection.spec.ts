@@ -2697,8 +2697,8 @@ test.describe('browser selection behavior', () => {
 	}) => {
 		const issues = trackPageIssues(page);
 
-		await gotoSelectionFixture(page, '/test/dom?scenario=void');
-		await page.locator('figure button').click({ clickCount: 3 });
+		await gotoSelectionFixture(page, '/test/dom?scenario=image');
+		await page.locator('[data-edytor-image] img').click({ clickCount: 3 });
 
 		await expectSelection(page, {
 			selectedBlockPaths: [[0]]

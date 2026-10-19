@@ -206,7 +206,7 @@ Match the host exactly (never a suffix or a substring) and check every id you co
 | ------- | -------- | ----------------- | ---------------------------------------------------------------- |
 | `embed` | `figure` | `{ url: string }` | Embed (⧉, group `Media`, keywords `iframe`, `youtube`, `vimeo`…) |
 
-The block is void like the [image](/docs/plugins/image): it takes no children and is never merged, and its only text is the caption. The command id is `block.embed`. Its role is in `defaultSemantics`, so the room and headless documents treat it as void too.
+The block is void like the [image](/docs/plugins/image): it takes no children and is never merged, and its only text is the caption. A press on the block around the player selects it (the player's own clicks stay the player's: they never reach the page), and an unplayable link selects it too, opening only with <kbd>Mod</kbd> + click or in a readonly view. The command id is `block.embed`. Its role is in `defaultSemantics`, so the room and headless documents treat it as void too.
 
 In the empty block, `empty.embed()` (the demo's link field, "Paste the link…") embeds a link a provider plays as one data write, and sets `failed` for another (the demo says "No embed provider plays that link."). A readonly view's controller is `readonly`: show a passive placeholder.
 

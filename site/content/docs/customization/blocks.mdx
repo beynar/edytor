@@ -247,6 +247,30 @@ Anything a snippet renders besides `content()` and `children()` is chrome: icons
 
 The action sets `contenteditable="false"`, `data-edytor-void="true"` and `user-select: none` on the element. Native controls inside chrome keep their own clicks, and every form control (an input of any type, a textarea, a select, a button) or nested editable there keeps its own keys, paste, copy, cut, drops and selection, even while blocks are selected ([Properties](/docs/concepts/properties)). The block handle of an island aligns with a direct child marked this way.
 
+### Presses on chrome
+
+What a press on chrome does depends on the kind:
+
+- **A void kind** (`void: true`): the press selects the block, as Notion does. The block is block-selected and no caret is placed, so the selection's keys act on it: <kbd>Delete</kbd> removes it, the arrows leave it, <kbd>Enter</kbd> goes below, copy copies it, <kbd>Escape</kbd> clears it. <kbd>Shift</kbd> or <kbd>Mod</kbd> adds it to a block selection. A press on the line of the block's text (its caption), beside the words, puts the caret there.
+- **Any other kind**: the press puts the caret at the start of the block's text.
+- **The block's text** (`content()`, a void kind's caption included): the browser's caret, at the press.
+
+**Controls keep their whole press.** A press on a control inside chrome is the control's, with its clicks, double and triple clicks and its drag: the editor places no caret, starts no text selection and selects no block, and it leaves the control's focus, its keys and its input alone. A control is a native form control (`button`, `input`, `textarea`, `select`), a link, an element whose `role` is interactive (`button`, `link`, `checkbox`, `switch`, `menuitem`, `tab`, `option`, `slider`, `textbox`, `combobox`) or that takes the focus (`tabindex="0"`), and any element you mark `data-edytor-control`. Mark a custom interactive element (a clickable `div`, a canvas, a color swatch) with `data-edytor-control`, or give it its role and `tabindex`, so the editor leaves it alone:
+
+```svelte
+{#snippet widget({ block, content }: BlockSnippetPayload<{ count?: number }>)}
+	<div use:block.void class="card">
+		<button type="button" onclick={() => (block.data.count = (block.data.count ?? 0) + 1)}>
+			Clicked {block.data.count ?? 0} times
+		</button>
+		<div class="swatch" data-edytor-control onclick={() => pickColor(block)}></div>
+	</div>
+	<div class="caption">{@render content()}</div>
+{/snippet}
+```
+
+An element you do not mark still gets its click (the editor never cancels a click), but its press also selects the block. Keep the caption out of the card you want a press to select: a press on the caption's line is the caption's. The demo's widget (`src/routes/DemoWidget.svelte` in the repository) has a button, an input, a marked element and a caption.
+
 ## Presets
 
 A preset is one way to create the kind. Each preset becomes a row of the kind catalogue, `edytor.kinds`, which the slash menu, the markdown shortcuts plugin and block menus read.

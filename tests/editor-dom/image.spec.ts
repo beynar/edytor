@@ -150,7 +150,7 @@ const recorded = (page: Page) =>
 			}[]
 	);
 
-test.describe('a press in an image caption (sel.press.nested-editable)', () => {
+test.describe('a press in an image (sel.press.nested-editable, sel.press.void)', () => {
 	test('a click in the middle of the caption puts the caret there in one step', async ({
 		page
 	}) => {
@@ -178,15 +178,31 @@ test.describe('a press in an image caption (sel.press.nested-editable)', () => {
 		issues.assertClean();
 	});
 
-	test('a press on the image itself is chrome: the caret goes to the caption’s start', async ({
+	test('a press on the image selects its block, no caret in the caption; Delete removes it (sel.press.void)', async ({
 		page
 	}) => {
+		const issues = trackPageIssues(page);
 		await open(page);
 		const img = page.locator('[data-edytor-image] img').first();
 		await img.scrollIntoViewIfNeeded();
 		const image = (await img.boundingBox())!;
+		await recordCarets(page);
 		await page.mouse.click(image.x + image.width / 2, image.y + image.height / 2);
-		await expect.poll(() => modelCaret(page)).toEqual(['img', 0]);
+		await expect
+			.poll(() =>
+				page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection.value)
+			)
+			.toMatchObject({ kind: 'blocks', ids: ['img'] });
+		await expect(page.locator('[data-edytor-id="img"][data-edytor-block]')).toHaveAttribute(
+			'data-edytor-selected',
+			'true'
+		);
+		expect(await modelCaret(page)).toBeNull();
+		// No caret ever reported in the caption from the press on.
+		expect((await recorded(page)).filter((c) => c.offset !== null)).toEqual([]);
+		await page.keyboard.press('Delete');
+		await expect(page.locator('[data-edytor-type="image"]')).toHaveCount(0);
+		issues.assertClean();
 	});
 });
 

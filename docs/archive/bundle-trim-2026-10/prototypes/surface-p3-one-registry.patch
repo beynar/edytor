@@ -1,0 +1,319 @@
+diff --git a/src/lib/block/inlineBlock.svelte.ts b/src/lib/block/inlineBlock.svelte.ts
+index 4921948..90440ff 100644
+--- a/src/lib/block/inlineBlock.svelte.ts
++++ b/src/lib/block/inlineBlock.svelte.ts
+@@ -87,9 +87,15 @@ export class InlineBlock {
+ 		node.dataset.edytorId = this.id;
+ 		node.dataset.edytorInlineBlock = this.type;
+ 		this.#attachedNodes.add(node);
+-		this.edytor.nodeToInlineBlock.set(node, this);
+ 		this.node = node;
+-		const release = this.edytor.surface.register(node, 'atom', this.blockId);
++		const release = this.edytor.surface.register(
++			node,
++			'atom',
++			this.blockId,
++			undefined,
++			undefined,
++			this
++		);
+ 
+ 		const selectInlineBlock = (event: PointerEvent) => {
+ 			if (event.button !== 0) return;
+@@ -122,7 +128,6 @@ export class InlineBlock {
+ 				if (this.node === node) {
+ 					this.node = this.#attachedNodes.values().next().value;
+ 				}
+-				this.edytor.nodeToInlineBlock.delete(node);
+ 				release();
+ 			}
+ 		};
+diff --git a/src/lib/edytor.svelte.ts b/src/lib/edytor.svelte.ts
+index a98eada..2699496 100644
+--- a/src/lib/edytor.svelte.ts
++++ b/src/lib/edytor.svelte.ts
+@@ -205,10 +205,6 @@ export class Edytor {
+ 	/** The view's handles: one id-only `Block` per live id, texts and atoms by position and id. */
+ 	idToBlock: Handles = new Handles(this);
+ 	/** @internal */
+-	nodeToInlineBlock = new Map<Node, InlineBlock>();
+-	/** @internal */
+-	nodeToText = new Map<Node, Text>();
+-	/** @internal */
+ 	transaction = new TRANSACTION();
+ 	/** @internal The view's keymap: consumer bindings, then the extensions', then the built-in rows. */
+ 	keymap: Keymap;
+@@ -1099,8 +1095,6 @@ export class Edytor {
+ 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
+ 		// stray mutation could still reach.
+ 		this.idToBlock.clear();
+-		this.nodeToInlineBlock.clear();
+-		this.nodeToText.clear();
+ 		this.root = undefined;
+ 		this.node = undefined;
+ 
+diff --git a/src/lib/selection/selection.svelte.ts b/src/lib/selection/selection.svelte.ts
+index b6dc54c..51900b1 100644
+--- a/src/lib/selection/selection.svelte.ts
++++ b/src/lib/selection/selection.svelte.ts
+@@ -584,11 +584,7 @@ export class EdytorSelection {
+ 	getTextOfNode = getTextOfNode.bind(this);
+ 
+ 	/** @internal The block whose element holds `node`, in this editor. */
+-	getBlockOfNode = (node: Node | null) => {
+-		const element = getElementFromNode(node)?.closest<HTMLElement>('[data-edytor-block]');
+-		const id = element && this.edytor.node?.contains(element) && element.dataset.edytorId;
+-		return (id && this.edytor.idToBlock.get(id)) || null;
+-	};
++	getBlockOfNode = (node: Node | null) => this.edytor.surface.blockOf(node);
+ 
+ 	/** @internal */
+ 	init = () => {
+diff --git a/src/lib/selection/selection.utils.ts b/src/lib/selection/selection.utils.ts
+index 11fbe75..7e5642b 100644
+--- a/src/lib/selection/selection.utils.ts
++++ b/src/lib/selection/selection.utils.ts
+@@ -155,7 +155,7 @@ const strayText = (node: Node, container?: HTMLElement | null) => {
+ export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
+ 	if (!node) return null;
+ 	const { edytor } = this;
+-	const textOf = (element: Node | null) => (element && edytor.nodeToText.get(element)) || null;
++	const textOf = (element: Node | null) => edytor.surface.handleOf(element, 'text');
+ 	// A point in a suggestion's preview is the stray boundary the preview sits at.
+ 	const preview = closestTo(node, SUGGESTION);
+ 	if (preview) return textOf(strayText(preview, edytor.node));
+@@ -174,7 +174,7 @@ export const getInlineBlockOfNode = (edytor: Edytor, node: Node | null) => {
+ 	const element = getElementFromNode(node);
+ 	const around = element?.closest(INLINE);
+ 	const inline = around && edytor.node?.contains(around) ? around : element?.querySelector(INLINE);
+-	return (inline && edytor.nodeToInlineBlock.get(inline)) || null;
++	return edytor.surface.handleOf(inline, 'atom');
+ };
+ 
+ /** The one inline atom a non-collapsed range covers, touching no text. */
+@@ -186,7 +186,7 @@ export const getInlineBlockInSelectedRange = (edytor: Edytor, range: Range | und
+ 			(element) => range!.intersectsNode(element)
+ 		);
+ 	const atoms = new Set(
+-		inside(INLINE).flatMap((element) => edytor.nodeToInlineBlock.get(element) ?? [])
++		inside(INLINE).flatMap((element) => edytor.surface.handleOf(element, 'atom') ?? [])
+ 	);
+ 	return atoms.size === 1 && !inside(TEXT).length ? [...atoms][0] : null;
+ };
+diff --git a/src/lib/surface/attributes.ts b/src/lib/surface/attributes.ts
+index adc87c0..251c71a 100644
+--- a/src/lib/surface/attributes.ts
++++ b/src/lib/surface/attributes.ts
+@@ -65,7 +65,13 @@ export const insideVoid = (edytor: Edytor, block: string) => {
+ export const ownedOf = (
+ 	edytor: Edytor,
+ 	element: Element,
+-	entry: { kind: Kind; block: string; name?: string; owned?: () => Owned } | null
++	entry: {
++		kind: Kind;
++		block: string;
++		name?: string;
++		owned?: () => Owned;
++		handle?: { id: string; type?: string; isEmpty?: boolean };
++	} | null
+ ): Owned | null => {
+ 	if (element === edytor.node)
+ 		return {
+@@ -97,7 +103,7 @@ export const ownedOf = (
+ 			style: { display: 'none' }
+ 		};
+ 	if (entry.kind === 'atom') {
+-		const atom = edytor.nodeToInlineBlock.get(element);
++		const atom = entry.handle as { id: string; type?: string } | undefined;
+ 		return {
+ 			strict: true,
+ 			owned: {
+@@ -108,7 +114,7 @@ export const ownedOf = (
+ 			style: {}
+ 		};
+ 	}
+-	const text = edytor.nodeToText.get(element);
++	const text = entry.handle as { id: string; isEmpty?: boolean } | undefined;
+ 	const voided = insideVoid(edytor, block);
+ 	return {
+ 		strict: true,
+diff --git a/src/lib/surface/observer.svelte.ts b/src/lib/surface/observer.svelte.ts
+index 0739ba1..56ea2f6 100644
+--- a/src/lib/surface/observer.svelte.ts
++++ b/src/lib/surface/observer.svelte.ts
+@@ -40,6 +40,7 @@ import { tick, untrack } from 'svelte';
+ import type { DocAnchor } from '../crdt/index.js';
+ import type { Edytor } from '../edytor.svelte.js';
+ import type { Text } from '../text/text.svelte.js';
++import type { InlineBlock } from '../block/inlineBlock.svelte.js';
+ import { diffText } from '../utils/diffText.js';
+ import { jsonEquals } from '../utils/json.js';
+ import { activeMarks, marksForInsertion } from '../session/editing/text.js';
+@@ -59,8 +60,17 @@ import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js'
+ type Verdict = 'adopt' | 'attempt' | 'invert' | 'defer';
+ /** Where an adopted edit lands: the block and offset its anchor resolves to now. */
+ type Place = { block: string; at: number; remove: number; insert: string };
+-/** A registered element; `owned`: the attributes its render owns (a block's, `Block.svelte`). */
+-type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
++/**
++ * A registered element; `owned`: the attributes its render owns (a block's,
++ * `Block.svelte`); `handle`: the text or atom it renders (the one node → handle map).
++ */
++type Entry = {
++	kind: Kind;
++	block: string;
++	name?: string;
++	owned?: () => Owned;
++	handle?: Text | InlineBlock;
++};
+ /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
+ type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
+ /**
+@@ -272,8 +282,15 @@ export class SurfaceObserver {
+ 	 * release. A text element takes the table's attributes now (its id, its
+ 	 * editing host inside a void).
+ 	 */
+-	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
+-		const entry = { kind, block, name, owned };
++	register = (
++		node: Element,
++		kind: Kind,
++		block: string,
++		name?: string,
++		owned?: () => Owned,
++		handle?: Text | InlineBlock
++	) => {
++		const entry = { kind, block, name, owned, handle };
+ 		this.#registry.set(node, entry);
+ 		if (kind === 'text') heal(node as HTMLElement, ownedOf(this.edytor, node, entry)!);
+ 		if (kind === 'block') this.#blocks.set(block, node);
+@@ -375,26 +392,38 @@ export class SurfaceObserver {
+ 		return records.length > 0;
+ 	};
+ 
+-	/** The block an element belongs to: its closest registered element's (`null`: the root). */
+-	#owner = (node: Node): string | null | undefined => {
+-		for (let at: Node | null = node; at; at = at.parentNode) {
++	/** The closest registered element holding `node` in the host: its entry (`null`: the host). */
++	#near = (node: Node | null): Entry | null | undefined => {
++		for (let at = node; at; at = at.parentNode) {
+ 			if (at === this.edytor.node) return null;
+-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
+-			// What happens in a preview is the view's own render: nothing to compare.
+-			if (entry)
+-				return entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block;
++			const entry = this.#registry.get(at as Element);
++			if (entry) return entry;
+ 		}
+-		return undefined;
+ 	};
+ 
+-	/** The text whose element holds `node`. */
+-	#textOf = (node: Node): Text | undefined => {
+-		for (let at: Node | null = node; at && at !== this.edytor.node; at = at.parentNode) {
+-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
+-			if (entry)
+-				return entry.kind === 'text' ? this.edytor.nodeToText.get(at as Element) : undefined;
+-		}
+-		return undefined;
++	/** The block an element belongs to: its closest registered element's (`null`: the root). */
++	#owner = (node: Node): string | null | undefined => {
++		const entry = this.#near(node);
++		// What happens in a preview is the view's own render: nothing to compare.
++		return (
++			entry && (entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block)
++		);
++	};
++
++	/** The handle a registered element of `kind` renders (`null`: another element). */
++	handleOf = <K extends 'text' | 'atom'>(element: Node | null | undefined, kind: K) => {
++		const entry = element && this.#registry.get(element as Element);
++		return (entry?.kind === kind ? entry.handle : null) as
++			| (K extends 'text' ? Text : InlineBlock)
++			| null;
++	};
++
++	/** The block `node` is in (its closest registered element's), none in a preview or outside the host. */
++	blockOf = (node: Node | null) => {
++		const entry = this.#near(node);
++		return entry && entry.kind !== 'preview' && entry.kind !== 'anchor'
++			? (this.edytor.idToBlock.get(entry.block) ?? null)
++			: null;
+ 	};
+ 
+ 	#registered = (node: Node) => node instanceof Element && this.#registry.has(node);
+@@ -487,7 +516,8 @@ export class SurfaceObserver {
+ 			if (!held(removal) && !anchors && !(crossed && this.#lost(removal))) continue;
+ 			// A browser-owned attempt's host: its change is adopted whatever the
+ 			// browser did to its structure, which the re-render then restores.
+-			const inside = this.#textOf(parent);
++			const near = this.#near(parent);
++			const inside = near?.kind === 'text' && (near.handle as Text);
+ 			if (inside && this.edytor.attempts.on(inside)) continue;
+ 			for (const node of added)
+ 				if (node.parentNode === parent && !this.#holds(node)) parent.removeChild(node);
+@@ -778,9 +808,7 @@ export class SurfaceObserver {
+ 	};
+ 
+ 	#texts = (id: string): Text[] =>
+-		[...(this.#contents.get(id) ?? [])].flatMap(
+-			(element) => this.edytor.nodeToText.get(element) ?? []
+-		);
++		[...(this.#contents.get(id) ?? [])].flatMap((element) => this.handleOf(element, 'text') ?? []);
+ 
+ 	/** A content's DOM: its registered text and atom elements in order; null when not shown. */
+ 	#read = (id: string): { text: string; broken: string | null } | null => {
+@@ -800,7 +828,7 @@ export class SurfaceObserver {
+ 			else if (host && !host.contains(element)) broken ??= 'escaped';
+ 			if (kind === 'atom') text += ATOM;
+ 			else if (kind === 'text') {
+-				const found = this.edytor.nodeToText.get(element);
++				const found = this.handleOf(element, 'text');
+ 				text += (found ? readDomText(found) : (element.textContent ?? '')).replace(ZWSP, '');
+ 			}
+ 		}
+diff --git a/src/lib/surface/projector.svelte.ts b/src/lib/surface/projector.svelte.ts
+index be9d216..26805d4 100644
+--- a/src/lib/surface/projector.svelte.ts
++++ b/src/lib/surface/projector.svelte.ts
+@@ -503,7 +503,9 @@ export class Projector {
+ 				// Focus first (focusing a host can move the selection): the editing
+ 				// host, never a focusable element inside the text such as a link.
+ 				const element = start[0] instanceof HTMLElement ? start[0] : start[0].parentElement;
+-				edytor.expectInternalFocus(element?.closest<HTMLElement>('[contenteditable="true"]') ?? node);
++				edytor.expectInternalFocus(
++					element?.closest<HTMLElement>('[contenteditable="true"]') ?? node
++				);
+ 			}
+ 			this.#write(getDomSelection(node) ?? dom, points, isCollapsed);
+ 			if (selection.scrollOnDisplay) scrollCaretIntoView(node);
+diff --git a/src/lib/text/text.svelte.ts b/src/lib/text/text.svelte.ts
+index cab2ce6..4464f2e 100644
+--- a/src/lib/text/text.svelte.ts
++++ b/src/lib/text/text.svelte.ts
+@@ -115,9 +115,15 @@ export class Text {
+ 	/** @internal */
+ 	attach = (node: HTMLElement) => {
+ 		this.node = node;
+-		this.edytor.nodeToText.set(node, this);
+ 		// Registered, it takes the attribute table's attributes (`surface/attributes.ts`).
+-		const release = this.edytor.surface.register(node, 'text', this.parent.id);
++		const release = this.edytor.surface.register(
++			node,
++			'text',
++			this.parent.id,
++			undefined,
++			undefined,
++			this
++		);
+ 		const pluginDestroy = cleanups(this.edytor.plugins, (plugin) =>
+ 			plugin.onTextAttached?.({ node, text: this })
+ 		);
+@@ -128,7 +134,6 @@ export class Text {
+ 		return {
+ 			destroy: () => {
+ 				if (this.node === node) this.node = undefined;
+-				if (this.edytor.nodeToText.get(node) === this) this.edytor.nodeToText.delete(node);
+ 				release();
+ 				pluginDestroy.forEach((destroy) => destroy());
+ 			}

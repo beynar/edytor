@@ -1,0 +1,637 @@
+From ecca5729f77335bcfbaea710779f0f17b56c5b51 Mon Sep 17 00:00:00 2001
+From: x <x@x>
+Date: Mon, 19 Oct 2026 23:08:58 +0200
+Subject: [PATCH 2/3] proto C: one segmentation of block content (crdt/parts)
+
+---
+ src/lib/block/block.svelte.ts         | 24 ++-----
+ src/lib/block/inlineBlock.svelte.ts   |  7 ++-
+ src/lib/components/Content.svelte     |  2 +-
+ src/lib/crdt/parts.ts                 | 90 +++++++++++++++++++++++++++
+ src/lib/plugins/find/search.ts        |  4 +-
+ src/lib/session/handles.ts            | 57 +++++------------
+ src/lib/session/navigation.ts         |  6 +-
+ src/lib/session/selection.ts          | 50 +++++----------
+ src/lib/surface/cells.ts              | 62 +-----------------
+ src/lib/text/text.svelte.ts           | 32 +++++-----
+ src/tests/mirror-incremental.test.tsx | 10 +--
+ 11 files changed, 160 insertions(+), 184 deletions(-)
+ create mode 100644 src/lib/crdt/parts.ts
+
+diff --git a/src/lib/block/block.svelte.ts b/src/lib/block/block.svelte.ts
+index 4f571e8..dd2548e 100644
+--- a/src/lib/block/block.svelte.ts
++++ b/src/lib/block/block.svelte.ts
+@@ -5,6 +5,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
+ import type { BlockDefinition } from '$lib/plugins.js';
+ import type { InlineBlock } from './inlineBlock.svelte.js';
+ import type { Owned } from '$lib/surface/attributes.js';
++import { segmentAt } from '$lib/crdt/parts.js';
+ 
+ /** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
+ export const voidChrome = (node: HTMLElement) => {
+@@ -71,13 +72,10 @@ export class Block {
+ 	get content(): (Text | InlineBlock)[] {
+ 		this.#track();
+ 		const handles = this.edytor.idToBlock;
+-		let ordinal = 0;
+ 		return handles
+ 			.parts(this.id)
+ 			.map((part) =>
+-				part.kind === 'text'
+-					? handles.text(this.id, ordinal++)
+-					: handles.atom(this.id, part.item.id)
++				part.kind === 'text' ? handles.text(this.id, part.segOrd) : handles.atom(this.id, part.id)
+ 			);
+ 	}
+ 
+@@ -328,20 +326,10 @@ export class Block {
+ 	 * last text's end).
+ 	 */
+ 	textAtOffset = (offset: number): { text: Text; offset: number } | null => {
+-		let at = 0;
+-		let hit: { text: Text; offset: number } | null = null;
+-		for (const part of this.content) {
+-			if (!(part instanceof Text)) {
+-				if (offset <= at) return hit;
+-				at += 1;
+-			} else if (offset <= at + part.length) {
+-				return { text: part, offset: Math.max(0, offset - at) };
+-			} else {
+-				hit = { text: part, offset: part.length };
+-				at += part.length;
+-			}
+-		}
+-		return hit;
++		this.#track();
++		const { start, end, segOrd } = segmentAt(this.edytor.idToBlock.parts(this.id), offset);
++		const text = this.edytor.idToBlock.text(this.id, segOrd);
++		return { text, offset: Math.min(Math.max(0, offset - start), end - start) };
+ 	};
+ 
+ 	/** The declared view state (`open` on a `details`) the block's last element held. */
+diff --git a/src/lib/block/inlineBlock.svelte.ts b/src/lib/block/inlineBlock.svelte.ts
+index 4921948..14c187a 100644
+--- a/src/lib/block/inlineBlock.svelte.ts
++++ b/src/lib/block/inlineBlock.svelte.ts
+@@ -3,6 +3,7 @@ import type { InlineBlockDefinition } from '$lib/plugins.js';
+ import type { JSONInlineBlock } from '$lib/utils/json.js';
+ import type { Block } from './block.svelte.js';
+ import type { Text } from '$lib/text/text.svelte.js';
++import type { AtomPart } from '$lib/crdt/parts.js';
+ 
+ const INLINE_EDGE_CARET_THRESHOLD_PX = 4;
+ const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
+@@ -37,9 +38,9 @@ export class InlineBlock {
+ 
+ 	get #item() {
+ 		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
+-		const parts = this.edytor.idToBlock.parts(this.blockId);
+-		const part = parts.find((part) => part.kind === 'inline' && part.item.id === this.id);
+-		return part?.kind === 'inline' ? part.item : undefined;
++		return this.edytor.idToBlock
++			.parts(this.blockId)
++			.find((part): part is AtomPart => part.kind === 'inline' && part.id === this.id);
+ 	}
+ 
+ 	get selected() {
+diff --git a/src/lib/components/Content.svelte b/src/lib/components/Content.svelte
+index 87726b8..d19102c 100644
+--- a/src/lib/components/Content.svelte
++++ b/src/lib/components/Content.svelte
+@@ -43,7 +43,7 @@
+ 	const placeholder = $derived(edytor.placeholderAt(id));
+ 
+ 	/** An empty content's one text (`partsOf`: a content starts with a text). */
+-	const EMPTY: Segment = { kind: 'text', key: START, text: '', runs: [] };
++	const EMPTY: Segment = { kind: 'text', key: START, text: '', runs: [], segOrd: 0, start: 0, end: 0 };
+ 
+ 	/** Whether this view renders an atom of `part`'s kind (its record has a snippet). */
+ 	const rendersAtom = (part: AtomPart) => Boolean(edytor.inlineBlocks.get(part.type)?.snippet);
+diff --git a/src/lib/crdt/parts.ts b/src/lib/crdt/parts.ts
+new file mode 100644
+index 0000000..fa28c84
+--- /dev/null
++++ b/src/lib/crdt/parts.ts
+@@ -0,0 +1,90 @@
++/**
++ * A block's content as its parts: the text segments between inline atoms
++ * and the atoms, alternating, starting and ending with a segment (an empty
++ * content is one empty `start` segment), each at its display offsets (an
++ * atom counts 1). One pure function of the index's runs, memoized per runs
++ * array: the cells render it, the handles and the projection read it.
++ */
++import type { ContentRun } from './text/runs.js';
++
++export const START = 'start';
++
++type TextRun = Extract<ContentRun, { kind: 'text' }>;
++
++/** The text between two inline atoms (or a content edge), keyed causally. */
++export type Segment = {
++	readonly kind: 'text';
++	/** The id of the atom before this segment, or {@link START}. */
++	readonly key: string;
++	readonly text: string;
++	readonly runs: readonly TextRun[];
++	/** Its position among the block's segments. */
++	readonly segOrd: number;
++	readonly start: number;
++	readonly end: number;
++};
++
++export type AtomPart = {
++	readonly kind: 'inline';
++	readonly key: string;
++	readonly id: string;
++	readonly type: string;
++	readonly data: Readonly<Record<string, unknown>> | undefined;
++	readonly start: number;
++	readonly end: number;
++};
++
++export type Part = Segment | AtomPart;
++
++const memo = new WeakMap<readonly ContentRun[], readonly Part[]>();
++
++export const partsOf = (runs: readonly ContentRun[]): readonly Part[] => {
++	const hit = memo.get(runs);
++	if (hit) return hit;
++	const parts: Part[] = [];
++	let [key, segment, start, at, segOrd] = [START, [] as TextRun[], 0, 0, 0];
++	const close = () =>
++		parts.push(
++			Object.freeze({
++				kind: 'text' as const,
++				key,
++				text: segment.map((run) => run.text).join(''),
++				runs: Object.freeze(segment),
++				segOrd: segOrd++,
++				start,
++				end: at
++			})
++		);
++	for (const run of runs) {
++		if (run.kind === 'text') {
++			segment.push(run);
++			at += run.text.length;
++			continue;
++		}
++		close();
++		parts.push(
++			Object.freeze({
++				kind: 'inline' as const,
++				key: run.id,
++				id: run.id,
++				type: run.type,
++				data: run.data,
++				start: at,
++				end: ++at
++			})
++		);
++		[key, segment, start] = [run.id, [], at];
++	}
++	close();
++	memo.set(runs, Object.freeze(parts));
++	return parts;
++};
++
++/** The text segment showing `offset`: the first ending at or after it (a seam belongs to the left text), else the last. */
++export const segmentAt = <P extends { kind: string; end: number }>(
++	parts: readonly P[],
++	offset: number
++) => {
++	const texts = parts.filter((part): part is Extract<P, { kind: 'text' }> => part.kind === 'text');
++	return texts.find((part) => offset <= part.end) ?? texts.at(-1)!;
++};
+diff --git a/src/lib/plugins/find/search.ts b/src/lib/plugins/find/search.ts
+index 77462da..fc408c6 100644
+--- a/src/lib/plugins/find/search.ts
++++ b/src/lib/plugins/find/search.ts
+@@ -40,8 +40,8 @@ export const findMatches = (
+ 	const walk = (parent: string | null) => {
+ 		for (const block of facade.childrenIds(parent)) {
+ 			for (const part of idToBlock.parts(block)) {
+-				if (part.kind !== 'text' || part.length < needle.length) continue;
+-				const text = part.items.map((item) => item.text).join('');
++				if (part.kind !== 'text' || part.text.length < needle.length) continue;
++				const { text } = part;
+ 				const hay = caseSensitive ? text : fold(text);
+ 				for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length))
+ 					matches.push({ block, offset: part.start + at, length: needle.length });
+diff --git a/src/lib/session/handles.ts b/src/lib/session/handles.ts
+index 02e4c76..a6868e2 100644
+--- a/src/lib/session/handles.ts
++++ b/src/lib/session/handles.ts
+@@ -15,40 +15,14 @@
+ import { Block } from '../block/block.svelte.js';
+ import { InlineBlock } from '../block/inlineBlock.svelte.js';
+ import { Text } from '../text/text.svelte.js';
+-import type { ContentItem, ContentRun, Destination, DocChange } from '../crdt/index.js';
++import type { Destination, DocChange } from '../crdt/index.js';
++import { partsOf, type Part } from '../crdt/parts.js';
+ import type { Edytor } from '../edytor.svelte.js';
+ import type { JSONText } from '../utils/json.js';
+ 
+ export type TextRunItem = { text: string; marks?: Record<string, unknown> };
+ 
+-/** A block's content as the index shows it: text segments between atoms, each at its display start. */
+-export type ContentPart =
+-	| { kind: 'text'; start: number; items: TextRunItem[]; length: number }
+-	| { kind: 'inline'; start: number; item: ContentItem & { kind: 'inline' } };
+-
+-/** Segments and atoms, alternating, starting and ending with a segment. */
+-export const contentParts = (items: readonly ContentItem[]): ContentPart[] => {
+-	const parts: ContentPart[] = [];
+-	let segment: TextRunItem[] = [];
+-	let start = 0;
+-	let at = 0;
+-	const close = () => {
+-		parts.push({ kind: 'text', start, items: segment, length: at - start });
+-		segment = [];
+-	};
+-	for (const item of items) {
+-		if (item.kind === 'text') {
+-			segment.push({ text: item.text, ...(item.marks ? { marks: item.marks } : {}) });
+-			at += item.text.length;
+-			continue;
+-		}
+-		close();
+-		parts.push({ kind: 'inline', start: at, item });
+-		start = ++at;
+-	}
+-	close();
+-	return parts;
+-};
++export type { Part as ContentPart } from '../crdt/parts.js';
+ 
+ /**
+  * A text segment's items as `JSONText` runs (`text.value`): empty items
+@@ -69,7 +43,7 @@ export const segmentJSON = (items: readonly TextRunItem[]): JSONText[] => {
+ 	return out;
+ };
+ 
+-const ROOT = contentParts([]);
++const ROOT = partsOf([]);
+ 
+ /** The destination right after `block` among its siblings (`after: false`, right before it). */
+ export const siblingSlot = (block: Block, after = true): Destination => {
+@@ -85,8 +59,8 @@ export class Handles {
+ 	#blocks = new Map<string, Block>();
+ 	#texts = new Map<string, Text[]>();
+ 	#atoms = new Map<string, InlineBlock>();
+-	/** Each block's parts at the index version they were read (the last read of a dead block). */
+-	#parts = new Map<string, { runs: readonly ContentRun[]; parts: ContentPart[] }>();
++	/** Each block's parts as last read (a dead block's: what it last showed). */
++	#parts = new Map<string, readonly Part[]>();
+ 
+ 	constructor(private edytor: Edytor) {
+ 		this.root = new Block(edytor, 'root');
+@@ -133,25 +107,22 @@ export class Handles {
+ 	 * Block `id`'s content parts — from its runs, which the index keeps per
+ 	 * block and reads-your-writes (a write elsewhere re-derives nothing here).
+ 	 */
+-	parts = (id: string): ContentPart[] => {
++	parts = (id: string): readonly Part[] => {
+ 		if (id === 'root') return ROOT;
+-		const { facade } = this.edytor;
+-		const memo = this.#parts.get(id);
+-		const runs = facade.runs(id);
+-		if (memo?.runs === runs) return memo.parts;
++		const parts = partsOf(this.edytor.facade.runs(id));
++		const last = this.#parts.get(id);
+ 		// A dead block keeps what it last showed (a write's intent is minted from it).
+-		if (memo && !facade.isVisibleBlock(id)) return memo.parts;
+-		const parts = contentParts(runs as readonly ContentItem[]);
+-		this.#parts.set(id, { runs, parts });
++		if (last && last !== parts && !this.edytor.facade.isVisibleBlock(id)) return last;
++		this.#parts.set(id, parts);
+ 		return parts;
+ 	};
+ 
+ 	/** Forget the handles of the blocks a commit removed. */
+ 	prune = (change: DocChange) => {
+ 		for (const id of change.removed) {
+-			for (const part of this.#parts.get(id)?.parts ?? [])
+-				if (part.kind === 'inline' && this.#atoms.get(part.item.id)?.blockId === id)
+-					this.#atoms.delete(part.item.id);
++			for (const part of this.#parts.get(id) ?? [])
++				if (part.kind === 'inline' && this.#atoms.get(part.id)?.blockId === id)
++					this.#atoms.delete(part.id);
+ 			this.#blocks.delete(id);
+ 			this.#texts.delete(id);
+ 			this.#parts.delete(id);
+diff --git a/src/lib/session/navigation.ts b/src/lib/session/navigation.ts
+index f8a0643..f721302 100644
+--- a/src/lib/session/navigation.ts
++++ b/src/lib/session/navigation.ts
+@@ -40,6 +40,7 @@ import {
+ } from './selection.js';
+ import { untargeted } from './attempt.js';
+ import { siblingSlot } from './handles.js';
++import { partsOf } from '$lib/crdt/parts.js';
+ 
+ /**
+  * With no target (`untargeted`: the value is `none`, no gesture placed the
+@@ -61,9 +62,8 @@ const ATOM = '￼';
+ 
+ /** A block's content as one string, each inline atom one `ATOM`. */
+ const stringOf = (edytor: Edytor, block: string) =>
+-	edytor.facade
+-		.contentItems(block)
+-		.map((item) => (item.kind === 'text' ? item.text : ATOM))
++	partsOf(edytor.facade.runs(block))
++		.map((part) => (part.kind === 'text' ? part.text : ATOM))
+ 		.join('');
+ 
+ /** A block's stop at its edge in `dir` (its end going forward, its start going backward). */
+diff --git a/src/lib/session/selection.ts b/src/lib/session/selection.ts
+index 0b7f62b..e7bf732 100644
+--- a/src/lib/session/selection.ts
++++ b/src/lib/session/selection.ts
+@@ -13,7 +13,8 @@
+  * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; the
+  * presence payload is `serialize(value)`.
+  */
+-import type { BlockId, ContentItem } from '$lib/crdt/index.js';
++import type { BlockId, ContentRun } from '$lib/crdt/index.js';
++import { partsOf, segmentAt } from '$lib/crdt/parts.js';
+ import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
+ import { jsonEquals } from '$lib/utils/json.js';
+ 
+@@ -61,11 +62,18 @@ export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
+ /** A position within one document version: block id + display offset (an atom counts 1). */
+ export type SelectionPoint = { block: BlockId; offset: number };
+ 
+-type TextRun = Extract<ContentItem, { kind: 'text' }>;
++type TextRun = Extract<ContentRun, { kind: 'text' }>;
+ 
+ /** One content part of a block: a text segment (between atoms, possibly empty) or an inline atom. */
+ export type SelectionSegment =
+-	| { block: BlockId; kind: 'text'; segOrd: number; start: number; end: number; runs: TextRun[] }
++	| {
++			block: BlockId;
++			kind: 'text';
++			segOrd: number;
++			start: number;
++			end: number;
++			runs: readonly TextRun[];
++	  }
+ 	| { block: BlockId; kind: 'inline'; id: string; start: number; end: number };
+ type TextSegment = Extract<SelectionSegment, { kind: 'text' }>;
+ 
+@@ -101,7 +109,7 @@ export type ProjectionDoc = Pick<
+ 	| 'resolveAnchor'
+ 	| 'compare'
+ 	| 'order'
+-	| 'contentItems'
++	| 'runs'
+ 	| 'ancestorsOf'
+ 	| 'isIsland'
+ 	| 'isVoid'
+@@ -109,34 +117,8 @@ export type ProjectionDoc = Pick<
+ >;
+ 
+ /** A block's content parts; always text first and last, one text segment between two atoms. */
+-export const segmentsOf = (doc: ProjectionDoc, block: BlockId): SelectionSegment[] => {
+-	const out: SelectionSegment[] = [];
+-	let text: TextSegment = { block, kind: 'text', segOrd: 0, start: 0, end: 0, runs: [] };
+-	for (const item of doc.contentItems(block)) {
+-		if (item.kind === 'text') {
+-			text.runs.push(item);
+-			text.end += item.text.length;
+-			continue;
+-		}
+-		out.push(text, { block, kind: 'inline', id: item.id, start: text.end, end: text.end + 1 });
+-		text = {
+-			block,
+-			kind: 'text',
+-			segOrd: text.segOrd + 1,
+-			start: text.end + 1,
+-			end: text.end + 1,
+-			runs: []
+-		};
+-	}
+-	out.push(text);
+-	return out;
+-};
+-
+-/** The text segment displaying `offset`: the first one ending at or after it (a seam belongs to the left text). */
+-const textSegmentAt = (segments: SelectionSegment[], offset: number): TextSegment => {
+-	const texts = segments.filter((s): s is TextSegment => s.kind === 'text');
+-	return texts.find((s) => offset <= s.end) ?? texts[texts.length - 1];
+-};
++export const segmentsOf = (doc: ProjectionDoc, block: BlockId): SelectionSegment[] =>
++	partsOf(doc.runs(block)).map((part) => ({ ...part, block }));
+ 
+ const EMPTY: Omit<SelectionProjection, 'kind' | 'marks' | 'content'> = {
+ 	start: null,
+@@ -212,8 +194,8 @@ const projectRange = (
+ 	const partsOf = new Map(blocks.map((id) => [id, segmentsOf(doc, id)]));
+ 	const startSegments = partsOf.get(start.block) ?? segmentsOf(doc, start.block);
+ 	const endSegments = partsOf.get(end.block) ?? segmentsOf(doc, end.block);
+-	const first = textSegmentAt(startSegments, start.offset);
+-	const last = textSegmentAt(endSegments, end.offset);
++	const first = segmentAt(startSegments, start.offset);
++	const last = segmentAt(endSegments, end.offset);
+ 	const all = blocks.flatMap((id) => partsOf.get(id)!);
+ 	const from = all.indexOf(first);
+ 	const to = all.indexOf(last);
+diff --git a/src/lib/surface/cells.ts b/src/lib/surface/cells.ts
+index 8a63215..0cfe58f 100644
+--- a/src/lib/surface/cells.ts
++++ b/src/lib/surface/cells.ts
+@@ -165,18 +165,8 @@ export const createCells = (
+ 
+ // ── segments and render deltas ──────────────────────────────────────────
+ 
+-export const START = 'start';
+-
+-type TextRun = Extract<ContentRun, { kind: 'text' }>;
+-
+-/** The text between two inline atoms (or a content edge), keyed causally. */
+-export type Segment = {
+-	readonly kind: 'text';
+-	/** The id of the atom before this segment, or {@link START}. */
+-	readonly key: string;
+-	readonly text: string;
+-	readonly runs: readonly TextRun[];
+-};
++export { START, partsOf, type Segment, type AtomPart, type Part } from '../crdt/parts.js';
++import { partsOf, type Segment } from '../crdt/parts.js';
+ 
+ /** A suggestion's block as a cell (`components/Suggestion`): rendered like one, never registered. */
+ export type PreviewCell = Omit<Cell, 'childIds'> & { readonly children: readonly PreviewCell[] };
+@@ -196,54 +186,6 @@ export const previewCells = (blocks: readonly JSONBlock[], key: string): Preview
+ 		});
+ 	});
+ 
+-export type AtomPart = {
+-	readonly kind: 'inline';
+-	readonly key: string;
+-	readonly id: string;
+-	readonly type: string;
+-	readonly data: Data;
+-};
+-
+-export type Part = Segment | AtomPart;
+-
+-const partsMemo = new WeakMap<readonly ContentRun[], readonly Part[]>();
+-
+-/**
+- * A cell's content as segments and atoms, alternating, starting and ending
+- * with a segment (an empty content is one empty `start` segment).
+- */
+-export const partsOf = (runs: readonly ContentRun[]): readonly Part[] => {
+-	const memo = partsMemo.get(runs);
+-	if (memo) return memo;
+-	const parts: Part[] = [];
+-	let key = START;
+-	let segment: TextRun[] = [];
+-	const close = () =>
+-		parts.push(
+-			Object.freeze({
+-				kind: 'text' as const,
+-				key,
+-				text: segment.map((run) => run.text).join(''),
+-				runs: Object.freeze(segment)
+-			})
+-		);
+-	for (const run of runs) {
+-		if (run.kind === 'text') {
+-			segment.push(run);
+-			continue;
+-		}
+-		close();
+-		parts.push(
+-			Object.freeze({ kind: 'inline', key: run.id, id: run.id, type: run.type, data: run.data })
+-		);
+-		key = run.id;
+-		segment = [];
+-	}
+-	close();
+-	partsMemo.set(runs, Object.freeze(parts));
+-	return parts;
+-};
+-
+ /** Whether a view renders mark `name` (its record has a tag or a snippet): an unknown mark renders its text only. */
+ export const rendersMark = (
+ 	marks: ReadonlyMap<string, { tag?: unknown; snippet?: unknown }>,
+diff --git a/src/lib/text/text.svelte.ts b/src/lib/text/text.svelte.ts
+index cab2ce6..510183f 100644
+--- a/src/lib/text/text.svelte.ts
++++ b/src/lib/text/text.svelte.ts
+@@ -2,7 +2,8 @@ import { cleanups } from '$lib/utils.js';
+ import type { Edytor } from '../edytor.svelte.js';
+ import { type JSONText } from '$lib/utils/json.js';
+ import type { Block } from '../block/block.svelte.js';
+-import { segmentJSON, type ContentPart } from '$lib/session/handles.js';
++import { segmentJSON } from '$lib/session/handles.js';
++import type { Segment } from '$lib/crdt/parts.js';
+ 
+ /**
+  * An id-only, read-only text handle: the `ordinal`-th text segment of block
+@@ -33,29 +34,30 @@ export class Text {
+ 		return this.edytor.idToBlock.block(this.blockId);
+ 	}
+ 
+-	/** This segment in its block's parts, and its position among them. */
+-	get #at(): { part?: Extract<ContentPart, { kind: 'text' }>; index: number } {
++	/** This segment in its block's parts. */
++	get #parts() {
+ 		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
+-		const parts = this.edytor.idToBlock.parts(this.blockId);
+-		for (let index = 0, k = 0; index < parts.length; index++) {
+-			const part = parts[index]!;
+-			if (part.kind === 'text' && k++ === this.ordinal) return { part, index };
+-		}
+-		return { index: -1 };
++		return this.edytor.idToBlock.parts(this.blockId);
++	}
++	get #part(): Segment | undefined {
++		return this.#parts.find(
++			(part): part is Segment => part.kind === 'text' && part.segOrd === this.ordinal
++		);
+ 	}
+ 
+ 	/** Position among the block's content parts. */
+ 	get index(): number {
+-		return this.#at.index;
++		const parts = this.#parts;
++		return parts.indexOf(this.#part!);
+ 	}
+ 
+ 	get value(): JSONText[] {
+-		return segmentJSON(this.#at.part?.items ?? []);
++		return segmentJSON(this.#part?.runs ?? []);
+ 	}
+ 
+ 	/** The segment's text. */
+ 	get stringContent(): string {
+-		return this.#at.part?.items.map((item) => item.text).join('') ?? '';
++		return this.#part?.text ?? '';
+ 	}
+ 
+ 	get isEmpty(): boolean {
+@@ -67,17 +69,17 @@ export class Text {
+ 	}
+ 
+ 	get length(): number {
+-		return this.#at.part?.length ?? 0;
++		return this.stringContent.length;
+ 	}
+ 
+ 	/** Display offset of this segment inside its block's content (atoms count 1). */
+ 	get segStart(): number {
+-		return this.#at.part?.start ?? 0;
++		return this.#part?.start ?? 0;
+ 	}
+ 
+ 	/** The segment is shown by a live block. */
+ 	get isInDocument(): boolean {
+-		return this.parent.isInTree && this.#at.part !== undefined;
++		return this.parent.isInTree && this.#part !== undefined;
+ 	}
+ 
+ 	/**
+diff --git a/src/tests/mirror-incremental.test.tsx b/src/tests/mirror-incremental.test.tsx
+index 771adde..04a37d0 100644
+--- a/src/tests/mirror-incremental.test.tsx
++++ b/src/tests/mirror-incremental.test.tsx
+@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
+ import { Y } from '$lib/crdt/engine.js';
+ import { createOperationEdytor } from './test.utils.js';
+ import type { Block } from '$lib/block/block.svelte.js';
+-import { contentParts } from '$lib/session/handles.js';
+-import type { ProjectedBlock } from '$lib/crdt/index.js';
++import { partsOf } from '$lib/crdt/parts.js';
++import type { ContentRun, ProjectedBlock } from '$lib/crdt/index.js';
+ import type { JSONBlock, JSONText } from '$lib/utils/json.js';
+ import type { Edytor } from '$lib/edytor.svelte.js';
+ 
+@@ -16,11 +16,11 @@ import type { Edytor } from '$lib/edytor.svelte.js';
+  */
+ const projectedToValue = (node: ProjectedBlock): JSONBlock => {
+ 	const children = node.children.map(projectedToValue);
+-	const content = contentParts(node.content).flatMap((part) => {
++	const content = partsOf(node.content as readonly ContentRun[]).flatMap((part) => {
+ 		if (part.kind === 'text') {
+ 			// A segment's runs: empty ones dropped, neighbours with the same marks joined.
+ 			const runs: JSONText[] = [];
+-			for (const { text, marks = {} } of part.items) {
++			for (const { text, marks = {} } of part.runs) {
+ 				const last = runs.at(-1);
+ 				if (!text) continue;
+ 				if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += text;
+@@ -28,7 +28,7 @@ const projectedToValue = (node: ProjectedBlock): JSONBlock => {
+ 			}
+ 			return runs;
+ 		}
+-		return [{ id: part.item.id, type: part.item.type, data: part.item.data ?? {} }];
++		return [{ id: part.id, type: part.type, data: part.data ?? {} }];
+ 	});
+ 	const value: JSONBlock = { type: node.type, id: node.id, children, content };
+ 	value.data = node.data ?? {};
+-- 
+2.50.1 (Apple Git-155)
+

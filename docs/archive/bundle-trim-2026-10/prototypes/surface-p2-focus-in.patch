@@ -1,0 +1,250 @@
+diff --git a/src/lib/edytor.svelte.ts b/src/lib/edytor.svelte.ts
+index 274eefb..a98eada 100644
+--- a/src/lib/edytor.svelte.ts
++++ b/src/lib/edytor.svelte.ts
+@@ -83,6 +83,7 @@ import { DataWrites } from './session/props.js';
+ import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
+ import {
+ 	clearDomSelection,
++	focusIn,
+ 	getActiveElement,
+ 	getDomSelection,
+ 	getDomSelectionSnapshot
+@@ -819,12 +820,13 @@ export class Edytor {
+ 	 * fires (element already focused).
+ 	 */
+ 	#expectInternalFocusArmed = false;
+-	/** @internal */
+-	expectInternalFocus = () => {
++	/** @internal Armed, and `element` (the host, an editing host in it) focused without scrolling. */
++	expectInternalFocus = (element?: HTMLElement | null) => {
+ 		this.#expectInternalFocusArmed = true;
+ 		queueMicrotask(() => {
+ 			this.#expectInternalFocusArmed = false;
+ 		});
++		element?.focus({ preventScroll: true });
+ 	};
+ 	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
+ 	consumeInternalFocus = (): boolean => {
+@@ -862,14 +864,13 @@ export class Edytor {
+ 	stabilizeCompositionSelection = (text: Text, offset: number) => {
+ 		if (this.readonly || this.isComposing || !text.isInDocument) return;
+ 		const active = getActiveElement(this.node);
+-		const selection = getDomSelection(this.node);
+ 		const ours = (node?: Node | null) => Boolean(node && this.node?.contains(node));
+ 		// Focus left for a foreign element with no selection of ours, or moved
+ 		// into a nested editable island (its own caret): the user owns it.
+ 		if (
+ 			(active &&
+-				!ours(active) &&
+-				!ours(selection?.anchorNode) &&
++				!focusIn(this.node) &&
++				!ours(getDomSelection(this.node)?.anchorNode) &&
+ 				!ours(this.selection.textRange().startText?.node)) ||
+ 			isKindControl(this.node, active)
+ 		)
+@@ -1039,8 +1040,8 @@ export class Edytor {
+ 		return {
+ 			destroy: () => {
+ 				if (selectionIsInside(node)) clearDomSelection(node);
+-				const active = getActiveElement(node);
+-				if (active instanceof HTMLElement && node.contains(active)) active.blur();
++				const active = focusIn(node);
++				if (active instanceof HTMLElement) active.blur();
+ 				this.#detach();
+ 			}
+ 		};
+diff --git a/src/lib/events/onBeforeInput.ts b/src/lib/events/onBeforeInput.ts
+index efeb1c0..ce4fb7f 100644
+--- a/src/lib/events/onBeforeInput.ts
++++ b/src/lib/events/onBeforeInput.ts
+@@ -3,6 +3,7 @@ import { vetoable } from '$lib/utils.js';
+ import {
+ 	createDomRange,
+ 	createDomSelectionSnapshotFromRange,
++	focusIn,
+ 	getActiveElement,
+ 	getDomSelection
+ } from '$lib/selection/domSelection.js';
+@@ -117,8 +118,8 @@ const adoptDeclared = (edytor: Edytor, a: Attempt, declared: StaticRange) => {
+ const isForeignHistory = (edytor: Edytor) => {
+ 	const node = edytor.node;
+ 	if (!node) return true;
++	if (focusIn(node)) return false;
+ 	const active = getActiveElement(node);
+-	if (active && node.contains(active)) return false;
+ 	const { body, documentElement } = node.ownerDocument;
+ 	const anchor = getDomSelection(node)?.anchorNode;
+ 	return (
+diff --git a/src/lib/events/onFocus.ts b/src/lib/events/onFocus.ts
+index 66bd7a6..7dbae2b 100644
+--- a/src/lib/events/onFocus.ts
++++ b/src/lib/events/onFocus.ts
+@@ -9,6 +9,7 @@ import { on } from 'svelte/events';
+ import type { Edytor } from '../edytor.svelte.js';
+ import {
+ 	clearDomSelection,
++	focusIn,
+ 	getActiveElement,
+ 	getDomSelection,
+ 	getDomSelectionSnapshot
+@@ -46,8 +47,7 @@ export const takeKeys = (edytor: Edytor) => {
+ 	const node = edytor.node;
+ 	if (!node?.isConnected || edytor.destroyed) return;
+ 	if (getActiveElement(node) === node) return;
+-	edytor.expectInternalFocus();
+-	node.focus({ preventScroll: true });
++	edytor.expectInternalFocus(node);
+ 	edytor.projector.parked();
+ 	edytor.selection.display();
+ };
+@@ -165,13 +165,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
+ 	};
+ 
+ 	const clearNativeSelectionAfterExternalFocus = () => {
+-		const activeElement = getActiveElement(node);
+-		if (activeElement instanceof Node && node.contains(activeElement)) {
+-			return;
+-		}
+-		if (selectionIsInside(node)) {
+-			clearDomSelection(node);
+-		}
++		if (!focusIn(node) && selectionIsInside(node)) clearDomSelection(node);
+ 	};
+ 
+ 	/**
+diff --git a/src/lib/selection/domSelection.ts b/src/lib/selection/domSelection.ts
+index 1b45443..40654cf 100644
+--- a/src/lib/selection/domSelection.ts
++++ b/src/lib/selection/domSelection.ts
+@@ -27,6 +27,12 @@ export const getDomSelection = (node?: Node | null): Selection | null =>
+ export const getActiveElement = (node?: Node | null): Element | null =>
+ 	shadowOf(node)?.activeElement ?? ownerOf(node)?.activeElement ?? null;
+ 
++/** The focused element when it is `node` or inside it (the editor's own focus), else `null`. */
++export const focusIn = (node?: Node | null): Element | null => {
++	const active = getActiveElement(node);
++	return active && node?.contains(active) ? active : null;
++};
++
+ export const clearDomSelection = (node?: Node | null) => {
+ 	getDomSelection(node)?.removeAllRanges();
+ };
+@@ -126,8 +132,7 @@ export const scrollCaretIntoView = (root: Element | null | undefined) => {
+ 	const selection = root && getDomSelection(root);
+ 	const focusNode = selection?.focusNode;
+ 	if (!selection || !focusNode || selection.rangeCount === 0 || !root.contains(focusNode)) return;
+-	const active = getActiveElement(root);
+-	if (!active || !root.contains(active)) return;
++	if (!focusIn(root)) return;
+ 	const element = focusNode instanceof Element ? focusNode : focusNode.parentElement;
+ 	if (!element) return;
+ 	// A scratch range collapsed at the FOCUS endpoint: a backward range
+diff --git a/src/lib/selection/pointer.svelte.ts b/src/lib/selection/pointer.svelte.ts
+index 951dd2f..53f2350 100644
+--- a/src/lib/selection/pointer.svelte.ts
++++ b/src/lib/selection/pointer.svelte.ts
+@@ -123,8 +123,7 @@ export class SelectionPointer {
+ 
+ 	#trailing = () => {
+ 		const { edytor } = this.selection;
+-		edytor.expectInternalFocus();
+-		edytor.node?.focus({ preventScroll: true });
++		edytor.expectInternalFocus(edytor.node);
+ 		toTrailingParagraph(edytor);
+ 	};
+ 
+@@ -206,8 +205,7 @@ export class SelectionPointer {
+ 		const x = Math.min(Math.max(at.clientX, box.left + 1), box.right - 1);
+ 		const point = this.#pointAt(x, at.clientY);
+ 		if (!point) return;
+-		edytor.expectInternalFocus();
+-		host.focus({ preventScroll: true });
++		edytor.expectInternalFocus(host);
+ 		this.selection.selectText(point.text, point.offset);
+ 	};
+ 
+@@ -237,8 +235,7 @@ export class SelectionPointer {
+ 		// The model answers this press: the browser's own caret placement on
+ 		// the chrome is cancelled (a canceled pointerdown moves no selection).
+ 		event.preventDefault();
+-		this.selection.edytor.expectInternalFocus();
+-		this.selection.edytor.node?.focus({ preventScroll: true });
++		this.selection.edytor.expectInternalFocus(this.selection.edytor.node);
+ 		this.selection.selectText(targetText, 0);
+ 	};
+ 
+@@ -258,8 +255,7 @@ export class SelectionPointer {
+ 		// The model answers it: no native caret, focus or selection; no text drag (`claimed`).
+ 		event.preventDefault();
+ 		this.claimed = true;
+-		edytor.expectInternalFocus();
+-		edytor.node?.focus({ preventScroll: true });
++		edytor.expectInternalFocus(edytor.node);
+ 		// On the line of its text (a caption's, beside the text): the caret at the nearest point there.
+ 		const target =
+ 			event.target instanceof Element && event.target !== block.node ? event.target : null;
+diff --git a/src/lib/surface/projector.svelte.ts b/src/lib/surface/projector.svelte.ts
+index ac0d49f..be9d216 100644
+--- a/src/lib/surface/projector.svelte.ts
++++ b/src/lib/surface/projector.svelte.ts
+@@ -45,6 +45,7 @@ import type { YTransaction as Transaction } from '../crdt/index.js';
+ import {
+ 	clearDomSelection,
+ 	createDomRange,
++	focusIn,
+ 	getActiveElement,
+ 	getDomSelection,
+ 	getDomSelectionSnapshot,
+@@ -143,9 +144,7 @@ export class Projector {
+ 	pre = () => {
+ 		void this.#deps();
+ 		untrack(() => {
+-			const node = this.edytor.node;
+-			const active = node && getActiveElement(node);
+-			this.#noted = active && node.contains(active) ? active : null;
++			this.#noted = focusIn(this.edytor.node);
+ 		});
+ 	};
+ 
+@@ -477,9 +476,7 @@ export class Projector {
+ 			// whose `selectionchange` can land after that key counted as a
+ 			// gesture) leaves any caret the browser parks later its own
+ 			// (`#parking`, `placed`), whatever key comes before it.
+-			const active = getActiveElement(node);
+-			if (requested && value.kind !== 'blocks' && active && node.contains(active))
+-				this.#parking = true;
++			if (requested && value.kind !== 'blocks' && focusIn(node)) this.#parking = true;
+ 			const inside = !!dom?.anchorNode && node.contains(dom.anchorNode);
+ 			const clears = value.kind === 'none' ? requested && inside : inside || dom?.rangeCount === 0;
+ 			if (clears && this.#ours(requested)) {
+@@ -502,15 +499,11 @@ export class Projector {
+ 		// Already shown: an observation, whoever holds focus.
+ 		if (!this.#shows(dom, range, isReversed)) {
+ 			if (!this.#ours(requested)) return true;
+-			const active = getActiveElement(node);
+-			if (!(active && node.contains(active))) {
++			if (!focusIn(node)) {
+ 				// Focus first (focusing a host can move the selection): the editing
+ 				// host, never a focusable element inside the text such as a link.
+-				edytor.expectInternalFocus();
+ 				const element = start[0] instanceof HTMLElement ? start[0] : start[0].parentElement;
+-				(element?.closest<HTMLElement>('[contenteditable="true"]') ?? node).focus({
+-					preventScroll: true
+-				});
++				edytor.expectInternalFocus(element?.closest<HTMLElement>('[contenteditable="true"]') ?? node);
+ 			}
+ 			this.#write(getDomSelection(node) ?? dom, points, isCollapsed);
+ 			if (selection.scrollOnDisplay) scrollCaretIntoView(node);
+@@ -602,9 +595,10 @@ export class Projector {
+ 	#ours = (requested: boolean) => {
+ 		const node = this.edytor.node!;
+ 		const active = getActiveElement(node);
++		const inside = focusIn(node);
+ 		// A form control or a foreign editable in a kind's chrome (a field bound to
+ 		// `block.data`) owns its focus and its selection: never written over.
+-		if (active && node.contains(active)) return !isKindControl(node, active);
++		if (inside) return !isKindControl(node, inside);
+ 		const document = node.ownerDocument;
+ 		if (active && active !== document.body && active !== document.documentElement) return false;
+ 		const anchor = getDomSelection(node)?.anchorNode ?? null;

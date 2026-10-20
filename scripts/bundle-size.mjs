@@ -11,6 +11,7 @@
 //   node scripts/bundle-size.mjs --json out.json
 //   node scripts/bundle-size.mjs --no-package # reuse the current dist/
 //   node scripts/bundle-size.mjs --only export-tohtml,export-all
+//   node scripts/bundle-size.mjs --cache <dir> # the probes' own folder (an exported copy's)
 //
 // The numbers are minified bytes (Vite's default esbuild minify), gzip -9
 // and brotli -11 of every emitted .js file, entry and lazy chunks apart.
@@ -100,8 +101,7 @@ const ONLY = option('--only')?.split(',');
 
 if (!flag('--no-package')) execSync('pnpm package', { cwd: root, stdio: 'ignore' });
 
-const work = join(root, 'node_modules/.cache/bundle-size');
-rmSync(work, { recursive: true, force: true });
+const work = option('--cache', join(root, 'node_modules/.cache/bundle-size'));
 
 /** A source path, shortened: `edytor/<path under src/lib>`, `svelte`, or a package name. */
 const nameOf = (source) => {
@@ -139,6 +139,7 @@ const ENTRIES = [
 ].filter(([app]) => !ONLY || ONLY.includes(app));
 for (const [app, source, isSvelte] of ENTRIES) {
 	const dir = join(work, app);
+	rmSync(dir, { recursive: true, force: true });
 	mkdirSync(dir, { recursive: true });
 	if (isSvelte) writeFileSync(join(dir, 'App.svelte'), source);
 	writeFileSync(
@@ -153,6 +154,7 @@ for (const [app, source, isSvelte] of ENTRIES) {
 	);
 	await build({
 		root: dir,
+		cacheDir: join(dir, '.vite'),
 		logLevel: 'error',
 		configFile: false,
 		plugins: isSvelte ? [svelte()] : [],

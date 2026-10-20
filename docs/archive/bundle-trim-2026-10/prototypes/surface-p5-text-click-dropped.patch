@@ -1,0 +1,91 @@
+diff --git a/src/lib/components/Text.svelte b/src/lib/components/Text.svelte
+index 7e10332..5bda2d2 100644
+--- a/src/lib/components/Text.svelte
++++ b/src/lib/components/Text.svelte
+@@ -86,30 +86,6 @@
+ 		if (newline) items.push({ key: 'newline', delta: null });
+ 		return items;
+ 	});
+-
+-	/** A plain click (no drag, no Shift, a single press) places the caret at the pointer. */
+-	const restoreTextSelectionFromClick = (node: HTMLElement) => {
+-		let pointerStart: { clientX: number; clientY: number } | null = null;
+-		const pointerdown = ({ button, shiftKey, clientX, clientY }: PointerEvent) => {
+-			pointerStart = button !== 0 || shiftKey ? null : { clientX, clientY };
+-		};
+-		const click = (event: MouseEvent) => {
+-			const start = pointerStart;
+-			pointerStart = null;
+-			if (event.button !== 0 || event.detail !== 1 || event.shiftKey || !start) return;
+-			const movement = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+-			if (movement < 4 && text)
+-				edytor.selection.pointer.placeAt(text, event.clientX, event.clientY);
+-		};
+-		node.addEventListener('pointerdown', pointerdown);
+-		node.addEventListener('click', click);
+-		return {
+-			destroy: () => {
+-				node.removeEventListener('pointerdown', pointerdown);
+-				node.removeEventListener('click', click);
+-			}
+-		};
+-	};
+ </script>
+ 
+ <!-- The comment blocks are needed to prevent unwanted text nodes with whitespace. -->
+@@ -117,7 +93,6 @@
+ 
+ <span
+ 	use:attachText={text}
+-	use:restoreTextSelectionFromClick
+ 	data-edytor-text-empty={empty ? 'true' : 'false'}
+ 	data-placeholder={placeholder ?? undefined}
+ 	data-edytor-composition-rest={rest || undefined}
+diff --git a/src/lib/selection/pointer.svelte.ts b/src/lib/selection/pointer.svelte.ts
+index 53f2350..c5a650e 100644
+--- a/src/lib/selection/pointer.svelte.ts
++++ b/src/lib/selection/pointer.svelte.ts
+@@ -24,6 +24,7 @@ import {
+ import { domPointOf } from '$lib/surface/projector.svelte.js';
+ import {
+ 	editableBoundary,
++	getElementFromNode,
+ 	isTextBoundSelectionPoint,
+ 	offsetIn,
+ 	SUGGESTION
+@@ -283,6 +284,14 @@ export class SelectionPointer {
+ 	 * @internal
+ 	 */
+ 	tripleClick = (e: MouseEvent) => {
++		const press = this.#press;
++		this.#press = null;
++		// A plain click (no drag, no Shift, a single press) on a text places the caret at the pointer.
++		if (e.detail === 1 && e.button === 0 && !e.shiftKey && press?.on?.contains(e.target as Node)) {
++			const text = this.selection.edytor.surface.handleOf(press.on, 'text');
++			if (text && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 4)
++				this.placeAt(text, e.clientX, e.clientY);
++		}
+ 		if (e.detail < 3 || this.ownPress(e)) return;
+ 		const targetNode = e.target instanceof Node ? e.target : null;
+ 		const clickedBlock = this.selection.getBlockOfNode(targetNode);
+@@ -352,8 +361,20 @@ export class SelectionPointer {
+ 		this.selection.selectText(text, this.#offsetAt(text, clientX, clientY));
+ 	};
+ 
++	/**
++	 * The last primary press inside the host without Shift (its `pointerdown`):
++	 * where it landed, and the text element it hit. Its plain click places the
++	 * caret at the pointer (`click`).
++	 */
++	#press: { x: number; y: number; on: Element | null | undefined } | null = null;
++
+ 	/** @internal */
+ 	capture = (event: MouseEvent) => {
++		const { clientX: x, clientY: y } = event;
++		this.#press =
++			event.type === 'pointerdown' && event.button === 0 && !event.shiftKey
++				? { x, y, on: getElementFromNode(event.target as Node)?.closest('[data-edytor-text]') }
++				: null;
+ 		if (event.button !== 0) {
+ 			this.dragStart = null;
+ 			return;

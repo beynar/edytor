@@ -50,6 +50,7 @@
 		"bench:browser": "node bench/browser.js",
 		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
 		"size": "node scripts/bundle-size.mjs --by dir",
+		"bundle:attribution": "node scripts/bundle-attribution.mjs",
 		"registry:build": "shadcn-svelte registry build ./registry.json --output site/public/r",
 		"check:registry": "node scripts/check-registry.mjs",
 		"test:registry-install": "sh tests/registry-install/run.sh",

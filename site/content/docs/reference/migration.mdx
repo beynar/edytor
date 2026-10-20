@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 4.0.0
+
 #### Breaking changes
 
 - **Schema generation 11: stored documents and rooms start over.** [Shared suggestions](/docs/editor/suggestions#suggesting-mode) are stored in the document: a root of their own, and a deletion record that, inside a suggestion, holds nothing back but names the text it proposes to delete (wire word `14011`, browser database `edytor-v14-g11:<name>`). Rooms, browser stores, history versions and peers of generation 10 are refused (`GenerationMismatchError`, `schema-mismatch`), never converted: a browser's local copy is not read and the page fetches the room's state again; re-create a room or a stored state of generation 10 from its JSON (`toJSON` with the previous release, then `createDocument({ value })`). Update every client and the room together.

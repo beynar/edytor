@@ -1,8 +1,10 @@
 # Shared suggestions, smaller — design
 
 Status: built (branch `suggestions-in-engine`, 2026-10-19 and 20), not
-merged: the +6 KB target is missed (§4, §5); the behaviour changes that
-would go further are measured in §6 for the user. PR #32 (`9f592dde`)
+merged: the +6 KB target was missed (§4, §5; the behaviour changes that
+would go further measured in §6), and the user then made shared
+suggestions a plugin (§7): the bare editor pays +1.0 KB for them, against
+a +0.6 KB target. PR #32 (`9f592dde`)
 shipped shared suggestions for +17.1 KB min / +5.95 KB gzip on the bare
 `<Edytor />`; a smaller bundle is a requirement of all work since the last
 release, so the cost is a no-go. This file measures where the bytes are,
@@ -215,3 +217,76 @@ Together about −3.2 KB: shared suggestions would still cost about
 +10.2 KB. Reaching +6 KB needs a smaller feature than the one the user
 decided (for example no shared AI answers and no client access level and
 no block proposals), not a smaller implementation of it.
+
+## 7. Shared suggestions as a plugin
+
+The user's decision after §6: shared suggestions become a plugin (the
+"never opt-in" rule lifted for this feature only). The bare `<Edytor />`
+pays the engine part; an app that lists `createSharedSuggestionsPlugin()`
+pays the rest. It tree-shakes: a factory of its own, and the core holds no
+reference to the suggestion code, only generic ports.
+
+### What moved out of the bare editor
+
+| Part | Where it is now |
+| --- | --- |
+| The document part (`crdt/doc/suggest.ts`: records, pending per block, the base export, decisions, the writer's binding) | built over a facade by `suggestionsOf` (the plugin, the room's facades, the purge and the restore, `adoptSharedSuggestions` for a bare document); never by the facade |
+| Suggesting mode, its grouping, the refusal's words, decisions, the live answer and its per-chunk diff, the shared ones in the list | the plugin's controller (`plugins/suggestions/shared.svelte.ts`, `sharedSuggestionsController(edytor)`) and its `SharedSuggestion` class |
+| The runs in the overlay, in the author's colour | the plugin's layer (`SuggestionRuns.svelte`), mounted by its `onEdytorAttached` |
+| A block's `data-edytor-suggested` | the plugin's `onBlockAttached` |
+| Moves refused while suggesting | the plugin's `onBeforeOperation` (a veto, said) and its narrowing of `edytor.canMove` |
+| The writer's attribution binding | the document part's `open` (written by the writer, in its first record's transaction) |
+| The step's stamps skipped under a writer | the funnel's `apply(plan, quiet)` |
+
+### The core's generic ports
+
+| Port | Bytes (minimal, min) | What it is for |
+| --- | ---: | --- |
+| `Dispatcher.writer` | +60 | a plugin that writes plans itself; the plan's caret read after the write |
+| `Suggestions.shared` | +53 | the list with a plugin's items after the view's own (and the view-local class's `shared: false`) |
+| the facade's `part` (`v` in `version`, `base` the export) | +119 | a part built over the document: its reads, a facade over a copy, its changes counted, its export |
+| `StackItem.writer`, a transaction's `writer` | +126 (the history) | a step written under another client replays under it, and its records release |
+| `document.access` (a plain value), the provider's `access` event and the auth notice | +154 | what the room says the user may do; its meaning is the plugins' |
+| the engine: YP31, YP32 (`unhide`) | +411 | id lists that hold nothing; a delete that proposes |
+
+### Result
+
+`node scripts/bundle-size.mjs --only minimal,all,export` (own bytes min,
+whole-app gzip; `all` lists the plugin):
+
+| | minimal | minimal gzip | all | all gzip | export |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `569823b5` (before #32) | 437,922 | 167,311 | 672,846 | 252,165 | 52,220 |
+| `9f592dde` (#32) | +18,392 | +6,351 | +18,783 | +6,683 | 0 |
+| the plugin (this branch) | +2,321 | +800 | +17,384 | +6,390 | 0 |
+
+The press fixes are 1,325 B of the minimal app's +2,321: shared suggestions
+cost the bare editor **+996 B**, 411 B of it the engine. The target was
+about +0.6 KB: missed by about 0.4 KB with every decided behaviour kept.
+
+### A view without the plugin
+
+It reads a document's shared suggestions as plain content: pending
+insertions as ordinary text and blocks, proposed deletions not struck; its
+exports include them (unless another view of the same document object
+lists the plugin); its edits are direct; it lists, accepts and rejects
+nothing; a suggest-only user's writes from it are stripped by the room. In
+development it warns once (0 B in production). A production guard that
+refuses its writes while the document holds suggestion records would also
+refuse them on documents whose suggestions were all decided, until the
+purge: not added.
+
+### Behaviour changes not made, measured
+
+Each prototyped on the plugin's tree, measured, then reverted (minimal app,
+min / gzip):
+
+| Change | Saves | Notes |
+| --- | ---: | --- |
+| The client learns its access level from the app (a plugin option), not from the room's join notice | −154 / −60 | the room keeps enforcing; `document.access`, the provider's `access` event and the notice go |
+| A suggester's undo replays under its own replica, not its writer | −164 / −45 | a suggest-only user's undo is then refused by the room; a writer's still works |
+| `toJSON()` shows pending suggestions by default (the plugin's controller gives the document without them) | −61 / −29 | reverses the user's decision 3 |
+
+The first two together bring the bare editor's cost to about +0.68 KB
+(the press fixes set aside), all three to about +0.62 KB: the target needs
+behaviour changes the user has not decided.

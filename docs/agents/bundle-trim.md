@@ -46,6 +46,7 @@ Never:
 | One `ownsPress` rule asked by every press handler                                                 | a flicker fixed                                            | A check at each level instead of once at the boundary                   |
 | Estimates written before measuring                                                                | off by 2× to 5×, both ways                                 | Measure; never decide on an estimate                                    |
 | A feature merged at +17 KB after a failed cut                                                     | refused by the user                                        | The size target is a gate, not a note                                   |
+| Shared suggestions as a plugin (the user lifted "never opt-in" for this feature)                  | bare `<Edytor />` +13.4 KB → +1.0 KB (0.4 KB of it engine) | A feature most apps skip belongs in a plugin, behind generic ports      |
 
 ## Tools
 

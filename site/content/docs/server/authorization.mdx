@@ -66,7 +66,7 @@ if (!(await documentExists(documentId))) return closedSocket(4404, 'unknown docu
 
 ## Access levels
 
-`access` is what the user may do in the document. The room enforces it on every frame, and tells the socket its level as it joins: the view reads it as [`document.access`](/docs/editor/suggestions#suggesting-mode) and behaves accordingly.
+`access` is what the user may do in the document. The room enforces it on every frame, and tells the socket its level as it joins: the document holds it as `document.access`, which the [shared suggestions plugin](/docs/editor/suggestions#suggesting-mode) (a `suggest` user always suggests, and decides nothing) and the [comments](/docs/plugins/comments) plugin read.
 
 | Level | Reads, presence | Comments | Suggests | Edits, decides suggestions, restores versions |
 | --- | --- | --- | --- | --- |
@@ -77,7 +77,7 @@ if (!(await documentExists(documentId))) return closedSocket(4404, 'unknown docu
 
 - **`read`** is a [read-only socket](#read-only-sockets).
 - **`comment`** is a read-only socket that may post to the [comments route](/docs/server/comments): a new thread's request carries the anchors of the text it is on, and the room writes the thread's anchor marks itself, since the socket may not. Render the user's view `readonly`: its comments plugin still starts and answers threads.
-- **`suggest`** writes only [suggestions](/docs/editor/suggestions#suggesting-mode): its view is always in suggesting mode and decides nothing. The room keeps from its frames only what a suggestion is: its suggestion records, their text and blocks, their proposals, deletes of its own suggestion's content and the binding of its suggestion writers to the user. Anything else (its replica's direct edits, a decision in another author's suggestion, a mark on another's block) is stripped from the frame, the rest applied, and refused with a `permission-denied` reply (`suggest-only`, logged as a `suggest-only` entry in the room's [refusals](/docs/server/room#diagnostics)); the socket stays open, and the provider does not count it as a failure. Its comments are written by the room, as a `comment` user's.
+- **`suggest`** writes only [suggestions](/docs/editor/suggestions#suggesting-mode): its view, which needs the shared suggestions plugin, is always in suggesting mode and decides nothing. The room keeps from its frames only what a suggestion is: its suggestion records, their text and blocks, their proposals, deletes of its own suggestion's content and the binding of its suggestion writers to the user. Anything else (its replica's direct edits, a decision in another author's suggestion, a mark on another's block) is stripped from the frame, the rest applied, and refused with a `permission-denied` reply (`suggest-only`, logged as a `suggest-only` entry in the room's [refusals](/docs/server/room#diagnostics)); the socket stays open, and the provider does not count it as a failure. Its comments are written by the room, as a `comment` user's.
 - **`write`** may do everything, accept and reject suggestions included. A version [restore](/docs/server/history) and its undo need `write` (`403` otherwise).
 
 ## Revoking access

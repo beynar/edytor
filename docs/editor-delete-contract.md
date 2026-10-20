@@ -2801,7 +2801,11 @@ grew** — not both. A dead command shows neither and still fails.
 
 A suggestion lives in the document (`crdt/doc/suggest.ts`, design:
 `docs/archive/shared-suggestions/design.md`): every replica, the room, a
-reload and a history version hold it. Pins:
+reload and a history version hold it. Its rules hold where its part is
+built over the document (`suggestionsOf`: a view with the shared
+suggestions plugin, `plugins/suggestions/shared.svelte.ts`, the room's
+facades, `adoptSharedSuggestions` for a bare document); a view without it
+reads the suggestions' content as plain content. Pins:
 `src/tests/crdt/suggest/shared-suggestions.test.ts` (the document),
 `src/tests/crdt/suggest/suggest-random.test.ts` (random schedules under
 concurrency), `src/tests/collaboration/suggesting-mode.test.tsx` (a view).
@@ -2849,7 +2853,7 @@ it: read again when the deletion is accepted). A plan holding a
 `formatRange` step on content that is not its author's pending block, is
 refused whole (`refused`, `'suggesting'`), nothing written; a view in
 suggesting mode cannot move blocks (a drag, a move key, a handle move) and
-announces every refusal (`editor.notSuggested`). Steps on its author's
+announces every refusal (`suggestions.notSuggested`). Steps on its author's
 pending blocks are written directly. A later step's offsets, prepared with
 the proposed text gone, step over it; an insertion at a proposed deletion
 lands after the struck text.
@@ -2881,9 +2885,11 @@ the deletion first holds them.
 ### `sugg.history.writer` — the suggester's history is its writer's
 
 A history replays a step that a suggestion writer of this replica wrote
-under that writer (`crdt/doc/history.ts`): the suggester's undo of typing
-holds it as the writer, of a proposal deletes the entry; its redo writes
-the entry again under the writer, still a proposal, never a decision.
+under that writer (`crdt/doc/history.ts`): the part's transactions name
+their writer (`tr.writer`), which the step keeps (`StackItem.writer`), and
+so does the replay's own step. The suggester's undo of typing holds it as
+the writer, of a proposal deletes the entry; its redo writes the entry
+again under the writer, still a proposal, never a decision.
 
 ### `sugg.withdraw` — the author takes a suggestion back by rejecting it
 
@@ -2896,7 +2902,7 @@ back.
 
 ### `sugg.ai.live` — a shared answer is written live, only what changed
 
-An app's shared suggestion (`add(…, { shared: true })`) is one suggestion
+An app's shared suggestion (the plugin's `add`) is one suggestion
 of its own writer, written as it streams, outside the history: the first
 time at its position (a `replace` proposed for deletion), then at each
 update only what changed: the blocks equal to the ones it wrote are kept,
@@ -2906,13 +2912,15 @@ own pending blocks deleted, the new ones inserted after the kept ones).
 
 ### `sugg.json.base` — the document without its pending suggestions
 
-`toJSON()` (and the room's `onSave` value, `edytor.value`) leaves pending
-suggestions out: it is the document as shown, on a copy of the document
+`toJSON()` (and the room's `onSave` value, `edytor.value`) of a document
+the part is built over leaves pending suggestions out: it is the document
+as shown, on a copy of the document
 with every pending suggestion rejected (inserted units and blocks gone, a
 split's block joined to the block before it, proposed deletions kept). A
 whole-document cost (the copy and its index) while any suggestion is
 pending; a document with no pending change reads the document directly.
-`toJSON({ suggestions: true })` is the document as shown.
+`toJSON({ suggestions: true })` is the document as shown, and so is the
+`toJSON()` of a document no one built the part over.
 
 ## The room (server, `edytor/cloudflare`)
 

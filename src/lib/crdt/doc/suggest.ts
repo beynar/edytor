@@ -27,8 +27,13 @@
  * settled ranges), so replicas converge in any delivery order. It is read
  * again after any write, from the blocks the records' writers and
  * proposals are in: a document with no suggestion pays nothing.
+ *
+ * The part is built over a document by {@link suggestionsOf} (the shared
+ * suggestions plugin, the room, a bare document on a server): once built,
+ * the document's `toJSON()` leaves its pending suggestions out. A document
+ * no one built it over reads its suggestions' content as plain content.
  */
-import type { EngineNode } from '../engine-api.js';
+import type { EngineDoc, EngineNode } from '../engine-api.js';
 import {
 	ATTRIBUTION_ROOT,
 	CONTENT_NODE,
@@ -37,16 +42,9 @@ import {
 	TEXT_DELETES_ROOT
 } from '../schema.js';
 import { blockNodeOf, registryOf, type BlockId } from '../placement/model.js';
+import { isRowMark, newNode, openRangeCursor, ownTextIds, proposing } from '../text/model.js';
 import {
-	isRowMark,
-	newNode,
-	openRangeCursor,
-	ownIdsOf,
-	proposing,
-	writeAs,
-	writersOf
-} from '../text/model.js';
-import {
+	asYDoc,
 	changedUnder,
 	clientsOf,
 	engineOps,
@@ -58,8 +56,18 @@ import {
 import { nonceOf } from '../rand.js';
 import { id as mint } from '../../utils.js';
 import { effectOf, NOOP, refused } from './plan.js';
-import type { DocAnchor, OpResult, Plan, PlanStep, Prepared } from './types.js';
+import type { DocAnchor, EdytorDocConfig, OpResult, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
+import type { JSONDoc } from '../../utils/json.js';
+import type { EdytorDocument } from '../document.js';
+import { keepingReplaced } from '../incarnations.js';
+import {
+	ACTOR_PREFIX,
+	CLIENT_PREFIX,
+	profileOf,
+	sanitizeProfile
+} from '../attribution/attribution.js';
+import { bindBlockAttribution } from '../attribution/block.js';
 
 /** One change of a suggestion, as a reviewer sees it. */
 export type SuggestedChange = {
@@ -103,7 +111,7 @@ export type SuggestionRecord = {
  * arguments read when it runs).
  */
 export type DecisionPart =
-	| { into: string | null; ids: number[] }
+	| { into: string | null; ids: number[]; blocks?: BlockId[] }
 	| { op: string; calls: () => unknown[][] };
 
 type Rec = SuggestionRecord & {
@@ -153,21 +161,54 @@ const push = (ids: number[], client: number, clock: number) => {
 	else ids.push(client, clock, 1);
 };
 
+/** What the part reads of its document beyond the facade: the facade's `part` (`edytor-doc.ts`). */
 export type SuggestContext = DocBase &
 	DocReads & {
-		write: <R>(fn: () => R) => R;
-		anchorAt: (id: BlockId, offset: number, affinity?: 'left' | 'right') => DocAnchor | null;
-		resolveAnchor: (anchor: DocAnchor) => { blockId: BlockId; offset: number } | null;
-		/** Write in one transaction and one attribution frame (the funnel's). */
-		framed: (fn: () => void) => boolean;
-		apply: (p: Prepared) => OpResult;
-		/** Run document operation `op` (`apply(prepare[op](…args))`). */
-		run: (op: string, args: unknown[]) => OpResult;
+		config: EdytorDocConfig;
+		/** A facade over another doc, with `config`. */
+		create: (doc: EngineDoc, config: EdytorDocConfig) => SuggestFacade;
+		/** Its changes no index fact shows: counted in the facade's `version`. */
+		v: number;
+		/** The export `toJSON()` gives unless asked for the suggestions. */
+		base: (() => JSONDoc | undefined) | undefined;
 	};
 
-/** The document's shared suggestions (`facade.suggest`). */
-export const docSuggest = (c: SuggestContext) => {
-	const { Y, doc, runsView, view, write } = c;
+/** The facade the part is built over: its `part`, and the operations it writes through. */
+export type SuggestFacade = {
+	part: SuggestContext;
+	toJSON: (options?: { suggestions?: boolean }) => JSONDoc;
+	dispose: () => void;
+	apply: (p: Prepared, quiet?: boolean) => OpResult;
+	transact: <R>(fn: () => R) => R;
+	anchorAt: (id: BlockId, offset: number, affinity?: 'left' | 'right') => DocAnchor | null;
+	resolveAnchor: (anchor: DocAnchor) => { blockId: BlockId; offset: number } | null;
+	/** Its operations by name (`f[op](…args)`). */
+	[op: string]: unknown;
+};
+
+const parts = new WeakMap<SuggestContext, DocSuggest>();
+
+/**
+ * The shared suggestions of the document `facade` is over, built once:
+ * from then on, its `toJSON()` leaves the pending ones out (`sugg.json.base`).
+ */
+export const suggestionsOf = (facade: SuggestFacade): DocSuggest =>
+	parts.get(facade.part) ?? parts.set(facade.part, docSuggest(facade)).get(facade.part)!;
+
+/**
+ * Build the shared suggestions over `document`, a document read without a
+ * view (on a server, in a worker): its `toJSON()` leaves the pending ones
+ * out from then on, as a view's with the shared suggestions plugin does. A
+ * document no one built them over reads their content as plain content.
+ */
+export const adoptSharedSuggestions = (document: EdytorDocument): void =>
+	void suggestionsOf(document.facade as SuggestFacade);
+
+/** The document's shared suggestions ({@link suggestionsOf}), built over facade `f`. */
+const docSuggest = (f: SuggestFacade) => {
+	const c = f.part;
+	const { Y, doc, runsView, view } = c;
+	const BA = bindBlockAttribution(Y);
 	const ops = engineOps(Y);
 	const { idSet } = ops;
 	const root = (): EngineNode => doc.get(SUGGEST_ROOT);
@@ -175,7 +216,26 @@ export const docSuggest = (c: SuggestContext) => {
 		const bound = doc.get(ATTRIBUTION_ROOT).getAttr(`c/${client}`);
 		return typeof bound === 'string' ? bound : undefined;
 	};
-	const as = <R>(client: number, fn: () => R): R => writeAs(doc, client, fn);
+	/**
+	 * Run `fn` in a transaction (`tr`) writing as `client` (a suggestion's
+	 * writer), then as before: the transaction names the writer, so a
+	 * history replays its step under it (`StackItem.writer`).
+	 */
+	const as = <R>(client: number, fn: (tr: unknown) => R): R =>
+		f.transact(() =>
+			doc.transact((tr: unknown) => {
+				const local = doc.clientID;
+				if (client !== local) (tr as { writer?: number }).writer = client;
+				doc.clientID = client;
+				try {
+					return fn(tr);
+				} finally {
+					doc.clientID = local;
+				}
+			})
+		);
+	/** The writers this replica minted: client ids it writes suggestions under besides its own. */
+	const writers = new Set<number>();
 
 	// ── the records ─────────────────────────────────────────────────────
 
@@ -185,8 +245,12 @@ export const docSuggest = (c: SuggestContext) => {
 		/** The records holding a proposal. */
 		proposing: Rec[];
 	};
-	/** Bumped by every change of the records (a commit, or a write of this part). */
+	/** Bumped by every change of the records (a commit, or a write of this part); the facade's `version` too. */
 	let version = 0;
+	const bump = () => {
+		version++;
+		c.v++;
+	};
 	let table: { v: number; t: Table } | null = null;
 
 	const records = (): Table => {
@@ -409,7 +473,7 @@ export const docSuggest = (c: SuggestContext) => {
 	const listeners = new Set<() => void>();
 	const onCommit = (tr: never) => {
 		if (!changedUnder(tr, [root()])) return;
-		version++;
+		bump();
 		for (const f of listeners) f();
 	};
 	doc.on('commit', onCommit);
@@ -421,8 +485,24 @@ export const docSuggest = (c: SuggestContext) => {
 		let w = 0;
 		while (!w || w === doc.clientID || storeOf(doc).getClock(w))
 			w = (nonceOf(doc) | 0x4000000) >>> 0;
-		writersOf(doc).add(w);
+		writers.add(w);
 		return w;
+	};
+
+	/**
+	 * Bind writer `w` to this replica's actor, written by `w` itself, once
+	 * (`sugg.writer.binding`), and the actor's profile when the stored one
+	 * differs: inside the writer's first transaction.
+	 */
+	const bind = (w: number) => {
+		const actor = c.config.actor?.();
+		const attr = doc.get(ATTRIBUTION_ROOT);
+		if (!actor || !writers.has(w) || attr.getAttr(CLIENT_PREFIX + w) !== undefined) return;
+		attr.setAttr(CLIENT_PREFIX + w, actor.id);
+		const next = profileOf(actor);
+		const stored = sanitizeProfile(attr.getAttr(ACTOR_PREFIX + actor.id));
+		if (stored.name !== next.name || stored.color !== next.color)
+			attr.setAttr(ACTOR_PREFIX + actor.id, next);
 	};
 
 	/**
@@ -432,22 +512,22 @@ export const docSuggest = (c: SuggestContext) => {
 	const open = (
 		options: { id?: string; writer?: number; via?: string; label?: string; at?: number } = {}
 	): string =>
-		write(() => {
+		f.transact(() => {
 			const w = options.writer ?? writer();
 			const id = options.id ?? mint('s');
 			const from = storeOf(doc).getClock(w);
-			doc.transact(() =>
-				as(w, () => {
-					root().setAttr(id, newNode('suggestion'));
-					const rec = root().getAttr(id) as EngineNode;
-					rec.setAttr('at', options.at ?? Date.now());
-					if (options.via) rec.setAttr('via', options.via);
-					if (options.label) rec.setAttr('lbl', options.label);
-				})
-			);
+			as(w, () => {
+				bind(w);
+				root().setAttr(id, newNode('suggestion'));
+				const rec = root().getAttr(id) as EngineNode;
+				rec.setAttr('at', options.at ?? Date.now());
+				if (options.via) rec.setAttr('via', options.via);
+				if (options.label) rec.setAttr('lbl', options.label);
+			});
 			// No history step captures the record's creation: its clocks stay its own.
-			ownIdsOf(doc).add(w, from, storeOf(doc).getClock(w) - from);
-			version++;
+			const own = ownTextIds.get(doc) ?? ownTextIds.set(doc, idSet()).get(doc)!;
+			own.add(w, from, storeOf(doc).getClock(w) - from);
+			bump();
 			return id;
 		});
 
@@ -468,7 +548,7 @@ export const docSuggest = (c: SuggestContext) => {
 	/** Append id list `ids` (YP31) to record `rec`'s list, as the current client. */
 	const entry = (rec: Rec, ids: number[]) => {
 		rec.node.hold(ids);
-		version++;
+		bump();
 	};
 
 	/**
@@ -518,54 +598,58 @@ export const docSuggest = (c: SuggestContext) => {
 			// A promoted child's retype follows its deletion: read again when it is accepted.
 			else if (s.op !== 'setBlockType' || at(s) === s.id) return { result: refused('suggesting') };
 		const rec = (id !== null && recOf(id)) || recOf(open({ writer: w }));
-		return write(() =>
-			doc.transact((tr: unknown) =>
-				as(w, () => {
-					let result = NOOP;
-					let anchor: DocAnchor | null;
-					proposing.set(doc, {
-						into: rec.node,
-						sort: (client, clock) =>
-							ownPending(client, clock, w)
-								? 1
-								: rec.proposed.has(client, clock) && !rec.settled.has(client, clock)
-									? 3
-									: 2
-					});
-					try {
-						if (writes.length)
-							result = c.apply({
-								...p,
-								writes,
-								effect: effectOf(writes),
-								version: runsView.version()
-							} as Plan);
-						anchor = p.at ? c.anchorAt(p.at.block, p.at.offset, 'right') : null;
-					} finally {
-						proposing.delete(doc);
-						ops.unhide(tr);
-					}
-					if (blocks.length) {
-						entry(rec, blocks);
-						result = { status: 'applied', ids: p.ids };
-					}
-					version++;
-					const caret = anchor && c.resolveAnchor(anchor);
-					return {
-						result,
-						id: rec.id,
-						...(caret && { at: { block: caret.blockId, offset: caret.offset } })
-					};
-				})
-			)
-		);
+		return as(w, (tr) => {
+			let result = NOOP;
+			let anchor: DocAnchor | null;
+			proposing.set(doc, {
+				into: rec.node,
+				sort: (client, clock) =>
+					ownPending(client, clock, w)
+						? 1
+						: rec.proposed.has(client, clock) && !rec.settled.has(client, clock)
+							? 3
+							: 2
+			});
+			try {
+				if (writes.length)
+					result = f.apply(
+						{ ...p, writes, effect: effectOf(writes), version: runsView.version() } as Plan,
+						true
+					);
+				anchor = p.at ? f.anchorAt(p.at.block, p.at.offset, 'right') : null;
+			} finally {
+				proposing.delete(doc);
+				ops.unhide(tr);
+			}
+			if (blocks.length) {
+				entry(rec, blocks);
+				result = { status: 'applied', ids: p.ids };
+			}
+			bump();
+			const caret = anchor && f.resolveAnchor(anchor);
+			return {
+				result,
+				id: rec.id,
+				...(caret && { at: { block: caret.blockId, offset: caret.offset } })
+			};
+		});
 	};
 
-	/** Write decision part `part` (an id list) by the current client: settled in its record, or held. */
-	const hold = ({ into, ids }: { into: string | null; ids: number[] }): void =>
-		void (into === null
-			? c.framed(() => doc.get(TEXT_DELETES_ROOT).hold(ids))
-			: write(() => entry(recOf(into), ids)));
+	/**
+	 * Write decision part `part` (an id list) by the current client: settled
+	 * in its record, or held, the text that goes: its blocks stamped as
+	 * changed by the decider, as a text delete stamps them.
+	 */
+	const hold = ({ into, ids, blocks = [] }: Extract<DecisionPart, { ids: number[] }>): void =>
+		f.transact(() => {
+			if (into !== null) return entry(recOf(into), ids);
+			doc.get(TEXT_DELETES_ROOT).hold(ids);
+			const actor = c.config.actor?.();
+			for (const b of actor ? blocks : []) {
+				const node = blockNodeOf(doc, b);
+				if (node) BA.stampChange(doc, node, b, actor!.id);
+			}
+		});
 
 	/**
 	 * What accepting (`accept`) or rejecting `changes` writes, in the order
@@ -575,9 +659,11 @@ export const docSuggest = (c: SuggestContext) => {
 	 */
 	const decide = (changes: readonly SuggestedChange[], accept: boolean): DecisionPart[] => {
 		const lists = new Map<string | null, number[]>();
+		const gone = new Set<BlockId>();
 		const [merges, deletes]: DecisionPart[][] = [[], []];
 		for (const { kind, block: b, suggestion, ids } of changes) {
 			const act = DECIDE[kind][accept ? 0 : 1];
+			if (act === 2) gone.add(b);
 			if (act === 3) deletes.push({ op: 'deleteBlock', calls: () => (c.live(b) ? [[b]] : []) });
 			else listOf(lists, act === 1 ? suggestion : null).push(...(act === 4 ? ids.slice(3) : ids));
 			if (act === 4)
@@ -589,7 +675,15 @@ export const docSuggest = (c: SuggestContext) => {
 					}
 				});
 		}
-		return [...[...lists].map(([into, ids]) => ({ into, ids })), ...merges, ...deletes];
+		return [
+			...[...lists].map(([into, ids]) => ({
+				into,
+				ids,
+				...(into === null && { blocks: [...gone] })
+			})),
+			...merges,
+			...deletes
+		];
 	};
 
 	/**
@@ -600,18 +694,16 @@ export const docSuggest = (c: SuggestContext) => {
 	 */
 	const run = (
 		parts: readonly DecisionPart[],
-		exec: (op: string, args: unknown[]) => unknown = c.run,
+		exec: (op: string, args: unknown[]) => unknown = (op, args) =>
+			(f[op] as (...a: unknown[]) => unknown)(...args),
 		w = doc.clientID
 	) =>
-		write(() =>
-			doc.transact(() =>
-				as(w, () => {
-					for (const part of parts)
-						if ('op' in part) for (const args of part.calls()) exec(part.op, args);
-						else hold(part);
-				})
-			)
-		);
+		as(w, () => {
+			bind(w);
+			for (const part of parts)
+				if ('op' in part) for (const args of part.calls()) exec(part.op, args);
+				else hold(part);
+		});
 
 	/** Every pending change, in document order. */
 	const changes = (): SuggestedChange[] => {
@@ -619,9 +711,31 @@ export const docSuggest = (c: SuggestContext) => {
 		return [...map.keys()].sort(c.compare).flatMap((b) => map.get(b)!);
 	};
 
+	/**
+	 * The document without its pending suggestions (`sugg.json.base`): on a
+	 * copy, every pending one rejected; `undefined` while none is pending.
+	 */
+	const base = (): JSONDoc | undefined => {
+		if (root().attrKeys().next().done || !changes().length) return;
+		const { Y } = c;
+		const copy = keepingReplaced(new Y.Doc());
+		Y.applyUpdate(copy, Y.encodeStateAsUpdate(asYDoc(doc)));
+		const other = c.create(copy as EngineDoc, { ...c.config, actor: undefined });
+		const all = suggestionsOf(other);
+		all.run(all.decide(all.changes(), false));
+		const json = other.toJSON({ suggestions: true });
+		all.dispose();
+		other.dispose();
+		copy.destroy();
+		return json;
+	};
+	c.base = base;
+
 	return {
 		/** A fresh writer this replica writes suggestions under. */
 		writer,
+		/** The writers this replica minted (a history tags their steps, `StackItem.writer`). */
+		writers,
 		open,
 		apply,
 		decide,

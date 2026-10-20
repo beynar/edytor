@@ -14,7 +14,7 @@
  */
 import { getUnixTime } from 'lib0-v14/time';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import { openSteps, ownTextIds, writeAs, writersOf } from '../text/model.js';
+import { openSteps, ownTextIds } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
 	BLOCK_NODE,
@@ -56,6 +56,12 @@ const HISTORY_TRIM = Symbol('edytor.history.trim');
 export class StackItem {
 	/** Per-view metadata (`session/history.ts`: the selections around the step). */
 	readonly meta = new Map<string, unknown>();
+	/**
+	 * The client it was written under when that is not the replica's own (a
+	 * suggestion's writer: its transaction's `writer`): it replays under it,
+	 * and its records release with the history's.
+	 */
+	declare writer?: number;
 	constructor(
 		public inserts: IdSetOf,
 		public deletes: IdSetOf
@@ -69,6 +75,8 @@ export type StepEvent = { stackItem: StackItem; origin: unknown; type: 'undo' | 
 type Tr = {
 	origin: unknown;
 	local: boolean;
+	/** The client a part wrote it under, when not the replica's own (a suggestion's writer). */
+	writer?: number;
 	insertSet: IdSetOf;
 	deleteSet: IdSetOf;
 	changed: Map<unknown, Set<string | null>>;
@@ -312,6 +320,7 @@ export class UndoManager {
 			if (ops.isItem(item) && this.#inScope(item)) ops.keep(item);
 		});
 		const step = stack.at(-1)!;
+		if (tr.writer) step.writer = tr.writer;
 		// A streamless block's own text is shared by every replica that
 		// typed into it first: no step captures it, so undoing the first
 		// typing removes the typing and keeps the text (and nonce).
@@ -336,22 +345,20 @@ export class UndoManager {
 	 * repaired. A step that changes nothing is skipped for the one below.
 	 */
 	#pop(stack: StackItem[]): StackItem | null {
+		const ops = this.#ops;
+		const { records, withdraw, repair } = this.#rules;
 		const deletedByHistory = (id: { client: number; clock: number }) =>
 			[this.undoStack, this.redoStack].some((s) =>
 				s.some((step) => step.deletes.has(id.client, id.clock))
 			);
-		// A suggesting step replays under the writer that wrote it (`sugg.history.writer`).
-		const top = stack.at(-1);
-		const writer =
-			top &&
-			[...writersOf(this.doc)].find(
-				(w) => top.inserts.clients.has(w) || top.deletes.clients.has(w)
-			);
-		const ops = this.#ops;
-		const { records, withdraw, repair } = this.#rules;
-		writeAs(this.doc, writer ?? this.doc.clientID, () =>
+		// A step written under another client replays under it, and so does its replay's step.
+		const local = this.doc.clientID;
+		const writer = stack.at(-1)?.writer;
+		this.doc.clientID = writer ?? local;
+		try {
 			this.doc.transact((transaction: unknown) => {
 				const tr = transaction as Tr;
+				tr.writer = writer;
 				while (stack.length > 0 && this.currStackItem === null) {
 					const step = stack.pop()!;
 					const restore = new Set<StoreStruct>();
@@ -397,8 +404,10 @@ export class UndoManager {
 				tr.changed.forEach((keys, node) => {
 					if (keys.has(null)) dropSearchMarkers(node);
 				});
-			}, this)
-		);
+			}, this);
+		} finally {
+			this.doc.clientID = local;
+		}
 		const step = this.currStackItem;
 		this.currStackItem = null;
 		return step;
@@ -447,7 +456,7 @@ export class UndoManager {
 					if (
 						st.parent === records &&
 						!st.deleted &&
-						(st.id.client === doc.clientID || writersOf(doc).has(st.id.client))
+						(st.id.client === doc.clientID || st.id.client === step.writer)
 					)
 						own.add(st.id.client, from, to - from);
 				});

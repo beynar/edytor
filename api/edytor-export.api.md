@@ -939,7 +939,6 @@ export declare class EdytorDocument {
     get readiness(): DocumentReadiness;
     get destroyed(): boolean;
     access: DocumentAccess;
-    onAccessChange: (listener: (access: DocumentAccess) => void) => (() => void);
     get writable(): boolean;
     onWritableChange: (listener: (writable: boolean) => void) => (() => void);
     get historyLimit(): number;
@@ -1963,7 +1962,6 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
-    notSuggested: string;
 };
 ```
 
@@ -2004,6 +2002,7 @@ export type Labels = {
     comments: CommentsLabels;
     table: TableLabels;
     equation: EquationLabels;
+    suggestions: SuggestionsLabels;
 };
 ```
 
@@ -2103,6 +2102,14 @@ export type RichTextLabels = {
         caption: string;
         empty: string;
     };
+};
+```
+
+#### labels.d.ts#SuggestionsLabels
+
+```ts
+export type SuggestionsLabels = {
+    notSuggested: string;
 };
 ```
 
@@ -2990,6 +2997,12 @@ type TextRun = Extract<ContentItem, {
 }>;
 ```
 
+#### session/suggestions.svelte.d.ts#AnySuggestion
+
+```ts
+export type AnySuggestion = Suggestion | SharedSuggestion;
+```
+
 #### session/suggestions.svelte.d.ts#ResolvedAt
 
 ```ts
@@ -2998,21 +3011,31 @@ export type ResolvedAt = Exclude<SuggestionAt, {
 }>;
 ```
 
+#### session/suggestions.svelte.d.ts#SharedSuggestion
+
+```ts
+export interface SharedSuggestion extends Omit<Suggestion, 'shared' | 'at'> {
+    readonly shared: true;
+    readonly at: ResolvedAt | null;
+    readonly by: string | undefined;
+    readonly via: string | undefined;
+    readonly changes: readonly SuggestedChange[];
+    readonly canDecide: boolean;
+    readonly mine: boolean;
+    reject(): OpResult;
+}
+```
+
 #### session/suggestions.svelte.d.ts#Suggestion
 
 ```ts
 export declare class Suggestion {
     #private;
     readonly id: string;
-    readonly at: ResolvedAt | null;
+    readonly at: ResolvedAt;
     readonly label: string | undefined;
-    readonly shared: boolean;
-    constructor(layer: Suggestions, at: ResolvedAt | null, kind: string, options: SuggestionOptions, status: SuggestionStatus);
-    get by(): string | undefined;
-    get via(): string | undefined;
-    get changes(): readonly SuggestedChange[];
-    get canDecide(): boolean;
-    get mine(): boolean;
+    readonly shared: false;
+    constructor(layer: Suggestions, at: ResolvedAt, kind: string, options: SuggestionOptions, status: SuggestionStatus);
     get content(): readonly JSONBlock[];
     get status(): SuggestionStatus;
     get retryable(): boolean;
@@ -3021,7 +3044,6 @@ export declare class Suggestion {
     append: (text: string) => void;
     done: () => void;
     accept: () => OpResult;
-    reject: () => OpResult;
     discard: () => void;
     retry: () => void;
 }
@@ -3057,8 +3079,6 @@ export type SuggestionOptions = {
     status?: SuggestionStatus;
     label?: string;
     onRetry?: (suggestion: Suggestion) => void;
-    shared?: boolean;
-    via?: string;
 };
 ```
 
@@ -3084,15 +3104,9 @@ export declare class Suggestions {
     #private;
     readonly edytor: Edytor;
     revision: number;
-    get suggesting(): boolean;
-    set suggesting(on: boolean);
-    changes: () => readonly SuggestedChange[];
-    get list(): readonly Suggestion[];
+    get list(): readonly AnySuggestion[];
     get latest(): Suggestion | undefined;
-    get: (id: string) => Suggestion | undefined;
-    decide: (changes: readonly SuggestedChange[], accept: boolean) => OpResult;
-    acceptAll: () => OpResult;
-    rejectAll: () => OpResult;
+    get: (id: string) => AnySuggestion | undefined;
     add: (at: SuggestionAt, content?: SuggestionContent, options?: SuggestionOptions) => Suggestion;
     clear: () => void;
     prune: () => void;

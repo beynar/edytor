@@ -17,7 +17,7 @@ const children = [
 
 const open = async (page: Page, blocks: unknown[] = children) => {
 	await page.goto(
-		`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify({ children: blocks }))}`
+		`/test/dom?scenario=dst&shared=1&dst=${encodeURIComponent(JSON.stringify({ children: blocks }))}`
 	);
 	await waitForEditorReady(page, { requireRuntime: true });
 	await page.addStyleTag({
@@ -26,12 +26,19 @@ const open = async (page: Page, blocks: unknown[] = children) => {
 	await page.locator('[data-edytor]').evaluate((node) => node.classList.add('edytor-notion'));
 };
 
-/** Run `body` in the page with the view (`__EDYTOR__`). */
-const inPage = <T, A>(page: Page, body: (edytor: any, arg: A) => T, arg?: A) =>
+/** Run `body` in the page with the view (`__EDYTOR__`) and its shared suggestions' controller. */
+const inPage = <T, A>(page: Page, body: (edytor: any, arg: A, shared: any) => T, arg?: A) =>
 	page.evaluate(
 		([source, value]) => {
-			const edytor = (window as unknown as { __EDYTOR__: any }).__EDYTOR__;
-			return new Function('edytor', 'arg', `return (${source})(edytor, arg)`)(edytor, value);
+			const { __EDYTOR__: edytor, __EDYTOR_SHARED__: shared } = window as unknown as {
+				__EDYTOR__: any;
+				__EDYTOR_SHARED__: any;
+			};
+			return new Function('edytor', 'arg', 'shared', `return (${source})(edytor, arg, shared)`)(
+				edytor,
+				value,
+				shared
+			);
 		},
 		[body.toString(), arg] as const
 	) as Promise<T>;
@@ -264,7 +271,7 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 	}) => {
 		await open(page);
 		await clickText(page, 'a');
-		await inPage(page, (edytor) => (edytor.suggestions.suggesting = true));
+		await inPage(page, (_e, _a, shared) => (shared.suggesting = true));
 		await page.keyboard.type(' one');
 		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alpha one');
 		await expect.poll(async () => (await rects(page, 'inserted')).length).toBeGreaterThan(0);
@@ -275,9 +282,7 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 		await page.keyboard.type('!');
 		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alph!a');
 		expect(
-			await inPage(page, (edytor) =>
-				edytor.facade.suggest.changes().map((c: any) => [c.kind, c.text])
-			)
+			await inPage(page, (_e, _a, shared) => shared.changes().map((c: any) => [c.kind, c.text]))
 		).toEqual([
 			['insert', '!'],
 			['delete', 'a']
@@ -285,7 +290,7 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 		// The value is the document without its pending suggestions.
 		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
 		// Accepted: the text is the document's, nothing is marked.
-		await inPage(page, (edytor) => edytor.suggestions.acceptAll());
+		await inPage(page, (_e, _a, shared) => shared.acceptAll());
 		await expect(page.locator('[data-edytor-id="a"][data-edytor-block]')).toHaveText('Alph!');
 		expect(await texts(page)).toEqual(['Alph!', 'Beta', 'Gamma']);
 		await expect.poll(async () => (await rects(page, 'inserted')).length).toBe(0);
@@ -295,7 +300,7 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 	test('a move, and a merge, are refused while the view suggests, and said', async ({ page }) => {
 		await open(page);
 		await clickText(page, 'b');
-		await inPage(page, (edytor) => (edytor.suggestions.suggesting = true));
+		await inPage(page, (_e, _a, shared) => (shared.suggesting = true));
 		// Backspace at a block's start would merge it: refused, and said.
 		await page.keyboard.press('Home');
 		await page.keyboard.press('Backspace');
@@ -306,6 +311,6 @@ test.describe('suggesting mode (sugg.view.runs)', () => {
 		);
 		expect(moved).toEqual([]);
 		expect(await texts(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
-		expect(await inPage(page, (edytor) => edytor.facade.suggest.changes().length)).toBe(0);
+		expect(await inPage(page, (_e, _a, shared) => shared.changes().length)).toBe(0);
 	});
 });

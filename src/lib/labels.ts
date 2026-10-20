@@ -27,6 +27,10 @@ export type EditorLabels = {
 	/** A move to a place (a drop). */
 	moved: (what: string) => string;
 	deleted: (what: string) => string;
+};
+
+/** The shared suggestions plugin's words (`createSharedSuggestionsPlugin`). */
+export type SuggestionsLabels = {
 	/** Announced when a change is refused because the view is suggesting (a move, a merge, a retype, a data change, a format). */
 	notSuggested: string;
 };
@@ -208,6 +212,7 @@ export type Labels = {
 	comments: CommentsLabels;
 	table: TableLabels;
 	equation: EquationLabels;
+	suggestions: SuggestionsLabels;
 };
 
 /** The entries of a section to replace: any of them, and any entry of a nested group. */
@@ -268,7 +273,11 @@ export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
 	indented: (what) => `Indented ${what}`,
 	outdented: (what) => `Outdented ${what}`,
 	moved: (what) => `Moved ${what}`,
-	deleted: (what) => `Deleted ${what}`,
+	deleted: (what) => `Deleted ${what}`
+});
+
+/** The `suggestions` section in English. */
+export const suggestionsEnglish: SuggestionsLabels = /* @__PURE__ */ frozen({
 	notSuggested: 'Only text and blocks can be suggested'
 });
 
@@ -422,7 +431,8 @@ export const englishLabels: Labels = /* @__PURE__ */ frozen({
 	pageLink: pageLinkEnglish,
 	comments: commentsEnglish,
 	table: tableEnglish,
-	equation: equationEnglish
+	equation: equationEnglish,
+	suggestions: suggestionsEnglish
 });
 
 /** Each view's sections, merged once: its `labels` over the English ones. */

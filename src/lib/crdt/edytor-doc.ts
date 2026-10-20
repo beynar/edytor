@@ -49,7 +49,7 @@
 import { setMarkEdges } from './text/marks.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
-import { asYDoc, clientsOf } from './structs.js';
+import { clientsOf } from './structs.js';
 import { SCHEMA } from './schema.js';
 import {
 	bindModel,
@@ -98,7 +98,7 @@ import { splitMergeOps } from './doc/split-merge.js';
 import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
-import { docSuggest } from './doc/suggest.js';
+import type { SuggestContext } from './doc/suggest.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path
 // (`api/` reports the difference), so no value of the module reads them.
@@ -287,7 +287,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		const dispose = (): void => {
 			funnel.dispose();
 			events.close();
-			suggest.dispose();
 		};
 		const { createUndoManager } = docHistory({ ...base, ...funnel, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
@@ -351,17 +350,21 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			...flowOps(ops)
 		};
 
-		/** The shared suggestions (`doc/suggest.ts`): records, pending changes, decisions. */
-		const suggest = docSuggest({
+		/**
+		 * What a part built over this document reads beyond the facade (the
+		 * shared suggestions, `doc/suggest.ts`): the reads, a facade over
+		 * another doc (`create`, with this `config`);
+		 * `v` counts its changes no index fact shows (in `version`), and
+		 * `base`, when set, is the export `toJSON()` gives unless asked for
+		 * the suggestions.
+		 */
+		const part: SuggestContext = {
 			...reads,
-			write,
-			apply,
-			framed: funnel.framed,
-			anchorAt,
-			resolveAnchor,
-			run: (op, args) =>
-				apply((prepare as unknown as Record<string, (...a: unknown[]) => Prepared>)[op]!(...args))
-		});
+			config,
+			create: create as SuggestContext['create'],
+			v: 0,
+			base: undefined
+		};
 
 		/**
 		 * Plans prepared at one version, as one plan (refused if any part is;
@@ -392,19 +395,9 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		 * root's visible children.
 		 */
 		const toJSON = (options?: { suggestions?: boolean }): JSONDoc => {
-			// Without its pending suggestions, unless asked (`sugg.json.base`): the
-			// document on a copy with every pending suggestion rejected.
-			if (!options?.suggestions && suggest.any() && suggest.changes().length) {
-				const copy = adoptRules(new Y.Doc());
-				Y.applyUpdate(copy, Y.encodeStateAsUpdate(asYDoc(doc)));
-				const other = create(copy as EngineDoc, { ...config, actor: undefined });
-				const { suggest: all } = other;
-				all.run(all.decide(all.changes(), false));
-				const json = other.toJSON({ suggestions: true });
-				other.dispose();
-				copy.destroy();
-				return json;
-			}
+			// A part's export first (the shared suggestions': without the pending ones, `sugg.json.base`).
+			const base = !options?.suggestions && part.base?.();
+			if (base) return base;
 			const data = docData();
 			const children = childrenIds(null).map(blockJSON);
 			return Object.keys(data).length > 0
@@ -439,8 +432,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
-			/** @internal The shared suggestions (`doc/suggest.ts`): a view's `edytor.suggestions` reads them. */
-			suggest,
+			/** @internal What a part built over the document reads and writes (`doc/suggest.ts`). */
+			part,
 			// reads — every id argument normalizes at ingress
 			project: () => project(doc),
 			toJSON,
@@ -552,8 +545,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			 * post-write state — this is the read-your-writes contract.
 			 */
 			get version() {
-				// A suggestion's decision may change nothing shown, yet the document without it.
-				return runsView.version() + suggest.version();
+				// A part's change may show in no index fact (a suggestion's decision).
+				return runsView.version() + part.v;
 			}
 		};
 		return facade;

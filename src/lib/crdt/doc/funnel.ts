@@ -23,7 +23,7 @@ import { writeData } from '../data.js';
 import { NOOP } from './plan.js';
 import type { EdytorDocConfig, OpResult, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
-import { claimInto, deleteRange, formatRangeIn, insertIntoText, writersOf } from '../text/model.js';
+import { claimInto, deleteRange, formatRangeIn, insertIntoText } from '../text/model.js';
 
 /**
  * Raised when an operation runs against a torn-down document: every attach
@@ -97,8 +97,7 @@ export const writeFunnel = (c: FunnelContext) => {
 	/** The frame's one attribution pass over the facets the fold saw it write. */
 	const close = (f: Frame, folded: Folded): void => {
 		const actor = actorOf();
-		// A suggestion's writer stamps nothing: its content is not the block's until accepted.
-		if (actor === undefined || !folded.wrote || writersOf(doc).has(doc.clientID)) return;
+		if (actor === undefined || !folded.wrote) return;
 		const created = new Set<BlockId>();
 		const changed = new Set<BlockId>();
 		for (const [id, facets] of folded.touched) {
@@ -200,44 +199,35 @@ export const writeFunnel = (c: FunnelContext) => {
 	 * and fold the result from what that transaction did. A refusal writes
 	 * nothing. A plan is valid only at the version it was prepared against,
 	 * in the same synchronous turn: applying it anywhere else throws.
+	 * `quiet`: it stamps no attribution (a suggestion's writer: its content
+	 * is not the block's until accepted).
 	 */
-	const apply = (p: Prepared): OpResult => {
+	const apply = (p: Prepared, quiet?: boolean): OpResult => {
 		if (!('writes' in p)) return write(() => p);
 		if (p.version !== runsView.version()) {
 			throw new Error('[edytor-doc] stale plan: prepared against another document version');
 		}
-		return framed((f) => p.writes.forEach((w) => writeStep(w, f)))
-			? { status: 'applied', ids: p.ids }
-			: NOOP;
-	};
-
-	/**
-	 * Write `fn` in one transaction and one attribution frame (a plan's
-	 * steps, or a decision's hold of the text that goes, which stamps as a
-	 * text delete does). Whether it wrote anything.
-	 */
-	const framed = (fn: (f: Frame) => void): boolean =>
-		write(() =>
+		return write(() =>
 			doc.transact(() => {
 				const frame = runsView.track();
 				const f: Frame = { inherit: new Map(), bounds: new Map(), unions: [], quiet: frame.quiet };
 				try {
-					fn(f);
+					for (const w of p.writes) writeStep(w, f);
 				} catch (error) {
 					// The frame would otherwise fold every later commit.
 					frame.end();
 					throw error;
 				}
 				const folded = frame.end();
-				close(f, folded);
-				return folded.wrote;
+				if (!quiet) close(f, folded);
+				return folded.wrote ? { status: 'applied', ids: p.ids } : NOOP;
 			})
 		);
+	};
 
 	return {
 		write,
 		apply,
-		framed,
 		/** Disposal is terminal for writes. */
 		dispose: (): void => {
 			disposed = true;

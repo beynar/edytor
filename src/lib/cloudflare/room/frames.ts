@@ -75,7 +75,7 @@ export const readOnlyDenialFrame = (): Uint8Array =>
 export const suggestOnlyDenialFrame = (): Uint8Array =>
 	E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, SUGGEST_ONLY_DENIAL));
 
-/** The socket's access at the join when it is less than `write` and more than `read` (`suggest`, `comment`). */
+/** The socket's access, at the join and at a change in place (`write`, `suggest`, `comment`, `read`). */
 export const accessFrame = (access: string): Uint8Array =>
 	E.frame(E.messageAuth, (e) => E.writeAccess(e, access));
 

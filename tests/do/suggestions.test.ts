@@ -20,6 +20,7 @@ import { SELF, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import { E, ORIGIN, RawClient, SelfWebSocket, crdt, para, readFacade } from './client';
+import { suggestionsOf } from '../../src/lib/crdt/doc/suggest.js';
 import { setNow, type CommentRoom, type TimedRoom } from './worker';
 
 declare global {
@@ -44,7 +45,13 @@ const inRoom = <T>(name: string, fn: (r: Room, state: DurableObjectState) => T) 
 const roomText = (name: string, block = 'p1') =>
 	inRoom(name, (r) => readFacade(r.doc!, (f) => f.blockText(block)));
 const roomChanges = (name: string) =>
-	inRoom(name, (r) => readFacade(r.doc!, (f) => f.suggest.changes().map((c) => [c.kind, c.text])));
+	inRoom(name, (r) =>
+		readFacade(r.doc!, (f) =>
+			suggestionsOf(f)
+				.changes()
+				.map((c) => [c.kind, c.text])
+		)
+	);
 const refusals = (name: string, reason: string) =>
 	inRoom(name, (r) => r.refusals.filter((x) => x.reason === reason).map((x) => x.detail));
 
@@ -80,11 +87,8 @@ describe('the access the room tells a document (room.access.suggest)', () => {
 	it("the shipped provider sets document.access to the socket's level as it joins", async () => {
 		const name = 'access-levels';
 		const ada = await writer(name, 'ada');
-		const seen: Record<string, string[]> = {};
 		for (const access of ['write', 'suggest', 'comment', 'read'] as const) {
 			const document = E.createDocument({ actor: { id: access } });
-			seen[access] = [];
-			document.onAccessChange((level) => seen[access]!.push(level));
 			const release = document.attachSync(
 				crdt.providers.createWebsocketSync({
 					server: `${ORIGIN.replace('https', 'wss')}/rooms`,
@@ -99,13 +103,6 @@ describe('the access the room tells a document (room.access.suggest)', () => {
 			release?.();
 			document.destroy();
 		}
-		// Told once each: a writer hears nothing it did not already have.
-		expect(seen).toEqual({
-			write: [],
-			suggest: ['suggest'],
-			comment: ['read', 'comment'],
-			read: ['read']
-		});
 		ada.client.close();
 	});
 });
@@ -117,7 +114,7 @@ describe('a user who may only suggest (room.access.suggest)', () => {
 		const sam = await join(name, 'sam', 'suggest');
 		expect(sam.client.access).toBe('suggest');
 		expect(sam.client.readOnly).toBe(false);
-		const S = sam.document.facade.suggest;
+		const S = suggestionsOf(sam.document.facade);
 		const s = S.open({ via: 'ai' });
 		S.apply(s, sam.document.facade.prepare.insertText('p1', 4, 'very '));
 		S.apply(s, sam.document.facade.prepare.deleteText('p1', 15, 6));
@@ -127,10 +124,14 @@ describe('a user who may only suggest (room.access.suggest)', () => {
 		];
 		await vi.waitFor(async () => expect(await roomChanges(name)).toEqual(expected));
 		await vi.waitFor(() =>
-			expect(ada.document.facade.suggest.changes().map((c) => [c.kind, c.text])).toEqual(expected)
+			expect(
+				suggestionsOf(ada.document.facade)
+					.changes()
+					.map((c) => [c.kind, c.text])
+			).toEqual(expected)
 		);
 		// Its writer is its replica: bound to it by itself, owned by it.
-		const [record] = ada.document.facade.suggest.records();
+		const [record] = suggestionsOf(ada.document.facade).records();
 		expect(record).toMatchObject({ by: 'sam', via: 'ai' });
 		expect(
 			await inRoom(name, (_r, state) =>
@@ -159,7 +160,7 @@ describe('a user who may only suggest (room.access.suggest)', () => {
 		const [first] = await refusals(name, 'suggest-only');
 		expect(first).toMatchObject({ user: 'sam', writers: [sam.document.doc.clientID] });
 		// A suggestion writer of its own binding itself and writing data on Ada's block.
-		const S = sam.document.facade.suggest;
+		const S = suggestionsOf(sam.document.facade);
 		const writerId = S.writer();
 		const doc = sam.document.doc as unknown as { clientID: number };
 		const as = (fn: () => void) => {
@@ -198,13 +199,13 @@ describe('a user who may only suggest (room.access.suggest)', () => {
 	it('cannot decide: a settled list it writes in another author’s suggestion is stripped', async () => {
 		const name = 'suggest-decide';
 		const ada = await writer(name, 'ada');
-		const S = ada.document.facade.suggest;
+		const S = suggestionsOf(ada.document.facade);
 		const s = S.open();
 		S.apply(s, ada.document.facade.prepare.insertText('p1', 0, 'Big '));
 		const sam = await join(name, 'sam', 'suggest');
-		await vi.waitFor(() => expect(sam.document.facade.suggest.changes()).toHaveLength(1));
+		await vi.waitFor(() => expect(suggestionsOf(sam.document.facade).changes()).toHaveLength(1));
 		// Sam's writer accepts Ada's insertion: a settled list, in Ada's record.
-		const T = sam.document.facade.suggest;
+		const T = suggestionsOf(sam.document.facade);
 		const w = T.writer();
 		const local = sam.document.doc.clientID;
 		(sam.document.doc as { clientID: number }).clientID = w;
@@ -303,7 +304,7 @@ describe('a version restore and the purge (sugg.restore, sugg.purge)', () => {
 		await clockTo(name, Date.parse('2026-10-06T12:00:00Z'));
 		await advance(name, Date.parse('2026-10-06T12:00:00Z'));
 		const key = `history/${name}/2026-10-06-am`;
-		const S = ada.document.facade.suggest;
+		const S = suggestionsOf(ada.document.facade);
 		const s = S.open();
 		S.apply(s, ada.document.facade.prepare.insertText('p1', 4, 'very '));
 		S.apply(s, ada.document.facade.prepare.deleteText('p1', 15, 6));
@@ -326,7 +327,7 @@ describe('a version restore and the purge (sugg.restore, sugg.purge)', () => {
 		const name = 'timed-nohistory-suggest-purge';
 		await clockTo(name, T0);
 		const ada = await writer(name, 'ada');
-		const S = ada.document.facade.suggest;
+		const S = suggestionsOf(ada.document.facade);
 		await clockTo(name, T0 + 3600_000);
 		const decided = S.open();
 		S.apply(decided, ada.document.facade.prepare.insertText('p1', 0, 'Oh, '));
@@ -334,9 +335,9 @@ describe('a version restore and the purge (sugg.restore, sugg.purge)', () => {
 		const pending = S.open({ writer: S.records()[0]!.writer });
 		S.apply(pending, ada.document.facade.prepare.insertText('p1', 23, '!'));
 		await vi.waitFor(async () =>
-			expect(await inRoom(name, (r) => readFacade(r.doc!, (f) => f.suggest.records().length))).toBe(
-				2
-			)
+			expect(
+				await inRoom(name, (r) => readFacade(r.doc!, (f) => suggestionsOf(f).records().length))
+			).toBe(2)
 		);
 		await advance(name, T0 + DAY);
 		await advance(name, T0 + 31 * DAY);

@@ -54,7 +54,8 @@ const APPS = {
 		createTocPlugin, createEquationPlugin, createMentionPlugin, createPageLinkPlugin, createMarqueePlugin,
 		createEmbedPlugin, createBookmarkPlugin, createFilePlugin, createVideoPlugin, createAudioPlugin,
 		createPagePlugin, createCommentsPlugin, createArrowMovePlugin, createCalloutIconsPlugin,
-		createMediaEmptyPlugin, createImageToolbarPlugin, createSuggestionBarPlugin
+		createMediaEmptyPlugin, createImageToolbarPlugin, createSuggestionBarPlugin,
+		createSharedSuggestionsPlugin
 	} from 'edytor';
 	const upload = async () => '';
 	const plugins = [
@@ -66,7 +67,7 @@ const APPS = {
 		createVideoPlugin({ upload }), createAudioPlugin({ upload }), createPagePlugin(), createCommentsPlugin({}),
 		createArrowMovePlugin(), createCalloutIconsPlugin(),
 		createMediaEmptyPlugin({ empty }), createImageToolbarPlugin({ toolbar: empty }),
-		createSuggestionBarPlugin({ bar: empty })
+		createSuggestionBarPlugin({ bar: empty }), createSharedSuggestionsPlugin()
 	];
 </script>
 {#snippet empty()}{/snippet}

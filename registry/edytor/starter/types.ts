@@ -126,6 +126,7 @@ export type StarterPluginOptions = {
 	mediaEmpty: true;
 	suggestions: true;
 	suggestionBar: true;
+	sharedSuggestions: true;
 };
 
 /**
@@ -242,9 +243,10 @@ export type StarterEditorProps = Omit<EdytorProps, 'plugins' | 'edytor'> & {
 	/** A class on the starter's root element (`class` is the editing host's). */
 	rootClass?: string;
 	/**
-	 * The review controls above the blocks (default `true`): the Editing /
-	 * Suggesting switch (a user who may only suggest stays suggesting), and
-	 * Accept all and Reject all while shared suggestions are pending.
+	 * The review controls above the blocks (default `true`, with the
+	 * `sharedSuggestions` plugin on): the Editing / Suggesting switch (a user
+	 * who may only suggest stays suggesting), and Accept all and Reject all
+	 * while shared suggestions are pending.
 	 */
 	review?: boolean;
 };

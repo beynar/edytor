@@ -591,11 +591,18 @@ export const ownText = (doc: EngineDoc, rec: TextBlockRec): { from: unknown; to:
 	// here is another block's (a hash collision, the known residual class).
 	if (DEV && store.getClock(writer) !== 0)
 		console.warn(`[edytor] own-text writer ${writer} of block ${rec.id} collides`);
-	writeAs(doc, writer, () => {
+	const local = doc.clientID;
+	doc.clientID = writer;
+	try {
 		rec.node.setAttr(CONTENT, newNode(CONTENT_NODE));
 		rec.node.setAttr(NONCE, to);
-	});
-	ownIdsOf(doc).add(writer, store.getClock(writer) - 2, 2);
+	} finally {
+		doc.clientID = local;
+	}
+	const ids = ownTextIds.get(doc) ?? ops.idSet();
+	ownTextIds.set(doc, ids);
+	const clock = store.getClock(writer);
+	ids.add(writer, clock - 2, 2);
 	return { from: rec.n, to };
 };
 
@@ -631,35 +638,6 @@ export const bindText = (_Y: EngineApi) => ({
  * typing and keeps the text every replica shares.
  */
 export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
-/** `doc`'s {@link ownTextIds}, made empty when absent. */
-export const ownIdsOf = (doc: EngineDoc): IdSetOf =>
-	ownTextIds.get(doc) ?? ownTextIds.set(doc, ops.idSet()).get(doc)!;
-
-/**
- * Run `fn` writing as `client` (a writer derived for a block's own text, a
- * suggestion's writer, a history replaying its step), then as before.
- */
-export const writeAs = <R>(doc: EngineDoc, client: number, fn: () => R): R => {
-	const local = doc.clientID;
-	doc.clientID = client;
-	try {
-		return fn();
-	} finally {
-		doc.clientID = local;
-	}
-};
-
-/**
- * The suggestion writers this replica minted on a doc (`doc/suggest.ts`):
- * client ids it writes under besides its own, bound to its actor with their
- * first write; a history replays their steps under them.
- */
-export const writersOf = (doc: EngineDoc): Set<number> => {
-	let set = suggestionWriters.get(doc);
-	if (set === undefined) suggestionWriters.set(doc, (set = new Set()));
-	return set;
-};
-const suggestionWriters = new WeakMap<EngineDoc, Set<number>>();
 
 /**
  * Each history's open step on a doc (`doc/history.ts` registers them): what

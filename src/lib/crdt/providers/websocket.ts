@@ -110,7 +110,7 @@ const defaultConnectTimeout = 10000;
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
-	/** What the room says this connection's user may do, as it joins (and at a downgrade to `read`). */
+	/** What the room says this connection's user may do, as it joins (and at a change in place). */
 	access: (access: 'write' | 'suggest' | 'comment' | 'read', provider: unknown) => void;
 	synced: (state: boolean) => void;
 	'connection-close': (event: CloseEvent | null, provider: unknown) => void;
@@ -264,12 +264,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 							emitFailed(provider, new Error(`permission denied: ${reason}`));
 					},
 					// The room's notice at the join: a state, not a refusal (no event).
-					() => {
-						provider._writes.deny();
-						provider.emit('access', ['read', provider]);
-					},
-					// The room's word at the join (`write`, `suggest`, `comment`).
-					(access) => provider.emit('access', [access as 'write' | 'suggest' | 'comment', provider])
+					() => provider._writes.deny(),
+					// The room's word at the join, and at a change in place (`read`).
+					(access) => provider.emit('access', [access as 'read', provider])
 				);
 				if (
 					authType !== messagePermissionDenied &&

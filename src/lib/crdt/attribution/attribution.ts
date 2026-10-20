@@ -34,7 +34,6 @@
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
-import { writeAs, writersOf } from '../text/model.js';
 import { blockAttributionOf, type BlockAttribution } from './block.js';
 
 /** Reserved replicated root for all attribution metadata (`SCHEMA.roots.attribution`). */
@@ -48,8 +47,8 @@ export { ATTRIBUTION_ROOT };
  */
 export const ATTRIBUTION_ORIGIN = Symbol('edytor.attribution');
 
-const ACTOR_PREFIX = 'u/'; // actorId → profile records
-const CLIENT_PREFIX = 'c/'; // replica clientID → actorId records
+export const ACTOR_PREFIX = 'u/'; // actorId → profile records
+export const CLIENT_PREFIX = 'c/'; // replica clientID → actorId records
 
 /** The stable application-level author identity (mirrors `DocumentActor`). */
 export type AttributionActor = {
@@ -135,7 +134,7 @@ export const writerOf = (doc: EngineDoc): string | undefined => {
 	return typeof bound === 'string' && bound.length > 0 ? bound : localActors.get(doc);
 };
 
-const sanitizeProfile = (value: unknown): ActorProfile => {
+export const sanitizeProfile = (value: unknown): ActorProfile => {
 	const v = (value ?? undefined) as { name?: unknown; color?: unknown } | undefined;
 	const out: ActorProfile = {};
 	if (typeof v?.name === 'string') out.name = v.name;
@@ -183,20 +182,9 @@ export const bindAttribution = (_Y: EngineApi) => {
 				insertSet: { clients: Map<number, unknown> };
 				changed: Map<unknown, Set<string | null>>;
 			};
-			if (destroyed || !tr.local) return;
 			const client = doc.clientID;
-			if (bound !== client && tr.insertSet.clients.has(client)) {
-				bound = client;
-				publish(tr);
-			}
-			// A suggestion writer this replica minted binds itself, written by itself (`sugg.writer.binding`).
-			for (const writer of writersOf(doc))
-				if (tr.insertSet.clients.has(writer) && !root.getAttr(`${CLIENT_PREFIX}${writer}`))
-					writeAs(doc, writer, () => publish(tr));
-		};
-		/** This replica's binding (`c/<clientID>`), and its profile when the stored one differs. */
-		const publish = (tr: { changed: Map<unknown, Set<string | null>> }): void => {
-			const client = doc.clientID;
+			if (destroyed || bound === client || !tr.local || !tr.insertSet.clients.has(client)) return;
+			bound = client;
 			if (root.getAttr(`${CLIENT_PREFIX}${client}`) !== undefined) return;
 			root.setAttr(`${CLIENT_PREFIX}${client}`, actor.id);
 			// A profile this transaction wrote (`setProfile`) stands.

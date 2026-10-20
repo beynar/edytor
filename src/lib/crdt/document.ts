@@ -611,17 +611,12 @@ export class EdytorDocument {
 	}
 
 	/**
-	 * What this document's user may do, as its room said (`'write'` until a
-	 * room says otherwise): `'suggest'` writes only suggestions (its views
-	 * suggest and decide nothing), `'comment'` and `'read'` write nothing.
+	 * What this document's user may do, as its room said as it joined
+	 * (`'write'` until a room says otherwise): `'suggest'` writes only
+	 * suggestions, `'comment'` only comments, `'read'` nothing. The plugins
+	 * read it (the shared suggestions' suggesting mode, the comments).
 	 */
 	access: DocumentAccess = 'write';
-	readonly #accessListeners = new Set<(access: DocumentAccess) => void>();
-	/** Be told when the room changes {@link access}. Returns the unsubscribe. */
-	onAccessChange = (listener: (access: DocumentAccess) => void): (() => void) => {
-		this.#accessListeners.add(listener);
-		return () => void this.#accessListeners.delete(listener);
-	};
 
 	/**
 	 * `false` while the document carries a schema stamp this build cannot
@@ -1057,11 +1052,7 @@ export class EdytorDocument {
 				},
 				holdBound: () => clearTimeout(bound),
 				attach: (companion) => this.attachSync(companion, opts),
-				access: (access) => {
-					if (this.access === access) return;
-					this.access = access;
-					callEach('[edytor-document] access', [...this.#accessListeners], access);
-				}
+				access: (access) => void (this.access = access)
 			});
 		} catch (error) {
 			settle();

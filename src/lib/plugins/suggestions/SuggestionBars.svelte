@@ -25,7 +25,7 @@
 	import { takeKeys } from '$lib/events/onFocus.js';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import type { Suggestion } from '$lib/session/suggestions.svelte.js';
+	import type { AnySuggestion } from '$lib/session/suggestions.svelte.js';
 	import type { SuggestionBarPayload } from './suggestionsPlugin.js';
 
 	/** The plugin's `bar` under each block suggestion's preview, placed once per frame. */
@@ -71,8 +71,8 @@
 			s.shared ? s.changes.length > 0 : !(s.at && 'end' in s.at) || s.content.length > 1
 		)
 	);
-	const payload = (suggestion: Suggestion): SuggestionBarPayload => {
-		const by = suggestion.by;
+	const payload = (suggestion: AnySuggestion): SuggestionBarPayload => {
+		const by = suggestion.shared ? suggestion.by : undefined;
 		const profile = by === undefined ? undefined : edytor.document.attribution.actors.get(by);
 		return {
 			suggestion,
@@ -81,7 +81,7 @@
 				takeKeys(edytor);
 			},
 			discard: suggestion.discard,
-			reject: suggestion.reject,
+			reject: suggestion.shared ? suggestion.reject : suggestion.discard,
 			retry: suggestion.retryable ? suggestion.retry : undefined,
 			readonly: edytor.readonly,
 			canDecide: suggestion.shared ? suggestion.canDecide : !edytor.readonly,

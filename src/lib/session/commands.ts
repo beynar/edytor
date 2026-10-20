@@ -84,9 +84,8 @@ const CUT: Record<string, 'both'> = {
 	insertParagraph: 'both',
 	// A text drag's drop: typing after it is a step of its own.
 	moveText: 'both',
-	// An accepted (or rejected) suggestion: typing after it is a step of its own.
+	// An accepted suggestion: typing after it is a step of its own.
 	acceptSuggestion: 'both',
-	rejectSuggestion: 'both',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
@@ -242,8 +241,13 @@ export class Dispatcher {
 	private patched: TextPatch | null = null;
 	/** `outside` is running: its commands cut no step and enter none. */
 	private untracked = false;
-	/** Where the last suggested plan's caret stands (`write`). */
-	#at: DocPosition | undefined;
+	/**
+	 * A plugin that writes plans itself (the shared suggestions' suggesting
+	 * mode): a plan's result (its `at` set to where its caret stands now),
+	 * or `null` to write it as prepared. Set by the plugin.
+	 * @internal
+	 */
+	writer?: (plan: Plan) => OpResult | null;
 
 	/** @internal */
 	constructor(private edytor: Edytor) {}
@@ -482,10 +486,8 @@ export class Dispatcher {
 				this.edytor.history.wrote(inserts(this.kind ?? operation, led));
 				this.active = true;
 				try {
-					// An unplanned command runs after its lead, reading the state it leaves
-					// (written as the view's suggestion while it suggests).
-					if (lead && !plan)
-						void (this.edytor.suggestions.written(lead) ?? this.edytor.facade.apply(lead));
+					// An unplanned command runs after its lead, reading the state it leaves.
+					if (lead && !plan) void (this.writer?.(lead) ?? this.edytor.facade.apply(lead));
 					return body(payload, plan);
 				} finally {
 					this.active = false;
@@ -531,10 +533,9 @@ export class Dispatcher {
 			payload,
 			{ block: block ?? this.edytor.root, ...(text && { text }) },
 			(p, plan = prepare(p)) => {
-				at = 'writes' in plan ? plan.at : undefined;
 				const out = this.write(plan);
-				// A suggested plan's caret is where it stands with the proposed text shown.
-				at = this.#at ?? at;
+				// Read once written: a plan a plugin wrote says where its caret stands now.
+				at = 'writes' in plan ? plan.at : undefined;
 				return out;
 			},
 			prepare
@@ -591,10 +592,7 @@ export class Dispatcher {
 			!!caret &&
 			plan.writes.some((w) => w.op === op && w.id === caret.block.id && w.offset === caret.offset);
 		const [typed, atom] = [at('insertText'), at('insertInline')];
-		// While the view suggests, the plan is written as its suggestion (`sugg.*`).
-		const suggested = this.edytor.suggestions.written(plan);
-		this.#at = suggested?.at;
-		const result = suggested?.result ?? facade.apply(plan);
+		const result = this.writer?.(plan) ?? facade.apply(plan);
 		for (const [id, hook] of touched) this.request(id, hook);
 		if (typed) selection.stage(undefined);
 		const after = atom ? caret!.block.textAtOffset(caret!.offset + 1) : null;

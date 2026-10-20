@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import type { EdytorDocument } from '../../../lib/crdt/document.js';
-import type { SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
+import { suggestionsOf, type SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
 
 const value = {
 	children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'The quick brown fox' }] }]
@@ -25,7 +25,7 @@ const deliver = (from: EdytorDocument, to: EdytorDocument) =>
 const meshSync = (...docs: EdytorDocument[]) => {
 	for (const a of docs) for (const b of docs) if (a !== b) deliver(a, b);
 };
-const S = (d: EdytorDocument) => d.facade.suggest;
+const S = (d: EdytorDocument) => suggestionsOf(d.facade);
 const text = (d: EdytorDocument, id = 'p1') => d.facade.blockText(id);
 const insert = (d: EdytorDocument, s: string, offset: number, t: string, block = 'p1') =>
 	S(d).apply(s, d.facade.prepare.insertText(block, offset, t)).result;

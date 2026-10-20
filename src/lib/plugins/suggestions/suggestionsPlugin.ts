@@ -2,11 +2,11 @@ import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { branded } from '../brand.js';
-import type { Suggestion } from '$lib/session/suggestions.svelte.js';
+import type { AnySuggestion } from '$lib/session/suggestions.svelte.js';
 
 /** What a `bar` snippet receives: one suggestion (a block suggestion, or a shared one) and its actions. */
 export type SuggestionBarPayload = {
-	suggestion: Suggestion;
+	suggestion: AnySuggestion;
 	/** Accept it (a view-local one: place it in the document) and give the editor its focus back. */
 	accept: () => void;
 	/** Drop it (a shared one: its author withdraws it, a decider rejects it). */

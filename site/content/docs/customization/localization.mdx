@@ -24,6 +24,7 @@ To show another language, give the view its `labels`: any entries of any section
 | `comments` | The toolbar's Comment button, the sidebar's and a card's accessible names |
 | `table` | The table command and accessible name, its block menu rows and switches, a column band, a padded cell |
 | `equation` | The equation presets, an empty or invalid equation |
+| `suggestions` | What the shared suggestions plugin says when the view suggests a change it cannot (a move, a merge, a retype, a data change, a format) |
 
 ```svelte title="Hints.svelte" check
 <script lang="ts">
@@ -66,8 +67,7 @@ export const fr: Labels = {
 		indented: (what) => `${what} indenté`,
 		outdented: (what) => `${what} désindenté`,
 		moved: (what) => `${what} déplacé`,
-		deleted: (what) => `${what} supprimé`,
-		notSuggested: 'Seuls le texte et les blocs peuvent être proposés'
+		deleted: (what) => `${what} supprimé`
 	},
 	richText: {
 		kinds: {
@@ -194,6 +194,9 @@ export const fr: Labels = {
 		blockPlaceholder: 'Ajouter une équation TeX',
 		inlinePlaceholder: 'Nouvelle équation',
 		invalid: 'Équation invalide'
+	},
+	suggestions: {
+		notSuggested: 'Seuls le texte et les blocs peuvent être proposés'
 	}
 };
 

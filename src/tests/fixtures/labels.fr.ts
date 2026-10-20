@@ -31,8 +31,7 @@ export const fr: Labels = {
 		indented: (what) => `${what} indenté`,
 		outdented: (what) => `${what} désindenté`,
 		moved: (what) => `${what} déplacé`,
-		deleted: (what) => `${what} supprimé`,
-		notSuggested: 'Seuls le texte et les blocs peuvent être proposés'
+		deleted: (what) => `${what} supprimé`
 	},
 	richText: {
 		kinds: {
@@ -159,6 +158,9 @@ export const fr: Labels = {
 		blockPlaceholder: 'Ajouter une équation TeX',
 		inlinePlaceholder: 'Nouvelle équation',
 		invalid: 'Équation invalide'
+	},
+	suggestions: {
+		notSuggested: 'Seuls le texte et les blocs peuvent être proposés'
 	}
 };
 

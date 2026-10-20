@@ -2801,7 +2801,11 @@ grew** — not both. A dead command shows neither and still fails.
 
 A suggestion lives in the document (`crdt/doc/suggest.ts`, design:
 `docs/archive/shared-suggestions/design.md`): every replica, the room, a
-reload and a history version hold it. Pins:
+reload and a history version hold it. Its rules hold where its part is
+built over the document (`suggestionsOf`: a view with the shared
+suggestions plugin, `plugins/suggestions/shared.svelte.ts`, the room's
+facades, `adoptSharedSuggestions` for a bare document); a view without it
+reads the suggestions' content as plain content. Pins:
 `src/tests/crdt/suggest/shared-suggestions.test.ts` (the document),
 `src/tests/crdt/suggest/suggest-random.test.ts` (random schedules under
 concurrency), `src/tests/collaboration/suggesting-mode.test.tsx` (a view).
@@ -2817,10 +2821,10 @@ writer's clocks it owns, up to the writer's next record. Its creation is in
 no history step (`ownTextIds`), so no undo or redo moves those clocks. The
 record holds `at` (ms), `via` (an agent: `'ai'`) and `lbl` (a label), and
 a list: its writer's id lists (fork patch YP31: hold records that hold
-nothing inside a nested node) propose deletions, anyone else's settle
-ranges (the decider is the entry's client), and its writer's JSON entries
-`{ op, args }` propose operations. What is pending is a function of that
-state, so replicas converge in any delivery order.
+nothing inside a nested node) propose deletions (of text, or of a block
+by its node), anyone else's settle ranges (the decider is the entry's
+client). What is pending is a function of that state, so replicas
+converge in any delivery order.
 
 ### `sugg.insert` — an insertion is its writer's text
 
@@ -2839,40 +2843,31 @@ step wrote them). Text typed inside the range later is not in it and
 survives an accept. Units the record already proposes are skipped, so a
 second Delete over struck text proposes nothing new.
 
-### `sugg.op` — any other step is a proposed operation
+### `sugg.refused` — only text and blocks are suggested
 
-A suggesting plan's `deleteBlock`, `mergeBlocks`, `setBlockType`,
-`patchData` and `formatRange` steps on content that is not its author's
-pending one are written as the step's operation and its arguments
-(`formatRange`: its block, two anchors and the marks); on accept the
-reviewer runs the operation again (prepared then, so a target gone leaves
-nothing pending and runs nothing). Steps on its author's pending content
-are written directly. A later step's offsets, prepared with the proposed
-text gone, step over it; an insertion at a proposed deletion lands after
-the struck text.
-
-### `sugg.move.refused` — nothing moves through a suggestion
-
-A plan holding a `moveBlocks` step is refused whole (`refused`,
-`'suggesting'`), nothing written; a view in suggesting mode cannot move
-blocks (a drag, a move key, a handle move) and announces it.
+A suggesting plan's `deleteBlock` step on a block that is not its author's
+pending one is proposed: the writer's id list names the node of each block
+it removes (a retype the deletion writes on a child it promotes follows
+it: read again when the deletion is accepted). A plan holding a
+`moveBlocks` step, or a `mergeBlocks`, `setBlockType`, `patchData` or
+`formatRange` step on content that is not its author's pending block, is
+refused whole (`refused`, `'suggesting'`), nothing written; a view in
+suggesting mode cannot move blocks (a drag, a move key, a handle move) and
+announces every refusal (`suggestions.notSuggested`). Steps on its author's
+pending blocks are written directly. A later step's offsets, prepared with
+the proposed text gone, step over it; an insertion at a proposed deletion
+lands after the struck text.
 
 ### `sugg.decide` — a decision writes only what changes
 
 Accepting an insertion or rejecting a deletion settles its ids (the text
 stays); rejecting an insertion or accepting a deletion is the decider's
-`deleteText` (a hold: the text goes); a rejected block is deleted (its
-children promote), a rejected split joins the block it was split from (its
-writer's text held); an accepted operation runs, and settles. One command
-and one undo step of the decider (`acceptSuggestion`, `rejectSuggestion`),
-never written as a suggestion; an undo makes the change pending again.
-
-Accept overwrites: an accepted operation runs again with the arguments it
-was proposed with (a `setBlockType`'s kind, a `patchData`'s values, a
-`formatRange`'s marks over its anchors), through the decider's
-dispatcher. A field a collaborator changed since the proposal gets the
-proposed value, as the same edit made at the decision would write it; the
-reviewer accepts what the suggestion shows.
+hold of the change's ids (the text goes; one engine call, `YNode#hold`,
+as a settle is); a rejected block and an accepted block deletion are the
+decider's block delete (its children promote), a rejected split joins the
+block it was split from (its writer's text held). One command and one undo
+step of the decider (`acceptSuggestion`, `rejectSuggestion`), never written
+as a suggestion; an undo makes the change pending again.
 
 ### `sugg.decide.concurrent` — decisions compose
 
@@ -2890,24 +2885,42 @@ the deletion first holds them.
 ### `sugg.history.writer` — the suggester's history is its writer's
 
 A history replays a step that a suggestion writer of this replica wrote
-under that writer (`crdt/doc/history.ts`): the suggester's undo of typing
-holds it as the writer, of a proposal deletes the entry; its redo writes
-the entry again under the writer, still a proposal, never a decision.
+under that writer (`crdt/doc/history.ts`): the part's transactions name
+their writer (`tr.writer`), which the step keeps (`StackItem.writer`), and
+so does the replay's own step. The suggester's undo of typing holds it as
+the writer, of a proposal deletes the entry; its redo writes the entry
+again under the writer, still a proposal, never a decision.
 
-### `sugg.withdraw` — the author takes a suggestion back
+### `sugg.withdraw` — the author takes a suggestion back by rejecting it
 
-The author withdraws, written by a writer of theirs: the suggestion's
-pending text and blocks go as a rejection takes them and the author's
-entries in the record are deleted (a decider's settled lists stay).
-Nothing of it stays pending.
+The author's removal of their own suggestion is a reject (`sugg.decide`):
+the same writes, one command. A view that may not decide (a suggest-only
+user's) writes it by a writer of its author's that is not the record's
+writer (whose id lists propose), so the room admits it and what it
+deleted reads settled. Nothing of it stays pending; its undo brings it
+back.
+
+### `sugg.ai.live` — a shared answer is written live, only what changed
+
+An app's shared suggestion (the plugin's `add`) is one suggestion
+of its own writer, written as it streams, outside the history: the first
+time at its position (a `replace` proposed for deletion), then at each
+update only what changed: the blocks equal to the ones it wrote are kept,
+its last block's text is extended when the new one extends it (an
+insertion of the new runs only), and the rest is replaced (the writer's
+own pending blocks deleted, the new ones inserted after the kept ones).
 
 ### `sugg.json.base` — the document without its pending suggestions
 
-`toJSON()` (and the room's `onSave` value, `edytor.value`) leaves pending
-suggestions out: inserted units and blocks are not there (a pending
-block's children take its place, a split's block joins the block before
-it), proposals are not applied. `toJSON({ suggestions: true })` is the
-document as shown. A document with no record pays nothing.
+`toJSON()` (and the room's `onSave` value, `edytor.value`) of a document
+the part is built over leaves pending suggestions out: it is the document
+as shown, on a copy of the document
+with every pending suggestion rejected (inserted units and blocks gone, a
+split's block joined to the block before it, proposed deletions kept). A
+whole-document cost (the copy and its index) while any suggestion is
+pending; a document with no pending change reads the document directly.
+`toJSON({ suggestions: true })` is the document as shown, and so is the
+`toJSON()` of a document no one built the part over.
 
 ## The room (server, `edytor/cloudflare`)
 

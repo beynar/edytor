@@ -212,7 +212,10 @@ export interface EngineNode {
     forEachAttr(f: (value: unknown, key: string, node: EngineNode) => void): void;
     attrKeys(): IterableIterator<string>;
     insert(index: number, content: unknown): void;
-    delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown): void;
+    delete(index: number, length?: number, into?: EngineNode | null, fresh?: unknown, propose?: {
+        into: EngineNode;
+        sort: (client: number, clock: number) => number;
+    } | null): void;
     hold(ids: number[]): void;
     move(index: number, ids: number[], side?: number, part?: number, at?: ReadonlyArray<{
         client: number;
@@ -599,7 +602,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
             };
-            apply: (p: import("./edytor-doc.js").Prepared) => import("./edytor-doc.js").OpResult;
+            apply: (p: import("./edytor-doc.js").Prepared, quiet?: boolean) => import("./edytor-doc.js").OpResult;
             compose: (...parts: import("./edytor-doc.js").Prepared[]) => import("./edytor-doc.js").Prepared;
             transact: <R>(fn: () => R, origin?: unknown) => R;
             model: {
@@ -720,39 +723,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             assertSchema: () => void;
             dispose: () => void;
             createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
-            suggest: {
-                writer: () => number;
-                open: (options?: {
-                    id?: string;
-                    writer?: number;
-                    via?: string;
-                    label?: string;
-                    at?: number;
-                }) => string;
-                apply: (id: string, p: import("./edytor-doc.js").Prepared) => {
-                    result: import("./edytor-doc.js").OpResult;
-                    at?: {
-                        block: import("./index.js").BlockId;
-                        offset: number;
-                    };
-                };
-                settle: (id: string, ids: readonly import("./doc/suggest.js").IdRange[]) => void;
-                decide: (changes: readonly import("./doc/suggest.js").SuggestedChange[], accept: boolean) => import("./doc/suggest.js").DecisionPart[];
-                run: (parts: readonly import("./doc/suggest.js").DecisionPart[]) => void;
-                withdraw: (id: string, w: number) => void;
-                records: () => import("./doc/suggest.js").SuggestionRecord[];
-                any: () => boolean;
-                changes: () => import("./doc/suggest.js").SuggestedChange[];
-                at: (b: import("./index.js").BlockId) => readonly import("./doc/suggest.js").SuggestedChange[];
-                base: (data: import("./index.js").JSONDoc["data"] | undefined) => import("./index.js").JSONDoc;
-                version: () => number;
-                onChange: (f: () => void) => () => undefined;
-                debug: {
-                    computes: number;
-                    units: number;
-                };
-                dispose: () => void;
-            };
+            part: import("./doc/suggest.js").SuggestContext;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: (options?: {
                 suggestions?: boolean;
@@ -842,10 +813,9 @@ declare const bindCrdt: (Y: EngineApi) => {
             onChange: (cb: (change: import("./edytor-doc.js").DocChange) => void) => (() => void);
         };
         newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
-        purge: (doc: import("./engine-api.js").EngineDoc, facade: {
+        purge: (doc: import("./engine-api.js").EngineDoc, facade: Partial<import("./doc/suggest.js").SuggestFacade> & {
             model: import("./placement/model.js").PlacementModel;
             text: import("./text/model.js").TextEngine;
-            suggest?: Pick<import("./doc/suggest.js").DocSuggest, "records" | "changes">;
         }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
         restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
@@ -1405,7 +1375,7 @@ declare const writeReadOnly: (encoder: encoding.Encoder) => void;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'createID' | 'unhide';
 ```
 
 #### crdt/engine.d.ts#Y

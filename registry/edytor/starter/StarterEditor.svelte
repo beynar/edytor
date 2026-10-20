@@ -18,7 +18,7 @@
 	// The theme's variables on your shadcn tokens: the blocks follow `.dark` with the menus.
 	import '../chrome/tokens.css';
 	import { onMount, tick, untrack } from 'svelte';
-	import { Edytor } from 'edytor';
+	import { Edytor, sharedSuggestionsController } from 'edytor';
 	import { starterPlugins } from './starterPlugins.js';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import SmileIcon from '@lucide/svelte/icons/smile';
@@ -143,13 +143,16 @@
 		edytor.focus();
 	};
 
-	// Review: suggesting mode (always, for a user who may only suggest), and the pending
-	// shared suggestions this view may decide.
-	const suggesting = $derived(live && edytor!.suggestions.suggesting);
+	// Review (the shared suggestions plugin): suggesting mode (always, for a user who may
+	// only suggest), and the pending shared suggestions this view may decide.
+	const shared = $derived(live ? sharedSuggestionsController(edytor!) : undefined);
+	const suggesting = $derived(!!shared?.suggesting);
 	const suggestOnly = $derived(
-		live && (edytor!.suggestions.revision, edytor!.document.access === 'suggest')
+		!!shared && (edytor!.suggestions.revision, edytor!.document.access === 'suggest')
 	);
-	const pending = $derived(live && edytor!.suggestions.list.some((s) => s.shared && s.canDecide));
+	const pending = $derived(
+		!!shared && edytor!.suggestions.list.some((s) => s.shared && s.canDecide)
+	);
 
 	const coverPayload: StarterCoverPayload = $derived({
 		cover: data.cover,
@@ -267,7 +270,7 @@
 				{/if}
 			{/if}
 		</div>
-		{#if review && editable}
+		{#if review && editable && shared}
 			<div class="starter-review" role="toolbar" aria-label={words.suggestions.suggestion}>
 				<Button
 					variant={suggesting ? 'secondary' : 'ghost'}
@@ -276,7 +279,7 @@
 					disabled={suggestOnly}
 					data-edytor-starter-suggesting
 					onmousedown={(event) => event.preventDefault()}
-					onclick={() => (edytor!.suggestions.suggesting = !suggesting)}
+					onclick={() => (shared.suggesting = !suggesting)}
 				>
 					<PencilIcon />
 					{suggesting ? words.suggestions.suggesting : words.suggestions.editing}
@@ -287,14 +290,14 @@
 						size="sm"
 						data-edytor-starter-accept-all
 						onmousedown={(event) => event.preventDefault()}
-						onclick={() => edytor!.suggestions.acceptAll()}>{words.suggestions.acceptAll}</Button
+						onclick={() => shared.acceptAll()}>{words.suggestions.acceptAll}</Button
 					>
 					<Button
 						variant="ghost"
 						size="sm"
 						data-edytor-starter-reject-all
 						onmousedown={(event) => event.preventDefault()}
-						onclick={() => edytor!.suggestions.rejectAll()}>{words.suggestions.rejectAll}</Button
+						onclick={() => shared.rejectAll()}>{words.suggestions.rejectAll}</Button
 					>
 				{/if}
 			</div>

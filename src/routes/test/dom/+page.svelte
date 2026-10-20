@@ -59,6 +59,10 @@
 	import { anchorsInOrder } from '$lib/session/selection.js';
 	import type { PageData } from './$types';
 	import { CODE_LANGUAGES } from '$lib/plugins/code/languages.js';
+	import {
+		createSharedSuggestionsPlugin,
+		sharedSuggestionsController
+	} from '$lib/plugins/suggestions/shared.svelte.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -646,6 +650,7 @@
 		toolbarPlugin,
 		suggestionsPlugin,
 		suggestionBarPlugin,
+		...(data.shared ? [createSharedSuggestionsPlugin()] : []),
 		...(data.columns ? [createColumnsPlugin()] : []),
 		calloutIconsPlugin,
 		richTextPlugin,
@@ -1330,8 +1335,13 @@
 					__EDYTOR__?: EdytorContext;
 					__SECOND_EDYTOR__?: EdytorContext;
 					__EDYTOR_COLLABORATION_TEST__?: typeof collaborationTestRuntime;
+					__EDYTOR_SHARED__?: unknown;
 				}
 			).__EDYTOR__ = edytor;
+			// The shared suggestions plugin's controller (`suggestions.spec.ts`).
+			(window as Window & { __EDYTOR_SHARED__?: unknown }).__EDYTOR_SHARED__ = edytor
+				? sharedSuggestionsController(edytor as never)
+				: undefined;
 			(
 				window as Window & {
 					__EDYTOR_COLLABORATION_TEST__?: typeof collaborationTestRuntime;

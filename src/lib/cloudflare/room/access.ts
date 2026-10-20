@@ -160,12 +160,12 @@ export class RoomAccess {
 			// Every socket is told its access as it joins (`room.access.suggest`),
 			// before anything else it reads. A read-only socket is never asked
 			// for its state: it has nothing to give. It gets the read-only
-			// notice instead (not a refusal), so its provider tracks nothing;
-			// a comment-only one hears its level after it.
+			// notice instead (not a refusal), so its provider tracks nothing,
+			// and its level after it.
 			const level = levelIn(identity);
 			if (identity.readOnly) {
 				room.send(server, readOnlyFrame());
-				if (level !== 'read') room.send(server, accessFrame(level));
+				room.send(server, accessFrame(level));
 			} else {
 				room.send(server, accessFrame(level));
 				room.send(server, step1Frame(doc));
@@ -259,6 +259,7 @@ export class RoomAccess {
 			for (const { ws, attachment } of inPlace) {
 				ws.serializeAttachment({ ...attachment, readOnly: true } satisfies Attachment);
 				room.send(ws, readOnlyFrame());
+				room.send(ws, accessFrame('read'));
 			}
 			if (inPlace.length > 0) {
 				room.note({ reason: 'access', detail: { user: userId, access, sockets: inPlace.length } });

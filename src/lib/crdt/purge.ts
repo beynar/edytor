@@ -46,7 +46,7 @@ import {
 	WITHDRAW_PREFIX
 } from './schema.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
-import type { DocSuggest, SuggestionRecord } from './doc/suggest.js';
+import { suggestionsOf, type SuggestFacade, type SuggestionRecord } from './doc/suggest.js';
 import { attrItems, dropSearchMarkers, engineOps, firstItem, holdsIds } from './structs.js';
 
 /** Engine ids `c:k … c:k+n-1`. */
@@ -205,11 +205,7 @@ export const bindPurge = (Y: EngineApi) => {
 	 */
 	const purge = (
 		doc: EngineDoc,
-		facade: {
-			model: PlacementModel;
-			text: TextEngine;
-			suggest?: Pick<DocSuggest, 'records' | 'changes'>;
-		},
+		facade: Partial<SuggestFacade> & { model: PlacementModel; text: TextEngine },
 		horizon: Horizon | null
 	): PurgeReport => {
 		const report: PurgeReport = {
@@ -501,7 +497,7 @@ export const bindPurge = (Y: EngineApi) => {
 		// Suggestions decided before the horizon (`sugg.purge`): the decision
 		// trail goes with them. A writer's oldest record first, so no record's
 		// clocks pass to another.
-		const suggest = facade.suggest;
+		const suggest = facade.part && suggestionsOf(facade as SuggestFacade);
 		const records = suggest?.records() ?? [];
 		if (records.length > 0) {
 			const pending = new Set(suggest!.changes().map((c) => c.suggestion));

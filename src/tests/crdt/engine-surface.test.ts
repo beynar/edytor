@@ -42,7 +42,8 @@ const SYMBOLS = {
 	followRedone: 1,
 	isParentOf: 1,
 	mergeIdSets: 1,
-	createID: 1
+	createID: 1,
+	unhide: 1
 } satisfies Record<EngineSymbol, 1>;
 
 describe('engine object (named imports)', () => {

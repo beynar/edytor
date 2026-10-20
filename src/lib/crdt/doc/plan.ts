@@ -92,33 +92,3 @@ export const sanitizeInline = <I extends InlineSpec>(item: I): I => ({
 	type: ref(item.type),
 	...(item.data !== undefined && { data: sanitizeWireJson(item.data) })
 });
-
-type Step<K extends PlanStep['op']> = Extract<PlanStep, { op: K }>;
-const ARGS: { [K in PlanStep['op']]: (w: Step<K>, keepChildren: boolean) => unknown[] } = {
-	insertBlocks: (w) => [{ parent: w.parent, index: w.index }, w.specs],
-	moveBlocks: (w) => [w.ids, { parent: w.parent, index: w.index }],
-	deleteBlock: (w, keepChildren) => [w.id, { keepChildren }],
-	splitBlock: (w) => [w.id, w.offset, w.newId, w.tail],
-	mergeBlocks: (w) => [w.from, w.into],
-	setBlockType: (w) => [w.id, w.type],
-	patchData: (w) => [
-		w.inlineId !== undefined ? { block: w.id, atom: w.inlineId } : (w.id ?? null),
-		w.ops
-	],
-	insertText: (w) => [w.id, w.offset, w.text, w.marks],
-	insertInline: (w) => [w.id, w.offset, w.atom],
-	deleteText: (w) => [w.id, w.offset, w.length],
-	removeInline: (w) => [w.id, w.inlineId],
-	formatRange: (w) => [w.id, w.offset, w.length, w.marks]
-};
-
-/**
- * A planned step as the document operation it performs, with that
- * operation's arguments: what a hook sees of it, what a suggestion proposes
- * (`childrenOf`: a block delete keeps the children it does not remove).
- */
-export const argsOf = (w: PlanStep, childrenOf: (id: BlockId) => readonly BlockId[]): unknown[] =>
-	(ARGS[w.op] as (w: PlanStep, keeps: boolean) => unknown[])(
-		w,
-		w.op === 'deleteBlock' && childrenOf(w.id).some((c) => !w.removes.includes(c))
-	);

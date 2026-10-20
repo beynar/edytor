@@ -9,6 +9,7 @@ import {
 	createImageToolbarPlugin,
 	createMarkdownShortcutsPlugin,
 	createMediaEmptyPlugin,
+	createSharedSuggestionsPlugin,
 	createSuggestionBarPlugin,
 	createSuggestionsPlugin,
 	createTocPlugin,
@@ -110,6 +111,7 @@ export const starterPlugins = ({
 	on('equation', (options) => chrome.equation(options));
 	on('suggestions', () => createSuggestionsPlugin());
 	on('suggestionBar', () => createSuggestionBarPlugin({ bar: chrome.chrome.suggestionBar }));
+	on('sharedSuggestions', () => createSharedSuggestionsPlugin());
 	on('calloutIcons', (options) => chrome.calloutIcons(options));
 	on('richText', (options) => chrome.richText(options));
 	if (comments) {

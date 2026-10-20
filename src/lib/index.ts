@@ -137,6 +137,10 @@ export {
 	createSuggestionBarPlugin,
 	type SuggestionBarOptions,
 	type SuggestionBarPayload,
+	createSharedSuggestionsPlugin,
+	sharedSuggestionsController,
+	type SharedSuggestionsController,
+	type SharedSuggestionOptions,
 	createImagePlugin,
 	type ImagePluginOptions,
 	safeImageSrc,
@@ -349,9 +353,12 @@ export type {
 	PageLabels,
 	PageLinkLabels,
 	RichTextLabels,
+	SuggestionsLabels,
 	TableLabels,
 	TocLabels
 } from './labels.js';
+export type { SuggestedChange } from './crdt/doc/suggest.js';
+export type { AnySuggestion, SharedSuggestion } from './session/suggestions.svelte.js';
 export type {
 	BlockElement,
 	BlockView,

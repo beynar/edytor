@@ -439,8 +439,19 @@ export const deleteRange = (
 	const records = doc.get(TEXT_DELETES_ROOT);
 	const fresh = openInserts(doc);
 	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
-		r.text.delete(r.a, r.b - r.a, records, fresh);
+		r.text.delete(r.a, r.b - r.a, records, fresh, proposing.get(doc));
 };
+
+/**
+ * A suggestion's plan being written on a doc (`doc/suggest.ts`): its text
+ * deletes propose (fork patch YP32) into its record, `sort` telling each
+ * unit's lot (`1` its author's own: held; `2` proposed; `3` already
+ * proposed: stepped over).
+ */
+export const proposing = new WeakMap<
+	EngineDoc,
+	{ into: EngineNode; sort: (client: number, clock: number) => number }
+>();
 
 export const formatRangeIn = (
 	doc: EngineDoc,
@@ -627,18 +638,6 @@ export const bindText = (_Y: EngineApi) => ({
  * typing and keeps the text every replica shares.
  */
 export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
-
-/**
- * The suggestion writers this replica minted on a doc (`doc/suggest.ts`):
- * client ids it writes under besides its own, bound to its actor with their
- * first write; a history replays their steps under them.
- */
-export const writersOf = (doc: EngineDoc): Set<number> => {
-	let set = suggestionWriters.get(doc);
-	if (set === undefined) suggestionWriters.set(doc, (set = new Set()));
-	return set;
-};
-const suggestionWriters = new WeakMap<EngineDoc, Set<number>>();
 
 /**
  * Each history's open step on a doc (`doc/history.ts` registers them): what

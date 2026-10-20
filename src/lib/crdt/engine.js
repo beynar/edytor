@@ -45,5 +45,7 @@ export const Y = {
 	followRedone: V.followRedone,
 	isParentOf: V.isParentOf,
 	mergeIdSets: V.mergeIdSets,
-	createID: V.createID
+	createID: V.createID,
+	// a suggestion's proposed deletion reads gone until its plan ends (fork patch YP32)
+	unhide: V.unhide
 };

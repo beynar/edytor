@@ -36,7 +36,7 @@ import {
 	type PlacementModel
 } from './placement/model.js';
 import type { DataPatch } from './data.js';
-import type { DocSuggest } from './doc/suggest.js';
+import { suggestionsOf, type SuggestFacade } from './doc/suggest.js';
 import { DEL_PREFIX, TYPE, WITHDRAW_PREFIX } from './schema.js';
 import { common, patchWrites, writeData } from './data.js';
 import { canonKey, deleteClaims } from './text/model.js';
@@ -159,10 +159,8 @@ export type RestoreReport = {
 };
 
 /** What a restore reads and writes through: the facade over the document (structurally). */
-export type RestoreFacade<Plan> = {
+export type RestoreFacade<Plan> = Partial<SuggestFacade> & {
 	model: PlacementModel;
-	/** The shared suggestions (`doc/suggest.ts`): a restore drops the pending ones. */
-	suggest?: Pick<DocSuggest, 'any' | 'changes' | 'decide' | 'run'>;
 	childSlots(parent: BlockId | null): readonly { id: BlockId; rank: string }[];
 	contentItems(id: BlockId): ContentItem[];
 	apply(plan: Plan): unknown;
@@ -293,7 +291,8 @@ export const restoreDocument = <Plan>(
 	// none (its document without them), so what the restore left of them —
 	// their proposals — is rejected, in the restore's step (its undo brings
 	// them back).
-	const suggest = facade.suggest;
-	if (suggest?.any()) suggest.run(suggest.decide(suggest.changes(), false));
+	// (Built over the facade, its shared suggestions: `doc/suggest.ts`.)
+	const suggest = facade.part && suggestionsOf(facade as SuggestFacade);
+	if (suggest) suggest.run(suggest.decide(suggest.changes(), false));
 	return report;
 };

@@ -10,7 +10,14 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { createDocument } from '$lib/crdt/index.js';
 import type { EdytorDocument } from '$lib/crdt/document.js';
-import { createOperationEdytor } from '../test.utils.js';
+import { createOperationEdytor, defaultPlugins } from '../test.utils.js';
+import { adoptSharedSuggestions, suggestionsOf } from '$lib/crdt/doc/suggest.js';
+import {
+	createSharedSuggestionsPlugin,
+	sharedSuggestionsController
+} from '$lib/plugins/suggestions/shared.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { SharedSuggestion } from '$lib/session/suggestions.svelte.js';
 import { textToBlocks } from '$lib/export/index.js';
 import { jsonBlockToSpec, type JSONBlock } from '$lib/utils/json.js';
 
@@ -36,7 +43,7 @@ const view = () => {
 				<paragraph>the lazy dog</paragraph>
 			</root>
 		) as any,
-		{ doc: new Y.Doc() }
+		{ doc: new Y.Doc(), plugins: [...defaultPlugins, createSharedSuggestionsPlugin()] }
 	);
 	const [p1, p2, p3] = edytor.root!.children.map((b) => b.id) as [string, string, string];
 	return { edytor, p1, p2, p3 };
@@ -45,8 +52,11 @@ const peerOf = (from: { doc: unknown }): EdytorDocument => {
 	const peer = createDocument({ actor: { id: 'ben' } });
 	deliver(from, peer);
 	peer.sync();
+	adoptSharedSuggestions(peer);
 	return peer;
 };
+/** The view's shared suggestions plugin's controller. */
+const shared = (edytor: Edytor) => sharedSuggestionsController(edytor)!;
 const kinds = (changes: readonly { kind: string; text: string }[]) =>
 	changes.map((c) => [c.kind, c.text]);
 
@@ -54,22 +64,22 @@ describe('suggesting mode (sugg.*)', () => {
 	it("the view's insertText and deleteText become a suggestion a peer reviews", () => {
 		const { edytor, p1 } = view();
 		const peer = peerOf(edytor.document);
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.insertText(p1, 4, 'very ');
 		// A Backspace-like delete of "brown " (six one-unit deletes from its end).
 		for (let at = 20; at >= 15; at--) edytor.deleteText(p1, at, 1);
-		edytor.suggestions.suggesting = false;
+		shared(edytor).suggesting = false;
 		expect(edytor.facade.blockText(p1)).toBe('The very quick brown fox');
 		// One suggestion: the edits were contiguous.
 		expect(edytor.suggestions.list.map((s) => s.shared)).toEqual([true]);
 		deliver(edytor.document, peer);
-		const changes = peer.facade.suggest.changes();
+		const changes = suggestionsOf(peer.facade).changes();
 		expect(kinds(changes)).toEqual([
 			['insert', 'very '],
 			['delete', 'brown ']
 		]);
 		// The peer accepts both.
-		peer.facade.suggest.run(peer.facade.suggest.decide(changes, true));
+		suggestionsOf(peer.facade).run(suggestionsOf(peer.facade).decide(changes, true));
 		deliver(peer, edytor.document);
 		expect(edytor.facade.blockText(p1)).toBe('The very quick fox');
 		expect(edytor.suggestions.list).toEqual([]);
@@ -77,11 +87,11 @@ describe('suggesting mode (sugg.*)', () => {
 
 	it("the suggester's undo withdraws what it suggested, its redo suggests it again", () => {
 		const { edytor, p1 } = view();
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.deleteText(p1, 10, 6);
 		edytor.document.history.stopCapturing();
 		edytor.insertText(p1, 4, 'very ');
-		const { suggest } = edytor.facade;
+		const suggest = suggestionsOf(edytor.facade);
 		expect(suggest.changes().map((c) => c.kind)).toEqual(['insert', 'delete']);
 		edytor.historyUndo();
 		expect(suggest.changes().map((c) => c.kind)).toEqual(['delete']);
@@ -98,7 +108,7 @@ describe('suggesting mode (sugg.*)', () => {
 
 	it('one suggestion per contiguous range: a neighbour continues it, a block further away starts another', () => {
 		const { edytor, p1, p2, p3 } = view();
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.insertText(p1, 0, 'A');
 		edytor.insertText(p2, 0, 'B');
 		expect(edytor.suggestions.list).toHaveLength(1);
@@ -112,14 +122,14 @@ describe('suggesting mode (sugg.*)', () => {
 		]);
 	});
 
-	it('nothing moves while the view suggests: refused and said (sugg.move.refused)', () => {
+	it('nothing moves while the view suggests: refused and said (sugg.refused)', () => {
 		const { edytor, p2 } = view();
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		const block = edytor.idToBlock.get(p2)!;
 		expect(edytor.canMove({ blocks: [block], direction: 'up' })).toBe(false);
 		expect(edytor.move({ blocks: [block], direction: 'up' })).toEqual([]);
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
-		expect(edytor.announcer.message).toBe('Blocks do not move in a suggestion');
+		expect(edytor.announcer.message).toBe('Only text and blocks can be suggested');
 		// A move planned by another command (a nest) is refused at its write.
 		expect(edytor.moveBlocks([p2], { parent: null, index: 0 }).status).toBe('refused');
 		// Nesting (Tab) and outdenting are moves too.
@@ -135,9 +145,9 @@ describe('suggesting mode (sugg.*)', () => {
 		edytor.plugins.push({
 			onBeforeOperation: ({ operation }) => void seen.push(operation)
 		} as never);
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.insertText(p1, 0, 'Oh, ');
-		edytor.suggestions.suggesting = false;
+		shared(edytor).suggesting = false;
 		const [suggestion] = edytor.suggestions.list;
 		expect(suggestion!.canDecide).toBe(true);
 		edytor.document.access = 'suggest';
@@ -151,22 +161,34 @@ describe('suggesting mode (sugg.*)', () => {
 		expect(edytor.facade.blockText(p1)).toBe('Oh, The quick brown fox');
 		// Its undo makes it pending again.
 		edytor.historyUndo();
-		expect(kinds(edytor.facade.suggest.changes())).toEqual([['insert', 'Oh, ']]);
+		expect(kinds(suggestionsOf(edytor.facade).changes())).toEqual([['insert', 'Oh, ']]);
 		// Rejected: the text goes, as one step.
 		expect(edytor.suggestions.list[0]!.reject().status).toBe('applied');
 		expect(edytor.facade.blockText(p1)).toBe('The quick brown fox');
 	});
 
-	it('the author withdraws its suggestion (discard): nothing of it is pending', () => {
+	it('its author rejects it (discard), a suggest-only one too: nothing of it is pending (sugg.withdraw)', () => {
 		const { edytor, p1 } = view();
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.insertText(p1, 4, 'very ');
 		edytor.deleteText(p1, 15, 6);
 		const [suggestion] = edytor.suggestions.list;
 		expect(suggestion!.mine).toBe(true);
+		edytor.document.access = 'suggest';
+		expect(suggestion!.canDecide).toBe(false);
 		suggestion!.discard();
+		expect(edytor.dispatcher.last).toMatchObject({
+			operation: 'rejectSuggestion',
+			status: 'applied'
+		});
 		expect(edytor.facade.blockText(p1)).toBe('The quick brown fox');
-		expect(edytor.facade.suggest.changes()).toEqual([]);
+		expect(suggestionsOf(edytor.facade).changes()).toEqual([]);
+		// Its undo brings it back.
+		edytor.historyUndo();
+		expect(kinds(suggestionsOf(edytor.facade).changes())).toEqual([
+			['insert', 'very '],
+			['delete', 'brown ']
+		]);
 	});
 });
 
@@ -174,8 +196,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 	it('streams into the document as it arrives: a peer reads it so far, the document without it stays as it was', () => {
 		const { edytor, p1 } = view();
 		const peer = peerOf(edytor.document);
-		const suggestion = edytor.suggestions.add({ after: p1 }, undefined, {
-			shared: true,
+		const suggestion = shared(edytor).add({ after: p1 }, undefined, {
 			label: 'AI'
 		});
 		expect(suggestion.shared).toBe(true);
@@ -187,7 +208,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 			suggestion.append(chunk);
 			deliver(edytor.document, peer);
 			seen.push(
-				peer.facade.suggest
+				suggestionsOf(peer.facade)
 					.changes()
 					.map((c) => c.text)
 					.join('')
@@ -201,7 +222,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 			'Next steps: book the review.'
 		]);
 		// The peer sees who asked, and that an AI wrote it.
-		const [record] = peer.facade.suggest.records();
+		const [record] = suggestionsOf(peer.facade).records();
 		expect(record).toMatchObject({ via: 'ai', label: 'AI' });
 		expect(record!.by).toBe(edytor.document.actor.id);
 		// Without its pending suggestions, the document is as it was.
@@ -210,7 +231,9 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		// Each chunk after the first is only its text: a few bytes over it.
 		expect(sizes.slice(1).every((n) => n < 40)).toBe(true);
 		// Accepted by the peer: the answer is the document's.
-		peer.facade.suggest.run(peer.facade.suggest.decide(peer.facade.suggest.changes(), true));
+		suggestionsOf(peer.facade).run(
+			suggestionsOf(peer.facade).decide(suggestionsOf(peer.facade).changes(), true)
+		);
 		deliver(peer, edytor.document);
 		expect(edytor.document.toJSON().children).toHaveLength(4);
 		expect(edytor.suggestions.list).toEqual([]);
@@ -218,7 +241,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 
 	it('a markdown answer re-read on each chunk writes only what changed', () => {
 		const { edytor, p1 } = view();
-		const suggestion = edytor.suggestions.add({ after: p1 }, undefined, { shared: true });
+		const suggestion = shared(edytor).add({ after: p1 }, undefined);
 		const updates: number[] = [];
 		edytor.document.doc.on('update', (u: Uint8Array) => updates.push(u.length));
 		suggestion.update([{ type: 'paragraph', content: [{ text: 'One' }] }]);
@@ -227,7 +250,11 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 			{ type: 'paragraph', content: [{ text: 'One two' }] },
 			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Three' }] }
 		]);
-		expect(edytor.facade.suggest.changes().map((c) => [c.kind, c.text])).toEqual([
+		expect(
+			suggestionsOf(edytor.facade)
+				.changes()
+				.map((c) => [c.kind, c.text])
+		).toEqual([
 			['block', 'One two'],
 			['block', 'Three']
 		]);
@@ -255,8 +282,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 			'Then we announce it.'
 		].join('\n');
 		const words = answer.split(/(?<=[ \n])/);
-		const suggestion = edytor.suggestions.add({ after: p1 }, undefined, {
-			shared: true,
+		const suggestion = shared(edytor).add({ after: p1 }, undefined, {
 			label: 'AI'
 		});
 		const synced: number[] = [];
@@ -282,7 +308,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		const final = textToBlocks(markdown).map((b) => stripIds(b));
 		expect(shown(peer)).toEqual(final);
 		// One suggestion of the AI's; the document without it is as it was.
-		expect(peer.facade.suggest.records()).toHaveLength(1);
+		expect(suggestionsOf(peer.facade).records()).toHaveLength(1);
 		expect(peer.toJSON().children).toHaveLength(3);
 		// The same blocks written at once, plainly, for comparison.
 		const plain = view();
@@ -300,7 +326,9 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 		};
 		process.stdout.write(`\nSTREAMED ${JSON.stringify(report)}\n`);
 		// Accepted by the peer: the answer is the document's.
-		peer.facade.suggest.run(peer.facade.suggest.decide(peer.facade.suggest.changes(), true));
+		suggestionsOf(peer.facade).run(
+			suggestionsOf(peer.facade).decide(suggestionsOf(peer.facade).changes(), true)
+		);
 		expect(
 			peer
 				.toJSON()
@@ -311,7 +339,7 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 
 	it('a readonly view lists pending shared suggestions, which it cannot decide', () => {
 		const { edytor, p1 } = view();
-		edytor.suggestions.suggesting = true;
+		shared(edytor).suggesting = true;
 		edytor.insertText(p1, 0, 'Hi ');
 		const { doc } = peerOf(edytor.document);
 		const reader = createOperationEdytor(
@@ -320,11 +348,10 @@ describe('an AI answer, shared live (sugg.ai.live)', () => {
 					<paragraph>x</paragraph>
 				</root>
 			) as any,
-			{ doc, readonly: true }
+			{ doc, readonly: true, plugins: [...defaultPlugins, createSharedSuggestionsPlugin()] }
 		).edytor;
-		expect(reader.suggestions.list.map((s) => [s.shared, s.canDecide, s.mine])).toEqual([
-			[true, false, false]
-		]);
+		const list = reader.suggestions.list as SharedSuggestion[];
+		expect(list.map((s) => [s.shared, s.canDecide, s.mine])).toEqual([[true, false, false]]);
 		expect(reader.suggestions.list[0]!.accept().status).toBe('refused');
 	});
 });

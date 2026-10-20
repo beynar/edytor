@@ -18,7 +18,7 @@
 	// At an `end`, the first block is the ghost text after the block's own.
 	const cells = $derived(
 		previewCells(
-			suggestion.at && 'end' in suggestion.at ? suggestion.content.slice(1) : suggestion.content,
+			'end' in suggestion.at ? suggestion.content.slice(1) : suggestion.content,
 			suggestion.id
 		)
 	);

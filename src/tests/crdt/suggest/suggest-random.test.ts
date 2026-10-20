@@ -1,7 +1,8 @@
 /**
  * Shared suggestions under concurrency (`sugg.*`): seeded random schedules
- * of three replicas — one suggesting (text, splits, merges, block deletes,
- * retypes, formats; moves refused), two editing and deciding (accept or
+ * of three replicas — one suggesting (text, splits, block deletes; retypes
+ * and formats written on its own pending blocks and refused elsewhere, as
+ * moves are), two editing and deciding (accept or
  * reject a random pending change) — with undo and redo on every replica,
  * and every update delivered in a random order, some held back and
  * delivered late. After a full sync:
@@ -22,7 +23,7 @@ import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
 import type { EdytorDocument } from '../../../lib/crdt/document.js';
-import type { SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
+import { suggestionsOf, type SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
 import { alpha, bool, int, mulberry32, pick, shuffled, type Rng } from '../harness/rng.js';
 
 const E = bindEdytorDoc(Y as never);
@@ -77,7 +78,7 @@ const run = (seed: number) => {
 		return peer;
 	});
 	const log: string[] = [];
-	const S = (p: Peer) => p.d.facade.suggest;
+	const S = (p: Peer) => suggestionsOf(p.d.facade);
 	const live = (p: Peer) => p.d.facade.order().filter((id) => p.d.facade.displayLength(id) >= 0);
 	let record: string | null = null;
 	const suggester = peers[0]!;
@@ -114,7 +115,7 @@ const run = (seed: number) => {
 										: f.prepare.moveBlocks([block], { parent: null, index: 0 });
 			const { result } = S(suggester).apply(record!, plan);
 			log.push(`${step} suggest ${kind} ${block}@${offset} → ${result.status}`);
-			if (kind === 9 && 'writes' in plan && plan.writes.some((w) => w.op === 'moveBlocks'))
+			if ('writes' in plan && plan.writes.some((w) => w.op === 'moveBlocks'))
 				expect(result.status).toBe('refused');
 		} else if (roll < 60 && block !== null) {
 			// A plain edit by a reviewer.
@@ -175,23 +176,25 @@ describe('shared suggestions, random schedules (sugg.*)', () => {
 		const expected = {
 			shown: shown(first!.d),
 			base: first!.d.toJSON(),
-			changes: first!.d.facade.suggest.changes().map(describeChange)
+			changes: suggestionsOf(first!.d.facade).changes().map(describeChange)
 		};
 		for (const p of rest) {
 			expect(shown(p.d), context).toEqual(expected.shown);
 			expect(p.d.toJSON(), context).toEqual(expected.base);
-			expect(p.d.facade.suggest.changes().map(describeChange), context).toEqual(expected.changes);
+			expect(suggestionsOf(p.d.facade).changes().map(describeChange), context).toEqual(
+				expected.changes
+			);
 		}
 		for (const p of peers) {
 			// What the replica keeps equals a fresh reading of the same state.
-			const fresh = E.create(p.d.doc as never).suggest;
+			const fresh = suggestionsOf(E.create(p.d.doc as never));
 			expect(fresh.changes().map(describeChange), context).toEqual(
-				p.d.facade.suggest.changes().map(describeChange)
+				suggestionsOf(p.d.facade).changes().map(describeChange)
 			);
 			// The base lens: the document as it would be with every pending suggestion rejected.
 			const copy = loadDocument(p.d.encode(), { actor: { id: 'oracle' } });
 			copy.sync();
-			const all = copy.facade.suggest;
+			const all = suggestionsOf(copy.facade);
 			if (process.env.SUGG_DEBUG)
 				console.log(
 					'SHOWN',

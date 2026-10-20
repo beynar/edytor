@@ -109,6 +109,9 @@ export {
 	type KindRecord,
 	type MergedSemantics
 } from './semantics.js';
+// A document read without a view leaves its pending shared suggestions out
+// of `toJSON()` once they are built over it (`sugg.json.base`).
+export { adoptSharedSuggestions, type SuggestedChange } from './doc/suggest.js';
 // A new table as document JSON (`table.*`).
 export { tableBlock, type TableBlockOptions } from './tables.js';
 // Paired marks — a mark's edge as document semantics, the record a key names.

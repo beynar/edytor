@@ -295,8 +295,8 @@ A view's commands that are one plan of several operations, with their payload ob
 | `moveText` | `{ from: { start, end }, to, copy }`: selected text [dragged](/docs/editor/clipboard#dragging-text) to `to` (positions are `{ block, offset }`), moved, or copied with <kbd>Alt</kbd>; one undo step |
 | `inlineMarkdown` | `{ value, start, end }`: a closing marker typed after marked-up text (`**bold**`) |
 | `insertDivider` | `{}` |
-| `acceptSuggestion` | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's). A [shared one](/docs/editor/suggestions#reviewing)'s: `{ changes }`, the changes accepted; the operations they run follow it (`deleteText`, `deleteBlock`, `mergeBlocks`, a proposed operation) |
-| `rejectSuggestion` | `{ changes }`: a shared suggestion's changes rejected, one undo step; the operations that take its text away follow it |
+| `acceptSuggestion` | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's). A [shared one](/docs/editor/suggestions#reviewing)'s: `{ changes }`, the changes accepted; the block operations they run follow it (`deleteBlock`, `mergeBlocks`) |
+| `rejectSuggestion` | `{ changes }`: a shared suggestion's changes rejected (by a reviewer, or by its author: `discard()`), one undo step; the block operations that take its blocks away follow it (`deleteBlock`, `mergeBlocks`) |
 | `replaceMatches` | `{ matches: { block, offset, length }[], replacement }`: [find and replace](/docs/plugins/find)'s Replace or Replace all, one undo step; a `deleteText` and an `insertText` step follow it per match |
 | `addComment` | `{ thread, runs }`: a [comment](/docs/plugins/comments)'s anchor |
 | `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows`, `fillTableCell` | the [table](/docs/plugins/table)'s rows and columns |

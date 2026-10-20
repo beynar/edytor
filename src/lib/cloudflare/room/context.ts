@@ -11,6 +11,7 @@ import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
 import { CLOSE } from '../../crdt/providers/room.js';
 import { asEngineDoc } from '../../crdt/structs.js';
+import { suggestionsOf } from '../../crdt/doc/suggest.js';
 import { defaultSemantics, facadeConfigOf, semanticsDigest } from '../../crdt/semantics.js';
 import type { DocumentSemanticsConfig, EdytorDoc, JSONDoc, YDoc } from '../../crdt/index.js';
 import type {
@@ -216,9 +217,14 @@ export class RoomContext {
 		return (this.#_digest ??= semanticsDigest(this.options.semantics ?? defaultSemantics));
 	}
 
-	/** A facade over `doc` obeying the room's block roles (`semantics`). */
+	/**
+	 * A facade over `doc` obeying the room's block roles (`semantics`), its
+	 * shared suggestions built: its `toJSON()` leaves the pending ones out.
+	 */
 	facadeOf(doc: YDoc): EdytorDoc {
-		return crdt.doc.create(asEngineDoc(doc), this.lookups) as EdytorDoc;
+		const facade = crdt.doc.create(asEngineDoc(doc), this.lookups) as EdytorDoc;
+		suggestionsOf(facade);
+		return facade;
 	}
 
 	/**

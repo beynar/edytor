@@ -61,6 +61,12 @@ export {
 	type SuggestionBarPayload
 } from './suggestions/suggestionsPlugin.js';
 export { createSuggestionBarPlugin } from './suggestions/SuggestionBars.svelte';
+export {
+	createSharedSuggestionsPlugin,
+	sharedSuggestionsController,
+	type SharedSuggestionsController,
+	type SharedSuggestionOptions
+} from './suggestions/shared.svelte.js';
 export type {
 	BlockMenuOptions,
 	BlockMenuController,

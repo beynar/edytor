@@ -18,7 +18,7 @@ import type { BlockId } from '$lib/crdt/index.js';
 import type { DocumentWrites } from '$lib/crdt/operations.js';
 import type { OpResult, Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DocPosition } from '$lib/crdt/rangeDelete.js';
-import { argsOf, refused } from '$lib/crdt/doc/plan.js';
+import { refused } from '$lib/crdt/doc/plan.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
@@ -84,9 +84,8 @@ const CUT: Record<string, 'both'> = {
 	insertParagraph: 'both',
 	// A text drag's drop: typing after it is a step of its own.
 	moveText: 'both',
-	// An accepted (or rejected) suggestion: typing after it is a step of its own.
+	// An accepted suggestion: typing after it is a step of its own.
 	acceptSuggestion: 'both',
-	rejectSuggestion: 'both',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
@@ -178,6 +177,26 @@ const subjectOf = (arg: unknown): BlockId | null => {
 	return subjectOf(at.block ?? at.parent ?? at.replace ?? at.slot);
 };
 
+type Step<K extends PlanStep['op']> = Extract<PlanStep, { op: K }>;
+/** A planned step as the operation it performs, with that operation's arguments. */
+const ARGS: { [K in PlanStep['op']]: (w: Step<K>, keepChildren: boolean) => unknown[] } = {
+	insertBlocks: (w) => [{ parent: w.parent, index: w.index }, w.specs],
+	moveBlocks: (w) => [w.ids, { parent: w.parent, index: w.index }],
+	deleteBlock: (w, keepChildren) => [w.id, { keepChildren }],
+	splitBlock: (w) => [w.id, w.offset, w.newId, w.tail],
+	mergeBlocks: (w) => [w.from, w.into],
+	setBlockType: (w) => [w.id, w.type],
+	patchData: (w) => [
+		w.inlineId !== undefined ? { block: w.id, atom: w.inlineId } : (w.id ?? null),
+		w.ops
+	],
+	insertText: (w) => [w.id, w.offset, w.text, w.marks],
+	insertInline: (w) => [w.id, w.offset, w.atom],
+	deleteText: (w) => [w.id, w.offset, w.length],
+	removeInline: (w) => [w.id, w.inlineId],
+	formatRange: (w) => [w.id, w.offset, w.length, w.marks]
+};
+
 export class Dispatcher {
 	#last: CommandResult | null = null;
 	/** The last operation's result (read-only: the dispatcher records it). */
@@ -222,8 +241,13 @@ export class Dispatcher {
 	private patched: TextPatch | null = null;
 	/** `outside` is running: its commands cut no step and enter none. */
 	private untracked = false;
-	/** Where the last suggested plan's caret stands (`write`). */
-	#at: DocPosition | undefined;
+	/**
+	 * A plugin that writes plans itself (the shared suggestions' suggesting
+	 * mode): a plan's result (its `at` set to where its caret stands now),
+	 * or `null` to write it as prepared. Set by the plugin.
+	 * @internal
+	 */
+	writer?: (plan: Plan) => OpResult | null;
 
 	/** @internal */
 	constructor(private edytor: Edytor) {}
@@ -462,10 +486,8 @@ export class Dispatcher {
 				this.edytor.history.wrote(inserts(this.kind ?? operation, led));
 				this.active = true;
 				try {
-					// An unplanned command runs after its lead, reading the state it leaves
-					// (written as the view's suggestion while it suggests).
-					if (lead && !plan)
-						void (this.edytor.suggestions.written(lead) ?? this.edytor.facade.apply(lead));
+					// An unplanned command runs after its lead, reading the state it leaves.
+					if (lead && !plan) void (this.writer?.(lead) ?? this.edytor.facade.apply(lead));
 					return body(payload, plan);
 				} finally {
 					this.active = false;
@@ -511,10 +533,9 @@ export class Dispatcher {
 			payload,
 			{ block: block ?? this.edytor.root, ...(text && { text }) },
 			(p, plan = prepare(p)) => {
-				at = 'writes' in plan ? plan.at : undefined;
 				const out = this.write(plan);
-				// A suggested plan's caret is where it stands with the proposed text shown.
-				at = this.#at ?? at;
+				// Read once written: a plan a plugin wrote says where its caret stands now.
+				at = 'writes' in plan ? plan.at : undefined;
 				return out;
 			},
 			prepare
@@ -571,10 +592,7 @@ export class Dispatcher {
 			!!caret &&
 			plan.writes.some((w) => w.op === op && w.id === caret.block.id && w.offset === caret.offset);
 		const [typed, atom] = [at('insertText'), at('insertInline')];
-		// While the view suggests, the plan is written as its suggestion (`sugg.*`).
-		const suggested = this.edytor.suggestions.written(plan);
-		this.#at = suggested?.at;
-		const result = suggested?.result ?? facade.apply(plan);
+		const result = this.writer?.(plan) ?? facade.apply(plan);
 		for (const [id, hook] of touched) this.request(id, hook);
 		if (typed) selection.stage(undefined);
 		const after = atom ? caret!.block.textAtOffset(caret!.offset + 1) : null;
@@ -804,7 +822,7 @@ export class Dispatcher {
 
 	/**
 	 * The planned steps as hooks see them: each as the operation it performs,
-	 * with that operation's arguments (`argsOf`), about the block it writes
+	 * with that operation's arguments (`ARGS`), about the block it writes
 	 * (the root for the document's data). A step that is the command itself
 	 * (same name, same block) is not repeated; a write into a block the plan
 	 * creates is part of that creation.
@@ -818,7 +836,9 @@ export class Dispatcher {
 		const created = new Set(creates);
 		const out: Change[] = [];
 		for (const w of writes) {
-			const args = argsOf(w, facade.childrenIds);
+			const keeps =
+				w.op === 'deleteBlock' && facade.childrenIds(w.id).some((c) => !w.removes.includes(c));
+			const args = (ARGS[w.op] as (w: PlanStep, keeps: boolean) => unknown[])(w, keeps);
 			const target = subjectOf(args[0]);
 			const block = target === null ? root : idToBlock.get(target);
 			if ((target !== null && created.has(target)) || !block) continue;

@@ -14,15 +14,28 @@ import {
 	dispatchComposition,
 	dispatchDomBeforeInput,
 	dispatchPaste,
+	defaultPlugins,
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { suggestionsOf } from '$lib/crdt/doc/suggest.js';
+import {
+	createSharedSuggestionsPlugin,
+	sharedSuggestionsController
+} from '$lib/plugins/suggestions/shared.svelte.js';
+
+/** The views here list the shared suggestions plugin. */
+const options = () => ({ plugins: [...defaultPlugins, createSharedSuggestionsPlugin()] });
+const suggesting = (edytor: Edytor) => (sharedSuggestionsController(edytor)!.suggesting = true);
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-const changes = (edytor: Edytor) => edytor.facade.suggest.changes().map((c) => [c.kind, c.text]);
+const changes = (edytor: Edytor) =>
+	suggestionsOf(edytor.facade)
+		.changes()
+		.map((c) => [c.kind, c.text]);
 const shown = (edytor: Edytor) => edytor.root!.children.map((b) => edytor.facade.blockText(b.id));
 const base = (edytor: Edytor) =>
 	edytor.facade
@@ -34,9 +47,10 @@ describe('suggesting mode under the browser’s input', () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>Hello world|</paragraph>
-			</root>
+			</root>,
+			options()
 		);
-		edytor.suggestions.suggesting = true;
+		suggesting(edytor);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '?' });
 		expect(shown(edytor)).toEqual(['Hello world!?']);
@@ -64,13 +78,47 @@ describe('suggesting mode under the browser’s input', () => {
 		expect(base(edytor)).toEqual(['Hello world']);
 	});
 
+	it('typing or pasting over a selection: the deletion is proposed, the insertion lands after it', async () => {
+		const typed = await renderDomEdytor(
+			<root>
+				<paragraph>Hel|lo wo|rld</paragraph>
+			</root>,
+			options()
+		);
+		suggesting(typed.edytor);
+		await dispatchDomBeforeInput(typed.editor, { inputType: 'insertText', data: 'X' });
+		expect(shown(typed.edytor)).toEqual(['Hello woXrld']);
+		expect(typed.edytor.selection.caret?.offset).toBe(9);
+		expect(changes(typed.edytor)).toEqual([
+			['delete', 'lo wo'],
+			['insert', 'X']
+		]);
+		document.body.innerHTML = '';
+		const pasted = await renderDomEdytor(
+			<root>
+				<paragraph>Hel|lo wo|rld</paragraph>
+			</root>,
+			options()
+		);
+		suggesting(pasted.edytor);
+		await dispatchPaste(pasted.editor, 'P\nQ');
+		expect(shown(pasted.edytor)).toEqual(['Hello woP', 'Qrld']);
+		expect(changes(pasted.edytor)).toEqual([
+			['delete', 'lo wo'],
+			['insert', 'P'],
+			['split', 'Qrld']
+		]);
+		expect(base(pasted.edytor)).toEqual(['Hello world']);
+	});
+
 	it('a paste of several lines is the suggestion’s blocks', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>One|</paragraph>
-			</root>
+			</root>,
+			options()
 		);
-		edytor.suggestions.suggesting = true;
+		suggesting(edytor);
 		await dispatchPaste(editor, 'two\nthree');
 		expect(shown(edytor)).toEqual(['Onetwo', 'three']);
 		expect(changes(edytor)).toEqual([

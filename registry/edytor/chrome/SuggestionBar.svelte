@@ -14,7 +14,10 @@
 	const { suggestion, author } = $derived(bar);
 	const labels = $derived(words.suggestions);
 	const keep = (event: MouseEvent) => event.preventDefault();
-	const name = $derived(author && labels.author(author.name ?? author.id, suggestion.via));
+	const name = $derived(
+		author &&
+			labels.author(author.name ?? author.id, suggestion.shared ? suggestion.via : undefined)
+	);
 </script>
 
 <div data-suggestion-bar>

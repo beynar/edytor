@@ -208,7 +208,7 @@ export const bindProviders = (Y: EngineApi) => {
 				maxFrameBytes
 			});
 			if (onExpired) provider.on('expired', (state) => onExpired(state));
-			if (access) provider.on('access', (level) => access(level));
+			if (access) provider.on('access', access);
 			provider.on('synced', (isSynced) => {
 				if (isSynced) synced(provider);
 			});

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import type { EdytorDocument } from '../../../lib/crdt/document.js';
-import type { SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
+import { suggestionsOf, type SuggestedChange } from '../../../lib/crdt/doc/suggest.js';
 
 const value = {
 	children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'The quick brown fox' }] }]
@@ -25,7 +25,7 @@ const deliver = (from: EdytorDocument, to: EdytorDocument) =>
 const meshSync = (...docs: EdytorDocument[]) => {
 	for (const a of docs) for (const b of docs) if (a !== b) deliver(a, b);
 };
-const S = (d: EdytorDocument) => d.facade.suggest;
+const S = (d: EdytorDocument) => suggestionsOf(d.facade);
 const text = (d: EdytorDocument, id = 'p1') => d.facade.blockText(id);
 const insert = (d: EdytorDocument, s: string, offset: number, t: string, block = 'p1') =>
 	S(d).apply(s, d.facade.prepare.insertText(block, offset, t)).result;
@@ -264,12 +264,14 @@ describe('shared suggestions (sugg.*)', () => {
 		]);
 	});
 
-	it('the author withdraws a suggestion: nothing of it is pending, the text is as before', () => {
+	it('its author rejects it, by a writer of theirs: nothing of it is pending, the text is as before (sugg.withdraw)', () => {
 		const ana = peer('ana');
 		const s = S(ana).open();
 		insert(ana, s, 4, 'very ');
 		erase(ana, s, 15, 6);
-		S(ana).withdraw(s, S(ana).records()[0]!.writer);
+		// Not the record's writer, whose id lists would propose: another writer of hers.
+		const other = S(ana).writer();
+		S(ana).run(S(ana).decide(S(ana).changes(), false), undefined, other);
 		expect(text(ana)).toBe('The quick brown fox');
 		expect(S(ana).changes()).toEqual([]);
 	});
@@ -339,64 +341,71 @@ describe('block suggestions (sugg.block.*)', () => {
 		}
 	});
 
-	it('merges, block deletes, retypes, data and formats are proposed operations, run again on accept', () => {
+	it('a split whose source block was merged into it is no split: rejecting all leaves nothing pending', () => {
 		const ana = peer('ana', two);
-		const ben = peer('ben', two);
 		const s = S(ana).open();
+		S(ana).apply(s, ana.facade.prepare.splitBlock('p1', 5, 'n1'));
+		// A reviewer merges the source into the split's block: n1 shows p1's stream now.
+		expect(ana.facade.mergeBlocks('p1', 'n1').status).toBe('applied');
+		reject(ana, S(ana).changes());
+		expect(S(ana).changes()).toEqual([]);
+	});
+
+	it('a merge, a retype, a data change or a format is refused, nothing written (sugg.refused)', () => {
+		const ana = peer('ana', two);
+		const s = S(ana).open();
+		const before = ana.encode();
 		const P = ana.facade.prepare;
 		for (const plan of [
 			P.setBlockType('p1', 'heading'),
 			P.patchData('p1', [{ path: ['level'], value: 'h2' }]),
 			P.formatRange('p1', 0, 5, { bold: true }),
-			P.mergeBlocks('p2', 'p1')
+			P.mergeBlocks('p2', 'p1'),
+			P.moveBlocks(['p2'], { parent: null, index: 0 })
 		])
-			expect(S(ana).apply(s, plan).result.status).toBe('applied');
-		meshSync(ana, ben);
-		// Nothing applied yet.
-		for (const d of [ana, ben]) {
-			expect(d.facade.blockTypeOf('p1')).toBe('paragraph');
-			expect(ids(d, { suggestions: true })).toEqual(['p1', 'p2']);
-		}
-		expect(
-			S(ben)
-				.changes()
-				.map((c) => [c.kind, c.op?.op, c.block, c.offset, c.length])
-		).toEqual([
-			['op', 'setBlockType', 'p1', 0, 0],
-			['op', 'patchData', 'p1', 0, 0],
-			['op', 'formatRange', 'p1', 0, 5],
-			['op', 'mergeBlocks', 'p2', 0, 0]
-		]);
-		accept(ben, S(ben).changes());
-		meshSync(ana, ben);
-		for (const d of [ana, ben]) {
-			expect(d.facade.blockTypeOf('p1')).toBe('heading');
-			expect(d.facade.blockDataOf('p1')).toMatchObject({ level: 'h2' });
-			expect(d.toJSON().children.map((b) => b.content)).toEqual([
-				[{ text: 'Hello', marks: { bold: true } }, { text: ' worldSecond' }]
-			]);
-			expect(review(d)).toEqual([]);
-		}
+			expect(S(ana).apply(s, plan).result).toMatchObject({
+				status: 'refused',
+				reason: 'suggesting'
+			});
+		expect(ana.encode()).toEqual(before);
+		expect(review(ana)).toEqual([]);
 	});
 
-	it('accept overwrites: a proposed retype and data change apply their stored values over newer ones (sugg.decide)', () => {
+	it("on its author's own pending block they are written: a retype, a format, a merge back", () => {
 		const ana = peer('ana', two);
-		const ben = peer('ben', two);
 		const s = S(ana).open();
 		const P = ana.facade.prepare;
-		S(ana).apply(s, P.setBlockType('p1', 'heading'));
-		S(ana).apply(s, P.patchData('p1', [{ path: ['color'], value: 'red' }]));
-		meshSync(ana, ben);
-		// Ben changes both since the proposal, then accepts it.
-		ben.facade.setBlockType('p1', 'quote');
-		ben.facade.patchData('p1', [{ path: ['color'], value: 'blue' }]);
-		accept(ben, S(ben).changes());
-		meshSync(ana, ben);
-		for (const d of [ana, ben]) {
-			expect(d.facade.blockTypeOf('p1')).toBe('heading');
-			expect(d.facade.blockDataOf('p1')).toMatchObject({ color: 'red' });
-			expect(review(d)).toEqual([]);
-		}
+		S(ana).apply(s, P.splitBlock('p1', 5, 'n1'));
+		insert(ana, s, 0, 'big', 'n1');
+		for (const plan of [
+			P.setBlockType('n1', 'heading'),
+			P.formatRange('n1', 0, 3, { bold: true }),
+			P.mergeBlocks('n1', 'p1')
+		])
+			expect(S(ana).apply(s, plan).result.status).toBe('applied');
+		expect(ids(ana, { suggestions: true })).toEqual(['p1', 'p2']);
+	});
+
+	it('a block deletion that promotes children is proposed whole; accepted, they take its place', () => {
+		const list = {
+			children: [
+				{
+					id: 'l',
+					type: 'bulletedList',
+					content: [{ text: 'item' }],
+					children: [{ id: 'c', type: 'bulletedList', content: [{ text: 'nested' }] }]
+				}
+			]
+		};
+		const ana = peer('ana', list);
+		const before = ana.facade.prepare.deleteBlock('l');
+		const s = S(ana).open();
+		expect(S(ana).apply(s, before).result.status).toBe('applied');
+		expect(ids(ana, { suggestions: true })).toEqual(['l']);
+		expect(kinds(ana, 'remove').map((c) => c.block)).toEqual(['l']);
+		accept(ana, S(ana).changes());
+		expect(ids(ana)).toEqual(['c']);
+		expect(S(ana).changes()).toEqual([]);
 	});
 
 	it('a block delete is proposed; rejected, the block stays and nothing is pending', () => {
@@ -407,25 +416,15 @@ describe('block suggestions (sugg.block.*)', () => {
 		expect(
 			S(ana)
 				.changes()
-				.map((c) => [c.op?.op, c.block])
-		).toEqual([['deleteBlock', 'p2']]);
+				.map((c) => [c.kind, c.block, c.text])
+		).toEqual([['remove', 'p2', 'Second']]);
 		reject(ana, S(ana).changes());
 		expect(ids(ana)).toEqual(['p1', 'p2']);
 		expect(S(ana).changes()).toEqual([]);
-		// Proposed again and accepted: the block goes.
-		S(ana).apply(s, ana.facade.prepare.deleteBlock('p2'));
+		// Proposed again (a settled unit stays settled in its record: another one) and accepted: the block goes.
+		S(ana).apply(S(ana).open(), ana.facade.prepare.deleteBlock('p2'));
 		accept(ana, S(ana).changes());
 		expect(ids(ana)).toEqual(['p1']);
-	});
-
-	it('a move is refused in a suggestion, nothing written (sugg.move.refused)', () => {
-		const ana = peer('ana', two);
-		const s = S(ana).open();
-		const before = ana.encode();
-		const move = ana.facade.prepare.moveBlocks(['p2'], { parent: null, index: 0 });
-		expect(S(ana).apply(s, move).result).toMatchObject({ status: 'refused', reason: 'suggesting' });
-		expect(ids(ana, { suggestions: true })).toEqual(['p1', 'p2']);
-		expect(ana.encode()).toEqual(before);
 	});
 });
 

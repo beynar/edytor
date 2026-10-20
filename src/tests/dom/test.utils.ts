@@ -103,7 +103,7 @@ export type NativeSelectionExpectation = {
 	text?: string | null;
 };
 
-const defaultPlugins = [richTextPlugin, mentionPlugin];
+export const defaultPlugins = [richTextPlugin, mentionPlugin];
 
 const findBlockAtPath = (edytor: Edytor, path: number[]) => {
 	let block: Block | undefined = edytor.root;

@@ -20,6 +20,7 @@
  * selection.
  */
 import type { BlockId } from './index.js';
+import { bySlot } from './placement/display.js';
 
 type Slot = { id: BlockId; rank: string };
 
@@ -33,8 +34,8 @@ export type SeamDoc = {
 
 export type SeamPoint = { block: BlockId; offset: number };
 
-/** The children index order (`childrenIndex`): rank, then id. */
-const before = (a: Slot, b: Slot) => (a.rank === b.rank ? a.id < b.id : a.rank < b.rank);
+/** The children list's own order (`bySlot`): rank, then id. */
+const before = (a: Slot, b: Slot) => bySlot(a, b) < 0;
 
 /**
  * Where an endpoint whose block `dead` vanished lands: a displayable stop next

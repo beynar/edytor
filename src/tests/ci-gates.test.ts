@@ -5,8 +5,8 @@
  * gate lanes free of what a shared runner cannot hold (a wall-clock bound,
  * a retry).
  *
- * - `ci.yml` runs on every push and pull request: the static checks and the
- *   unit, crdt, dom and room lanes always, Playwright Chromium sharded on a
+ * - `ci.yml` runs on every push and pull request: the static checks, the
+ *   unit, crdt, dom and room lanes and the bundle size budget always, Playwright Chromium sharded on a
  *   pull request (and when a caller or a manual run asks, `browsers`); its
  *   gate job needs every other job, and only the pull request run's is
  *   named `CI passed`, the one check branch protection requires (a push run
@@ -53,7 +53,7 @@ const ci = read('.github/workflows/ci.yml');
 const nightly = read('.github/workflows/nightly.yml');
 const publish = read('.github/workflows/publish.yml');
 
-/** The static checks and test lanes D9 puts on every push. */
+/** The static checks and test lanes D9 puts on every push, and the size budget. */
 const EVERY_PUSH = [
 	'pnpm check',
 	'pnpm lint',
@@ -66,7 +66,8 @@ const EVERY_PUSH = [
 	'pnpm exec vitest --run',
 	'pnpm test:crdt',
 	'pnpm test:dom',
-	'pnpm test:do'
+	'pnpm test:do',
+	'pnpm check:size'
 ];
 
 describe('ci.yml — the gate on every push and pull request (D9)', () => {

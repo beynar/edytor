@@ -9,6 +9,7 @@ import { on } from 'svelte/events';
 import type { Edytor } from '../edytor.svelte.js';
 import {
 	clearDomSelection,
+	focusIn,
 	getActiveElement,
 	getDomSelection,
 	getDomSelectionSnapshot
@@ -46,8 +47,7 @@ export const takeKeys = (edytor: Edytor) => {
 	const node = edytor.node;
 	if (!node?.isConnected || edytor.destroyed) return;
 	if (getActiveElement(node) === node) return;
-	edytor.expectInternalFocus();
-	node.focus({ preventScroll: true });
+	edytor.expectInternalFocus(node);
 	edytor.projector.parked();
 	edytor.selection.display();
 };
@@ -165,13 +165,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 	};
 
 	const clearNativeSelectionAfterExternalFocus = () => {
-		const activeElement = getActiveElement(node);
-		if (activeElement instanceof Node && node.contains(activeElement)) {
-			return;
-		}
-		if (selectionIsInside(node)) {
-			clearDomSelection(node);
-		}
+		if (!focusIn(node) && selectionIsInside(node)) clearDomSelection(node);
 	};
 
 	/**

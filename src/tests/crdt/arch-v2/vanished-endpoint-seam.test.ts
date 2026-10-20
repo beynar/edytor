@@ -131,6 +131,26 @@ describe('V3 — seam of a vanished endpoint (doc/anchors)', () => {
 		}
 	);
 
+	it('sel.seam.next-sibling on a rank tie: the block the children list shows next, in one id order', async () => {
+		const seam = await seamOf();
+		const { bySlot } = await import('../../../lib/crdt/placement/display.js');
+		// Three siblings on one rank: the children list breaks the tie by id.
+		// `B` < `C` < `a` in code units, while a locale's collation puts `a`
+		// first: the order every replica computes the same is the code units'.
+		const slots = ['a', 'B', 'C'].map((id) => ({ id, rank: 'm' }));
+		const list = [...slots].sort(bySlot);
+		const doc = {
+			slotOf: (id: string) => (id === 'B' ? { parent: null, rank: 'm' } : null),
+			childSlots: (parent: string | null) => (parent === null ? list : []),
+			isVisibleBlock: (id: string) => id !== 'B',
+			displayLength: () => 1
+		};
+		// `B` vanished: its endpoint lands at the start of the sibling shown after it.
+		const next = list[list.findIndex((s) => s.id === 'B') + 1]!.id;
+		expect(seam(doc, 'B', (id: string) => id !== 'B')).toEqual({ block: next, offset: 0 });
+		expect(list.map((s) => s.id)).toEqual(['B', 'C', 'a']);
+	});
+
 	it('V3 fix (collab DST seed 3): the previous sibling end is its own content end, before its children', async () => {
 		const seam = await seamOf();
 		const { ed } = facadeOf([b('prev', 'own!!', [b('kid', 'kid')]), b('gone', 'gg')]);

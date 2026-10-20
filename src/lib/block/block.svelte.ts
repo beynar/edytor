@@ -5,6 +5,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import type { InlineBlock } from './inlineBlock.svelte.js';
 import type { Owned } from '$lib/surface/attributes.js';
+import { segmentAt } from '$lib/crdt/parts.js';
 
 /** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
 export const voidChrome = (node: HTMLElement) => {
@@ -71,13 +72,10 @@ export class Block {
 	get content(): (Text | InlineBlock)[] {
 		this.#track();
 		const handles = this.edytor.idToBlock;
-		let ordinal = 0;
 		return handles
 			.parts(this.id)
 			.map((part) =>
-				part.kind === 'text'
-					? handles.text(this.id, ordinal++)
-					: handles.atom(this.id, part.item.id)
+				part.kind === 'text' ? handles.text(this.id, part.segOrd) : handles.atom(this.id, part.id)
 			);
 	}
 
@@ -328,20 +326,10 @@ export class Block {
 	 * last text's end).
 	 */
 	textAtOffset = (offset: number): { text: Text; offset: number } | null => {
-		let at = 0;
-		let hit: { text: Text; offset: number } | null = null;
-		for (const part of this.content) {
-			if (!(part instanceof Text)) {
-				if (offset <= at) return hit;
-				at += 1;
-			} else if (offset <= at + part.length) {
-				return { text: part, offset: Math.max(0, offset - at) };
-			} else {
-				hit = { text: part, offset: part.length };
-				at += part.length;
-			}
-		}
-		return hit;
+		this.#track();
+		const { start, end, segOrd } = segmentAt(this.edytor.idToBlock.parts(this.id), offset);
+		const text = this.edytor.idToBlock.text(this.id, segOrd);
+		return { text, offset: Math.min(Math.max(0, offset - start), end - start) };
 	};
 
 	/** The declared view state (`open` on a `details`) the block's last element held. */

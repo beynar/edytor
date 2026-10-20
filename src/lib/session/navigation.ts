@@ -34,12 +34,14 @@ import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/repl
 import type { HotKey } from './keymap.js';
 import {
 	atomSelection,
+	pointOf,
 	segmentsOf,
 	type SelectionPoint,
 	type SelectionValue
 } from './selection.js';
 import { untargeted } from './attempt.js';
 import { siblingSlot } from './handles.js';
+import { partsOf } from '$lib/crdt/parts.js';
 
 /**
  * With no target (`untargeted`: the value is `none`, no gesture placed the
@@ -61,9 +63,8 @@ const ATOM = '￼';
 
 /** A block's content as one string, each inline atom one `ATOM`. */
 const stringOf = (edytor: Edytor, block: string) =>
-	edytor.facade
-		.contentItems(block)
-		.map((item) => (item.kind === 'text' ? item.text : ATOM))
+	partsOf(edytor.facade.runs(block))
+		.map((part) => (part.kind === 'text' ? part.text : ATOM))
 		.join('');
 
 /** A block's stop at its edge in `dir` (its end going forward, its start going backward). */
@@ -125,8 +126,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 			: null;
 	if (atom?.kind === 'inline')
 		return selection.select(atomSelection(start.block, atom.id, order > 0 ? 'after' : 'before'));
-	const [from, to] = [selection.textAt(start), selection.textAt(end)];
-	if (from && to) selection.selectText(from.text, from.offset, to.text, to.offset, order > 0);
+	selection.selectAt(start, end, order > 0);
 };
 
 /**
@@ -154,8 +154,7 @@ export const move = (
 		const first = blocks.map((block) => shownText(block, 'first')).find(Boolean);
 		const last = blocks.map((block) => shownText(block, 'last')).findLast(Boolean);
 		if (first && last) {
-			start = { block: first.blockId, offset: first.segStart };
-			end = { block: last.blockId, offset: last.segStart + last.length };
+			[start, end] = [pointOf(first, 0), pointOf(last, last.length)];
 		}
 		// Voids alone show no line: the blocks stay selected, except for the
 		// document keys, whose target is the document's edge (`select` moves

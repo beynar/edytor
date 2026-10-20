@@ -6,42 +6,29 @@
 import type { BlockId, ChildSlot } from '../../placement/model.js';
 import { cellKey, LAST_CELL, unlistedCellKey } from '../../placement/keys.js';
 import { listedColumns, unlistedRank } from '../../tables.js';
-import type { DisplayRoles } from '../runs.js';
+import type { KindRole } from '../runs.js';
 import type { IndexState } from './state.js';
 
 /** The layout rules of one doc's index, over its state. */
 export const indexLayout = (ix: IndexState) => {
 	const { blocks, kindsOf } = ix;
 
-	/** `ask` of `b`'s stored kind; `undefined` without roles or a record. */
-	const role = <T>(b: BlockId, ask: (r: DisplayRoles, type: string) => T): T | undefined => {
+	/** The role of `b`'s stored kind; `undefined` without roles or a record. */
+	const kindOf = (b: BlockId): KindRole | undefined => {
 		const type = blocks.get(b)?.type;
-		return ix.roles === null || type === undefined ? undefined : ask(ix.roles, type);
+		return ix.roles === null || type === undefined ? undefined : ix.roles.of(type);
 	};
 	/** The line kind of `b` when it is an island declared `lines`. */
-	const lineKind = (b: BlockId): string | undefined => role(b, (r, type) => r.line(type));
+	const lineKind = (b: BlockId): string | undefined => kindOf(b)?.line;
 	/** The item kind of `b` when it is a layout. */
-	const itemKind = (b: BlockId): string | undefined => role(b, (r, type) => r.layout(type));
-	/** The item kinds the roles declare. */
-	const declaredItems = (): Set<string> => {
-		const items = new Set<string>();
-		for (const type of ix.roles?.layoutKinds() ?? []) items.add(ix.roles!.layout(type)!);
-		return items;
-	};
+	const itemKind = (b: BlockId): string | undefined => kindOf(b)?.layout;
 	/** The row kind of `b` when it is a table (`table.*`). */
-	const rowKind = (b: BlockId): string | undefined => role(b, (r, type) => r.table(type));
+	const rowKind = (b: BlockId): string | undefined => kindOf(b)?.table;
 	/** `table`'s row kind and that row kind's cell kind, as `[row, cell]`. */
 	const rowOfTable = (table: string): [string, string] | undefined => {
-		const row = ix.roles?.table(table);
-		return row === undefined ? undefined : [row, ix.roles!.defaultChild(row)];
+		const row = ix.roles?.of(table).table;
+		return row === undefined ? undefined : [row, ix.roles!.of(row).child];
 	};
-	/** The row kinds (with their cell kinds) the roles declare. */
-	const declaredRows = (): Map<string, string> =>
-		new Map(
-			[...(ix.roles?.tableKinds() ?? [])]
-				.flatMap((type) => rowOfTable(type) ?? [])
-				.map(([row, cell]) => [row, cell] as const)
-		);
 	/** The cell kind of `b` when it is a row of a table kind. */
 	const cellKind = (b: BlockId): string | undefined => ix.rowKinds.get(blocks.get(b)?.type ?? '');
 	/**
@@ -297,16 +284,14 @@ export const indexLayout = (ix: IndexState) => {
 	};
 
 	return {
-		role,
+		kindOf,
 		lineKind,
 		itemKind,
 		rowKind,
 		rowOfTable,
-		declaredRows,
 		cellKind,
 		cellRank,
 		tableFacts,
-		declaredItems,
 		dissolve,
 		redissolve
 	};

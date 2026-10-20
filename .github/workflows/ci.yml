@@ -1,6 +1,6 @@
 # The gate (decision D9, CONTRIBUTING.md): every push and pull request runs
-# the static checks and the unit, crdt, dom and room (`do`) lanes; a pull
-# request also runs the Playwright Chromium lane, sharded. The pull request
+# the static checks, the unit, crdt, dom and room (`do`) lanes and the
+# bundle size budget; a pull request also runs the Playwright Chromium lane, sharded. The pull request
 # run's last job is the only check named `CI passed`, the one check branch
 # protection requires: every other run's gate job carries its event in its
 # name (`CI passed (push)`), so a push run on the same commit, which skips
@@ -94,6 +94,18 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm test:do
 
+  size:
+    name: bundle size budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # The bare `<Edytor />`'s own minified bytes stay within
+      # `bundle-budget.json` (docs/agents/bundle-trim.md, "Hold the gain"):
+      # a change that adds bytes pays for them; only the user raises it.
+      - run: pnpm check:size
+
   chromium:
     name: chromium (shard ${{ matrix.shard }}/4)
     if: github.event_name == 'pull_request' || inputs.browsers
@@ -127,7 +139,7 @@ jobs:
   passed:
     name: ${{ github.event_name == 'pull_request' && 'CI passed' || format('CI passed ({0})', github.event_name) }}
     if: always()
-    needs: [static, unit, crdt, dom, do, chromium]
+    needs: [static, unit, crdt, dom, do, size, chromium]
     runs-on: ubuntu-latest
     steps:
       - name: Every lane passed (the Chromium lane is skipped unless a pull request or a caller asks)

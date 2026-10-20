@@ -24,6 +24,12 @@
  */
 
 /**
+ * The one order of two ids on a tie (a children list, the seam, the root's
+ * tail): their code units, the order every replica computes the same.
+ */
+export const compareIds = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
  * Order-preserving alphabet: charCode order equals numeric order (64
  * characters, all safe inside a JSON string).
  */

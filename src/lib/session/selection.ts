@@ -13,9 +13,11 @@
  * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; the
  * presence payload is `serialize(value)`.
  */
-import type { BlockId, ContentItem } from '$lib/crdt/index.js';
+import type { BlockId, ContentRun } from '$lib/crdt/index.js';
+import { partsOf, segmentAt } from '$lib/crdt/parts.js';
 import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
 import { jsonEquals } from '$lib/utils/json.js';
+import type { Text } from '$lib/text/text.svelte.js';
 
 export type Marks = Record<string, unknown>;
 
@@ -61,11 +63,24 @@ export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
 /** A position within one document version: block id + display offset (an atom counts 1). */
 export type SelectionPoint = { block: BlockId; offset: number };
 
-type TextRun = Extract<ContentItem, { kind: 'text' }>;
+/** A point inside a text segment (its block's `ordinal`-th) as a block-offset point. */
+export const pointOf = (text: Text, offset: number): SelectionPoint => ({
+	block: text.blockId,
+	offset: text.segStart + offset
+});
+
+type TextRun = Extract<ContentRun, { kind: 'text' }>;
 
 /** One content part of a block: a text segment (between atoms, possibly empty) or an inline atom. */
 export type SelectionSegment =
-	| { block: BlockId; kind: 'text'; segOrd: number; start: number; end: number; runs: TextRun[] }
+	| {
+			block: BlockId;
+			kind: 'text';
+			segOrd: number;
+			start: number;
+			end: number;
+			runs: readonly TextRun[];
+	  }
 	| { block: BlockId; kind: 'inline'; id: string; start: number; end: number };
 type TextSegment = Extract<SelectionSegment, { kind: 'text' }>;
 
@@ -101,7 +116,7 @@ export type ProjectionDoc = Pick<
 	| 'resolveAnchor'
 	| 'compare'
 	| 'order'
-	| 'contentItems'
+	| 'runs'
 	| 'ancestorsOf'
 	| 'isIsland'
 	| 'isVoid'
@@ -109,34 +124,8 @@ export type ProjectionDoc = Pick<
 >;
 
 /** A block's content parts; always text first and last, one text segment between two atoms. */
-export const segmentsOf = (doc: ProjectionDoc, block: BlockId): SelectionSegment[] => {
-	const out: SelectionSegment[] = [];
-	let text: TextSegment = { block, kind: 'text', segOrd: 0, start: 0, end: 0, runs: [] };
-	for (const item of doc.contentItems(block)) {
-		if (item.kind === 'text') {
-			text.runs.push(item);
-			text.end += item.text.length;
-			continue;
-		}
-		out.push(text, { block, kind: 'inline', id: item.id, start: text.end, end: text.end + 1 });
-		text = {
-			block,
-			kind: 'text',
-			segOrd: text.segOrd + 1,
-			start: text.end + 1,
-			end: text.end + 1,
-			runs: []
-		};
-	}
-	out.push(text);
-	return out;
-};
-
-/** The text segment displaying `offset`: the first one ending at or after it (a seam belongs to the left text). */
-const textSegmentAt = (segments: SelectionSegment[], offset: number): TextSegment => {
-	const texts = segments.filter((s): s is TextSegment => s.kind === 'text');
-	return texts.find((s) => offset <= s.end) ?? texts[texts.length - 1];
-};
+export const segmentsOf = (doc: ProjectionDoc, block: BlockId): SelectionSegment[] =>
+	partsOf(doc.runs(block)).map((part) => ({ ...part, block }));
 
 const EMPTY: Omit<SelectionProjection, 'kind' | 'marks' | 'content'> = {
 	start: null,
@@ -212,8 +201,8 @@ const projectRange = (
 	const partsOf = new Map(blocks.map((id) => [id, segmentsOf(doc, id)]));
 	const startSegments = partsOf.get(start.block) ?? segmentsOf(doc, start.block);
 	const endSegments = partsOf.get(end.block) ?? segmentsOf(doc, end.block);
-	const first = textSegmentAt(startSegments, start.offset);
-	const last = textSegmentAt(endSegments, end.offset);
+	const first = segmentAt(startSegments, start.offset);
+	const last = segmentAt(endSegments, end.offset);
 	const all = blocks.flatMap((id) => partsOf.get(id)!);
 	const from = all.indexOf(first);
 	const to = all.indexOf(last);
@@ -346,29 +335,11 @@ export const sameEnds = (a: SelectionProjection, b: SelectionProjection) =>
 
 export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 
-const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
-	a === b ||
-	(a.b === b.b &&
-		a.a.a === b.a.a &&
-		(a.a.i === b.a.i || (a.a.i?.c === b.a.i?.c && a.a.i?.k === b.a.i?.k)));
-
-const sameMarks = (a: Marks | undefined, b: Marks | undefined) => jsonEquals(a ?? null, b ?? null);
-
-/** Value equality: kind, anchors (item + side), ids, pending marks. */
-export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
-	if (a === b) return true;
-	if (a.kind === 'text' && b.kind === 'text')
-		return (
-			sameAnchor(a.anchor, b.anchor) &&
-			sameAnchor(a.focus, b.focus) &&
-			sameMarks(a.pending, b.pending)
-		);
-	if (a.kind === 'blocks' && b.kind === 'blocks')
-		return a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]);
-	if (a.kind === 'atom' && b.kind === 'atom')
-		return a.blockId === b.blockId && a.atomId === b.atomId && a.from === b.from;
-	return a.kind === b.kind && a.kind === 'none';
-};
+/**
+ * Value equality: kind, anchors (item + side), ids, pending marks. A value
+ * is plain JSON (anchors, ids, marks), so it is the JSON equality.
+ */
+export const sameValue: (a: SelectionValue, b: SelectionValue) => boolean = jsonEquals;
 
 /**
  * The presence payload: anchors only. A text range publishes its

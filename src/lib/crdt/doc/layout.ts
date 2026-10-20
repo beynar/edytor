@@ -40,8 +40,8 @@ export const layoutOps = (c: OpsContext) => {
 
 	/** The layout kind a new layout takes: `kind` when it is one, else the only one the roles declare. */
 	const layoutKind = (kind?: string): string | undefined => {
-		if (kind !== undefined) return roles.layout(kind) === undefined ? undefined : kind;
-		const kinds = [...roles.layoutKinds()];
+		if (kind !== undefined) return roles.of(kind).layout === undefined ? undefined : kind;
+		const kinds = roles.declared().layouts;
 		return kinds.length === 1 ? kinds[0] : undefined;
 	};
 	/** A fresh empty block of `type`. */
@@ -127,7 +127,7 @@ export const layoutOps = (c: OpsContext) => {
 			}
 		}
 		const wrap = layout === null ? layoutKind(kind && ref(kind)) : blockTypeOf(layout);
-		const item = wrap === undefined ? undefined : roles.layout(wrap);
+		const item = wrap === undefined ? undefined : roles.of(wrap).layout;
 		if (wrap === undefined || item === undefined) return REFUSED;
 		if (moved.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
 		if (layout !== null && (isIsland(layout) || insideIsland(layout, v))) return REFUSED;
@@ -179,12 +179,12 @@ export const layoutOps = (c: OpsContext) => {
 		if (blocks.some((id) => positionOf(id)!.parent !== parent)) return REFUSED;
 		if (blocks.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
 		const wrap = layoutKind(kind && ref(kind));
-		const item = wrap === undefined ? undefined : roles.layout(wrap);
+		const item = wrap === undefined ? undefined : roles.of(wrap).layout;
 		if (wrap === undefined || item === undefined || !fits(parent, wrap)) return REFUSED;
 		if (parent !== null && (insideItem(parent, v) || isIsland(parent) || insideIsland(parent, v)))
 			return REFUSED;
 		if (blocks.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
-		const fill = roles.defaultChild(item);
+		const fill = roles.of(item).child;
 		if (columns > blocks.length && !fitsIn(item, fill)) return REFUSED;
 		const ordered = blocks.toSorted((a, b) => positionOf(a)!.index - positionOf(b)!.index);
 		const items = Array.from({ length: columns }, (_, i) =>

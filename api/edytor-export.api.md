@@ -227,12 +227,12 @@ declare const columnsForms: () => Rows;
 declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
+            lines?: boolean;
             itemKind?: string;
             island?: boolean;
             defaultChild?: string;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean;
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
             markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
             plain?: (block: JSONBlock, content: string, children: string) => string;
@@ -1149,6 +1149,48 @@ export interface DocumentWrites {
 }
 ```
 
+#### crdt/parts.d.ts#AtomPart
+
+```ts
+export type AtomPart = {
+    readonly kind: 'inline';
+    readonly key: string;
+    readonly id: string;
+    readonly type: string;
+    readonly data: Readonly<Record<string, unknown>> | undefined;
+    readonly start: number;
+    readonly end: number;
+};
+```
+
+#### crdt/parts.d.ts#Part
+
+```ts
+export type Part = Segment | AtomPart;
+```
+
+#### crdt/parts.d.ts#Segment
+
+```ts
+export type Segment = {
+    readonly kind: 'text';
+    readonly key: string;
+    readonly text: string;
+    readonly runs: readonly TextRun[];
+    readonly segOrd: number;
+    readonly start: number;
+    readonly end: number;
+};
+```
+
+#### crdt/parts.d.ts#TextRun
+
+```ts
+type TextRun = Extract<ContentRun, {
+    kind: 'text';
+}>;
+```
+
 #### crdt/placement/model.d.ts#BlockId
 
 ```ts
@@ -1520,12 +1562,12 @@ declare const bundledRead: () => {
                     level: "h1" | "h2" | "h3";
                 };
             }[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1535,12 +1577,12 @@ declare const bundledRead: () => {
         };
         'bulleted-list-item': {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1550,12 +1592,12 @@ declare const bundledRead: () => {
         };
         'numbered-list-item': {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1572,12 +1614,12 @@ declare const bundledRead: () => {
         };
         toggle: {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1591,12 +1633,12 @@ declare const bundledRead: () => {
                     level: "h1" | "h2" | "h3";
                 };
             }[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1606,12 +1648,12 @@ declare const bundledRead: () => {
         };
         callout: {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1621,12 +1663,12 @@ declare const bundledRead: () => {
         };
         quote: {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1636,12 +1678,12 @@ declare const bundledRead: () => {
         };
         divider: {
             presets: {}[];
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1650,12 +1692,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         'ordered-list': {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild: string;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1664,12 +1706,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         'unordered-list': {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild: string;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1686,12 +1728,12 @@ declare const bundledRead: () => {
         };
         codeLine: {};
         table: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild: string;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1701,12 +1743,12 @@ declare const bundledRead: () => {
             table: true;
         };
         tableRow: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild: string;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1715,12 +1757,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         tableCell: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island: boolean;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1729,12 +1771,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         image: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1743,12 +1785,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         embed: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1757,12 +1799,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         bookmark: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1771,12 +1813,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         file: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1785,12 +1827,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         video: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1799,12 +1841,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         audio: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent?: boolean | undefined;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1813,12 +1855,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         page: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1827,12 +1869,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         toc: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1841,12 +1883,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         equation: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1855,12 +1897,12 @@ declare const bundledRead: () => {
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
         };
         columns: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild: string;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -1870,12 +1912,12 @@ declare const bundledRead: () => {
             layout: true;
         };
         column: {
+            lines?: boolean | undefined;
             itemKind?: string | undefined;
             island?: boolean | undefined;
             defaultChild?: string | undefined;
             rendersContent: boolean;
             void?: boolean | undefined;
-            lines?: boolean | undefined;
             html?: string | ((block: JSONBlock, content: string, children: string) => string) | undefined;
             markdown?: ((block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string) | undefined;
             plain?: ((block: JSONBlock, content: string, children: string) => string) | undefined;
@@ -2733,23 +2775,6 @@ export declare class Dispatcher {
 export type PendingMarks = Record<string, SerializableContent | null>;
 ```
 
-#### session/handles.d.ts#ContentPart
-
-```ts
-export type ContentPart = {
-    kind: 'text';
-    start: number;
-    items: TextRunItem[];
-    length: number;
-} | {
-    kind: 'inline';
-    start: number;
-    item: ContentItem & {
-        kind: 'inline';
-    };
-};
-```
-
 #### session/handles.d.ts#Handles
 
 ```ts
@@ -2764,19 +2789,10 @@ export declare class Handles {
     text: (blockId: string, ordinal: number) => Text;
     textById: (id: string) => Text | undefined;
     atom: (blockId: string, atomId: string) => InlineBlock;
-    parts: (id: string) => ContentPart[];
+    parts: (id: string) => readonly Part[];
     prune: (change: DocChange) => void;
     clear: () => void;
 }
-```
-
-#### session/handles.d.ts#TextRunItem
-
-```ts
-export type TextRunItem = {
-    text: string;
-    marks?: Record<string, unknown>;
-};
 ```
 
 #### session/keymap.d.ts#CHARS
@@ -2958,7 +2974,7 @@ export type SelectionSegment = {
     segOrd: number;
     start: number;
     end: number;
-    runs: TextRun[];
+    runs: readonly TextRun[];
 } | {
     block: BlockId;
     kind: 'inline';
@@ -2992,7 +3008,7 @@ export type SelectionValue = {
 #### session/selection.d.ts#TextRun
 
 ```ts
-type TextRun = Extract<ContentItem, {
+type TextRun = Extract<ContentRun, {
     kind: 'text';
 }>;
 ```

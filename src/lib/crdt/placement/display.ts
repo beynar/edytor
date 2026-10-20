@@ -7,7 +7,7 @@
  * (`order.split.text`: a split-born slot's key, fork patch YP22).
  */
 import { DEAD, type Owner } from '../text/model.js';
-import { claimedRank, promotedRank } from './keys.js';
+import { claimedRank, compareIds, promotedRank } from './keys.js';
 import type {
 	BlockId,
 	ChildSlot,
@@ -242,11 +242,11 @@ export const childrenIndex = (
 	return index;
 };
 
-/** The order of a children list: by rank, ties by id. */
+/** The order of a children list: by rank, ties by id ({@link compareIds}). */
 export const bySlot = (
 	a: { id: BlockId; rank: string },
 	b: { id: BlockId; rank: string }
-): number => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1);
+): number => (a.rank === b.rank ? compareIds(a.id, b.id) : a.rank < b.rank ? -1 : 1);
 
 export const documentOrder = (kids: ModelView['kids']): DocOrder => {
 	const ids: BlockId[] = [];

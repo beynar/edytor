@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { createOperationEdytor } from './test.utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { contentParts } from '$lib/session/handles.js';
-import type { ProjectedBlock } from '$lib/crdt/index.js';
+import { partsOf } from '$lib/crdt/parts.js';
+import type { ContentRun, ProjectedBlock } from '$lib/crdt/index.js';
 import type { JSONBlock, JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
@@ -16,11 +16,11 @@ import type { Edytor } from '$lib/edytor.svelte.js';
  */
 const projectedToValue = (node: ProjectedBlock): JSONBlock => {
 	const children = node.children.map(projectedToValue);
-	const content = contentParts(node.content).flatMap((part) => {
+	const content = partsOf(node.content as readonly ContentRun[]).flatMap((part) => {
 		if (part.kind === 'text') {
 			// A segment's runs: empty ones dropped, neighbours with the same marks joined.
 			const runs: JSONText[] = [];
-			for (const { text, marks = {} } of part.items) {
+			for (const { text, marks = {} } of part.runs) {
 				const last = runs.at(-1);
 				if (!text) continue;
 				if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += text;
@@ -28,7 +28,7 @@ const projectedToValue = (node: ProjectedBlock): JSONBlock => {
 			}
 			return runs;
 		}
-		return [{ id: part.item.id, type: part.item.type, data: part.item.data ?? {} }];
+		return [{ id: part.id, type: part.type, data: part.data ?? {} }];
 	});
 	const value: JSONBlock = { type: node.type, id: node.id, children, content };
 	value.data = node.data ?? {};

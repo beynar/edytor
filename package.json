@@ -1,7 +1,7 @@
 {
 	"name": "edytor",
 	"license": "MIT",
-	"version": "4.0.0",
+	"version": "5.0.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/beynar/edytor.git"
@@ -23,6 +23,7 @@
 		"check:deps": "node scripts/deps.mjs",
 		"check:docs": "node scripts/check-docs.mjs",
 		"check:api": "node scripts/api-report.mjs --check",
+		"check:size": "node scripts/bundle-size.mjs --budget bundle-budget.json --top 0",
 		"api:report": "node scripts/api-report.mjs",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
@@ -50,6 +51,7 @@
 		"bench:browser": "node bench/browser.js",
 		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
 		"size": "node scripts/bundle-size.mjs --by dir",
+		"bundle:attribution": "node scripts/bundle-attribution.mjs",
 		"registry:build": "shadcn-svelte registry build ./registry.json --output site/public/r",
 		"check:registry": "node scripts/check-registry.mjs",
 		"test:registry-install": "sh tests/registry-install/run.sh",

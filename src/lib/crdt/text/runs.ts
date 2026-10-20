@@ -229,38 +229,42 @@ export type RunView = {
 };
 
 /**
- * The role table — one answer per kind, which the display and the
- * document's guards both ask. `childless`: kinds that display no children
- * (void roles) — a child of such a block displays in its slot.
- * `island`: a block promoted out of an island kind displays as
- * `defaultChild` of its display parent's kind (`null`: the root). `line`:
- * an island declared `lines` holds only lines — each direct child displays
- * as its line kind and holds no children. `container`: a
- * kind that renders no content and is neither void nor an island (a list)
- * — a block promoted out of one follows like one promoted out of an island. `rendersContent`: no block that renders content ever shows
- * as a kind that does not (its text would vanish). `layout`: a
- * layout kind displays only its items, and only two or more (`layout.*`).
- * `table`: a table kind displays only its rows, a row only its cells, in
- * the table's column order (`table.*`).
+ * A kind's answers, read once from its role (the one shape the display and
+ * every guard read). `childless`: displays no children (a void role) — a
+ * child of such a block displays in its slot. `island`: a block promoted
+ * out of one displays as `child` of its display parent's kind.
+ * `container`: renders no content and is neither void nor an island (a
+ * list) — a block promoted out of one follows like one promoted out of an
+ * island. `rendersContent`: no block that renders content ever shows as a
+ * kind that does not (its text would vanish). `child`: its default child
+ * (the document's default kind for the root, `null`). `line`: an island
+ * declared `lines` holds only lines of this kind, which hold no children.
+ * `layout`: a layout displays only items of this kind, and only two or
+ * more (`layout.*`). `table`: a table displays only rows of this kind, a
+ * row only its cells, in the table's column order (`table.*`).
  */
+export type KindRole = {
+	childless: boolean;
+	island: boolean;
+	container: boolean;
+	rendersContent: boolean;
+	child: string;
+	line?: string;
+	layout?: string;
+	table?: string;
+};
+/** The kinds the roles declare: line kinds, layout kinds and their item kinds, table kinds and their row kinds (→ cell kind). */
+export type DeclaredKinds = {
+	lines: ReadonlySet<string>;
+	layouts: readonly string[];
+	items: ReadonlySet<string>;
+	rows: ReadonlyMap<string, string>;
+	cells: ReadonlySet<string>;
+};
+/** The role table: each kind's {@link KindRole} and the declared kinds, both read once until the roles change. */
 export type DisplayRoles = {
-	childless: (type: string) => boolean;
-	island: (type: string) => boolean;
-	container: (type: string) => boolean;
-	rendersContent: (type: string) => boolean;
-	defaultChild: (parentType: string | null) => string;
-	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
-	line: (islandType: string) => string | undefined;
-	/** Every line kind the roles declare, present in the document or not. */
-	lineKinds: () => Iterable<string>;
-	/** The item kind of a layout kind (its `defaultChild`), if `type` is one. */
-	layout: (type: string) => string | undefined;
-	/** Every layout kind the roles declare, present in the document or not. */
-	layoutKinds: () => Iterable<string>;
-	/** The row kind of a table kind (its `defaultChild`), if `type` is one (`table.*`). */
-	table: (type: string) => string | undefined;
-	/** Every table kind the roles declare, present in the document or not. */
-	tableKinds: () => Iterable<string>;
+	of: (type: string | null) => KindRole;
+	declared: () => DeclaredKinds;
 };
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */

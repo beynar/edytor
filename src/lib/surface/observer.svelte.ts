@@ -40,6 +40,7 @@ import { tick, untrack } from 'svelte';
 import type { DocAnchor } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
+import type { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { diffText } from '../utils/diffText.js';
 import { jsonEquals } from '../utils/json.js';
 import { activeMarks, marksForInsertion } from '../session/editing/text.js';
@@ -59,8 +60,17 @@ import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js'
 type Verdict = 'adopt' | 'attempt' | 'invert' | 'defer';
 /** Where an adopted edit lands: the block and offset its anchor resolves to now. */
 type Place = { block: string; at: number; remove: number; insert: string };
-/** A registered element; `owned`: the attributes its render owns (a block's, `Block.svelte`). */
-type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
+/**
+ * A registered element; `owned`: the attributes its render owns (a block's,
+ * `Block.svelte`); `handle`: the text or atom it renders (the one node → handle map).
+ */
+type Entry = {
+	kind: Kind;
+	block: string;
+	name?: string;
+	owned?: () => Owned;
+	handle?: Text | InlineBlock;
+};
 /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
 type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
 /**
@@ -272,8 +282,15 @@ export class SurfaceObserver {
 	 * release. A text element takes the table's attributes now (its id, its
 	 * editing host inside a void).
 	 */
-	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
-		const entry = { kind, block, name, owned };
+	register = (
+		node: Element,
+		kind: Kind,
+		block: string,
+		name?: string,
+		owned?: () => Owned,
+		handle?: Text | InlineBlock
+	) => {
+		const entry = { kind, block, name, owned, handle };
 		this.#registry.set(node, entry);
 		if (kind === 'text') heal(node as HTMLElement, ownedOf(this.edytor, node, entry)!);
 		if (kind === 'block') this.#blocks.set(block, node);
@@ -375,26 +392,38 @@ export class SurfaceObserver {
 		return records.length > 0;
 	};
 
-	/** The block an element belongs to: its closest registered element's (`null`: the root). */
-	#owner = (node: Node): string | null | undefined => {
-		for (let at: Node | null = node; at; at = at.parentNode) {
+	/** The closest registered element holding `node` in the host: its entry (`null`: the host). */
+	#near = (node: Node | null): Entry | null | undefined => {
+		for (let at = node; at; at = at.parentNode) {
 			if (at === this.edytor.node) return null;
-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
-			// What happens in a preview is the view's own render: nothing to compare.
-			if (entry)
-				return entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block;
+			const entry = this.#registry.get(at as Element);
+			if (entry) return entry;
 		}
-		return undefined;
 	};
 
-	/** The text whose element holds `node`. */
-	#textOf = (node: Node): Text | undefined => {
-		for (let at: Node | null = node; at && at !== this.edytor.node; at = at.parentNode) {
-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
-			if (entry)
-				return entry.kind === 'text' ? this.edytor.nodeToText.get(at as Element) : undefined;
-		}
-		return undefined;
+	/** The block an element belongs to: its closest registered element's (`null`: the root). */
+	#owner = (node: Node): string | null | undefined => {
+		const entry = this.#near(node);
+		// What happens in a preview is the view's own render: nothing to compare.
+		return (
+			entry && (entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block)
+		);
+	};
+
+	/** The handle a registered element of `kind` renders (`null`: another element). */
+	handleOf = <K extends 'text' | 'atom'>(element: Node | null | undefined, kind: K) => {
+		const entry = element && this.#registry.get(element as Element);
+		return (entry?.kind === kind ? entry.handle : null) as
+			| (K extends 'text' ? Text : InlineBlock)
+			| null;
+	};
+
+	/** The block `node` is in (its closest registered element's), none in a preview or outside the host. */
+	blockOf = (node: Node | null) => {
+		const entry = this.#near(node);
+		return entry && entry.kind !== 'preview' && entry.kind !== 'anchor'
+			? (this.edytor.idToBlock.get(entry.block) ?? null)
+			: null;
 	};
 
 	#registered = (node: Node) => node instanceof Element && this.#registry.has(node);
@@ -487,7 +516,8 @@ export class SurfaceObserver {
 			if (!held(removal) && !anchors && !(crossed && this.#lost(removal))) continue;
 			// A browser-owned attempt's host: its change is adopted whatever the
 			// browser did to its structure, which the re-render then restores.
-			const inside = this.#textOf(parent);
+			const near = this.#near(parent);
+			const inside = near?.kind === 'text' && (near.handle as Text);
 			if (inside && this.edytor.attempts.on(inside)) continue;
 			for (const node of added)
 				if (node.parentNode === parent && !this.#holds(node)) parent.removeChild(node);
@@ -706,27 +736,8 @@ export class SurfaceObserver {
 	 */
 	#invert = (id: string) => {
 		if (id === this.#live()) return;
-		if (this.#shape(id) || !this.#rewrite(id)) this.edytor.cells?.remount(id);
+		if (this.#shape(id, true)) this.edytor.cells?.remount(id);
 		else this.update();
-	};
-
-	/** Write each render delta's text back into its node; false when a node is not there. */
-	#rewrite = (id: string) => {
-		const writes: [globalThis.Text, string][] = [];
-		for (const text of this.#texts(id)) {
-			const deltas = this.edytor.deltasOf(text);
-			const nodes = this.#nodes(text.node!);
-			const shown = deltas.length ? deltas : [{ text: '\u200B' }];
-			for (const [i, delta] of shown.entries()) {
-				const node = nodes[i];
-				const leaf =
-					node?.nodeType === Node.TEXT_NODE ? (node as globalThis.Text) : node && textLeaf(node);
-				if (!leaf) return false;
-				if (leaf.data !== delta.text) writes.push([leaf, delta.text]);
-			}
-		}
-		for (const [leaf, value] of writes) leaf.data = value;
-		return true;
 	};
 
 	/** A text element's children that stand for render deltas (Svelte's anchors and the newline marker aside). */
@@ -744,7 +755,7 @@ export class SurfaceObserver {
 	 */
 	#adoptContent = (id: string): Promise<unknown>[] => {
 		const { edytor } = this;
-		let broken = Boolean(this.#shape(id));
+		let broken = this.#shape(id);
 		const caret = getCollapsedDomTextSelection(edytor);
 		const work: Promise<unknown>[] = [];
 		for (const text of this.#texts(id)) {
@@ -778,12 +789,10 @@ export class SurfaceObserver {
 	};
 
 	#texts = (id: string): Text[] =>
-		[...(this.#contents.get(id) ?? [])].flatMap(
-			(element) => this.edytor.nodeToText.get(element) ?? []
-		);
+		[...(this.#contents.get(id) ?? [])].flatMap((element) => this.handleOf(element, 'text') ?? []);
 
 	/** A content's DOM: its registered text and atom elements in order; null when not shown. */
-	#read = (id: string): { text: string; broken: string | null } | null => {
+	#read = (id: string): { text: string; broken: boolean } | null => {
 		const elements = [...(this.#contents.get(id) ?? [])];
 		if (!elements.length) return null;
 		elements.sort((a, b) =>
@@ -791,16 +800,15 @@ export class SurfaceObserver {
 		);
 		const host = this.#blocks.get(id);
 		let text = '';
-		let broken: string | null = host && !host.isConnected ? 'missing' : null;
+		let broken = !!host && !host.isConnected;
 		for (const element of elements) {
 			const kind = this.#registry.get(element)?.kind;
 			// A mark is inside its text element: its presence is the shape check's.
 			if (kind === 'mark') continue;
-			if (!element.isConnected) broken ??= 'missing';
-			else if (host && !host.contains(element)) broken ??= 'escaped';
+			broken ||= !element.isConnected || (!!host && !host.contains(element));
 			if (kind === 'atom') text += ATOM;
 			else if (kind === 'text') {
-				const found = this.edytor.nodeToText.get(element);
+				const found = this.handleOf(element, 'text');
 				text += (found ? readDomText(found) : (element.textContent ?? '')).replace(ZWSP, '');
 			}
 		}
@@ -809,39 +817,41 @@ export class SurfaceObserver {
 
 	/**
 	 * Equal text, compared structurally: each text element (a strict
-	 * container) holds one node per render delta — a text node, or a
-	 * registered mark element whose registered marks follow the delta's chain.
+	 * container) holds one node per render delta (the empty filler's one) — a
+	 * text node, or a registered mark element whose registered marks follow
+	 * the delta's chain and that renders one text node. Answers whether it
+	 * differs; `write`: a content that does not gets each delta's text back
+	 * in its node.
 	 */
-	#shape = (id: string): string | null => {
+	#shape = (id: string, write?: boolean): boolean => {
+		const writes: [globalThis.Text, string][] = [];
 		for (const text of this.#texts(id)) {
 			const element = text.node;
 			if (!element) continue;
 			const deltas = this.edytor.deltasOf(text);
+			const shown = deltas.length ? deltas : [{ text: '\u200B', marks: [] }];
 			const nodes = this.#nodes(element);
-			if (!deltas.length) {
-				if (nodes.length !== 1 || nodes[0].nodeType !== Node.TEXT_NODE) return 'filler';
-				continue;
-			}
-			if (nodes.length !== deltas.length) return 'partition';
-			for (const [i, delta] of deltas.entries()) {
-				const node = nodes[i];
+			if (nodes.length !== shown.length) return true;
+			for (const [i, delta] of shown.entries()) {
+				const node = nodes[i] as Element;
+				let leaf = node as unknown as globalThis.Text | null;
 				const chain = delta.marks
 					.map(([name]) => name)
 					.filter((name) => rendersMark(this.edytor.marks, name));
-				if (!chain.length) {
-					if (node.nodeType !== Node.TEXT_NODE) return 'foreign-child';
-					continue;
-				}
-				if (!(node instanceof Element) || !this.#registry.has(node)) return 'foreign-child';
-				const marks = [node, ...node.querySelectorAll('[data-edytor-mark]')]
-					.map((el) => this.#registry.get(el)?.name)
-					.filter(Boolean);
-				if (marks.join() !== chain.join()) return 'mark-chain';
-				// The snippet's markup is its own, but the delta renders one text node.
-				if (!textLeaf(node) || textLeaf(node, 1)) return 'mark-text';
+				if (chain.length) {
+					if (!this.#registry.has(node)) return true;
+					const marks = [node, ...node.querySelectorAll('[data-edytor-mark]')]
+						.map((el) => this.#registry.get(el)?.name)
+						.filter(Boolean);
+					leaf = textLeaf(node);
+					// The snippet's markup is its own, but the delta renders one text node.
+					if (marks.join() !== chain.join() || !leaf || textLeaf(node, 1)) return true;
+				} else if (node.nodeType !== Node.TEXT_NODE) return true;
+				if (leaf!.data !== delta.text) writes.push([leaf!, delta.text]);
 			}
 		}
-		return null;
+		if (write) for (const [leaf, value] of writes) leaf.data = value;
+		return false;
 	};
 
 	/** The root's children differ from its registered block elements in cell order, the anchor, Svelte's anchors. */

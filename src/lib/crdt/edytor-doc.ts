@@ -63,7 +63,14 @@ import {
 import { bindText } from './text/model.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
-import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
+import {
+	bindRuns,
+	indexOf,
+	type DeclaredKinds,
+	type DisplayRoles,
+	type KindRole,
+	type RunView
+} from './text/runs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -109,6 +116,7 @@ import type { Anchor } from './text/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { DocPosition } from './rangeDelete.js';
 import type { DataPatch } from './data.js';
+import type { DocumentOperations } from './operations.js';
 /* eslint-enable @typescript-eslint/no-unused-vars */
 import type {
 	AnchorAffinity,
@@ -224,24 +232,47 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		// A layout displays only its items — its
 		// `defaultChild` kind — and only two or more (`layout.*`). A table
 		// displays only its rows and a row only its cells (`table.*`).
+		let kinds = new Map<string | null, KindRole>();
+		let declared: DeclaredKinds | undefined;
 		const roles: DisplayRoles = {
-			childless: (type) => roleOf(type)?.void === true,
-			island: (type) => roleOf(type)?.island === true,
-			container: (type) =>
-				!rendersContentOf(type) && roleOf(type)?.void !== true && roleOf(type)?.island !== true,
-			rendersContent: (type) => rendersContentOf(type),
-			defaultChild: (type) => (type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
-			line: (type) => {
-				const role = roleOf(type);
-				return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
+			of: (type) => {
+				let k = kinds.get(type);
+				if (k === undefined) {
+					const role = type === null ? undefined : roleOf(type);
+					const own = type === null ? undefined : defaultChildOf(type);
+					const renders = type === null || rendersContentOf(type);
+					kinds.set(
+						type,
+						(k = {
+							childless: role?.void === true,
+							island: role?.island === true,
+							container: !renders && role?.void !== true && role?.island !== true,
+							rendersContent: renders,
+							child: own ?? defaultType,
+							line: role?.island === true && role.lines === true ? own : undefined,
+							layout: role?.layout === true ? own : undefined,
+							table: role?.table === true ? own : undefined
+						})
+					);
+				}
+				return k;
 			},
-			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? []),
-			layout: (type) => (roleOf(type)?.layout === true ? defaultChildOf(type) : undefined),
-			layoutKinds: () =>
-				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined),
-			table: (type) => (roleOf(type)?.table === true ? defaultChildOf(type) : undefined),
-			tableKinds: () =>
-				[...(config.kinds?.() ?? [])].filter((type) => roles.table(type) !== undefined)
+			declared: () => {
+				if (declared === undefined) {
+					const all = [...(config.kinds?.() ?? [])].map(roles.of);
+					const rows = new Map(
+						all.flatMap((k) => (k.table ? [[k.table, roles.of(k.table).child]] : []))
+					);
+					declared = {
+						lines: new Set(all.flatMap((k) => k.line ?? [])),
+						layouts: [...(config.kinds?.() ?? [])].filter((t) => roles.of(t).layout !== undefined),
+						items: new Set(all.flatMap((k) => k.layout ?? [])),
+						rows,
+						cells: new Set(rows.values())
+					};
+				}
+				return declared;
+			}
 		};
 		if (config.roleOf) runsView.roles(roles);
 
@@ -292,60 +323,35 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
 		const { plan } = steps;
-		// The prepared op families (`OpsContext`: the reads, capability and step writers).
-		const {
-			insertBlocks,
-			moveBlocks,
-			unNestBlocks,
-			unNestBlock,
-			landingOf,
-			liftOut,
-			duplicateBlock
-		} = moveOps(steps);
-		const { besideAt, placeBeside, wrapInLayout } = layoutOps(steps);
-		const { splitBlock, mergeBlocks, mergeBackward, mergeForward } = splitMergeOps(steps);
-		const { deleteBlocks, deleteBlock } = deleteOps(steps);
-		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
-		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
-			contentOps(steps);
+		// The prepared op families (`OpsContext`: the reads, capability and step
+		// writers): every op they answer is a document write, but for the reads
+		// and step writers taken out here.
+		const { landingOf, ...moves } = moveOps(steps);
+		const { besideAt, ...layouts } = layoutOps(steps);
+		const { dataSteps, replaceData, ...metas } = metaOps(steps);
+		const deletes = deleteOps(steps);
 
 		/** What range deletion and flow placement compose: the step writers and the ops. */
-		const ops = { ...steps, insertBlocks, deleteBlocks, dataSteps, replaceData };
+		const ops = { ...steps, ...moves, ...deletes, dataSteps, replaceData };
 
 		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
-			insertBlocks,
-			moveBlocks,
+			...moves,
+			...layouts,
+			...splitMergeOps(steps),
+			...deletes,
+			...metas,
+			...contentOps(steps),
 			/**
 			 * Move `id` to the last position under `parent` — under a container
 			 * it is no item of, under its last item (`nestParent`: Tab after a list).
 			 */
 			nestBlock: (id: BlockId, parent: BlockId) => {
 				const at = nestParent([ref(id)], ref(parent));
-				return moveBlocks([id], { parent: at, index: childrenIds(at).length });
+				return moves.moveBlocks([id], { parent: at, index: childrenIds(at).length });
 			},
-			unNestBlock,
-			unNestBlocks,
-			liftOut,
-			placeBeside,
-			wrapInLayout,
-			splitBlock,
-			mergeBlocks,
-			mergeBackward,
-			mergeForward,
-			deleteBlock,
-			setBlock,
-			setBlockType,
-			patchData,
-			duplicateBlock,
-			insertText,
-			deleteText,
-			formatRange,
-			clearMarks,
-			insertInline,
-			removeInline,
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
-			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => deletes.deleteBlocks(ids),
 			...rangeDeleteOps(ops),
 			...flowOps(ops)
 		};
@@ -413,35 +419,17 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			(id: I, ...rest: A): R =>
 				f(ref(id), ...rest);
 
-		const facade = {
-			// lifecycle
-			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
-			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
-			seed: (value: JSONBlock[], data?: JsonObj) =>
-				write(() => seed(doc, value, defaultType, data)),
-			isInitialized: () => isInitialized(doc),
-			/** Replicated `meta.v` schema version (the module-level read, bound). */
-			schemaVersion: () => schemaVersion(doc),
-			/**
-			 * The schema gate for this doc — throws {@link SchemaMismatchError}
-			 * on unversioned-content or unsupported-version state. Consumers
-			 * (`Edytor.sync()`, packed consumers) call it before trusting
-			 * a synced doc.
-			 */
-			checkSchema: () => checkSchema(doc),
-			assertSchema: () => assertSchema(doc),
-			dispose,
-			createUndoManager,
-			/** @internal What a part built over the document reads and writes (`doc/suggest.ts`). */
-			part,
+		/**
+		 * The public operations (`DocumentOperations`), each name once: what
+		 * an `EdytorDocument` forwards. The facade has them and the internal
+		 * members below.
+		 */
+		const api = {
 			// reads — every id argument normalizes at ingress
 			project: () => project(doc),
 			toJSON,
 			blockJSON: byRef(blockJSON),
 			childrenIds: byRef(childrenIds),
-			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
-			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
-			slotOf: byRef(slotOf),
 			positionOf: byRef(positionOf),
 			pathOf: byRef(pathOf),
 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
@@ -461,8 +449,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			blockAttribution: byRef((id: BlockId): BlockAttribution | undefined =>
 				blockAttributionOf(doc, id)
 			),
-			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
-			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
 			displayLength: byRef(displayLength),
 			contentItems: byRef(contentItems),
 			hasBlock: byRef(hasBlock),
@@ -474,10 +460,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			// caret anchors — backing-text-bound selection endpoints
 			anchorAt: byRef(anchorAt),
 			resolveAnchor,
-			followUndo,
-			// roles
-			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
-			rolesChanged: () => runsView.roles(roles),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			isLines: byRef(isLines),
@@ -517,10 +499,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			/** Where a block of `kind` at `id`'s place lands, and the containers it leaves (`liftOut`). */
 			landingOf: (id: BlockId, kind: string, after?: boolean) =>
 				landingOf(ref(id), ref(kind), after),
-			defaultChild: byRef(defaultChild),
 			// maintained runs (bound to this doc)
 			runs: byRef(runsView.runs),
-			contentJSON: byRef(runsView.contentJSON),
 			// events
 			onChange,
 			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`
@@ -533,10 +513,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			// transactions (composed ops already run in one; expose for callers
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),
-			// escape hatch for the history and debugging — the bound engine layers.
-			model: layers.model as L['model'],
-			text: layers.text as L['text'],
-			runsView,
 			// ── model-state version ─────────────────────────────
 			/**
 			 * The index version — bumps on every fold that changed derived
@@ -548,8 +524,55 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 				// A part's change may show in no index fact (a suggestion's decision).
 				return runsView.version() + part.v;
 			}
+		} satisfies DocumentOperations;
+		const internal = {
+			// lifecycle
+			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
+			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
+			seed: (value: JSONBlock[], data?: JsonObj) =>
+				write(() => seed(doc, value, defaultType, data)),
+			isInitialized: () => isInitialized(doc),
+			/** Replicated `meta.v` schema version (the module-level read, bound). */
+			schemaVersion: () => schemaVersion(doc),
+			/**
+			 * The schema gate for this doc — throws {@link SchemaMismatchError}
+			 * on unversioned-content or unsupported-version state. Consumers
+			 * (`Edytor.sync()`, packed consumers) call it before trusting
+			 * a synced doc.
+			 */
+			checkSchema: () => checkSchema(doc),
+			assertSchema: () => assertSchema(doc),
+			dispose,
+			createUndoManager,
+			/** @internal What a part built over the document reads and writes (`doc/suggest.ts`). */
+			part,
+			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
+			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
+			slotOf: byRef(slotOf),
+			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
+			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
+			followUndo,
+			// roles
+			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
+			rolesChanged: (place = true) => {
+				kinds = new Map();
+				declared = undefined;
+				if (place) runsView.roles(roles);
+			},
+			defaultChild: byRef(defaultChild),
+			contentJSON: byRef(runsView.contentJSON),
+			// escape hatch for the history and debugging — the bound engine layers.
+			model: layers.model as L['model'],
+			text: layers.text as L['text'],
+			runsView,
+			/** The public members' names (`EdytorDocument` forwards them). */
+			api: api as object
 		};
-		return facade;
+		// The public members joined as they are (the `version` getter stays one).
+		return Object.defineProperties(
+			internal,
+			Object.getOwnPropertyDescriptors(api)
+		) as typeof internal & typeof api;
 	};
 	return create;
 };

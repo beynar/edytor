@@ -1,0 +1,44 @@
+diff --git a/src/lib/crdt/text/index/claims.ts b/src/lib/crdt/text/index/claims.ts
+index c766dc8..c612ba6 100644
+--- a/src/lib/crdt/text/index/claims.ts
++++ b/src/lib/crdt/text/index/claims.ts
+@@ -4,7 +4,7 @@
+  * change of a block invalidates.
+  */
+ import type { BlockId } from '../../placement/model.js';
+-import { type Claim, DEAD, type Owner, type Stamp, claimGraph, cmpStamp } from '../model.js';
++import { type Claim, DEAD, type Owner, type Stamp, cmpStamp } from '../model.js';
+ import { addTo, dropFrom } from './shared.js';
+ import type { FoldCtx, IndexState } from './state.js';
+ 
+@@ -25,7 +25,6 @@ export const indexClaims = (ix: IndexState) => {
+ 	const topInv = new Map<BlockId, Set<BlockId>>();
+ 	/** Claimed block → the blocks whose claims list names it (live or not). */
+ 	const claimersOf = new Map<BlockId, Set<BlockId>>();
+-	let ownersBuilt = false;
+ 	/** The max-stamp claim on `m` held by a live block. */
+ 	const topClaim = (m: BlockId): { claimer: BlockId; stamp: Stamp } | undefined => {
+ 		let best: { claimer: BlockId; stamp: Stamp } | undefined;
+@@ -92,22 +91,6 @@ export const indexClaims = (ix: IndexState) => {
+ 		if (typeof to === 'string') addTo(displaysMap, to, b);
+ 	};
+ 	const ensureOwners = (): void => {
+-		if (!ownersBuilt) {
+-			ownersBuilt = true;
+-			ownerSeeds.clear();
+-			const graph = claimGraph(blocks);
+-			owners.clear();
+-			for (const [b, o] of graph.owners) if (blocks.has(b)) owners.set(b, o);
+-			topOf.clear();
+-			topInv.clear();
+-			claimersOf.clear();
+-			for (const [holder, rec] of blocks)
+-				for (const c of rec.claims) addTo(claimersOf, c.m, holder);
+-			for (const m of claimersOf.keys()) setTop(m, topClaim(m));
+-			displaysMap.clear();
+-			for (const b of blocks.keys()) setDisplay(b, undefined, owners.get(b));
+-			return;
+-		}
+ 		if (ownerSeeds.size === 0) return;
+ 		// The tops a seed's claims (now, and those it dropped: noted in `claimersOf` changes) decide.
+ 		const affected = new Set<BlockId>();

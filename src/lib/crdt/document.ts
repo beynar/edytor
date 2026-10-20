@@ -144,7 +144,7 @@ import { DEV } from 'esm-env';
 import { Y } from './engine.js';
 import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
-import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
+import type { DocumentOperations } from './operations.js';
 import { propsProxy } from './props.js';
 import {
 	bindAttribution,
@@ -535,12 +535,15 @@ export class EdytorDocument {
 			// with the `SchemaMismatchError` naming the stamp.
 			assertWritable: () => assertSchema(asEngineDoc(this.doc), 'document')
 		});
-		// The document's own operations (`DocumentOperations`): the bound
-		// facade's, read through so each call reaches the live binding.
-		for (const name of DOCUMENT_OPERATIONS) {
-			if (name === 'transact') continue;
-			Object.defineProperty(this, name, { get: () => this.facade[name], configurable: true });
-		}
+		// The document's own operations (the facade's `api`, which satisfies
+		// `DocumentOperations`): the bound facade's, read through so each
+		// call reaches the live binding.
+		for (const name in this.facade.api)
+			if (name !== 'transact')
+				Object.defineProperty(this, name, {
+					get: () => this.facade[name as keyof DocumentOperations],
+					configurable: true
+				});
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this.#ownsAwareness = init.awareness === undefined;
 		this.#historyOptions = init.history;
@@ -726,12 +729,11 @@ export class EdytorDocument {
 		// promoted out of a newly island kind displays as a default child; a
 		// newly layout kind displays only its items (`layout.*`), a newly
 		// table kind only its rows (`table.*`).
-		if (
+		this.facade.rolesChanged(
 			Object.values(config.roles ?? {}).some(
 				(role) => role?.void || role?.island || role?.layout || role?.table
 			)
-		)
-			this.facade.rolesChanged();
+		);
 	};
 
 	/**

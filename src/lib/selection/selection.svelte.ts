@@ -35,6 +35,7 @@ import {
 	atomSelection,
 	blockSelection,
 	noSelection,
+	pointOf,
 	project,
 	sameEnds,
 	sameValue,
@@ -358,8 +359,7 @@ export class EdytorSelection {
 	 * shows no text (a divider) keeps the current value. Displayed after the flush.
 	 */
 	setCaret = (caret: Caret | null | undefined) => {
-		const at = caret && caret.block.textAtOffset(Math.max(0, caret.offset));
-		if (at) this.selectText(at.text, at.offset);
+		if (caret) this.selectAt({ block: caret.block.id, offset: Math.max(0, caret.offset) });
 	};
 
 	/** The marks the next insertion at the caret takes (values kept). */
@@ -471,9 +471,34 @@ export class EdytorSelection {
 	};
 
 	/**
-	 * A text value from wrapper endpoints (offsets inside text segments):
-	 * the start binds right (boundary inserts stay outside), the end and a
-	 * caret bind left; `none` when the start text is not bound to the document.
+	 * A text value from block-offset points (an inline atom counting 1): the
+	 * start binds right (boundary inserts stay outside), the end and a caret
+	 * bind left; `none` when the start does not anchor (the root, an unknown block).
+	 * @internal
+	 */
+	valueAt = (
+		start: SelectionPoint,
+		end = start,
+		isReversed = false,
+		startAffinity?: 'left' | 'right'
+	): SelectionValue => {
+		const { facade } = this.edytor;
+		const collapsed = start.block === end.block && start.offset === end.offset;
+		const a = facade.anchorAt(
+			start.block,
+			start.offset,
+			startAffinity ?? (collapsed ? 'left' : 'right')
+		);
+		if (!a) return noSelection;
+		if (collapsed) return textSelection(a);
+		const b = facade.anchorAt(end.block, end.offset, 'left') ?? a;
+		return isReversed ? textSelection(b, a) : textSelection(a, b);
+	};
+
+	/**
+	 * A text value from wrapper endpoints (offsets inside text segments): the
+	 * start binds right (boundary inserts stay outside), the end and a caret
+	 * bind left; `none` when the start text is not bound to the document.
 	 */
 	textValue = (
 		startText: Text,
@@ -482,14 +507,19 @@ export class EdytorSelection {
 		yEnd: number = yStart,
 		isReversed = false,
 		startAffinity?: 'left' | 'right'
-	): SelectionValue => {
-		const mint = this.createTextAnchor;
-		const collapsed = startText === endText && yStart === yEnd;
-		const start = mint(startText, yStart, startAffinity ?? (collapsed ? 'left' : 'right'));
-		if (!start) return noSelection;
-		if (collapsed) return textSelection(start);
-		const end = mint(endText, yEnd, 'left') ?? start;
-		return isReversed ? textSelection(end, start) : textSelection(start, end);
+	): SelectionValue =>
+		this.valueAt(pointOf(startText, yStart), pointOf(endText, yEnd), isReversed, startAffinity);
+
+	/**
+	 * Select from `start` to `end` (block offsets, a caret by default;
+	 * `isReversed` makes the end the anchor), else the seam of the start's
+	 * block. The projector displays it after the flush.
+	 * @internal
+	 */
+	selectAt = (start: SelectionPoint, end = start, isReversed = false) => {
+		const value = this.valueAt(start, end, isReversed);
+		const target = project(value, this.edytor.facade).start ? value : this.#seamValue(start.block);
+		if (target) this.select(target);
 	};
 
 	/**
@@ -510,18 +540,9 @@ export class EdytorSelection {
 		isReversed = false
 	) => {
 		if (!startText || !endText) return;
-		const at = (text: Text, offset: number) => Math.min(Math.max(offset, 0), text.length);
-		const value = this.textValue(
-			startText,
-			at(startText, yStart),
-			endText,
-			at(endText, yEnd),
-			isReversed
-		);
-		const target = project(value, this.edytor.facade).start
-			? value
-			: this.#seamValue(startText.parent?.id ?? null);
-		if (target) this.select(target);
+		const at = (text: Text, offset: number) =>
+			pointOf(text, Math.min(Math.max(offset, 0), text.length));
+		this.selectAt(at(startText, yStart), at(endText, yEnd), isReversed);
 	};
 
 	/**
@@ -574,8 +595,7 @@ export class EdytorSelection {
 		const value = this.value;
 		if (value.kind !== 'atom') return;
 		const { start } = this.projection;
-		const before = start && this.textAt(start);
-		this.select(before ? this.textValue(before.text, before.offset) : noSelection);
+		this.select(start ? this.valueAt(start) : noSelection);
 	};
 	selectInlineBlock = (inlineBlock: InlineBlock, from: AtomSide = 'before') => {
 		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id, from));
@@ -584,11 +604,7 @@ export class EdytorSelection {
 	getTextOfNode = getTextOfNode.bind(this);
 
 	/** @internal The block whose element holds `node`, in this editor. */
-	getBlockOfNode = (node: Node | null) => {
-		const element = getElementFromNode(node)?.closest<HTMLElement>('[data-edytor-block]');
-		const id = element && this.edytor.node?.contains(element) && element.dataset.edytorId;
-		return (id && this.edytor.idToBlock.get(id)) || null;
-	};
+	getBlockOfNode = (node: Node | null) => this.edytor.surface.blockOf(node);
 
 	/** @internal */
 	init = () => {
@@ -791,8 +807,8 @@ export class EdytorSelection {
 		offset: number,
 		affinity: 'left' | 'right' = 'left'
 	): TextAnchor | null => {
-		if (text.parent.isRoot) return null;
-		return this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, affinity);
+		const { block, offset: at } = pointOf(text, offset);
+		return this.edytor.facade.anchorAt(block, at, affinity);
 	};
 
 	/**

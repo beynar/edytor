@@ -3,6 +3,7 @@ import { vetoable } from '$lib/utils.js';
 import {
 	createDomRange,
 	createDomSelectionSnapshotFromRange,
+	focusIn,
 	getActiveElement,
 	getDomSelection
 } from '$lib/selection/domSelection.js';
@@ -117,8 +118,8 @@ const adoptDeclared = (edytor: Edytor, a: Attempt, declared: StaticRange) => {
 const isForeignHistory = (edytor: Edytor) => {
 	const node = edytor.node;
 	if (!node) return true;
+	if (focusIn(node)) return false;
 	const active = getActiveElement(node);
-	if (active && node.contains(active)) return false;
 	const { body, documentElement } = node.ownerDocument;
 	const anchor = getDomSelection(node)?.anchorNode;
 	return (

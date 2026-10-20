@@ -40,8 +40,8 @@ export const findMatches = (
 	const walk = (parent: string | null) => {
 		for (const block of facade.childrenIds(parent)) {
 			for (const part of idToBlock.parts(block)) {
-				if (part.kind !== 'text' || part.length < needle.length) continue;
-				const text = part.items.map((item) => item.text).join('');
+				if (part.kind !== 'text' || part.text.length < needle.length) continue;
+				const { text } = part;
 				const hay = caseSensitive ? text : fold(text);
 				for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length))
 					matches.push({ block, offset: part.start + at, length: needle.length });

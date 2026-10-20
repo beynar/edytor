@@ -3,6 +3,7 @@ import type { InlineBlockDefinition } from '$lib/plugins.js';
 import type { JSONInlineBlock } from '$lib/utils/json.js';
 import type { Block } from './block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { AtomPart } from '$lib/crdt/parts.js';
 
 const INLINE_EDGE_CARET_THRESHOLD_PX = 4;
 const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
@@ -37,9 +38,9 @@ export class InlineBlock {
 
 	get #item() {
 		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
-		const parts = this.edytor.idToBlock.parts(this.blockId);
-		const part = parts.find((part) => part.kind === 'inline' && part.item.id === this.id);
-		return part?.kind === 'inline' ? part.item : undefined;
+		return this.edytor.idToBlock
+			.parts(this.blockId)
+			.find((part): part is AtomPart => part.kind === 'inline' && part.id === this.id);
 	}
 
 	get selected() {
@@ -87,9 +88,15 @@ export class InlineBlock {
 		node.dataset.edytorId = this.id;
 		node.dataset.edytorInlineBlock = this.type;
 		this.#attachedNodes.add(node);
-		this.edytor.nodeToInlineBlock.set(node, this);
 		this.node = node;
-		const release = this.edytor.surface.register(node, 'atom', this.blockId);
+		const release = this.edytor.surface.register(
+			node,
+			'atom',
+			this.blockId,
+			undefined,
+			undefined,
+			this
+		);
 
 		const selectInlineBlock = (event: PointerEvent) => {
 			if (event.button !== 0) return;
@@ -122,7 +129,6 @@ export class InlineBlock {
 				if (this.node === node) {
 					this.node = this.#attachedNodes.values().next().value;
 				}
-				this.edytor.nodeToInlineBlock.delete(node);
 				release();
 			}
 		};

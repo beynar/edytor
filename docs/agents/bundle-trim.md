@@ -50,9 +50,9 @@ Never:
 
 ## Tools
 
-- `node scripts/bundle-size.mjs` builds the probes and reports edytor's own bytes (the Svelte runtime excluded). `--only minimal,all,export` picks probes (`minimal` is `<Edytor />` alone, `all` every plugin, `export` and `export-*` the `edytor/export` entry and each function of it); `--top 600` lists files; `--by dir` groups; `--json out.json` writes the numbers; `--no-package` reuses the current `dist/`.
-- **Attribution by function.** The probe builds keep their source maps (`node_modules/.cache/bundle-size/*/out/assets/*.map`). Attribute every minified byte to its source line through the map, then each line to the declaration around it (function, method, class field, top-level constant). The result is a table: function, file, minified bytes, gzip share. Keep the script in `scripts/` once written (`bundle-attribution.mjs`), so every pass uses the same numbers.
-- **Measuring a change.** Before and after, on the same machine, with the same command; report minified and gzip bytes for `minimal`, `all` and `export`. In an exported copy of the repository (`git archive … | tar -x`, `node_modules` linked), give the script its own cache directory inside the copy: the linked `node_modules/.cache` is the main checkout's.
+- `node scripts/bundle-size.mjs` builds the probes and reports edytor's own bytes (the Svelte runtime excluded). `--only minimal,all,export` picks probes (`minimal` is `<Edytor />` alone, `all` every plugin, `export` and `export-*` the `edytor/export` entry and each function of it); `--top 600` lists files; `--by dir` groups; `--json out.json` writes the numbers; `--no-package` reuses the current `dist/`; `--cache <dir>` builds the probes there instead of `node_modules/.cache/bundle-size`.
+- **Attribution by function: `pnpm bundle:attribution`** (`scripts/bundle-attribution.mjs`, after a `bundle-size.mjs` run that built the probe). The probe builds keep their source maps (`node_modules/.cache/bundle-size/*/out/assets/*.map`): the script attributes every minified byte to its source position through the map, then to the declaration around it in the packaged `dist/` file (a top-level function, class or constant, and `--depth` levels inside: methods, class fields, an object's properties, a function's own declarations; a `.svelte` file's `<script module>`, `<script>`, top-level snippets and `(template)`). Each row is `file › declaration › …` with its minified bytes and its gzip share (the row's code gzipped alone, scaled so the bundle's sources sum to its gzip: an estimate). Arguments filter sources by substring (`pnpm bundle:attribution crdt/doc/ session/`); `--files` gives one row per file, `--top 40` the largest rows, `--min 50` hides smaller ones, `--sort name` lists in source order, `--json out.json` writes every row, `--app all` reads another probe, `--cache <dir>` another cache, and `--against <dir>` diffs with a second cache (a copy of the cache taken before the change: each declaration's bytes before and after). Every pass uses this script, so its numbers compare.
+- **Measuring a change.** Before and after, on the same machine, with the same command; report minified and gzip bytes for `minimal`, `all` and `export`. In an exported copy of the repository (`git archive … | tar -x`, `node_modules` linked), give both scripts their own cache directory inside the copy (`--cache`): the linked `node_modules/.cache` is the main checkout's.
 
 ## Step by step
 
@@ -127,6 +127,10 @@ Per cut, the fast loop only: `pnpm check`, `pnpm lint`, `pnpm check:deps`, the a
 ### 11. Hold the gain
 
 A size budget in CI: the `minimal` probe's bytes may not grow past the budget the last pass reached, so a pull request that adds bytes fails until it pays for them or the user raises the budget. A feature brief states its own budget; a missed budget stops the merge.
+
+- **The check.** `pnpm check:size` (`node scripts/bundle-size.mjs --budget bundle-budget.json`) builds the probes `bundle-budget.json` names and fails when one's own minified bytes (the `own` the script reports: the Svelte runtime excluded) exceed its budget. CI's `size` job runs it on every push, and `CI passed` needs it.
+- **Setting it.** A pass that ends below the budget lowers it to its final number plus 0.2 KB, in its own pull request.
+- **Raising it.** Only the user raises it: the commit that raises it says by how much, for what feature, and that the user decided. An agent never raises it to make a check pass; a change over the budget is cut, moved into the fork, or goes back to the user.
 
 ### 12. Report
 

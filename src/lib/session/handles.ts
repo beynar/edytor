@@ -15,40 +15,14 @@
 import { Block } from '../block/block.svelte.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
-import type { ContentItem, ContentRun, Destination, DocChange } from '../crdt/index.js';
+import type { Destination, DocChange } from '../crdt/index.js';
+import { partsOf, type Part } from '../crdt/parts.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { JSONText } from '../utils/json.js';
 
 export type TextRunItem = { text: string; marks?: Record<string, unknown> };
 
-/** A block's content as the index shows it: text segments between atoms, each at its display start. */
-export type ContentPart =
-	| { kind: 'text'; start: number; items: TextRunItem[]; length: number }
-	| { kind: 'inline'; start: number; item: ContentItem & { kind: 'inline' } };
-
-/** Segments and atoms, alternating, starting and ending with a segment. */
-export const contentParts = (items: readonly ContentItem[]): ContentPart[] => {
-	const parts: ContentPart[] = [];
-	let segment: TextRunItem[] = [];
-	let start = 0;
-	let at = 0;
-	const close = () => {
-		parts.push({ kind: 'text', start, items: segment, length: at - start });
-		segment = [];
-	};
-	for (const item of items) {
-		if (item.kind === 'text') {
-			segment.push({ text: item.text, ...(item.marks ? { marks: item.marks } : {}) });
-			at += item.text.length;
-			continue;
-		}
-		close();
-		parts.push({ kind: 'inline', start: at, item });
-		start = ++at;
-	}
-	close();
-	return parts;
-};
+export type { Part as ContentPart } from '../crdt/parts.js';
 
 /**
  * A text segment's items as `JSONText` runs (`text.value`): empty items
@@ -69,7 +43,7 @@ export const segmentJSON = (items: readonly TextRunItem[]): JSONText[] => {
 	return out;
 };
 
-const ROOT = contentParts([]);
+const ROOT = partsOf([]);
 
 /** The destination right after `block` among its siblings (`after: false`, right before it). */
 export const siblingSlot = (block: Block, after = true): Destination => {
@@ -85,8 +59,8 @@ export class Handles {
 	#blocks = new Map<string, Block>();
 	#texts = new Map<string, Text[]>();
 	#atoms = new Map<string, InlineBlock>();
-	/** Each block's parts at the index version they were read (the last read of a dead block). */
-	#parts = new Map<string, { runs: readonly ContentRun[]; parts: ContentPart[] }>();
+	/** Each block's parts as last read (a dead block's: what it last showed). */
+	#parts = new Map<string, readonly Part[]>();
 
 	constructor(private edytor: Edytor) {
 		this.root = new Block(edytor, 'root');
@@ -133,25 +107,22 @@ export class Handles {
 	 * Block `id`'s content parts — from its runs, which the index keeps per
 	 * block and reads-your-writes (a write elsewhere re-derives nothing here).
 	 */
-	parts = (id: string): ContentPart[] => {
+	parts = (id: string): readonly Part[] => {
 		if (id === 'root') return ROOT;
-		const { facade } = this.edytor;
-		const memo = this.#parts.get(id);
-		const runs = facade.runs(id);
-		if (memo?.runs === runs) return memo.parts;
+		const parts = partsOf(this.edytor.facade.runs(id));
+		const last = this.#parts.get(id);
 		// A dead block keeps what it last showed (a write's intent is minted from it).
-		if (memo && !facade.isVisibleBlock(id)) return memo.parts;
-		const parts = contentParts(runs as readonly ContentItem[]);
-		this.#parts.set(id, { runs, parts });
+		if (last && last !== parts && !this.edytor.facade.isVisibleBlock(id)) return last;
+		this.#parts.set(id, parts);
 		return parts;
 	};
 
 	/** Forget the handles of the blocks a commit removed. */
 	prune = (change: DocChange) => {
 		for (const id of change.removed) {
-			for (const part of this.#parts.get(id)?.parts ?? [])
-				if (part.kind === 'inline' && this.#atoms.get(part.item.id)?.blockId === id)
-					this.#atoms.delete(part.item.id);
+			for (const part of this.#parts.get(id) ?? [])
+				if (part.kind === 'inline' && this.#atoms.get(part.id)?.blockId === id)
+					this.#atoms.delete(part.id);
 			this.#blocks.delete(id);
 			this.#texts.delete(id);
 			this.#parts.delete(id);

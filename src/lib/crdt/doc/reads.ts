@@ -21,7 +21,7 @@ import {
 	type ModelView
 } from '../placement/model.js';
 import { DEAD, findAtom, ownedLength } from '../text/model.js';
-import type { DisplayRoles, RunView } from '../text/runs.js';
+import type { DisplayRoles, KindRole, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
 import { itemIds, previewData, readData, type DataPatch } from '../data.js';
 import { columnIds, listedColumns, unlistedOrder } from '../tables.js';
@@ -165,15 +165,15 @@ export const docReads = (c: DocBase) => {
 
 	// ── roles (island/void) ───────────────────────────────────────────
 
-	/** The role table's answer for `id`'s shown kind (`false` without one). */
-	const is = (id: BlockId, role: (type: string) => boolean): boolean => {
+	/** The role of `id`'s shown kind (`undefined` without one). */
+	const kindOf = (id: BlockId): KindRole | undefined => {
 		const t = blockTypeOf(id);
-		return t !== undefined && role(t);
+		return t === undefined ? undefined : roles.of(t);
 	};
-	const isVoid = (id: BlockId): boolean => is(id, roles.childless);
-	const isIsland = (id: BlockId): boolean => is(id, roles.island);
+	const isVoid = (id: BlockId): boolean => kindOf(id)?.childless === true;
+	const isIsland = (id: BlockId): boolean => kindOf(id)?.island === true;
 	/** An island that holds only lines (a code block: its role says `lines`). */
-	const isLines = (id: BlockId): boolean => is(id, (type) => roles.line(type) !== undefined);
+	const isLines = (id: BlockId): boolean => kindOf(id)?.line !== undefined;
 	/** Nearest island-typed display ancestor of `id`, or null. */
 	const islandOf = (id: BlockId, v: View = view()): BlockId | null =>
 		ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
@@ -184,26 +184,20 @@ export const docReads = (c: DocBase) => {
 		const parent = positionOf(id)?.parent;
 		return parent != null && isLines(parent);
 	};
-	/** The child kind `role` gives `id`'s kind: a layout's item kind, a table's row kind. */
-	const childKindOf =
-		(role: 'layout' | 'table') =>
-		(id: BlockId): string | undefined => {
-			const type = blockTypeOf(id);
-			return type === undefined ? undefined : roles[role](type);
-		};
-	/** `id` is of its parent's `kindOf` kind, directly in it (a column, a row). */
+	/** `id` is of its parent's `kind` kind, directly in it (a column, a row, a cell). */
 	const childOf =
-		(kindOf: (id: BlockId) => string | undefined) =>
+		(kind: (parent: KindRole) => string | undefined) =>
 		(id: BlockId): boolean => {
 			const parent = positionOf(id)?.parent;
-			return parent != null && blockTypeOf(id) === kindOf(parent);
+			const k = parent == null ? undefined : kindOf(parent);
+			return parent != null && blockTypeOf(id) === (k && kind(k));
 		};
 	/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
-	const itemKindOf = childKindOf('layout');
+	const itemKindOf = (id: BlockId): string | undefined => kindOf(id)?.layout;
 	/** `id` is a layout (`layout.*`). */
 	const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
 	/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
-	const isLayoutItem = childOf(itemKindOf);
+	const isLayoutItem = childOf((k) => k.layout);
 	/** `id` is a layout or holds one in its shown subtree (`layout.nest`). */
 	const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
 	/** `id` is a layout item or sits inside one. */
@@ -212,28 +206,20 @@ export const docReads = (c: DocBase) => {
 
 	// ── tables (`table.*`) ────────────────────────────────────────────
 
-	/** The row kind of `id` when it is a table (its role says `table`): its default child. */
-	const rowKindOf = childKindOf('table');
 	/** `id` is a table (`table.*`). */
-	const isTable = (id: BlockId): boolean => rowKindOf(id) !== undefined;
+	const isTable = (id: BlockId): boolean => kindOf(id)?.table !== undefined;
 	/** `type` is a row kind of a table kind the roles declare (`tableRow`). */
 	const isRowKind = (type: string | undefined): boolean =>
-		type !== undefined && [...roles.tableKinds()].some((t) => roles.table(t) === type);
+		type !== undefined && roles.declared().rows.has(type);
 	/** `type` is a cell kind: the default child of a row kind (`tableCell`). */
 	const isCellKind = (type: string | undefined): boolean =>
-		type !== undefined &&
-		[...roles.tableKinds()].some((t) => {
-			const row = roles.table(t);
-			return row !== undefined && roles.defaultChild(row) === type;
-		});
+		type !== undefined && roles.declared().cells.has(type);
 	/** `id` is a table's row: of its table's row kind, directly in it. */
-	const isTableRow = childOf(rowKindOf);
+	const isTableRow = childOf((k) => k.table);
 	/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
 	const isTableCell = (id: BlockId): boolean => {
 		const row = positionOf(id)?.parent;
-		return (
-			row != null && isTableRow(row) && blockTypeOf(id) === roles.defaultChild(blockTypeOf(row)!)
-		);
+		return row != null && isTableRow(row) && blockTypeOf(id) === kindOf(row)!.child;
 	};
 	/** The table `id` is, or whose row or cell it is; `null` for any other block. */
 	const tableOf = (id: BlockId): BlockId | null => {
@@ -379,7 +365,7 @@ export const docReads = (c: DocBase) => {
 		pathOf,
 		ancestorsOf,
 		slotOf,
-		is,
+		kindOf,
 		isVoid,
 		isIsland,
 		isLines,

@@ -86,10 +86,12 @@ const lengthOf = (l: FlowLine) =>
  * else nowhere (a divider). The flow and the emptied document's virtual
  * paragraph (`doc.empty.virtual`) place the caret by it.
  */
-export const placedEnd = (roleOf: (kind: string) => { void: boolean; rendersContent: boolean }) => {
+export const placedEnd = (
+	roleOf: (kind: string) => { childless: boolean; rendersContent: boolean }
+) => {
 	const endOf = (s: BlockSpec): DocPosition | undefined => {
 		const role = roleOf(s.type);
-		if (role.rendersContent && !role.void) return { block: s.id, offset: lengthOf(s) };
+		if (role.rendersContent && !role.childless) return { block: s.id, offset: lengthOf(s) };
 		for (const kid of [...(s.children ?? [])].reverse()) {
 			const at = endOf(kid);
 			if (at) return at;
@@ -101,16 +103,10 @@ export const placedEnd = (roleOf: (kind: string) => { void: boolean; rendersCont
 
 /** `insertFlow`, prepared. */
 export const flowOps = (c: FlowContext) => {
-	/** A kind's roles, as placement reads them. */
-	const roleOf = (kind: string) => ({
-		void: c.roles.childless(kind),
-		island: c.roles.island(kind),
-		rendersContent: c.roles.rendersContent(kind),
-		layout: c.roles.layout(kind)
-	});
+	const roleOf = c.roles.of;
 	/** What a kind is in a table: the table, its row or its cell. */
 	const tableKind = (kind: string): 'table' | 'row' | 'cell' | undefined =>
-		c.roles.table(kind) !== undefined
+		roleOf(kind).table !== undefined
 			? 'table'
 			: c.isRowKind(kind)
 				? 'row'
@@ -226,7 +222,7 @@ export const flowOps = (c: FlowContext) => {
 			const apart = (l: FlowLine, under: BlockId | null) => {
 				const kind = l.type && fit(under, l.type);
 				const role = kind ? roleOf(kind) : undefined;
-				return !!role && (!role.rendersContent || role.void || role.island);
+				return !!role && (!role.rendersContent || role.childless || role.island);
 			};
 			// At the end of a container's header whose body shows, what follows the caret
 			// leads its children and the body stays, as Enter opens a first child

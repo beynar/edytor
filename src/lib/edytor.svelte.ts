@@ -1,4 +1,4 @@
-import { getContext, hasContext, mount, unmount } from 'svelte';
+import { getContext, hasContext, mount, unmount, type Component } from 'svelte';
 import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
@@ -63,7 +63,7 @@ import {
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
 import { canMove, move, type BlockMoveRequest } from './session/moves.js';
-import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
+import type { DocumentWrites } from './crdt/operations.js';
 import { SUGGEST_ROOT } from './crdt/schema.js';
 import { asEngineDoc } from './crdt/structs.js';
 import type {
@@ -85,6 +85,7 @@ import { DataWrites } from './session/props.js';
 import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
 import {
 	clearDomSelection,
+	focusIn,
 	getActiveElement,
 	getDomSelection,
 	getDomSelectionSnapshot
@@ -206,10 +207,6 @@ export class Edytor {
 	/** The view's handles: one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
 	/** @internal */
-	nodeToInlineBlock = new Map<Node, InlineBlock>();
-	/** @internal */
-	nodeToText = new Map<Node, Text>();
-	/** @internal */
 	transaction = new TRANSACTION();
 	/** @internal The view's keymap: consumer bindings, then the extensions', then the built-in rows. */
 	keymap: Keymap;
@@ -232,8 +229,8 @@ export class Edytor {
 		surface: {
 			park: (text, offset) => this.projector.park(text, offset),
 			flush: () => void this.surface.flush(),
-			placed: () => this.projector.placed(),
-			parked: () => this.projector.parked(),
+			placed: this.projector.placed,
+			parked: this.projector.parked,
 			clear: () => clearDomSelection(this.node),
 			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset),
 			sameLine: (a, b) => onOneLine(this.selection.textAt(a), this.selection.textAt(b))
@@ -335,7 +332,7 @@ export class Edytor {
 			() => this.document.ready,
 			() => this.document.defaultChild(null),
 			(kind) => ({
-				void: this.definitionOf(kind).void === true,
+				childless: this.definitionOf(kind).void === true,
 				rendersContent: this.document.rendersContent(kind)
 			})
 		));
@@ -443,10 +440,6 @@ export class Edytor {
 			onDocChange,
 			allowNesting
 		} = options;
-		for (const name of DOCUMENT_WRITES)
-			Object.defineProperty(this, name, {
-				value: (...args: never) => this.dispatcher.operate(name, args)
-			});
 		if (labels) this.labels = labels;
 		this.allowNesting = allowNesting === true;
 		if (document !== undefined) {
@@ -460,6 +453,11 @@ export class Edytor {
 			this.document = attachDocument(new Y.Doc(), { actor, requireHydration });
 			this.#owned = true;
 		}
+		// The writes (`DocumentWrites`): every op the document prepares, dispatched.
+		for (const name in this.document.facade.prepare)
+			Object.defineProperty(this, name, {
+				value: (...args: never) => this.dispatcher.operate(name as keyof DocumentWrites, args)
+			});
 		this.readonly = readonly || false;
 		this.onChange = onChange;
 		this.onDocChange = onDocChange;
@@ -760,18 +758,13 @@ export class Edytor {
 	 * affordances long after the gesture ended.
 	 */
 	#userInputHandlingDepth = 0;
-	#withUserInput = <A extends unknown[]>(
-		handler: (...args: A) => unknown,
-		opts: { bumpSerial?: boolean } = {}
-	) => {
+	#withUserInput = <A extends unknown[]>(handler: (...args: A) => unknown, bumpSerial = true) => {
 		return (...args: A): unknown => {
 			// Depth-counted: a synchronous wrapped listener landing inside an
 			// awaited handler's hold window must not end the window the outer
 			// handler still needs.
 			this.#userInputHandlingDepth++;
-			if (opts.bumpSerial !== false) {
-				this.markUserGesture();
-			}
+			if (bumpSerial) this.markUserGesture();
 			const clear = () => {
 				// A display the window held back gets its pass now.
 				if (--this.#userInputHandlingDepth === 0) this.projector.inputHandled();
@@ -817,12 +810,13 @@ export class Edytor {
 	 * fires (element already focused).
 	 */
 	#expectInternalFocusArmed = false;
-	/** @internal */
-	expectInternalFocus = () => {
+	/** @internal Armed, and `element` (the host, an editing host in it) focused without scrolling. */
+	expectInternalFocus = (element?: HTMLElement | null) => {
 		this.#expectInternalFocusArmed = true;
 		queueMicrotask(() => {
 			this.#expectInternalFocusArmed = false;
 		});
+		element?.focus({ preventScroll: true });
 	};
 	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
@@ -850,7 +844,7 @@ export class Edytor {
 	 */
 	lastUserGestureOutsideEditor = false;
 	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
-	userInput = <T>(body: () => T) => this.#withUserInput(body, { bumpSerial: false })();
+	userInput = <T>(body: () => T) => this.#withUserInput(body, false)();
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
@@ -860,14 +854,13 @@ export class Edytor {
 	stabilizeCompositionSelection = (text: Text, offset: number) => {
 		if (this.readonly || this.isComposing || !text.isInDocument) return;
 		const active = getActiveElement(this.node);
-		const selection = getDomSelection(this.node);
 		const ours = (node?: Node | null) => Boolean(node && this.node?.contains(node));
 		// Focus left for a foreign element with no selection of ours, or moved
 		// into a nested editable island (its own caret): the user owns it.
 		if (
 			(active &&
-				!ours(active) &&
-				!ours(selection?.anchorNode) &&
+				!focusIn(this.node) &&
+				!ours(getDomSelection(this.node)?.anchorNode) &&
 				!ours(this.selection.textRange().startText?.node)) ||
 			isKindControl(this.node, active)
 		)
@@ -955,21 +948,48 @@ export class Edytor {
 		this.lastUserGestureOutsideEditor = false;
 		this.node = node;
 		this.selection.init();
-		this.doc.on('beforeAllTransactions', this.projector.opening);
-		this.doc.on('beforeTransaction', this.surface.pending);
-		this.doc.on('beforeTransaction', this.projector.before);
-		this.doc.on('afterTransaction', this.projector.after);
+		// The engine's transaction events the projector and the observer read.
+		const engine = [
+			['beforeAllTransactions', this.projector.opening],
+			['beforeTransaction', this.surface.pending],
+			['beforeTransaction', this.projector.before],
+			['afterTransaction', this.projector.after]
+		] as const;
+		for (const [name, listener] of engine) this.doc.on(name, listener as never);
 		this.off.push(() => {
-			this.doc.off('beforeAllTransactions', this.projector.opening);
-			this.doc.off('beforeTransaction', this.surface.pending);
-			this.doc.off('beforeTransaction', this.projector.before);
-			this.doc.off('afterTransaction', this.projector.after);
+			for (const [name, listener] of engine) this.doc.off(name, listener as never);
 		});
 		// Keydown serial bumps happen INSIDE onKeyDown, after the
 		// composition-phantom swallow — a swallowed trailing Enter/Backspace
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
-		const keydown = this.#withUserInput(onKeyDown.bind(this), { bumpSerial: false });
+		const user = this.#withUserInput;
+		const keydown = user(onKeyDown.bind(this), false);
+		const { pointer } = this.selection;
+		const drop = (event: DragEvent) => preventUnsupportedDrop(event, this);
+		/** The host's listeners; the user-input ones run inside its window (`isHandlingUserInput`). */
+		const host: [string, (event: never) => unknown][] = [
+			['mousedown', pointer.preventTripleClick],
+			['click', pointer.tripleClick],
+			// Settle queued mutation repairs before the native menu opens —
+			// spellcheck suggestions are computed against the DOM at this
+			// moment (PM flushes its DOM observer on contextmenu for the
+			// same reason).
+			['contextmenu', () => void this.surface.flush()],
+			['beforeinput', user(this.onBeforeInput)],
+			// An `input` records what the browser did; it says nothing new about
+			// where the user wants the selection (a display still to land wins).
+			['input', user(this.onInput, false)],
+			['copy', this.onCopy],
+			['cut', user(this.onCut)],
+			['paste', user(this.onPaste)],
+			['dragstart', (event: DragEvent) => onTextDragStart(this, event)],
+			['dragend', () => onTextDragEnd(this)],
+			['dragover', drop],
+			['drop', user(drop)],
+			['compositionstart', this.onCompositionStart],
+			['compositionend', this.onCompositionEnd]
+		];
 		const detachSurface = this.surface.attach(node);
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
@@ -983,69 +1003,47 @@ export class Edytor {
 			...attachFocus(this, node),
 			// The page leaving for good ends the session's history.
 			attachPageHide(this),
-			on(node, 'mousedown', this.selection.pointer.preventTripleClick),
-			on(node, 'click', this.selection.pointer.tripleClick),
-			// Settle queued mutation repairs before the native menu opens —
-			// spellcheck suggestions are computed against the DOM at this
-			// moment (PM flushes its DOM observer on contextmenu for the
-			// same reason).
-			on(node, 'contextmenu', () => void this.surface.flush()),
-			on(node, 'beforeinput', this.#withUserInput(this.onBeforeInput)),
-			// An `input` records what the browser did; it says nothing new about
-			// where the user wants the selection (a display still to land wins).
-			on(node, 'input', this.#withUserInput(this.onInput, { bumpSerial: false })),
-			on(node, 'copy', this.onCopy),
-			on(node, 'cut', this.#withUserInput(this.onCut)),
-			on(node, 'paste', this.#withUserInput(this.onPaste)),
-			on(node, 'dragstart', (event: DragEvent) => onTextDragStart(this, event)),
-			on(node, 'dragend', () => onTextDragEnd(this)),
-			on(node, 'dragover', (event: DragEvent) => preventUnsupportedDrop(event, this)),
-			on(
-				node,
-				'drop',
-				this.#withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
-			),
-			on(node, 'compositionstart', this.onCompositionStart),
-			on(node, 'compositionend', this.onCompositionEnd),
+			...host.map(([type, listener]) => on(node, type, listener as EventListener)),
 			detachSurface
 		);
 
-		// Chrome lives in the overlay, outside the host: remote carets, then the plugins'.
+		// Chrome lives in the overlay, outside the host: remote carets, the
+		// text a `replace` suggestion removes, marked beside the host, the
+		// polite live region (what this view's block moves and deletes did);
+		// the plugins' after them.
 		const detachOverlay = this.overlay.attach(node);
-		const presence = mount(RemoteSelections, {
-			target: this.overlay.layer!,
-			props: { edytor: this }
-		});
-		// The text a `replace` suggestion removes, marked beside the host.
-		const ranges = mount(Ranges, {
-			target: this.overlay.layer!,
-			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }
-		});
-		// The polite live region: what this view's block moves and deletes did.
-		const live = mount(Announcer, {
-			target: this.overlay.layer!,
-			props: { announcer: this.announcer }
-		});
-		this.off.push(
-			() => unmount(presence),
-			() => unmount(ranges),
-			() => unmount(live),
-			detachOverlay
-		);
+		const target = this.overlay.layer!;
+		const mounted = (
+			[
+				[RemoteSelections, { edytor: this }],
+				[Ranges, { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }],
+				[Announcer, { announcer: this.announcer }]
+			] as [Component<never>, object][]
+		).map(([component, props]) => mount(component, { target, props: props as never }));
+		this.off.push(() => mounted.forEach((instance) => void unmount(instance)), detachOverlay);
 		this.off.push(...cleanups(this.plugins, (plugin) => plugin.onEdytorAttached?.({ node })));
 
 		return {
 			destroy: () => {
 				if (selectionIsInside(node)) clearDomSelection(node);
-				const active = getActiveElement(node);
-				if (active instanceof HTMLElement && node.contains(active)) active.blur();
-				this.selection.destroy();
-				this.attempts.clear();
-				this.composition.reset();
-				// Drain AND clear: `destroy()` runs the same batch again.
-				this.off.splice(0).forEach((off) => off());
+				const active = focusIn(node);
+				if (active instanceof HTMLElement) active.blur();
+				this.#detach();
 			}
 		};
+	};
+
+	/**
+	 * Release what an attach holds: the selection's listeners, the attempts,
+	 * the composition, then the attach-lifetime batch (DOM listeners, the
+	 * mutation observer, plugin actions), drained AND cleared (`destroy()`
+	 * runs it again).
+	 */
+	#detach = () => {
+		this.selection.destroy();
+		this.attempts.clear();
+		this.composition.reset();
+		this.off.splice(0).forEach((off) => off());
 	};
 
 	/** @internal */
@@ -1079,24 +1077,14 @@ export class Edytor {
 		this.#readinessRelease?.();
 		this.#readinessRelease = undefined;
 
-		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
-		// observer, plugin actions — and empties the array.
-		this.off.splice(0).forEach((off) => off());
+		this.#detach();
 		this.#offCommit?.();
 		this.history.unbind();
-
-		// `selectionchange` listener + the published remote caret.
-		this.selection.destroy();
-
-		this.attempts.clear();
-		this.composition.reset();
 		this.cells?.dispose();
 
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
 		// stray mutation could still reach.
 		this.idToBlock.clear();
-		this.nodeToInlineBlock.clear();
-		this.nodeToText.clear();
 		this.root = undefined;
 		this.node = undefined;
 

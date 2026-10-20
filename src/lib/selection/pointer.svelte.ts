@@ -123,8 +123,7 @@ export class SelectionPointer {
 
 	#trailing = () => {
 		const { edytor } = this.selection;
-		edytor.expectInternalFocus();
-		edytor.node?.focus({ preventScroll: true });
+		edytor.expectInternalFocus(edytor.node);
 		toTrailingParagraph(edytor);
 	};
 
@@ -206,8 +205,7 @@ export class SelectionPointer {
 		const x = Math.min(Math.max(at.clientX, box.left + 1), box.right - 1);
 		const point = this.#pointAt(x, at.clientY);
 		if (!point) return;
-		edytor.expectInternalFocus();
-		host.focus({ preventScroll: true });
+		edytor.expectInternalFocus(host);
 		this.selection.selectText(point.text, point.offset);
 	};
 
@@ -237,8 +235,7 @@ export class SelectionPointer {
 		// The model answers this press: the browser's own caret placement on
 		// the chrome is cancelled (a canceled pointerdown moves no selection).
 		event.preventDefault();
-		this.selection.edytor.expectInternalFocus();
-		this.selection.edytor.node?.focus({ preventScroll: true });
+		this.selection.edytor.expectInternalFocus(this.selection.edytor.node);
 		this.selection.selectText(targetText, 0);
 	};
 
@@ -258,8 +255,7 @@ export class SelectionPointer {
 		// The model answers it: no native caret, focus or selection; no text drag (`claimed`).
 		event.preventDefault();
 		this.claimed = true;
-		edytor.expectInternalFocus();
-		edytor.node?.focus({ preventScroll: true });
+		edytor.expectInternalFocus(edytor.node);
 		// On the line of its text (a caption's, beside the text): the caret at the nearest point there.
 		const target =
 			event.target instanceof Element && event.target !== block.node ? event.target : null;

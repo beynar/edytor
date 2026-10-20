@@ -1,0 +1,312 @@
+From 7fa45a73385e8716477241691ec8aa131456685e Mon Sep 17 00:00:00 2001
+From: x <x@x>
+Date: Mon, 19 Oct 2026 23:14:00 +0200
+Subject: [PATCH 3/3] proto B: selection writers in block-offset points
+ (scoped)
+
+---
+ src/lib/clipboard/moveText.ts         | 12 ++---
+ src/lib/selection/replaceSelection.ts |  8 +---
+ src/lib/selection/selection.svelte.ts | 69 ++++++++++++++++-----------
+ src/lib/session/commands.ts           | 21 ++++----
+ src/lib/session/navigation.ts         |  7 ++-
+ src/lib/session/selection.ts          |  7 +++
+ 6 files changed, 65 insertions(+), 59 deletions(-)
+
+diff --git a/src/lib/clipboard/moveText.ts b/src/lib/clipboard/moveText.ts
+index 3b4953b..9e505ba 100644
+--- a/src/lib/clipboard/moveText.ts
++++ b/src/lib/clipboard/moveText.ts
+@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
+ import type { Flow } from '$lib/crdt/flow.js';
+ import type { Prepared } from '$lib/crdt/edytor-doc.js';
+ import type { DocAnchor } from '$lib/crdt/index.js';
+-import type { Text } from '$lib/text/text.svelte.js';
+ import { project, type SelectionPoint, type SelectionValue } from '$lib/session/selection.js';
+ import { viewOf } from '$lib/selection/visibility.js';
+ import { flowOfFragment } from './insertClipboardFragment.js';
+@@ -110,14 +109,11 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
+ 	);
+ 	if (dispatcher.last?.status !== 'applied' || !placed.to) return keep();
+ 	/** The text and offset an anchor resolves to. */
+-	const point = (anchor: DocAnchor | null | undefined): [Text | null, number] => {
++	const point = (anchor: DocAnchor | null | undefined): SelectionPoint | null => {
+ 		const hit = anchor && facade.resolveAnchor(anchor);
+-		const at = hit && edytor.idToBlock.get(hit.blockId)?.textAtOffset(hit.offset);
+-		return at ? [at.text, at.offset] : [null, 0];
++		return hit && edytor.idToBlock.has(hit.blockId) ? { block: hit.blockId, offset: hit.offset } : null;
+ 	};
+-	const [startText, startOffset] = point(placed.from);
+-	const [endText, endOffset] = point(placed.to);
+-	if (startText && endText) edytor.selection.selectText(startText, startOffset, endText, endOffset);
+-	else if (endText) edytor.selection.selectText(endText, endOffset);
++	const [from, at] = [point(placed.from), point(placed.to)];
++	if (at) edytor.selection.selectAt(from ?? at, at);
+ 	return true;
+ };
+diff --git a/src/lib/selection/replaceSelection.ts b/src/lib/selection/replaceSelection.ts
+index c221786..3d3daa5 100644
+--- a/src/lib/selection/replaceSelection.ts
++++ b/src/lib/selection/replaceSelection.ts
+@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
+ import { Text } from '$lib/text/text.svelte.js';
+ import type { OpResult } from '$lib/crdt/edytor-doc.js';
+ import { id, vetoable } from '$lib/utils.js';
+-import { blockSelection, noSelection } from '$lib/session/selection.js';
++import { blockSelection, noSelection, pointOf } from '$lib/session/selection.js';
+ import { hidden, selectedMembers, shown } from './visibility.js';
+ 
+ export type SelectionInsertionTarget = {
+@@ -246,11 +246,7 @@ const deleteRange = (
+ ): SelectionInsertionTarget | null => {
+ 	const { startText, endText, yStart, yEnd } = selection ?? edytor.selection.textRange();
+ 	if (!startText || !endText) return null;
+-	const at = (text: Text, offset: number) => ({
+-		block: text.parent.id,
+-		offset: text.segStart + offset
+-	});
+-	const [from, to] = [at(startText, yStart), at(endText, yEnd)];
++	const [from, to] = [pointOf(startText, yStart), pointOf(endText, yEnd)];
+ 	const result = replace ? edytor.replaceRange(from, to) : edytor.deleteRange(from, to);
+ 	if (result.status === 'refused')
+ 		return result.reason === 'view' ? null : { text: startText, offset: yStart };
+diff --git a/src/lib/selection/selection.svelte.ts b/src/lib/selection/selection.svelte.ts
+index b6dc54c..1ccc46b 100644
+--- a/src/lib/selection/selection.svelte.ts
++++ b/src/lib/selection/selection.svelte.ts
+@@ -35,6 +35,7 @@ import {
+ 	atomSelection,
+ 	blockSelection,
+ 	noSelection,
++	pointOf,
+ 	project,
+ 	sameEnds,
+ 	sameValue,
+@@ -358,8 +359,7 @@ export class EdytorSelection {
+ 	 * shows no text (a divider) keeps the current value. Displayed after the flush.
+ 	 */
+ 	setCaret = (caret: Caret | null | undefined) => {
+-		const at = caret && caret.block.textAtOffset(Math.max(0, caret.offset));
+-		if (at) this.selectText(at.text, at.offset);
++		if (caret) this.selectAt({ block: caret.block.id, offset: Math.max(0, caret.offset) });
+ 	};
+ 
+ 	/** The marks the next insertion at the caret takes (values kept). */
+@@ -471,10 +471,26 @@ export class EdytorSelection {
+ 	};
+ 
+ 	/**
+-	 * A text value from wrapper endpoints (offsets inside text segments):
+-	 * the start binds right (boundary inserts stay outside), the end and a
+-	 * caret bind left; `none` when the start text is not bound to the document.
++	 * A text value from block-offset points (an inline atom counting 1): the
++	 * start binds right (boundary inserts stay outside), the end and a caret
++	 * bind left; `none` when the start does not anchor (the root, an unknown block).
+ 	 */
++	valueAt = (
++		start: SelectionPoint,
++		end = start,
++		isReversed = false,
++		startAffinity?: 'left' | 'right'
++	): SelectionValue => {
++		const { facade } = this.edytor;
++		const collapsed = start.block === end.block && start.offset === end.offset;
++		const a = facade.anchorAt(start.block, start.offset, startAffinity ?? (collapsed ? 'left' : 'right'));
++		if (!a) return noSelection;
++		if (collapsed) return textSelection(a);
++		const b = facade.anchorAt(end.block, end.offset, 'left') ?? a;
++		return isReversed ? textSelection(b, a) : textSelection(a, b);
++	};
++
++	/** {@link valueAt} from offsets inside text segments. */
+ 	textValue = (
+ 		startText: Text,
+ 		yStart: number,
+@@ -482,14 +498,19 @@ export class EdytorSelection {
+ 		yEnd: number = yStart,
+ 		isReversed = false,
+ 		startAffinity?: 'left' | 'right'
+-	): SelectionValue => {
+-		const mint = this.createTextAnchor;
+-		const collapsed = startText === endText && yStart === yEnd;
+-		const start = mint(startText, yStart, startAffinity ?? (collapsed ? 'left' : 'right'));
+-		if (!start) return noSelection;
+-		if (collapsed) return textSelection(start);
+-		const end = mint(endText, yEnd, 'left') ?? start;
+-		return isReversed ? textSelection(end, start) : textSelection(start, end);
++	): SelectionValue =>
++		this.valueAt(pointOf(startText, yStart), pointOf(endText, yEnd), isReversed, startAffinity);
++
++	/**
++	 * Select from `start` to `end` (block offsets, a caret by default;
++	 * `isReversed` makes the end the anchor), else the seam of the start's
++	 * block. The projector displays it after the flush.
++	 * @internal
++	 */
++	selectAt = (start: SelectionPoint, end = start, isReversed = false) => {
++		const value = this.valueAt(start, end, isReversed);
++		const target = project(value, this.edytor.facade).start ? value : this.#seamValue(start.block);
++		if (target) this.select(target);
+ 	};
+ 
+ 	/**
+@@ -510,18 +531,9 @@ export class EdytorSelection {
+ 		isReversed = false
+ 	) => {
+ 		if (!startText || !endText) return;
+-		const at = (text: Text, offset: number) => Math.min(Math.max(offset, 0), text.length);
+-		const value = this.textValue(
+-			startText,
+-			at(startText, yStart),
+-			endText,
+-			at(endText, yEnd),
+-			isReversed
+-		);
+-		const target = project(value, this.edytor.facade).start
+-			? value
+-			: this.#seamValue(startText.parent?.id ?? null);
+-		if (target) this.select(target);
++		const at = (text: Text, offset: number) =>
++			pointOf(text, Math.min(Math.max(offset, 0), text.length));
++		this.selectAt(at(startText, yStart), at(endText, yEnd), isReversed);
+ 	};
+ 
+ 	/**
+@@ -574,8 +586,7 @@ export class EdytorSelection {
+ 		const value = this.value;
+ 		if (value.kind !== 'atom') return;
+ 		const { start } = this.projection;
+-		const before = start && this.textAt(start);
+-		this.select(before ? this.textValue(before.text, before.offset) : noSelection);
++		this.select(start ? this.valueAt(start) : noSelection);
+ 	};
+ 	selectInlineBlock = (inlineBlock: InlineBlock, from: AtomSide = 'before') => {
+ 		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id, from));
+@@ -791,8 +802,8 @@ export class EdytorSelection {
+ 		offset: number,
+ 		affinity: 'left' | 'right' = 'left'
+ 	): TextAnchor | null => {
+-		if (text.parent.isRoot) return null;
+-		return this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, affinity);
++		const { block, offset: at } = pointOf(text, offset);
++		return this.edytor.facade.anchorAt(block, at, affinity);
+ 	};
+ 
+ 	/**
+diff --git a/src/lib/session/commands.ts b/src/lib/session/commands.ts
+index c248cff..4e256e8 100644
+--- a/src/lib/session/commands.ts
++++ b/src/lib/session/commands.ts
+@@ -24,6 +24,7 @@ import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$l
+ import type { SelectionValue } from '$lib/session/selection.js';
+ import type { Text } from '$lib/text/text.svelte.js';
+ import type { Caret } from '$lib/selection/selection.svelte.js';
++import { pointOf } from './selection.js';
+ import { viewOf } from '$lib/selection/visibility.js';
+ import { reveal } from '$lib/selection/replaceSelection.js';
+ import { DEV } from 'esm-env';
+@@ -577,8 +578,7 @@ export class Dispatcher {
+ 		const result = suggested?.result ?? facade.apply(plan);
+ 		for (const [id, hook] of touched) this.request(id, hook);
+ 		if (typed) selection.stage(undefined);
+-		const after = atom ? caret!.block.textAtOffset(caret!.offset + 1) : null;
+-		const value = after ? selection.textValue(after.text, after.offset) : null;
++		const value = atom ? selection.valueAt({ block: caret!.block.id, offset: caret!.offset + 1 }) : null;
+ 		if (value?.kind === 'text') selection.select(Object.freeze({ ...value, pending }));
+ 		for (const id of plan.effect.moves) {
+ 			const block = idToBlock.get(id);
+@@ -651,19 +651,16 @@ export class Dispatcher {
+ 	caret = (caret: Caret | DocPosition | null | undefined, ops?: () => OpResult) => {
+ 		const block =
+ 			typeof caret?.block === 'string' ? this.edytor.idToBlock.get(caret.block) : caret?.block;
+-		const at = block?.textAtOffset(Math.max(0, caret!.offset));
+-		return this.caretIn(at?.text, at?.offset ?? 0, ops);
++		return this.#caretAt(block && { block: block.id, offset: Math.max(0, caret!.offset) }, ops);
+ 	};
+ 
+ 	/** @internal `caret` at an offset inside a text segment. */
+-	caretIn = (
+-		text: Text | null | undefined,
+-		offset: number,
+-		ops?: () => OpResult
+-	): OpResult | undefined => {
++	caretIn = (text: Text | null | undefined, offset: number, ops?: () => OpResult) =>
++		this.#caretAt(text && pointOf(text, Math.max(0, Math.min(offset, text.length))), ops);
++
++	#caretAt = (point: DocPosition | null | undefined, ops?: () => OpResult): OpResult | undefined => {
+ 		const selection = this.edytor.selection;
+-		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
+-		const value = text ? selection.textValue(text, at) : null;
++		const value = point ? selection.valueAt(point) : null;
+ 		let out: OpResult | undefined;
+ 		if (ops) {
+ 			const outer = this.authoring;
+@@ -675,7 +672,7 @@ export class Dispatcher {
+ 			}
+ 			if (out.status === 'refused') return out;
+ 		}
+-		if (!text || !value || value.kind === 'none') return out;
++		if (!value || value.kind === 'none') return out;
+ 		selection.select(value);
+ 		// Declared before its operations: gone with them after all, the seam.
+ 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
+diff --git a/src/lib/session/navigation.ts b/src/lib/session/navigation.ts
+index f721302..a5a0038 100644
+--- a/src/lib/session/navigation.ts
++++ b/src/lib/session/navigation.ts
+@@ -34,6 +34,7 @@ import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/repl
+ import type { HotKey } from './keymap.js';
+ import {
+ 	atomSelection,
++	pointOf,
+ 	segmentsOf,
+ 	type SelectionPoint,
+ 	type SelectionValue
+@@ -125,8 +126,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
+ 			: null;
+ 	if (atom?.kind === 'inline')
+ 		return selection.select(atomSelection(start.block, atom.id, order > 0 ? 'after' : 'before'));
+-	const [from, to] = [selection.textAt(start), selection.textAt(end)];
+-	if (from && to) selection.selectText(from.text, from.offset, to.text, to.offset, order > 0);
++	selection.selectAt(start, end, order > 0);
+ };
+ 
+ /**
+@@ -154,8 +154,7 @@ export const move = (
+ 		const first = blocks.map((block) => shownText(block, 'first')).find(Boolean);
+ 		const last = blocks.map((block) => shownText(block, 'last')).findLast(Boolean);
+ 		if (first && last) {
+-			start = { block: first.blockId, offset: first.segStart };
+-			end = { block: last.blockId, offset: last.segStart + last.length };
++			[start, end] = [pointOf(first, 0), pointOf(last, last.length)];
+ 		}
+ 		// Voids alone show no line: the blocks stay selected, except for the
+ 		// document keys, whose target is the document's edge (`select` moves
+diff --git a/src/lib/session/selection.ts b/src/lib/session/selection.ts
+index e7bf732..ccd9b93 100644
+--- a/src/lib/session/selection.ts
++++ b/src/lib/session/selection.ts
+@@ -17,6 +17,7 @@ import type { BlockId, ContentRun } from '$lib/crdt/index.js';
+ import { partsOf, segmentAt } from '$lib/crdt/parts.js';
+ import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
+ import { jsonEquals } from '$lib/utils/json.js';
++import type { Text } from '$lib/text/text.svelte.js';
+ 
+ export type Marks = Record<string, unknown>;
+ 
+@@ -62,6 +63,12 @@ export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
+ /** A position within one document version: block id + display offset (an atom counts 1). */
+ export type SelectionPoint = { block: BlockId; offset: number };
+ 
++/** A point inside a text segment (its block's `ordinal`-th) as a block-offset point. */
++export const pointOf = (text: Text, offset: number): SelectionPoint => ({
++	block: text.blockId,
++	offset: text.segStart + offset
++});
++
+ type TextRun = Extract<ContentRun, { kind: 'text' }>;
+ 
+ /** One content part of a block: a text segment (between atoms, possibly empty) or an inline atom. */
+-- 
+2.50.1 (Apple Git-155)
+

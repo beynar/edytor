@@ -165,18 +165,8 @@ export const createCells = (
 
 // ── segments and render deltas ──────────────────────────────────────────
 
-export const START = 'start';
-
-type TextRun = Extract<ContentRun, { kind: 'text' }>;
-
-/** The text between two inline atoms (or a content edge), keyed causally. */
-export type Segment = {
-	readonly kind: 'text';
-	/** The id of the atom before this segment, or {@link START}. */
-	readonly key: string;
-	readonly text: string;
-	readonly runs: readonly TextRun[];
-};
+export { START, partsOf, type Segment, type AtomPart, type Part } from '../crdt/parts.js';
+import { partsOf, type Segment } from '../crdt/parts.js';
 
 /** A suggestion's block as a cell (`components/Suggestion`): rendered like one, never registered. */
 export type PreviewCell = Omit<Cell, 'childIds'> & { readonly children: readonly PreviewCell[] };
@@ -195,54 +185,6 @@ export const previewCells = (blocks: readonly JSONBlock[], key: string): Preview
 			children: Object.freeze(previewCells(block.children ?? [], id))
 		});
 	});
-
-export type AtomPart = {
-	readonly kind: 'inline';
-	readonly key: string;
-	readonly id: string;
-	readonly type: string;
-	readonly data: Data;
-};
-
-export type Part = Segment | AtomPart;
-
-const partsMemo = new WeakMap<readonly ContentRun[], readonly Part[]>();
-
-/**
- * A cell's content as segments and atoms, alternating, starting and ending
- * with a segment (an empty content is one empty `start` segment).
- */
-export const partsOf = (runs: readonly ContentRun[]): readonly Part[] => {
-	const memo = partsMemo.get(runs);
-	if (memo) return memo;
-	const parts: Part[] = [];
-	let key = START;
-	let segment: TextRun[] = [];
-	const close = () =>
-		parts.push(
-			Object.freeze({
-				kind: 'text' as const,
-				key,
-				text: segment.map((run) => run.text).join(''),
-				runs: Object.freeze(segment)
-			})
-		);
-	for (const run of runs) {
-		if (run.kind === 'text') {
-			segment.push(run);
-			continue;
-		}
-		close();
-		parts.push(
-			Object.freeze({ kind: 'inline', key: run.id, id: run.id, type: run.type, data: run.data })
-		);
-		key = run.id;
-		segment = [];
-	}
-	close();
-	partsMemo.set(runs, Object.freeze(parts));
-	return parts;
-};
 
 /** Whether a view renders mark `name` (its record has a tag or a snippet): an unknown mark renders its text only. */
 export const rendersMark = (

@@ -1,0 +1,197 @@
+diff --git a/src/lib/crdt/document.ts b/src/lib/crdt/document.ts
+index 4e3c5da..eeed857 100644
+--- a/src/lib/crdt/document.ts
++++ b/src/lib/crdt/document.ts
+@@ -144,7 +144,7 @@ import { DEV } from 'esm-env';
+ import { Y } from './engine.js';
+ import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
+ import { asEngineDoc } from './structs.js';
+-import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
++import type { DocumentOperations } from './operations.js';
+ import { propsProxy } from './props.js';
+ import {
+ 	bindAttribution,
+@@ -537,10 +537,12 @@ export class EdytorDocument {
+ 		});
+ 		// The document's own operations (`DocumentOperations`): the bound
+ 		// facade's, read through so each call reaches the live binding.
+-		for (const name of DOCUMENT_OPERATIONS) {
+-			if (name === 'transact') continue;
+-			Object.defineProperty(this, name, { get: () => this.facade[name], configurable: true });
+-		}
++		for (const name in this.facade.api)
++			if (name !== 'transact')
++				Object.defineProperty(this, name, {
++					get: () => this.facade[name as keyof DocFacade],
++					configurable: true
++				});
+ 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
+ 		this.#ownsAwareness = init.awareness === undefined;
+ 		this.#historyOptions = init.history;
+diff --git a/src/lib/crdt/edytor-doc.ts b/src/lib/crdt/edytor-doc.ts
+index 676402c..61d2a2f 100644
+--- a/src/lib/crdt/edytor-doc.ts
++++ b/src/lib/crdt/edytor-doc.ts
+@@ -407,35 +407,13 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			(id: I, ...rest: A): R =>
+ 				f(ref(id), ...rest);
+ 
+-		const facade = {
+-			// lifecycle
+-			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
+-			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
+-			seed: (value: JSONBlock[], data?: JsonObj) =>
+-				write(() => seed(doc, value, defaultType, data)),
+-			isInitialized: () => isInitialized(doc),
+-			/** Replicated `meta.v` schema version (the module-level read, bound). */
+-			schemaVersion: () => schemaVersion(doc),
+-			/**
+-			 * The schema gate for this doc — throws {@link SchemaMismatchError}
+-			 * on unversioned-content or unsupported-version state. Consumers
+-			 * (`Edytor.sync()`, packed consumers) call it before trusting
+-			 * a synced doc.
+-			 */
+-			checkSchema: () => checkSchema(doc),
+-			assertSchema: () => assertSchema(doc),
+-			dispose,
+-			createUndoManager,
+-			/** @internal The shared suggestions (`doc/suggest.ts`): a view's `edytor.suggestions` reads them. */
+-			suggest,
++		/** The public operations (`DocumentOperations`): what an `EdytorDocument` forwards. */
++		const api = {
+ 			// reads — every id argument normalizes at ingress
+ 			project: () => project(doc),
+ 			toJSON,
+ 			blockJSON: byRef(blockJSON),
+ 			childrenIds: byRef(childrenIds),
+-			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
+-			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
+-			slotOf: byRef(slotOf),
+ 			positionOf: byRef(positionOf),
+ 			pathOf: byRef(pathOf),
+ 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
+@@ -455,8 +433,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			blockAttribution: byRef((id: BlockId): BlockAttribution | undefined =>
+ 				blockAttributionOf(doc, id)
+ 			),
+-			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
+-			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
+ 			displayLength: byRef(displayLength),
+ 			contentItems: byRef(contentItems),
+ 			hasBlock: byRef(hasBlock),
+@@ -468,10 +444,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			// caret anchors — backing-text-bound selection endpoints
+ 			anchorAt: byRef(anchorAt),
+ 			resolveAnchor,
+-			followUndo,
+-			// roles
+-			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
+-			rolesChanged: () => runsView.roles(roles),
+ 			isVoid: byRef(isVoid),
+ 			isIsland: byRef(isIsland),
+ 			isLines: byRef(isLines),
+@@ -511,10 +483,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			/** Where a block of `kind` at `id`'s place lands, and the containers it leaves (`liftOut`). */
+ 			landingOf: (id: BlockId, kind: string, after?: boolean) =>
+ 				landingOf(ref(id), ref(kind), after),
+-			defaultChild: byRef(defaultChild),
+ 			// maintained runs (bound to this doc)
+ 			runs: byRef(runsView.runs),
+-			contentJSON: byRef(runsView.contentJSON),
+ 			// events
+ 			onChange,
+ 			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`
+@@ -527,10 +497,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			// transactions (composed ops already run in one; expose for callers
+ 			// that batch several ops into one undo step / one event)
+ 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),
+-			// escape hatch for the history and debugging — the bound engine layers.
+-			model: layers.model as L['model'],
+-			text: layers.text as L['text'],
+-			runsView,
+ 			// ── model-state version ─────────────────────────────
+ 			/**
+ 			 * The index version — bumps on every fold that changed derived
+@@ -543,6 +509,47 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 				return runsView.version() + suggest.version();
+ 			}
+ 		};
++		const internal = {
++			// lifecycle
++			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
++			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
++			seed: (value: JSONBlock[], data?: JsonObj) =>
++				write(() => seed(doc, value, defaultType, data)),
++			isInitialized: () => isInitialized(doc),
++			/** Replicated `meta.v` schema version (the module-level read, bound). */
++			schemaVersion: () => schemaVersion(doc),
++			/**
++			 * The schema gate for this doc — throws {@link SchemaMismatchError}
++			 * on unversioned-content or unsupported-version state. Consumers
++			 * (`Edytor.sync()`, packed consumers) call it before trusting
++			 * a synced doc.
++			 */
++			checkSchema: () => checkSchema(doc),
++			assertSchema: () => assertSchema(doc),
++			dispose,
++			createUndoManager,
++			/** @internal The shared suggestions (`doc/suggest.ts`): a view's `edytor.suggestions` reads them. */
++			suggest,
++			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
++			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
++			slotOf: byRef(slotOf),
++			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
++			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
++			followUndo,
++			// roles
++			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
++			rolesChanged: () => runsView.roles(roles),
++			defaultChild: byRef(defaultChild),
++			contentJSON: byRef(runsView.contentJSON),
++			// escape hatch for the history and debugging — the bound engine layers.
++			model: layers.model as L['model'],
++			text: layers.text as L['text'],
++			runsView,
++			/** The public members, by name (`EdytorDocument` forwards them). */
++			api
++		};
++		const facade = Object.defineProperties(internal, Object.getOwnPropertyDescriptors(api)) as
++			typeof internal & typeof api;
+ 		return facade;
+ 	};
+ };
+diff --git a/src/lib/edytor.svelte.ts b/src/lib/edytor.svelte.ts
+index 22c40a2..3b90049 100644
+--- a/src/lib/edytor.svelte.ts
++++ b/src/lib/edytor.svelte.ts
+@@ -63,7 +63,7 @@ import {
+ 	type PresenceOptions
+ } from '$lib/collaboration/awarenessSelection.js';
+ import { canMove, move, type BlockMoveRequest } from './session/moves.js';
+-import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
++import type { DocumentWrites } from './crdt/operations.js';
+ import type {
+ 	Plugin,
+ 	InitializedPlugin,
+@@ -441,10 +441,6 @@ export class Edytor {
+ 			onDocChange,
+ 			allowNesting
+ 		} = options;
+-		for (const name of DOCUMENT_WRITES)
+-			Object.defineProperty(this, name, {
+-				value: (...args: never) => this.dispatcher.operate(name, args)
+-			});
+ 		if (labels) this.labels = labels;
+ 		this.allowNesting = allowNesting === true;
+ 		if (document !== undefined) {
+@@ -458,6 +454,10 @@ export class Edytor {
+ 			this.document = attachDocument(new Y.Doc(), { actor, requireHydration });
+ 			this.#owned = true;
+ 		}
++		for (const name in this.document.facade.prepare)
++			Object.defineProperty(this, name, {
++				value: (...args: never) => this.dispatcher.operate(name as keyof DocumentWrites, args)
++			});
+ 		this.readonly = readonly || false;
+ 		this.onChange = onChange;
+ 		this.onDocChange = onDocChange;

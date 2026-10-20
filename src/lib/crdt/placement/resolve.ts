@@ -25,6 +25,7 @@ import {
 	type Unit
 } from './slots.js';
 import { DEAD, type Owner } from '../text/model.js';
+import { compareIds } from './keys.js';
 import type { BlockId } from './model.js';
 
 /** A block's home slot: the owner of the sequence holding it (`null`: the root) and its unit. */
@@ -209,7 +210,7 @@ export const cycleThrough = (
 export const byTail = (
 	a: { id: BlockId; stamp: Stamp },
 	b: { id: BlockId; stamp: Stamp }
-): number => cmpStamp(a.stamp, b.stamp) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+): number => cmpStamp(a.stamp, b.stamp) || compareIds(a.id, b.id);
 
 /**
  * The home slot of block `id` among the slots naming its registry id

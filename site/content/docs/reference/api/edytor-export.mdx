@@ -131,12 +131,12 @@ The equation plugin's forms.
 declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
+            lines?: boolean;
             itemKind?: string;
             island?: boolean;
             defaultChild?: string;
             rendersContent: boolean;
             void: boolean;
-            lines?: boolean;
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
             markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;
             plain?: (block: JSONBlock, content: string, children: string) => string;

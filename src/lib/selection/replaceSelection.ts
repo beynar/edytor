@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { OpResult } from '$lib/crdt/edytor-doc.js';
 import { id, vetoable } from '$lib/utils.js';
-import { blockSelection, noSelection } from '$lib/session/selection.js';
+import { blockSelection, noSelection, pointOf } from '$lib/session/selection.js';
 import { hidden, selectedMembers, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
@@ -246,11 +246,7 @@ const deleteRange = (
 ): SelectionInsertionTarget | null => {
 	const { startText, endText, yStart, yEnd } = selection ?? edytor.selection.textRange();
 	if (!startText || !endText) return null;
-	const at = (text: Text, offset: number) => ({
-		block: text.parent.id,
-		offset: text.segStart + offset
-	});
-	const [from, to] = [at(startText, yStart), at(endText, yEnd)];
+	const [from, to] = [pointOf(startText, yStart), pointOf(endText, yEnd)];
 	const result = replace ? edytor.replaceRange(from, to) : edytor.deleteRange(from, to);
 	if (result.status === 'refused')
 		return result.reason === 'view' ? null : { text: startText, offset: yStart };

@@ -1,0 +1,790 @@
+diff --git a/src/lib/crdt/doc/capability.ts b/src/lib/crdt/doc/capability.ts
+index 88f3a50..abfc699 100644
+--- a/src/lib/crdt/doc/capability.ts
++++ b/src/lib/crdt/doc/capability.ts
+@@ -44,7 +44,6 @@ import type { DocBase, DocReads } from './reads.js';
+ export const docCapability = (c: DocBase & DocReads) => {
+ 	const {
+ 		roles,
+-		rendersContentOf,
+ 		view,
+ 		blockTypeOf,
+ 		childrenIds,
+@@ -105,7 +104,7 @@ export const docCapability = (c: DocBase & DocReads) => {
+ 	 * A container: a block that shows only its children — no content of
+ 	 * its own, neither void nor an island (a list, a table row, a column).
+ 	 */
+-	const isContainer = (id: BlockId): boolean => !rendersContent(id) && !isVoid(id) && !isIsland(id);
++	const isContainer = (id: BlockId): boolean => roles.of(blockTypeOf(id) ?? '').container;
+ 	/**
+ 	 * THE container rule: may a block of `kind` sit directly
+ 	 * under `parent` (`null` = the root)? A container whose default child is
+@@ -128,15 +127,10 @@ export const docCapability = (c: DocBase & DocReads) => {
+ 		parent === null || fitsIn(blockTypeOf(parent) ?? '', kind);
+ 	/** `fits`, by the parent's kind (a block not written yet: `placeBeside`'s new item). */
+ 	const fitsIn = (parentType: string, kind: string | undefined): boolean => {
+-		if (!roles.container(parentType)) return true;
+-		const item = roles.defaultChild(parentType);
+-		if (item === defaultChild(null) || kind === item) return true;
+-		return (
+-			kind !== undefined &&
+-			roles.container(kind) &&
+-			roles.defaultChild(kind) === item &&
+-			rendersContentOf(item)
+-		);
++		const { container, child: item } = roles.of(parentType);
++		if (!container || item === defaultChild(null) || kind === item) return true;
++		const k = kind === undefined ? undefined : roles.of(kind);
++		return k?.container === true && k.child === item && roles.of(item).rendersContent;
+ 	};
+ 	/**
+ 	 * `kind`, or — where a plain block (the document's default kind, or
+@@ -153,7 +147,7 @@ export const docCapability = (c: DocBase & DocReads) => {
+ 	const fitted = (parent: BlockId | null, kind: string | undefined): string | undefined => {
+ 		if (fits(parent, kind) || (kind !== undefined && kind !== defaultChild(null))) return kind;
+ 		const item = defaultChild(parent);
+-		return rendersContentOf(item) ? item : kind;
++		return roles.of(item).rendersContent ? item : kind;
+ 	};
+ 	/** A container that goes once it loses every child: it holds no text of its own (a peer's retype can leave some, hidden: it renders none). */
+ 	const emptiable = (id: BlockId): boolean => isContainer(id) && displayLength(id) === 0;
+@@ -198,11 +192,11 @@ export const docCapability = (c: DocBase & DocReads) => {
+ 	};
+ 
+ 	/** `id`'s shown kind renders its content. */
+-	const rendersContent = (id: BlockId): boolean => rendersContentOf(blockTypeOf(id) ?? '');
++	const rendersContent = (id: BlockId): boolean => roles.of(blockTypeOf(id) ?? '').rendersContent;
+ 
+ 	/** The adopted default child type under `parent` (`null` = the root). */
+ 	const defaultChild = (parent: BlockId | null): string =>
+-		roles.defaultChild(parent === null ? null : (blockTypeOf(parent) ?? null));
++		roles.of(parent === null ? null : (blockTypeOf(parent) ?? null)).child;
+ 	/**
+ 	 * The kind a new block copies from `id` (a split tail, a flow's tail,
+ 	 * a duplicate and each of its descendants). A type a peer's retype is
+diff --git a/src/lib/crdt/doc/layout.ts b/src/lib/crdt/doc/layout.ts
+index ba89a2c..9828f73 100644
+--- a/src/lib/crdt/doc/layout.ts
++++ b/src/lib/crdt/doc/layout.ts
+@@ -40,8 +40,8 @@ export const layoutOps = (c: OpsContext) => {
+ 
+ 	/** The layout kind a new layout takes: `kind` when it is one, else the only one the roles declare. */
+ 	const layoutKind = (kind?: string): string | undefined => {
+-		if (kind !== undefined) return roles.layout(kind) === undefined ? undefined : kind;
+-		const kinds = [...roles.layoutKinds()];
++		if (kind !== undefined) return roles.of(kind).layout === undefined ? undefined : kind;
++		const kinds = roles.declared().layouts;
+ 		return kinds.length === 1 ? kinds[0] : undefined;
+ 	};
+ 	/** A fresh empty block of `type`. */
+@@ -127,7 +127,7 @@ export const layoutOps = (c: OpsContext) => {
+ 			}
+ 		}
+ 		const wrap = layout === null ? layoutKind(kind && ref(kind)) : blockTypeOf(layout);
+-		const item = wrap === undefined ? undefined : roles.layout(wrap);
++		const item = wrap === undefined ? undefined : roles.of(wrap).layout;
+ 		if (wrap === undefined || item === undefined) return REFUSED;
+ 		if (moved.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
+ 		if (layout !== null && (isIsland(layout) || insideIsland(layout, v))) return REFUSED;
+@@ -179,12 +179,12 @@ export const layoutOps = (c: OpsContext) => {
+ 		if (blocks.some((id) => positionOf(id)!.parent !== parent)) return REFUSED;
+ 		if (blocks.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
+ 		const wrap = layoutKind(kind && ref(kind));
+-		const item = wrap === undefined ? undefined : roles.layout(wrap);
++		const item = wrap === undefined ? undefined : roles.of(wrap).layout;
+ 		if (wrap === undefined || item === undefined || !fits(parent, wrap)) return REFUSED;
+ 		if (parent !== null && (insideItem(parent, v) || isIsland(parent) || insideIsland(parent, v)))
+ 			return REFUSED;
+ 		if (blocks.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
+-		const fill = roles.defaultChild(item);
++		const fill = roles.of(item).child;
+ 		if (columns > blocks.length && !fitsIn(item, fill)) return REFUSED;
+ 		const ordered = blocks.toSorted((a, b) => positionOf(a)!.index - positionOf(b)!.index);
+ 		const items = Array.from({ length: columns }, (_, i) =>
+diff --git a/src/lib/crdt/doc/meta.ts b/src/lib/crdt/doc/meta.ts
+index 9549bad..be23ad4 100644
+--- a/src/lib/crdt/doc/meta.ts
++++ b/src/lib/crdt/doc/meta.ts
+@@ -32,7 +32,7 @@ export const metaOps = (c: OpsContext) => {
+ 		blockDataOf,
+ 		childrenIds,
+ 		positionOf,
+-		is,
++		isLines,
+ 		isVoid,
+ 		displayLength,
+ 		live,
+@@ -120,18 +120,17 @@ export const metaOps = (c: OpsContext) => {
+ 		const moved = kids.get(id) ?? [];
+ 		// A code block retyped to an ordinary kind keeps its lines as that kind's children
+ 		// (`leavingIsland`: never a kind that hides their text).
+-		const lined = is(id, (t) => roles.line(t) !== undefined);
+-		if (lined && !roles.island(type) && !roles.childless(type)) {
+-			const to = roles.defaultChild(type);
++		const to = roles.of(type);
++		if (isLines(id) && !to.island && !to.childless) {
+ 			return [
+ 				...steps,
+ 				...moved.flatMap((k) => {
+-					const kind = leavingIsland(id, blockTypeOf(k.id), to);
++					const kind = leavingIsland(id, blockTypeOf(k.id), to.child);
+ 					return kind === undefined ? [] : attr(k.id, TYPE, kind);
+ 				})
+ 			];
+ 		}
+-		if (!roles.childless(type) || moved.length === 0 || pos === null) return steps;
++		if (!to.childless || moved.length === 0 || pos === null) return steps;
+ 		// The children keep their home slots: the read shows them in the void's
+ 		// slot (`conc.void-children`), settled for its parent.
+ 		return [
+@@ -215,7 +214,7 @@ export const metaOps = (c: OpsContext) => {
+ 		const children = value.children?.map((child) => sanitizeSpec(asBlockSpec(child)));
+ 		if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
+ 		const type = value.type === undefined ? undefined : ref(value.type);
+-		const toVoid = type === undefined ? isVoid(id) : roles.childless(type);
++		const toVoid = type === undefined ? isVoid(id) : roles.of(type).childless;
+ 		if (children?.length && toVoid) return REFUSED;
+ 		if (children !== undefined && collides(doc, children)) return refused('id-collision');
+ 		const data =
+diff --git a/src/lib/crdt/doc/reads.ts b/src/lib/crdt/doc/reads.ts
+index d30d1b4..93f78b4 100644
+--- a/src/lib/crdt/doc/reads.ts
++++ b/src/lib/crdt/doc/reads.ts
+@@ -21,7 +21,7 @@ import {
+ 	type ModelView
+ } from '../placement/model.js';
+ import { DEAD, findAtom, ownedLength } from '../text/model.js';
+-import type { DisplayRoles, RunView } from '../text/runs.js';
++import type { DisplayRoles, KindRole, RunView } from '../text/runs.js';
+ import { holdsPending } from '../structs.js';
+ import { itemIds, previewData, readData, type DataPatch } from '../data.js';
+ import { columnIds, listedColumns, unlistedOrder } from '../tables.js';
+@@ -165,15 +165,15 @@ export const docReads = (c: DocBase) => {
+ 
+ 	// ── roles (island/void) ───────────────────────────────────────────
+ 
+-	/** The role table's answer for `id`'s shown kind (`false` without one). */
+-	const is = (id: BlockId, role: (type: string) => boolean): boolean => {
++	/** The role of `id`'s shown kind (`undefined` without one). */
++	const kindOf = (id: BlockId): KindRole | undefined => {
+ 		const t = blockTypeOf(id);
+-		return t !== undefined && role(t);
++		return t === undefined ? undefined : roles.of(t);
+ 	};
+-	const isVoid = (id: BlockId): boolean => is(id, roles.childless);
+-	const isIsland = (id: BlockId): boolean => is(id, roles.island);
++	const isVoid = (id: BlockId): boolean => kindOf(id)?.childless === true;
++	const isIsland = (id: BlockId): boolean => kindOf(id)?.island === true;
+ 	/** An island that holds only lines (a code block: its role says `lines`). */
+-	const isLines = (id: BlockId): boolean => is(id, (type) => roles.line(type) !== undefined);
++	const isLines = (id: BlockId): boolean => kindOf(id)?.line !== undefined;
+ 	/** Nearest island-typed display ancestor of `id`, or null. */
+ 	const islandOf = (id: BlockId, v: View = view()): BlockId | null =>
+ 		ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
+@@ -184,26 +184,20 @@ export const docReads = (c: DocBase) => {
+ 		const parent = positionOf(id)?.parent;
+ 		return parent != null && isLines(parent);
+ 	};
+-	/** The child kind `role` gives `id`'s kind: a layout's item kind, a table's row kind. */
+-	const childKindOf =
+-		(role: 'layout' | 'table') =>
+-		(id: BlockId): string | undefined => {
+-			const type = blockTypeOf(id);
+-			return type === undefined ? undefined : roles[role](type);
+-		};
+-	/** `id` is of its parent's `kindOf` kind, directly in it (a column, a row). */
++	/** `id` is of its parent's `kind` kind, directly in it (a column, a row, a cell). */
+ 	const childOf =
+-		(kindOf: (id: BlockId) => string | undefined) =>
++		(kind: (parent: KindRole) => string | undefined) =>
+ 		(id: BlockId): boolean => {
+ 			const parent = positionOf(id)?.parent;
+-			return parent != null && blockTypeOf(id) === kindOf(parent);
++			const k = parent == null ? undefined : kindOf(parent);
++			return parent != null && blockTypeOf(id) === (k && kind(k));
+ 		};
+ 	/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
+-	const itemKindOf = childKindOf('layout');
++	const itemKindOf = (id: BlockId): string | undefined => kindOf(id)?.layout;
+ 	/** `id` is a layout (`layout.*`). */
+ 	const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
+ 	/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
+-	const isLayoutItem = childOf(itemKindOf);
++	const isLayoutItem = childOf((k) => k.layout);
+ 	/** `id` is a layout or holds one in its shown subtree (`layout.nest`). */
+ 	const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
+ 	/** `id` is a layout item or sits inside one. */
+@@ -212,28 +206,20 @@ export const docReads = (c: DocBase) => {
+ 
+ 	// ── tables (`table.*`) ────────────────────────────────────────────
+ 
+-	/** The row kind of `id` when it is a table (its role says `table`): its default child. */
+-	const rowKindOf = childKindOf('table');
+ 	/** `id` is a table (`table.*`). */
+-	const isTable = (id: BlockId): boolean => rowKindOf(id) !== undefined;
++	const isTable = (id: BlockId): boolean => kindOf(id)?.table !== undefined;
+ 	/** `type` is a row kind of a table kind the roles declare (`tableRow`). */
+ 	const isRowKind = (type: string | undefined): boolean =>
+-		type !== undefined && [...roles.tableKinds()].some((t) => roles.table(t) === type);
++		type !== undefined && roles.declared().rows.has(type);
+ 	/** `type` is a cell kind: the default child of a row kind (`tableCell`). */
+ 	const isCellKind = (type: string | undefined): boolean =>
+-		type !== undefined &&
+-		[...roles.tableKinds()].some((t) => {
+-			const row = roles.table(t);
+-			return row !== undefined && roles.defaultChild(row) === type;
+-		});
++		type !== undefined && roles.declared().cells.has(type);
+ 	/** `id` is a table's row: of its table's row kind, directly in it. */
+-	const isTableRow = childOf(rowKindOf);
++	const isTableRow = childOf((k) => k.table);
+ 	/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
+ 	const isTableCell = (id: BlockId): boolean => {
+ 		const row = positionOf(id)?.parent;
+-		return (
+-			row != null && isTableRow(row) && blockTypeOf(id) === roles.defaultChild(blockTypeOf(row)!)
+-		);
++		return row != null && isTableRow(row) && blockTypeOf(id) === kindOf(row)!.child;
+ 	};
+ 	/** The table `id` is, or whose row or cell it is; `null` for any other block. */
+ 	const tableOf = (id: BlockId): BlockId | null => {
+@@ -379,7 +365,7 @@ export const docReads = (c: DocBase) => {
+ 		pathOf,
+ 		ancestorsOf,
+ 		slotOf,
+-		is,
++		kindOf,
+ 		isVoid,
+ 		isIsland,
+ 		isLines,
+diff --git a/src/lib/crdt/doc/steps.ts b/src/lib/crdt/doc/steps.ts
+index 66698fe..6aa3724 100644
+--- a/src/lib/crdt/doc/steps.ts
++++ b/src/lib/crdt/doc/steps.ts
+@@ -32,13 +32,12 @@ export const planSteps = (c: StepsContext) => {
+ 		doc,
+ 		runsView,
+ 		roles,
+-		rendersContentOf,
+ 		view,
+ 		blockTypeOf,
+ 		childrenIds,
+ 		positionOf,
+ 		ancestorsOf,
+-		is,
++		isLines,
+ 		isIsland,
+ 		itemKindOf,
+ 		isLayout,
+@@ -154,8 +153,9 @@ export const planSteps = (c: StepsContext) => {
+ 	 * default kind, any other child keeps its kind (as `typeOf`).
+ 	 */
+ 	const leavingIsland = (island: BlockId, kind: string | undefined, to: string) => {
+-		if (rendersContentOf(to) || (kind !== undefined && !rendersContentOf(kind))) return to;
+-		return is(island, (type) => roles.line(type) !== undefined) ? defaultChild(null) : kind;
++		if (roles.of(to).rendersContent || (kind !== undefined && !roles.of(kind).rendersContent))
++			return to;
++		return isLines(island) ? defaultChild(null) : kind;
+ 	};
+ 	const settledKind = (
+ 		from: BlockId | null,
+@@ -172,7 +172,7 @@ export const planSteps = (c: StepsContext) => {
+ 			const outer =
+ 				kind !== defaultChild(null) &&
+ 				within.some((a) => isContainer(a) && defaultChild(a) === kind);
+-			if (!outer && rendersContentOf(to)) kind = to;
++			if (!outer && roles.of(to).rendersContent) kind = to;
+ 		}
+ 		return fitted(parent, kind);
+ 	};
+diff --git a/src/lib/crdt/document.ts b/src/lib/crdt/document.ts
+index eeed857..5280e4f 100644
+--- a/src/lib/crdt/document.ts
++++ b/src/lib/crdt/document.ts
+@@ -733,12 +733,11 @@ export class EdytorDocument {
+ 		// promoted out of a newly island kind displays as a default child; a
+ 		// newly layout kind displays only its items (`layout.*`), a newly
+ 		// table kind only its rows (`table.*`).
+-		if (
++		this.facade.rolesChanged(
+ 			Object.values(config.roles ?? {}).some(
+ 				(role) => role?.void || role?.island || role?.layout || role?.table
+ 			)
+-		)
+-			this.facade.rolesChanged();
++		);
+ 	};
+ 
+ 	/**
+diff --git a/src/lib/crdt/edytor-doc.ts b/src/lib/crdt/edytor-doc.ts
+index 61d2a2f..2f5c8b2 100644
+--- a/src/lib/crdt/edytor-doc.ts
++++ b/src/lib/crdt/edytor-doc.ts
+@@ -63,7 +63,14 @@ import {
+ import { bindText } from './text/model.js';
+ import { bindPurge, readHorizon } from './purge.js';
+ import { restoreDocument } from './restore.js';
+-import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
++import {
++	bindRuns,
++	indexOf,
++	type DeclaredKinds,
++	type DisplayRoles,
++	type KindRole,
++	type RunView
++} from './text/runs.js';
+ import {
+ 	bindBlockAttribution,
+ 	blockAttributionOf,
+@@ -224,24 +231,45 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 		// A layout displays only its items — its
+ 		// `defaultChild` kind — and only two or more (`layout.*`). A table
+ 		// displays only its rows and a row only its cells (`table.*`).
++		let kinds = new Map<string | null, KindRole>();
++		let declared: DeclaredKinds | undefined;
+ 		const roles: DisplayRoles = {
+-			childless: (type) => roleOf(type)?.void === true,
+-			island: (type) => roleOf(type)?.island === true,
+-			container: (type) =>
+-				!rendersContentOf(type) && roleOf(type)?.void !== true && roleOf(type)?.island !== true,
+-			rendersContent: (type) => rendersContentOf(type),
+-			defaultChild: (type) => (type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
+-			line: (type) => {
+-				const role = roleOf(type);
+-				return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
++			of: (type) => {
++				let k = kinds.get(type);
++				if (k === undefined) {
++					const role = type === null ? undefined : roleOf(type);
++					const own = type === null ? undefined : defaultChildOf(type);
++					const renders = type === null || rendersContentOf(type);
++					kinds.set(
++						type,
++						(k = {
++							childless: role?.void === true,
++							island: role?.island === true,
++							container: !renders && role?.void !== true && role?.island !== true,
++							rendersContent: renders,
++							child: own ?? defaultType,
++							line: role?.island === true && role.lines === true ? own : undefined,
++							layout: role?.layout === true ? own : undefined,
++							table: role?.table === true ? own : undefined
++						})
++					);
++				}
++				return k;
+ 			},
+-			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? []),
+-			layout: (type) => (roleOf(type)?.layout === true ? defaultChildOf(type) : undefined),
+-			layoutKinds: () =>
+-				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined),
+-			table: (type) => (roleOf(type)?.table === true ? defaultChildOf(type) : undefined),
+-			tableKinds: () =>
+-				[...(config.kinds?.() ?? [])].filter((type) => roles.table(type) !== undefined)
++			declared: () => {
++				if (declared === undefined) {
++					const all = [...(config.kinds?.() ?? [])].map(roles.of);
++					const rows = new Map(all.flatMap((k) => (k.table ? [[k.table, roles.of(k.table).child]] : [])));
++					declared = {
++						lines: new Set(all.flatMap((k) => k.line ?? [])),
++						layouts: [...(config.kinds?.() ?? [])].filter((t) => roles.of(t).layout !== undefined),
++						items: new Set(all.flatMap((k) => k.layout ?? [])),
++						rows,
++						cells: new Set(rows.values())
++					};
++				}
++				return declared;
++			}
+ 		};
+ 		if (config.roleOf) runsView.roles(roles);
+ 
+@@ -538,7 +566,11 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
+ 			followUndo,
+ 			// roles
+ 			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
+-			rolesChanged: () => runsView.roles(roles),
++			rolesChanged: (place = true) => {
++				kinds = new Map();
++				declared = undefined;
++				if (place) runsView.roles(roles);
++			},
+ 			defaultChild: byRef(defaultChild),
+ 			contentJSON: byRef(runsView.contentJSON),
+ 			// escape hatch for the history and debugging — the bound engine layers.
+diff --git a/src/lib/crdt/flow.ts b/src/lib/crdt/flow.ts
+index 00c48bb..56cb57e 100644
+--- a/src/lib/crdt/flow.ts
++++ b/src/lib/crdt/flow.ts
+@@ -86,10 +86,12 @@ const lengthOf = (l: FlowLine) =>
+  * else nowhere (a divider). The flow and the emptied document's virtual
+  * paragraph (`doc.empty.virtual`) place the caret by it.
+  */
+-export const placedEnd = (roleOf: (kind: string) => { void: boolean; rendersContent: boolean }) => {
++export const placedEnd = (
++	roleOf: (kind: string) => { childless: boolean; rendersContent: boolean }
++) => {
+ 	const endOf = (s: BlockSpec): DocPosition | undefined => {
+ 		const role = roleOf(s.type);
+-		if (role.rendersContent && !role.void) return { block: s.id, offset: lengthOf(s) };
++		if (role.rendersContent && !role.childless) return { block: s.id, offset: lengthOf(s) };
+ 		for (const kid of [...(s.children ?? [])].reverse()) {
+ 			const at = endOf(kid);
+ 			if (at) return at;
+@@ -101,16 +103,10 @@ export const placedEnd = (roleOf: (kind: string) => { void: boolean; rendersCont
+ 
+ /** `insertFlow`, prepared. */
+ export const flowOps = (c: FlowContext) => {
+-	/** A kind's roles, as placement reads them. */
+-	const roleOf = (kind: string) => ({
+-		void: c.roles.childless(kind),
+-		island: c.roles.island(kind),
+-		rendersContent: c.roles.rendersContent(kind),
+-		layout: c.roles.layout(kind)
+-	});
++	const roleOf = c.roles.of;
+ 	/** What a kind is in a table: the table, its row or its cell. */
+ 	const tableKind = (kind: string): 'table' | 'row' | 'cell' | undefined =>
+-		c.roles.table(kind) !== undefined
++		roleOf(kind).table !== undefined
+ 			? 'table'
+ 			: c.isRowKind(kind)
+ 				? 'row'
+@@ -226,7 +222,7 @@ export const flowOps = (c: FlowContext) => {
+ 			const apart = (l: FlowLine, under: BlockId | null) => {
+ 				const kind = l.type && fit(under, l.type);
+ 				const role = kind ? roleOf(kind) : undefined;
+-				return !!role && (!role.rendersContent || role.void || role.island);
++				return !!role && (!role.rendersContent || role.childless || role.island);
+ 			};
+ 			// At the end of a container's header whose body shows, what follows the caret
+ 			// leads its children and the body stays, as Enter opens a first child
+diff --git a/src/lib/crdt/text/index/layout.ts b/src/lib/crdt/text/index/layout.ts
+index 179f488..d76ce0e 100644
+--- a/src/lib/crdt/text/index/layout.ts
++++ b/src/lib/crdt/text/index/layout.ts
+@@ -6,42 +6,29 @@
+ import type { BlockId, ChildSlot } from '../../placement/model.js';
+ import { cellKey, LAST_CELL, unlistedCellKey } from '../../placement/keys.js';
+ import { listedColumns, unlistedRank } from '../../tables.js';
+-import type { DisplayRoles } from '../runs.js';
++import type { KindRole } from '../runs.js';
+ import type { IndexState } from './state.js';
+ 
+ /** The layout rules of one doc's index, over its state. */
+ export const indexLayout = (ix: IndexState) => {
+ 	const { blocks, kindsOf } = ix;
+ 
+-	/** `ask` of `b`'s stored kind; `undefined` without roles or a record. */
+-	const role = <T>(b: BlockId, ask: (r: DisplayRoles, type: string) => T): T | undefined => {
++	/** The role of `b`'s stored kind; `undefined` without roles or a record. */
++	const kindOf = (b: BlockId): KindRole | undefined => {
+ 		const type = blocks.get(b)?.type;
+-		return ix.roles === null || type === undefined ? undefined : ask(ix.roles, type);
++		return ix.roles === null || type === undefined ? undefined : ix.roles.of(type);
+ 	};
+ 	/** The line kind of `b` when it is an island declared `lines`. */
+-	const lineKind = (b: BlockId): string | undefined => role(b, (r, type) => r.line(type));
++	const lineKind = (b: BlockId): string | undefined => kindOf(b)?.line;
+ 	/** The item kind of `b` when it is a layout. */
+-	const itemKind = (b: BlockId): string | undefined => role(b, (r, type) => r.layout(type));
+-	/** The item kinds the roles declare. */
+-	const declaredItems = (): Set<string> => {
+-		const items = new Set<string>();
+-		for (const type of ix.roles?.layoutKinds() ?? []) items.add(ix.roles!.layout(type)!);
+-		return items;
+-	};
++	const itemKind = (b: BlockId): string | undefined => kindOf(b)?.layout;
+ 	/** The row kind of `b` when it is a table (`table.*`). */
+-	const rowKind = (b: BlockId): string | undefined => role(b, (r, type) => r.table(type));
++	const rowKind = (b: BlockId): string | undefined => kindOf(b)?.table;
+ 	/** `table`'s row kind and that row kind's cell kind, as `[row, cell]`. */
+ 	const rowOfTable = (table: string): [string, string] | undefined => {
+-		const row = ix.roles?.table(table);
+-		return row === undefined ? undefined : [row, ix.roles!.defaultChild(row)];
++		const row = ix.roles?.of(table).table;
++		return row === undefined ? undefined : [row, ix.roles!.of(row).child];
+ 	};
+-	/** The row kinds (with their cell kinds) the roles declare. */
+-	const declaredRows = (): Map<string, string> =>
+-		new Map(
+-			[...(ix.roles?.tableKinds() ?? [])]
+-				.flatMap((type) => rowOfTable(type) ?? [])
+-				.map(([row, cell]) => [row, cell] as const)
+-		);
+ 	/** The cell kind of `b` when it is a row of a table kind. */
+ 	const cellKind = (b: BlockId): string | undefined => ix.rowKinds.get(blocks.get(b)?.type ?? '');
+ 	/**
+@@ -297,16 +284,14 @@ export const indexLayout = (ix: IndexState) => {
+ 	};
+ 
+ 	return {
+-		role,
++		kindOf,
+ 		lineKind,
+ 		itemKind,
+ 		rowKind,
+ 		rowOfTable,
+-		declaredRows,
+ 		cellKind,
+ 		cellRank,
+ 		tableFacts,
+-		declaredItems,
+ 		dissolve,
+ 		redissolve
+ 	};
+diff --git a/src/lib/crdt/text/index/placement.ts b/src/lib/crdt/text/index/placement.ts
+index ac0f10f..1521bc7 100644
+--- a/src/lib/crdt/text/index/placement.ts
++++ b/src/lib/crdt/text/index/placement.ts
+@@ -94,15 +94,13 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
+ 		streamOf,
+ 		streamsIn,
+ 		streamAt,
+-		role,
++		kindOf,
+ 		lineKind,
+ 		itemKind,
+ 		rowKind,
+ 		rowOfTable,
+-		declaredRows,
+ 		cellKind,
+ 		cellRank,
+-		declaredItems,
+ 		dissolve,
+ 		redissolve
+ 	} = ix;
+@@ -122,9 +120,9 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
+ 	const ownShim: DisplayOwnership = {
+ 		ownerOf,
+ 		hidden: (b) => ownerOf(b) !== b || ix.dissolved.has(b),
+-		childless: (b) => role(b, (r, type) => r.childless(type)) === true,
+-		island: (b) => role(b, (r, type) => r.island(type)) === true,
+-		container: (b) => role(b, (r, type) => r.container(type)) === true,
++		childless: (b) => kindOf(b)?.childless === true,
++		island: (b) => kindOf(b)?.island === true,
++		container: (b) => kindOf(b)?.container === true,
+ 		lined: (b) => lineKind(b) !== undefined,
+ 		passes: (b) => ix.dissolved.has(b),
+ 		sheds: (owner, child) => {
+@@ -534,13 +532,14 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
+ 		placementSeeds.clear();
+ 		stateSeeds.clear();
+ 		ownerChanged.clear();
+-		ix.itemKinds = declaredItems();
++		const declared = ix.roles?.declared();
++		ix.itemKinds = new Set(declared?.items);
+ 		for (const b of blocks.keys()) {
+ 			const item = itemKind(b);
+ 			if (item !== undefined) ix.itemKinds.add(item);
+ 		}
+-		lineKinds = new Set(ix.roles?.lineKinds());
+-		ix.rowKinds = declaredRows();
++		lineKinds = new Set(declared?.lines);
++		ix.rowKinds = new Map(declared?.rows);
+ 		for (const b of blocks.keys()) {
+ 			const type = blocks.get(b)?.type;
+ 			const rows = type === undefined ? undefined : rowOfTable(type);
+@@ -687,9 +686,8 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
+ 	 */
+ 	const itemOf = (under: BlockId, plain: string): string => {
+ 		const parent = typeOf(under);
+-		if (!ix.roles!.container(parent)) return plain;
+-		const item = ix.roles!.defaultChild(parent);
+-		return ix.roles!.rendersContent(item) ? item : plain;
++		const { container, child } = ix.roles!.of(parent);
++		return container && ix.roles!.of(child).rendersContent ? child : plain;
+ 	};
+ 
+ 	/**
+@@ -711,33 +709,28 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
+ 	const typeOf = (id: BlockId): string => {
+ 		const stored = blocks.get(id)?.type ?? 'unknown';
+ 		const slot = ix.slots.get(id);
+-		if (ix.roles === null || slot === undefined) return stored;
++		const roles = ix.roles;
++		if (roles === null || slot === undefined) return stored;
+ 		const { parent: under, reset } = slot;
+ 		const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
+ 		if (line !== undefined) return line;
+ 		const lined = lineKinds.has(stored);
+ 		const from = reset === undefined ? undefined : (blocks.get(reset)?.type ?? null);
+-		if (!lined && (from === undefined || stored !== ix.roles.defaultChild(from)))
+-			return stored === ix.roles.defaultChild(null) && under !== null
+-				? itemOf(under, stored)
+-				: stored;
++		const plain = roles.of(null).child;
++		if (!lined && (from === undefined || stored !== roles.of(from).child))
++			return stored === plain && under !== null ? itemOf(under, stored) : stored;
+ 		// Out of a removed list, inside an outer list of its kind: still an item. A
+ 		// container whose item is the document's default kind (a column) holds no
+ 		// items of its own: a paragraph under one is no list's item.
+-		if (!lined && typeof from === 'string' && ix.roles.container(from))
++		if (!lined && typeof from === 'string' && roles.of(from).container)
+ 			for (let u = under; u !== null; u = ix.slots.get(u)?.parent ?? null) {
+-				const t = typeOf(u);
+-				if (
+-					ix.roles.container(t) &&
+-					ix.roles.defaultChild(t) === stored &&
+-					stored !== ix.roles.defaultChild(null)
+-				)
+-					return stored;
++				const t = roles.of(typeOf(u));
++				if (t.container && t.child === stored && stored !== plain) return stored;
+ 			}
+-		const kind = ix.roles.defaultChild(under === null ? null : typeOf(under));
+-		if (ix.roles.rendersContent(kind) || !ix.roles.rendersContent(stored)) return kind;
++		const kind = roles.of(under === null ? null : typeOf(under)).child;
++		if (roles.of(kind).rendersContent || !roles.of(stored).rendersContent) return kind;
+ 		// Never a line kind outside its island, even where the slot's kind shows nothing.
+-		return lined ? ix.roles.defaultChild(null) : stored;
++		return lined ? plain : stored;
+ 	};
+ 
+ 	/** The document order, cached until a child list changes. */
+diff --git a/src/lib/crdt/text/index/shared.ts b/src/lib/crdt/text/index/shared.ts
+index 90f7dd5..2f4296f 100644
+--- a/src/lib/crdt/text/index/shared.ts
++++ b/src/lib/crdt/text/index/shared.ts
+@@ -92,22 +92,23 @@ export type Cached = { runs: readonly ContentRun[]; deps: Deps };
+  * its children.
+  */
+ export const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
+-	const lines = new Set(roles.lineKinds());
+-	const items = new Set([...roles.layoutKinds()].map((type) => roles.layout(type)));
+-	const rows = new Set([...roles.tableKinds()].flatMap((type) => roles.table(type) ?? []));
+-	const cells = new Set([...rows].map((row) => roles.defaultChild(row)));
+-	return (
+-		roles.childless(a) === roles.childless(b) &&
+-		roles.island(a) === roles.island(b) &&
+-		roles.container(a) === roles.container(b) &&
+-		roles.line(a) === roles.line(b) &&
+-		lines.has(a) === lines.has(b) &&
+-		roles.layout(a) === roles.layout(b) &&
+-		items.has(a) === items.has(b) &&
+-		roles.table(a) === roles.table(b) &&
+-		rows.has(a) === rows.has(b) &&
+-		cells.has(a) === cells.has(b)
+-	);
++	const { lines, items, rows, cells } = roles.declared();
++	const shape = (t: string) => {
++		const k = roles.of(t);
++		return JSON.stringify([
++			k.childless,
++			k.island,
++			k.container,
++			k.line,
++			lines.has(t),
++			k.layout,
++			items.has(t),
++			k.table,
++			rows.has(t),
++			cells.has(t)
++		]);
++	};
++	return shape(a) === shape(b);
+ };
+ 
+ /**
+diff --git a/src/lib/crdt/text/runs.ts b/src/lib/crdt/text/runs.ts
+index 36077b1..e998f42 100644
+--- a/src/lib/crdt/text/runs.ts
++++ b/src/lib/crdt/text/runs.ts
+@@ -229,38 +229,42 @@ export type RunView = {
+ };
+ 
+ /**
+- * The role table — one answer per kind, which the display and the
+- * document's guards both ask. `childless`: kinds that display no children
+- * (void roles) — a child of such a block displays in its slot.
+- * `island`: a block promoted out of an island kind displays as
+- * `defaultChild` of its display parent's kind (`null`: the root). `line`:
+- * an island declared `lines` holds only lines — each direct child displays
+- * as its line kind and holds no children. `container`: a
+- * kind that renders no content and is neither void nor an island (a list)
+- * — a block promoted out of one follows like one promoted out of an island. `rendersContent`: no block that renders content ever shows
+- * as a kind that does not (its text would vanish). `layout`: a
+- * layout kind displays only its items, and only two or more (`layout.*`).
+- * `table`: a table kind displays only its rows, a row only its cells, in
+- * the table's column order (`table.*`).
++ * A kind's answers, read once from its role (the one shape the display and
++ * every guard read). `childless`: displays no children (a void role) — a
++ * child of such a block displays in its slot. `island`: a block promoted
++ * out of one displays as `child` of its display parent's kind.
++ * `container`: renders no content and is neither void nor an island (a
++ * list) — a block promoted out of one follows like one promoted out of an
++ * island. `rendersContent`: no block that renders content ever shows as a
++ * kind that does not (its text would vanish). `child`: its default child
++ * (the document's default kind for the root, `null`). `line`: an island
++ * declared `lines` holds only lines of this kind, which hold no children.
++ * `layout`: a layout displays only items of this kind, and only two or
++ * more (`layout.*`). `table`: a table displays only rows of this kind, a
++ * row only its cells, in the table's column order (`table.*`).
+  */
++export type KindRole = {
++	childless: boolean;
++	island: boolean;
++	container: boolean;
++	rendersContent: boolean;
++	child: string;
++	line?: string;
++	layout?: string;
++	table?: string;
++};
++/** The kinds the roles declare: line kinds, layout kinds and their item kinds, table kinds and their row kinds (→ cell kind). */
++export type DeclaredKinds = {
++	lines: ReadonlySet<string>;
++	layouts: readonly string[];
++	items: ReadonlySet<string>;
++	rows: ReadonlyMap<string, string>;
++	cells: ReadonlySet<string>;
++};
++/** The role table: each kind's {@link KindRole} and the declared kinds, both read once until the roles change. */
+ export type DisplayRoles = {
+-	childless: (type: string) => boolean;
+-	island: (type: string) => boolean;
+-	container: (type: string) => boolean;
+-	rendersContent: (type: string) => boolean;
+-	defaultChild: (parentType: string | null) => string;
+-	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
+-	line: (islandType: string) => string | undefined;
+-	/** Every line kind the roles declare, present in the document or not. */
+-	lineKinds: () => Iterable<string>;
+-	/** The item kind of a layout kind (its `defaultChild`), if `type` is one. */
+-	layout: (type: string) => string | undefined;
+-	/** Every layout kind the roles declare, present in the document or not. */
+-	layoutKinds: () => Iterable<string>;
+-	/** The row kind of a table kind (its `defaultChild`), if `type` is one (`table.*`). */
+-	table: (type: string) => string | undefined;
+-	/** Every table kind the roles declare, present in the document or not. */
+-	tableKinds: () => Iterable<string>;
++	of: (type: string | null) => KindRole;
++	declared: () => DeclaredKinds;
+ };
+ 
+ /** One index per engine doc, shared by every binding (the doc's lifetime). */
+diff --git a/src/lib/edytor.svelte.ts b/src/lib/edytor.svelte.ts
+index 3b90049..6bf92a6 100644
+--- a/src/lib/edytor.svelte.ts
++++ b/src/lib/edytor.svelte.ts
+@@ -333,7 +333,7 @@ export class Edytor {
+ 			() => this.document.ready,
+ 			() => this.document.defaultChild(null),
+ 			(kind) => ({
+-				void: this.definitionOf(kind).void === true,
++				childless: this.definitionOf(kind).void === true,
+ 				rendersContent: this.document.rendersContent(kind)
+ 			})
+ 		));
+diff --git a/src/lib/session/virtual.ts b/src/lib/session/virtual.ts
+index 5ce43e6..e48ea91 100644
+--- a/src/lib/session/virtual.ts
++++ b/src/lib/session/virtual.ts
+@@ -34,7 +34,7 @@ export const virtualLens = (
+ 	/** The root's default child type. */
+ 	type: () => string,
+ 	/** A kind's roles, for where a paste's caret ends (`placedEnd`). */
+-	roleOf: (kind: string) => { void: boolean; rendersContent: boolean }
++	roleOf: (kind: string) => { childless: boolean; rendersContent: boolean }
+ ): ViewDoc => {
+ 	let vid = id('v');
+ 	/** The document shows no block: the virtual paragraph is shown (a fresh id once the last one was written). */

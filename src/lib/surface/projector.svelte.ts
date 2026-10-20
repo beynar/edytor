@@ -45,6 +45,7 @@ import type { YTransaction as Transaction } from '../crdt/index.js';
 import {
 	clearDomSelection,
 	createDomRange,
+	focusIn,
 	getActiveElement,
 	getDomSelection,
 	getDomSelectionSnapshot,
@@ -143,9 +144,7 @@ export class Projector {
 	pre = () => {
 		void this.#deps();
 		untrack(() => {
-			const node = this.edytor.node;
-			const active = node && getActiveElement(node);
-			this.#noted = active && node.contains(active) ? active : null;
+			this.#noted = focusIn(this.edytor.node);
 		});
 	};
 
@@ -477,9 +476,7 @@ export class Projector {
 			// whose `selectionchange` can land after that key counted as a
 			// gesture) leaves any caret the browser parks later its own
 			// (`#parking`, `placed`), whatever key comes before it.
-			const active = getActiveElement(node);
-			if (requested && value.kind !== 'blocks' && active && node.contains(active))
-				this.#parking = true;
+			if (requested && value.kind !== 'blocks' && focusIn(node)) this.#parking = true;
 			const inside = !!dom?.anchorNode && node.contains(dom.anchorNode);
 			const clears = value.kind === 'none' ? requested && inside : inside || dom?.rangeCount === 0;
 			if (clears && this.#ours(requested)) {
@@ -502,15 +499,13 @@ export class Projector {
 		// Already shown: an observation, whoever holds focus.
 		if (!this.#shows(dom, range, isReversed)) {
 			if (!this.#ours(requested)) return true;
-			const active = getActiveElement(node);
-			if (!(active && node.contains(active))) {
+			if (!focusIn(node)) {
 				// Focus first (focusing a host can move the selection): the editing
 				// host, never a focusable element inside the text such as a link.
-				edytor.expectInternalFocus();
 				const element = start[0] instanceof HTMLElement ? start[0] : start[0].parentElement;
-				(element?.closest<HTMLElement>('[contenteditable="true"]') ?? node).focus({
-					preventScroll: true
-				});
+				edytor.expectInternalFocus(
+					element?.closest<HTMLElement>('[contenteditable="true"]') ?? node
+				);
 			}
 			this.#write(getDomSelection(node) ?? dom, points, isCollapsed);
 			if (selection.scrollOnDisplay) scrollCaretIntoView(node);
@@ -602,9 +597,10 @@ export class Projector {
 	#ours = (requested: boolean) => {
 		const node = this.edytor.node!;
 		const active = getActiveElement(node);
+		const inside = focusIn(node);
 		// A form control or a foreign editable in a kind's chrome (a field bound to
 		// `block.data`) owns its focus and its selection: never written over.
-		if (active && node.contains(active)) return !isKindControl(node, active);
+		if (inside) return !isKindControl(node, inside);
 		const document = node.ownerDocument;
 		if (active && active !== document.body && active !== document.documentElement) return false;
 		const anchor = getDomSelection(node)?.anchorNode ?? null;

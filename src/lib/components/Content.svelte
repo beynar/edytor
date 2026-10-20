@@ -43,7 +43,15 @@
 	const placeholder = $derived(edytor.placeholderAt(id));
 
 	/** An empty content's one text (`partsOf`: a content starts with a text). */
-	const EMPTY: Segment = { kind: 'text', key: START, text: '', runs: [] };
+	const EMPTY: Segment = {
+		kind: 'text',
+		key: START,
+		text: '',
+		runs: [],
+		segOrd: 0,
+		start: 0,
+		end: 0
+	};
 
 	/** Whether this view renders an atom of `part`'s kind (its record has a snippet). */
 	const rendersAtom = (part: AtomPart) => Boolean(edytor.inlineBlocks.get(part.type)?.snippet);

@@ -63,7 +63,7 @@ import {
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
 import { canMove, move, type BlockMoveRequest } from './session/moves.js';
-import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
+import type { DocumentWrites } from './crdt/operations.js';
 import { SUGGEST_ROOT } from './crdt/schema.js';
 import { asEngineDoc } from './crdt/structs.js';
 import type {
@@ -443,10 +443,6 @@ export class Edytor {
 			onDocChange,
 			allowNesting
 		} = options;
-		for (const name of DOCUMENT_WRITES)
-			Object.defineProperty(this, name, {
-				value: (...args: never) => this.dispatcher.operate(name, args)
-			});
 		if (labels) this.labels = labels;
 		this.allowNesting = allowNesting === true;
 		if (document !== undefined) {
@@ -460,6 +456,11 @@ export class Edytor {
 			this.document = attachDocument(new Y.Doc(), { actor, requireHydration });
 			this.#owned = true;
 		}
+		// The writes (`DocumentWrites`): every op the document prepares, dispatched.
+		for (const name in this.document.facade.prepare)
+			Object.defineProperty(this, name, {
+				value: (...args: never) => this.dispatcher.operate(name as keyof DocumentWrites, args)
+			});
 		this.readonly = readonly || false;
 		this.onChange = onChange;
 		this.onDocChange = onDocChange;

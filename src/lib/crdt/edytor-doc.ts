@@ -109,6 +109,7 @@ import type { Anchor } from './text/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { DocPosition } from './rangeDelete.js';
 import type { DataPatch } from './data.js';
+import type { DocumentOperations } from './operations.js';
 /* eslint-enable @typescript-eslint/no-unused-vars */
 import type {
 	AnchorAffinity,
@@ -413,35 +414,17 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			(id: I, ...rest: A): R =>
 				f(ref(id), ...rest);
 
-		const facade = {
-			// lifecycle
-			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
-			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
-			seed: (value: JSONBlock[], data?: JsonObj) =>
-				write(() => seed(doc, value, defaultType, data)),
-			isInitialized: () => isInitialized(doc),
-			/** Replicated `meta.v` schema version (the module-level read, bound). */
-			schemaVersion: () => schemaVersion(doc),
-			/**
-			 * The schema gate for this doc — throws {@link SchemaMismatchError}
-			 * on unversioned-content or unsupported-version state. Consumers
-			 * (`Edytor.sync()`, packed consumers) call it before trusting
-			 * a synced doc.
-			 */
-			checkSchema: () => checkSchema(doc),
-			assertSchema: () => assertSchema(doc),
-			dispose,
-			createUndoManager,
-			/** @internal What a part built over the document reads and writes (`doc/suggest.ts`). */
-			part,
+		/**
+		 * The public operations (`DocumentOperations`), each name once: what
+		 * an `EdytorDocument` forwards. The facade has them and the internal
+		 * members below.
+		 */
+		const api = {
 			// reads — every id argument normalizes at ingress
 			project: () => project(doc),
 			toJSON,
 			blockJSON: byRef(blockJSON),
 			childrenIds: byRef(childrenIds),
-			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
-			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
-			slotOf: byRef(slotOf),
 			positionOf: byRef(positionOf),
 			pathOf: byRef(pathOf),
 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
@@ -461,8 +444,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			blockAttribution: byRef((id: BlockId): BlockAttribution | undefined =>
 				blockAttributionOf(doc, id)
 			),
-			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
-			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
 			displayLength: byRef(displayLength),
 			contentItems: byRef(contentItems),
 			hasBlock: byRef(hasBlock),
@@ -474,10 +455,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			// caret anchors — backing-text-bound selection endpoints
 			anchorAt: byRef(anchorAt),
 			resolveAnchor,
-			followUndo,
-			// roles
-			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
-			rolesChanged: () => runsView.roles(roles),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			isLines: byRef(isLines),
@@ -517,10 +494,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			/** Where a block of `kind` at `id`'s place lands, and the containers it leaves (`liftOut`). */
 			landingOf: (id: BlockId, kind: string, after?: boolean) =>
 				landingOf(ref(id), ref(kind), after),
-			defaultChild: byRef(defaultChild),
 			// maintained runs (bound to this doc)
 			runs: byRef(runsView.runs),
-			contentJSON: byRef(runsView.contentJSON),
 			// events
 			onChange,
 			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`
@@ -533,10 +508,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			// transactions (composed ops already run in one; expose for callers
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),
-			// escape hatch for the history and debugging — the bound engine layers.
-			model: layers.model as L['model'],
-			text: layers.text as L['text'],
-			runsView,
 			// ── model-state version ─────────────────────────────
 			/**
 			 * The index version — bumps on every fold that changed derived
@@ -548,8 +519,51 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 				// A part's change may show in no index fact (a suggestion's decision).
 				return runsView.version() + part.v;
 			}
+		} satisfies DocumentOperations;
+		const internal = {
+			// lifecycle
+			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
+			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
+			seed: (value: JSONBlock[], data?: JsonObj) =>
+				write(() => seed(doc, value, defaultType, data)),
+			isInitialized: () => isInitialized(doc),
+			/** Replicated `meta.v` schema version (the module-level read, bound). */
+			schemaVersion: () => schemaVersion(doc),
+			/**
+			 * The schema gate for this doc — throws {@link SchemaMismatchError}
+			 * on unversioned-content or unsupported-version state. Consumers
+			 * (`Edytor.sync()`, packed consumers) call it before trusting
+			 * a synced doc.
+			 */
+			checkSchema: () => checkSchema(doc),
+			assertSchema: () => assertSchema(doc),
+			dispose,
+			createUndoManager,
+			/** @internal What a part built over the document reads and writes (`doc/suggest.ts`). */
+			part,
+			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
+			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
+			slotOf: byRef(slotOf),
+			crdtId: byRef((id: BlockId) => crdtId(doc, id)),
+			resolveBlock: byRef((id: BlockId) => resolveBlock(doc, id)),
+			followUndo,
+			// roles
+			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
+			rolesChanged: () => runsView.roles(roles),
+			defaultChild: byRef(defaultChild),
+			contentJSON: byRef(runsView.contentJSON),
+			// escape hatch for the history and debugging — the bound engine layers.
+			model: layers.model as L['model'],
+			text: layers.text as L['text'],
+			runsView,
+			/** The public members' names (`EdytorDocument` forwards them). */
+			api: api as object
 		};
-		return facade;
+		// The public members joined as they are (the `version` getter stays one).
+		return Object.defineProperties(
+			internal,
+			Object.getOwnPropertyDescriptors(api)
+		) as typeof internal & typeof api;
 	};
 	return create;
 };

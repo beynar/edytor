@@ -7,8 +7,10 @@
  * a view (`edytor.insertBlocks(…)`) they are dispatched. The facade a
  * document binds has more (the index, the engine hooks): those stay
  * internal. `DOCUMENT_OPERATIONS` lists the names, `DOCUMENT_WRITES` the
- * writes, checked against the interfaces here and against the facade in
- * `document.ts`. Worker-safe: types and two lists.
+ * writes, checked against the interfaces here; the document and the view
+ * read the names from the facade itself (its `api` and `prepare`, checked
+ * against `DocumentOperations` in `document.ts`). Worker-safe: types and
+ * two lists.
  */
 import type { BlockAttribution } from './attribution/block.js';
 import type {

@@ -34,7 +34,7 @@ export const virtualLens = (
 	/** The root's default child type. */
 	type: () => string,
 	/** A kind's roles, for where a paste's caret ends (`placedEnd`). */
-	roleOf: (kind: string) => { void: boolean; rendersContent: boolean }
+	roleOf: (kind: string) => { childless: boolean; rendersContent: boolean }
 ): ViewDoc => {
 	let vid = id('v');
 	/** The document shows no block: the virtual paragraph is shown (a fresh id once the last one was written). */

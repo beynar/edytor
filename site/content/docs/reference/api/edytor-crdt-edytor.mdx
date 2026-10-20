@@ -197,7 +197,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             crdtId: (id: string) => string | null;
             resolveBlock: (id: string) => import("./engine-api.js").EngineNode | null;
             followUndo: (anchor: import("./edytor-doc.js").DocAnchor) => import("./edytor-doc.js").DocAnchor;
-            rolesChanged: () => void;
+            rolesChanged: (place?: boolean) => void;
             defaultChild: (id: string | null) => string;
             contentJSON: (id: string) => ({
                 text: string;

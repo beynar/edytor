@@ -335,7 +335,7 @@ export class Edytor {
 			() => this.document.ready,
 			() => this.document.defaultChild(null),
 			(kind) => ({
-				void: this.definitionOf(kind).void === true,
+				childless: this.definitionOf(kind).void === true,
 				rendersContent: this.document.rendersContent(kind)
 			})
 		));

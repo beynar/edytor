@@ -44,7 +44,6 @@ import type { DocBase, DocReads } from './reads.js';
 export const docCapability = (c: DocBase & DocReads) => {
 	const {
 		roles,
-		rendersContentOf,
 		view,
 		blockTypeOf,
 		childrenIds,
@@ -105,7 +104,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * A container: a block that shows only its children — no content of
 	 * its own, neither void nor an island (a list, a table row, a column).
 	 */
-	const isContainer = (id: BlockId): boolean => !rendersContent(id) && !isVoid(id) && !isIsland(id);
+	const isContainer = (id: BlockId): boolean => roles.of(blockTypeOf(id) ?? '').container;
 	/**
 	 * THE container rule: may a block of `kind` sit directly
 	 * under `parent` (`null` = the root)? A container whose default child is
@@ -128,15 +127,10 @@ export const docCapability = (c: DocBase & DocReads) => {
 		parent === null || fitsIn(blockTypeOf(parent) ?? '', kind);
 	/** `fits`, by the parent's kind (a block not written yet: `placeBeside`'s new item). */
 	const fitsIn = (parentType: string, kind: string | undefined): boolean => {
-		if (!roles.container(parentType)) return true;
-		const item = roles.defaultChild(parentType);
-		if (item === defaultChild(null) || kind === item) return true;
-		return (
-			kind !== undefined &&
-			roles.container(kind) &&
-			roles.defaultChild(kind) === item &&
-			rendersContentOf(item)
-		);
+		const { container, child: item } = roles.of(parentType);
+		if (!container || item === defaultChild(null) || kind === item) return true;
+		const k = kind === undefined ? undefined : roles.of(kind);
+		return k?.container === true && k.child === item && roles.of(item).rendersContent;
 	};
 	/**
 	 * `kind`, or — where a plain block (the document's default kind, or
@@ -153,7 +147,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	const fitted = (parent: BlockId | null, kind: string | undefined): string | undefined => {
 		if (fits(parent, kind) || (kind !== undefined && kind !== defaultChild(null))) return kind;
 		const item = defaultChild(parent);
-		return rendersContentOf(item) ? item : kind;
+		return roles.of(item).rendersContent ? item : kind;
 	};
 	/** A container that goes once it loses every child: it holds no text of its own (a peer's retype can leave some, hidden: it renders none). */
 	const emptiable = (id: BlockId): boolean => isContainer(id) && displayLength(id) === 0;
@@ -198,11 +192,11 @@ export const docCapability = (c: DocBase & DocReads) => {
 	};
 
 	/** `id`'s shown kind renders its content. */
-	const rendersContent = (id: BlockId): boolean => rendersContentOf(blockTypeOf(id) ?? '');
+	const rendersContent = (id: BlockId): boolean => roles.of(blockTypeOf(id) ?? '').rendersContent;
 
 	/** The adopted default child type under `parent` (`null` = the root). */
 	const defaultChild = (parent: BlockId | null): string =>
-		roles.defaultChild(parent === null ? null : (blockTypeOf(parent) ?? null));
+		roles.of(parent === null ? null : (blockTypeOf(parent) ?? null)).child;
 	/**
 	 * The kind a new block copies from `id` (a split tail, a flow's tail,
 	 * a duplicate and each of its descendants). A type a peer's retype is

@@ -1250,7 +1250,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             crdtId: (id: string) => string | null;
             resolveBlock: (id: string) => import("./engine-api.js").EngineNode | null;
             followUndo: (anchor: import("./edytor-doc.js").DocAnchor) => import("./edytor-doc.js").DocAnchor;
-            rolesChanged: () => void;
+            rolesChanged: (place?: boolean) => void;
             defaultChild: (id: string | null) => string;
             contentJSON: (id: string) => ({
                 text: string;
@@ -2233,7 +2233,7 @@ declare const docReads: (c: DocBase) => {
         parent: BlockId | null;
         rank: string;
     } | null;
-    is: (id: BlockId, role: (type: string) => boolean) => boolean;
+    kindOf: (id: BlockId) => KindRole | undefined;
     isVoid: (id: BlockId) => boolean;
     isIsland: (id: BlockId) => boolean;
     isLines: (id: BlockId) => boolean;
@@ -2494,7 +2494,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         crdtId: (id: string) => string | null;
         resolveBlock: (id: string) => EngineNode | null;
         followUndo: (anchor: DocAnchor) => DocAnchor;
-        rolesChanged: () => void;
+        rolesChanged: (place?: boolean) => void;
         defaultChild: (id: string | null) => string;
         contentJSON: (id: string) => ({
             text: string;
@@ -3302,21 +3302,24 @@ export type TextBlockRec = {
 };
 ```
 
+#### crdt/text/runs.d.ts#DeclaredKinds
+
+```ts
+export type DeclaredKinds = {
+    lines: ReadonlySet<string>;
+    layouts: readonly string[];
+    items: ReadonlySet<string>;
+    rows: ReadonlyMap<string, string>;
+    cells: ReadonlySet<string>;
+};
+```
+
 #### crdt/text/runs.d.ts#DisplayRoles
 
 ```ts
 export type DisplayRoles = {
-    childless: (type: string) => boolean;
-    island: (type: string) => boolean;
-    container: (type: string) => boolean;
-    rendersContent: (type: string) => boolean;
-    defaultChild: (parentType: string | null) => string;
-    line: (islandType: string) => string | undefined;
-    lineKinds: () => Iterable<string>;
-    layout: (type: string) => string | undefined;
-    layoutKinds: () => Iterable<string>;
-    table: (type: string) => string | undefined;
-    tableKinds: () => Iterable<string>;
+    of: (type: string | null) => KindRole;
+    declared: () => DeclaredKinds;
 };
 ```
 
@@ -3343,6 +3346,21 @@ export type IndexReport = {
     content: Map<BlockId, readonly ContentRun[]>;
     order: Map<BlockId | null, readonly BlockId[]>;
     data?: Record<string, unknown>;
+};
+```
+
+#### crdt/text/runs.d.ts#KindRole
+
+```ts
+export type KindRole = {
+    childless: boolean;
+    island: boolean;
+    container: boolean;
+    rendersContent: boolean;
+    child: string;
+    line?: string;
+    layout?: string;
+    table?: string;
 };
 ```
 

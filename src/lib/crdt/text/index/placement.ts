@@ -94,15 +94,13 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		streamOf,
 		streamsIn,
 		streamAt,
-		role,
+		kindOf,
 		lineKind,
 		itemKind,
 		rowKind,
 		rowOfTable,
-		declaredRows,
 		cellKind,
 		cellRank,
-		declaredItems,
 		dissolve,
 		redissolve
 	} = ix;
@@ -122,9 +120,9 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	const ownShim: DisplayOwnership = {
 		ownerOf,
 		hidden: (b) => ownerOf(b) !== b || ix.dissolved.has(b),
-		childless: (b) => role(b, (r, type) => r.childless(type)) === true,
-		island: (b) => role(b, (r, type) => r.island(type)) === true,
-		container: (b) => role(b, (r, type) => r.container(type)) === true,
+		childless: (b) => kindOf(b)?.childless === true,
+		island: (b) => kindOf(b)?.island === true,
+		container: (b) => kindOf(b)?.container === true,
 		lined: (b) => lineKind(b) !== undefined,
 		passes: (b) => ix.dissolved.has(b),
 		sheds: (owner, child) => {
@@ -534,13 +532,14 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		placementSeeds.clear();
 		stateSeeds.clear();
 		ownerChanged.clear();
-		ix.itemKinds = declaredItems();
+		const declared = ix.roles?.declared();
+		ix.itemKinds = new Set(declared?.items);
 		for (const b of blocks.keys()) {
 			const item = itemKind(b);
 			if (item !== undefined) ix.itemKinds.add(item);
 		}
-		lineKinds = new Set(ix.roles?.lineKinds());
-		ix.rowKinds = declaredRows();
+		lineKinds = new Set(declared?.lines);
+		ix.rowKinds = new Map(declared?.rows);
 		for (const b of blocks.keys()) {
 			const type = blocks.get(b)?.type;
 			const rows = type === undefined ? undefined : rowOfTable(type);
@@ -687,9 +686,8 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	 */
 	const itemOf = (under: BlockId, plain: string): string => {
 		const parent = typeOf(under);
-		if (!ix.roles!.container(parent)) return plain;
-		const item = ix.roles!.defaultChild(parent);
-		return ix.roles!.rendersContent(item) ? item : plain;
+		const { container, child } = ix.roles!.of(parent);
+		return container && ix.roles!.of(child).rendersContent ? child : plain;
 	};
 
 	/**
@@ -711,33 +709,28 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	const typeOf = (id: BlockId): string => {
 		const stored = blocks.get(id)?.type ?? 'unknown';
 		const slot = ix.slots.get(id);
-		if (ix.roles === null || slot === undefined) return stored;
+		const roles = ix.roles;
+		if (roles === null || slot === undefined) return stored;
 		const { parent: under, reset } = slot;
 		const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
 		if (line !== undefined) return line;
 		const lined = lineKinds.has(stored);
 		const from = reset === undefined ? undefined : (blocks.get(reset)?.type ?? null);
-		if (!lined && (from === undefined || stored !== ix.roles.defaultChild(from)))
-			return stored === ix.roles.defaultChild(null) && under !== null
-				? itemOf(under, stored)
-				: stored;
+		const plain = roles.of(null).child;
+		if (!lined && (from === undefined || stored !== roles.of(from).child))
+			return stored === plain && under !== null ? itemOf(under, stored) : stored;
 		// Out of a removed list, inside an outer list of its kind: still an item. A
 		// container whose item is the document's default kind (a column) holds no
 		// items of its own: a paragraph under one is no list's item.
-		if (!lined && typeof from === 'string' && ix.roles.container(from))
+		if (!lined && typeof from === 'string' && roles.of(from).container)
 			for (let u = under; u !== null; u = ix.slots.get(u)?.parent ?? null) {
-				const t = typeOf(u);
-				if (
-					ix.roles.container(t) &&
-					ix.roles.defaultChild(t) === stored &&
-					stored !== ix.roles.defaultChild(null)
-				)
-					return stored;
+				const t = roles.of(typeOf(u));
+				if (t.container && t.child === stored && stored !== plain) return stored;
 			}
-		const kind = ix.roles.defaultChild(under === null ? null : typeOf(under));
-		if (ix.roles.rendersContent(kind) || !ix.roles.rendersContent(stored)) return kind;
+		const kind = roles.of(under === null ? null : typeOf(under)).child;
+		if (roles.of(kind).rendersContent || !roles.of(stored).rendersContent) return kind;
 		// Never a line kind outside its island, even where the slot's kind shows nothing.
-		return lined ? ix.roles.defaultChild(null) : stored;
+		return lined ? plain : stored;
 	};
 
 	/** The document order, cached until a child list changes. */

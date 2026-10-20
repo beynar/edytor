@@ -32,13 +32,12 @@ export const planSteps = (c: StepsContext) => {
 		doc,
 		runsView,
 		roles,
-		rendersContentOf,
 		view,
 		blockTypeOf,
 		childrenIds,
 		positionOf,
 		ancestorsOf,
-		is,
+		isLines,
 		isIsland,
 		itemKindOf,
 		isLayout,
@@ -154,8 +153,9 @@ export const planSteps = (c: StepsContext) => {
 	 * default kind, any other child keeps its kind (as `typeOf`).
 	 */
 	const leavingIsland = (island: BlockId, kind: string | undefined, to: string) => {
-		if (rendersContentOf(to) || (kind !== undefined && !rendersContentOf(kind))) return to;
-		return is(island, (type) => roles.line(type) !== undefined) ? defaultChild(null) : kind;
+		if (roles.of(to).rendersContent || (kind !== undefined && !roles.of(kind).rendersContent))
+			return to;
+		return isLines(island) ? defaultChild(null) : kind;
 	};
 	const settledKind = (
 		from: BlockId | null,
@@ -172,7 +172,7 @@ export const planSteps = (c: StepsContext) => {
 			const outer =
 				kind !== defaultChild(null) &&
 				within.some((a) => isContainer(a) && defaultChild(a) === kind);
-			if (!outer && rendersContentOf(to)) kind = to;
+			if (!outer && roles.of(to).rendersContent) kind = to;
 		}
 		return fitted(parent, kind);
 	};

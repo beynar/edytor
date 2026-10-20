@@ -63,7 +63,14 @@ import {
 import { bindText } from './text/model.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
-import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
+import {
+	bindRuns,
+	indexOf,
+	type DeclaredKinds,
+	type DisplayRoles,
+	type KindRole,
+	type RunView
+} from './text/runs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -225,24 +232,47 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		// A layout displays only its items — its
 		// `defaultChild` kind — and only two or more (`layout.*`). A table
 		// displays only its rows and a row only its cells (`table.*`).
+		let kinds = new Map<string | null, KindRole>();
+		let declared: DeclaredKinds | undefined;
 		const roles: DisplayRoles = {
-			childless: (type) => roleOf(type)?.void === true,
-			island: (type) => roleOf(type)?.island === true,
-			container: (type) =>
-				!rendersContentOf(type) && roleOf(type)?.void !== true && roleOf(type)?.island !== true,
-			rendersContent: (type) => rendersContentOf(type),
-			defaultChild: (type) => (type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
-			line: (type) => {
-				const role = roleOf(type);
-				return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
+			of: (type) => {
+				let k = kinds.get(type);
+				if (k === undefined) {
+					const role = type === null ? undefined : roleOf(type);
+					const own = type === null ? undefined : defaultChildOf(type);
+					const renders = type === null || rendersContentOf(type);
+					kinds.set(
+						type,
+						(k = {
+							childless: role?.void === true,
+							island: role?.island === true,
+							container: !renders && role?.void !== true && role?.island !== true,
+							rendersContent: renders,
+							child: own ?? defaultType,
+							line: role?.island === true && role.lines === true ? own : undefined,
+							layout: role?.layout === true ? own : undefined,
+							table: role?.table === true ? own : undefined
+						})
+					);
+				}
+				return k;
 			},
-			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? []),
-			layout: (type) => (roleOf(type)?.layout === true ? defaultChildOf(type) : undefined),
-			layoutKinds: () =>
-				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined),
-			table: (type) => (roleOf(type)?.table === true ? defaultChildOf(type) : undefined),
-			tableKinds: () =>
-				[...(config.kinds?.() ?? [])].filter((type) => roles.table(type) !== undefined)
+			declared: () => {
+				if (declared === undefined) {
+					const all = [...(config.kinds?.() ?? [])].map(roles.of);
+					const rows = new Map(
+						all.flatMap((k) => (k.table ? [[k.table, roles.of(k.table).child]] : []))
+					);
+					declared = {
+						lines: new Set(all.flatMap((k) => k.line ?? [])),
+						layouts: [...(config.kinds?.() ?? [])].filter((t) => roles.of(t).layout !== undefined),
+						items: new Set(all.flatMap((k) => k.layout ?? [])),
+						rows,
+						cells: new Set(rows.values())
+					};
+				}
+				return declared;
+			}
 		};
 		if (config.roleOf) runsView.roles(roles);
 
@@ -524,7 +554,11 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			followUndo,
 			// roles
 			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
-			rolesChanged: () => runsView.roles(roles),
+			rolesChanged: (place = true) => {
+				kinds = new Map();
+				declared = undefined;
+				if (place) runsView.roles(roles);
+			},
 			defaultChild: byRef(defaultChild),
 			contentJSON: byRef(runsView.contentJSON),
 			// escape hatch for the history and debugging — the bound engine layers.

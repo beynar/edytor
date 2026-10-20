@@ -729,12 +729,11 @@ export class EdytorDocument {
 		// promoted out of a newly island kind displays as a default child; a
 		// newly layout kind displays only its items (`layout.*`), a newly
 		// table kind only its rows (`table.*`).
-		if (
+		this.facade.rolesChanged(
 			Object.values(config.roles ?? {}).some(
 				(role) => role?.void || role?.island || role?.layout || role?.table
 			)
-		)
-			this.facade.rolesChanged();
+		);
 	};
 
 	/**

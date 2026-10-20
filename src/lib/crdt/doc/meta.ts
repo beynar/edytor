@@ -32,7 +32,7 @@ export const metaOps = (c: OpsContext) => {
 		blockDataOf,
 		childrenIds,
 		positionOf,
-		is,
+		isLines,
 		isVoid,
 		displayLength,
 		live,
@@ -120,18 +120,17 @@ export const metaOps = (c: OpsContext) => {
 		const moved = kids.get(id) ?? [];
 		// A code block retyped to an ordinary kind keeps its lines as that kind's children
 		// (`leavingIsland`: never a kind that hides their text).
-		const lined = is(id, (t) => roles.line(t) !== undefined);
-		if (lined && !roles.island(type) && !roles.childless(type)) {
-			const to = roles.defaultChild(type);
+		const to = roles.of(type);
+		if (isLines(id) && !to.island && !to.childless) {
 			return [
 				...steps,
 				...moved.flatMap((k) => {
-					const kind = leavingIsland(id, blockTypeOf(k.id), to);
+					const kind = leavingIsland(id, blockTypeOf(k.id), to.child);
 					return kind === undefined ? [] : attr(k.id, TYPE, kind);
 				})
 			];
 		}
-		if (!roles.childless(type) || moved.length === 0 || pos === null) return steps;
+		if (!to.childless || moved.length === 0 || pos === null) return steps;
 		// The children keep their home slots: the read shows them in the void's
 		// slot (`conc.void-children`), settled for its parent.
 		return [
@@ -215,7 +214,7 @@ export const metaOps = (c: OpsContext) => {
 		const children = value.children?.map((child) => sanitizeSpec(asBlockSpec(child)));
 		if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
 		const type = value.type === undefined ? undefined : ref(value.type);
-		const toVoid = type === undefined ? isVoid(id) : roles.childless(type);
+		const toVoid = type === undefined ? isVoid(id) : roles.of(type).childless;
 		if (children?.length && toVoid) return REFUSED;
 		if (children !== undefined && collides(doc, children)) return refused('id-collision');
 		const data =

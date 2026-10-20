@@ -245,7 +245,7 @@ reference to the suggestion code, only generic ports.
 | `Dispatcher.writer` | +60 | a plugin that writes plans itself; the plan's caret read after the write |
 | `Suggestions.shared` | +53 | the list with a plugin's items after the view's own (and the view-local class's `shared: false`) |
 | the facade's `part` (`v` in `version`, `base` the export) | +119 | a part built over the document: its reads, a facade over a copy, its changes counted, its export |
-| `StackItem.writer`, a transaction's `writer` | +126 (the history) | a step written under another client replays under it, and its records release |
+| `StackItem.writer`, a transaction's `writer` | +133 (the history) | a step written under another client replays under it, and its records release |
 | `document.access` (a plain value), the provider's `access` event and the auth notice | +154 | what the room says the user may do; its meaning is the plugins' |
 | the engine: YP31, YP32 (`unhide`) | +411 | id lists that hold nothing; a delete that proposes |
 
@@ -258,10 +258,10 @@ whole-app gzip; `all` lists the plugin):
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `569823b5` (before #32) | 437,922 | 167,311 | 672,846 | 252,165 | 52,220 |
 | `9f592dde` (#32) | +18,392 | +6,351 | +18,783 | +6,683 | 0 |
-| the plugin (this branch) | +2,321 | +800 | +17,384 | +6,390 | 0 |
+| the plugin (this branch) | +2,328 | +804 | +17,391 | +6,395 | 0 |
 
-The press fixes are 1,325 B of the minimal app's +2,321: shared suggestions
-cost the bare editor **+996 B**, 411 B of it the engine. The target was
+The press fixes are 1,325 B of the minimal app's +2,328: shared suggestions
+cost the bare editor **+1,003 B**, 411 B of it the engine. The target was
 about +0.6 KB: missed by about 0.4 KB with every decided behaviour kept.
 
 ### A view without the plugin
@@ -287,6 +287,6 @@ min / gzip):
 | A suggester's undo replays under its own replica, not its writer | −164 / −45 | a suggest-only user's undo is then refused by the room; a writer's still works |
 | `toJSON()` shows pending suggestions by default (the plugin's controller gives the document without them) | −61 / −29 | reverses the user's decision 3 |
 
-The first two together bring the bare editor's cost to about +0.68 KB
+The first two together bring the bare editor's cost to about +0.69 KB
 (the press fixes set aside), all three to about +0.62 KB: the target needs
 behaviour changes the user has not decided.

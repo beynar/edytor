@@ -61,7 +61,7 @@ export class StackItem {
 	 * suggestion's writer: its transaction's `writer`): it replays under it,
 	 * and its records release with the history's.
 	 */
-	declare writer?: number;
+	writer?: number;
 	constructor(
 		public inserts: IdSetOf,
 		public deletes: IdSetOf

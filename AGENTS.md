@@ -143,7 +143,7 @@ Each fact has exactly one writer. When a fix seems to need a second writer, the 
 
 ## Testing
 
-Lanes (green at every gate; the rows expected to fail are declared `it.fails` and counted in the latest ledger row). CI (`.github/workflows/ci.yml`) runs the static checks and the unit, `test:crdt`, `test:dom` and `test:do` lanes on every push, Playwright Chromium (four shards) on every pull request; `nightly.yml` runs Firefox, WebKit, mobile, cdp and DST; only the pull request run's gate job is named `CI passed` (any other run's is `CI passed (<event>)`, as it skips Chromium); CONTRIBUTING.md has the lanes, the PR checklist and the branch protection ruleset (applied: `master` takes pull requests with a green `CI passed` only); `src/tests/ci-gates.test.ts` keeps the workflows, CONTRIBUTING.md and the gate rows in step (no retries, no measured time asserted):
+Lanes (green at every gate; the rows expected to fail are declared `it.fails` and counted in the latest ledger row). CI (`.github/workflows/ci.yml`) runs the static checks, the unit, `test:crdt`, `test:dom` and `test:do` lanes and the size budget (`pnpm check:size`) on every push, Playwright Chromium (four shards) on every pull request; `nightly.yml` runs Firefox, WebKit, mobile, cdp and DST; only the pull request run's gate job is named `CI passed` (any other run's is `CI passed (<event>)`, as it skips Chromium); CONTRIBUTING.md has the lanes, the PR checklist and the branch protection ruleset (applied: `master` takes pull requests with a green `CI passed` only); `src/tests/ci-gates.test.ts` keeps the workflows, CONTRIBUTING.md and the gate rows in step (no retries, no measured time asserted):
 
 ```bash
 pnpm check                   # svelte-check, 0/0
@@ -152,6 +152,7 @@ pnpm check:worker            # Worker bundles of src/lib/crdt and src/lib/cloudf
 pnpm check:deps              # no import cycle crosses contexts, no import against the direction (scripts/deps.mjs)
 pnpm check:docs              # type-checks site doc fences marked `check` after their title, in .svelte-kit/docexamples, against the stripped package build (an @internal member fails) (scripts/check-docs.mjs): each one a module, a svelte one `lang="ts"`, `$lib/x` the page's `src/lib/x` fence, reader-held functions (your storage, your backend) in scripts/doc-examples, `$lib/components/…` the registry as `shadcn-svelte add` writes it (`registry/edytor`, `registry/ui`, checked with the fences against the stripped build), the page's handles (`edytor`, `block`, ids) only for fragments (a `.ts` fence that exports nothing; `fragments.d.ts`); mark every complete fence (docs-onboarding keeps 150+)
 pnpm check:api               # the API report (api/*.api.md) is current and the emitted .d.ts compile; pnpm api:report rewrites it
+pnpm check:size              # the bare <Edytor />'s own minified bytes within bundle-budget.json (raised only by the user: docs/agents/bundle-trim.md)
 pnpm test:do                 # the edytor/cloudflare room in workerd (vitest pool: storage, hibernation, identity, ack, chunks)
 pnpm test:do:typecheck
 pnpm test:hosted --project=chromium|firefox|webkit  # real browsers through the room in Miniflare (ports 4195/4196)

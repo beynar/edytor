@@ -12,7 +12,11 @@
 //   node scripts/bundle-size.mjs --no-package # reuse the current dist/
 //   node scripts/bundle-size.mjs --only export-tohtml,export-all
 //   node scripts/bundle-size.mjs --cache <dir> # the probes' own folder (an exported copy's)
+//   node scripts/bundle-size.mjs --budget bundle-budget.json   # pnpm check:size
 //
+// `--budget` builds the probes the budget file names and fails when a
+// probe's own minified bytes exceed its budget (docs/agents/bundle-trim.md,
+// "Hold the gain": only the user raises a budget, the reason in the commit).
 // The numbers are minified bytes (Vite's default esbuild minify), gzip -9
 // and brotli -11 of every emitted .js file, entry and lazy chunks apart.
 import { execSync } from 'node:child_process';
@@ -96,8 +100,10 @@ const PROBES = {
 	'export-all':
 		"import { fromHTML, fromMarkdown, textToBlocks, toHTML, toMarkdown } from 'edytor/export';\nconsole.log(fromHTML, fromMarkdown, textToBlocks, toHTML, toMarkdown);\n"
 };
-/** `--only a,b`: those probes alone. */
-const ONLY = option('--only')?.split(',');
+/** `--budget file`: each probe's most own minified bytes (`{ "minimal": 434000 }`). */
+const BUDGET = option('--budget') && JSON.parse(readFileSync(option('--budget'), 'utf8'));
+/** `--only a,b`: those probes alone (the budgeted ones with `--budget`). */
+const ONLY = option('--only')?.split(',') ?? (BUDGET && Object.keys(BUDGET));
 
 if (!flag('--no-package')) execSync('pnpm package', { cwd: root, stdio: 'ignore' });
 
@@ -245,3 +251,17 @@ for (const [app, source, isSvelte] of ENTRIES) {
 
 const out = option('--json');
 if (out) writeFileSync(out, JSON.stringify(report, null, '\t'));
+
+if (BUDGET) {
+	const over = Object.entries(BUDGET).filter(([app, most]) => report[app].totals.own > most);
+	for (const [app, most] of Object.entries(BUDGET))
+		console.log(
+			`\n${app}: ${report[app].totals.own} B own min, budget ${most} B (${most - report[app].totals.own} B left)`
+		);
+	if (over.length) {
+		console.error(
+			`\nOver the size budget: ${over.map(([app]) => app).join(', ')}. Pay for the bytes in this change; only the user raises bundle-budget.json, with the reason in the commit (docs/agents/bundle-trim.md, "Hold the gain").`
+		);
+		process.exit(1);
+	}
+}

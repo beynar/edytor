@@ -24,7 +24,7 @@ pnpm dev                                # the demo route on http://localhost:517
 
 ## The lanes
 
-CI runs the first two groups on every push (`.github/workflows/ci.yml`). Run the ones your
+CI runs the first three groups on every push (`.github/workflows/ci.yml`). Run the ones your
 change touches before you open a pull request; CI runs them all.
 
 **Static checks** (every push):
@@ -48,6 +48,14 @@ pnpm exec vitest --run     # unit and model fixtures (the JSX fixture DSL is src
 pnpm test:crdt             # engine, facade, sync
 pnpm test:dom              # editors mounted in jsdom (a Svelte dev warning fails the test)
 pnpm test:do               # the edytor/cloudflare room in workerd
+```
+
+**Size budget** (every push): the bare `<Edytor />`'s own minified bytes may not exceed
+`bundle-budget.json`. A change that adds bytes pays for them; only the maintainer raises the
+budget, with the reason in the commit ([`docs/agents/bundle-trim.md`](docs/agents/bundle-trim.md)).
+
+```bash
+pnpm check:size            # builds the minimal probe and compares it with bundle-budget.json
 ```
 
 After `pnpm test:crdt`, restore `src/tests/crdt/random/failures/seed-37.json` and `seed-59.json`

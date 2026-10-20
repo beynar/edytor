@@ -128,6 +128,10 @@ Per cut, the fast loop only: `pnpm check`, `pnpm lint`, `pnpm check:deps`, the a
 
 A size budget in CI: the `minimal` probe's bytes may not grow past the budget the last pass reached, so a pull request that adds bytes fails until it pays for them or the user raises the budget. A feature brief states its own budget; a missed budget stops the merge.
 
+- **The check.** `pnpm check:size` (`node scripts/bundle-size.mjs --budget bundle-budget.json`) builds the probes `bundle-budget.json` names and fails when one's own minified bytes (the `own` the script reports: the Svelte runtime excluded) exceed its budget. CI's `size` job runs it on every push, and `CI passed` needs it.
+- **Setting it.** A pass that ends below the budget lowers it to its final number plus 0.2 KB, in its own pull request.
+- **Raising it.** Only the user raises it: the commit that raises it says by how much, for what feature, and that the user decided. An agent never raises it to make a check pass; a change over the budget is cut, moved into the fork, or goes back to the user.
+
 ### 12. Report
 
 The report a pass ends with:

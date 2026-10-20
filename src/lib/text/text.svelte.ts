@@ -2,7 +2,8 @@ import { cleanups } from '$lib/utils.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { type JSONText } from '$lib/utils/json.js';
 import type { Block } from '../block/block.svelte.js';
-import { segmentJSON, type ContentPart } from '$lib/session/handles.js';
+import { segmentJSON } from '$lib/session/handles.js';
+import type { Segment } from '$lib/crdt/parts.js';
 
 /**
  * An id-only, read-only text handle: the `ordinal`-th text segment of block
@@ -33,29 +34,30 @@ export class Text {
 		return this.edytor.idToBlock.block(this.blockId);
 	}
 
-	/** This segment in its block's parts, and its position among them. */
-	get #at(): { part?: Extract<ContentPart, { kind: 'text' }>; index: number } {
+	/** This segment in its block's parts. */
+	get #parts() {
 		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
-		const parts = this.edytor.idToBlock.parts(this.blockId);
-		for (let index = 0, k = 0; index < parts.length; index++) {
-			const part = parts[index]!;
-			if (part.kind === 'text' && k++ === this.ordinal) return { part, index };
-		}
-		return { index: -1 };
+		return this.edytor.idToBlock.parts(this.blockId);
+	}
+	get #part(): Segment | undefined {
+		return this.#parts.find(
+			(part): part is Segment => part.kind === 'text' && part.segOrd === this.ordinal
+		);
 	}
 
 	/** Position among the block's content parts. */
 	get index(): number {
-		return this.#at.index;
+		const parts = this.#parts;
+		return parts.indexOf(this.#part!);
 	}
 
 	get value(): JSONText[] {
-		return segmentJSON(this.#at.part?.items ?? []);
+		return segmentJSON(this.#part?.runs ?? []);
 	}
 
 	/** The segment's text. */
 	get stringContent(): string {
-		return this.#at.part?.items.map((item) => item.text).join('') ?? '';
+		return this.#part?.text ?? '';
 	}
 
 	get isEmpty(): boolean {
@@ -67,17 +69,17 @@ export class Text {
 	}
 
 	get length(): number {
-		return this.#at.part?.length ?? 0;
+		return this.stringContent.length;
 	}
 
 	/** Display offset of this segment inside its block's content (atoms count 1). */
 	get segStart(): number {
-		return this.#at.part?.start ?? 0;
+		return this.#part?.start ?? 0;
 	}
 
 	/** The segment is shown by a live block. */
 	get isInDocument(): boolean {
-		return this.parent.isInTree && this.#at.part !== undefined;
+		return this.parent.isInTree && this.#part !== undefined;
 	}
 
 	/**

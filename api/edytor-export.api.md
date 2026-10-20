@@ -1149,6 +1149,48 @@ export interface DocumentWrites {
 }
 ```
 
+#### crdt/parts.d.ts#AtomPart
+
+```ts
+export type AtomPart = {
+    readonly kind: 'inline';
+    readonly key: string;
+    readonly id: string;
+    readonly type: string;
+    readonly data: Readonly<Record<string, unknown>> | undefined;
+    readonly start: number;
+    readonly end: number;
+};
+```
+
+#### crdt/parts.d.ts#Part
+
+```ts
+export type Part = Segment | AtomPart;
+```
+
+#### crdt/parts.d.ts#Segment
+
+```ts
+export type Segment = {
+    readonly kind: 'text';
+    readonly key: string;
+    readonly text: string;
+    readonly runs: readonly TextRun[];
+    readonly segOrd: number;
+    readonly start: number;
+    readonly end: number;
+};
+```
+
+#### crdt/parts.d.ts#TextRun
+
+```ts
+type TextRun = Extract<ContentRun, {
+    kind: 'text';
+}>;
+```
+
 #### crdt/placement/model.d.ts#BlockId
 
 ```ts
@@ -2733,23 +2775,6 @@ export declare class Dispatcher {
 export type PendingMarks = Record<string, SerializableContent | null>;
 ```
 
-#### session/handles.d.ts#ContentPart
-
-```ts
-export type ContentPart = {
-    kind: 'text';
-    start: number;
-    items: TextRunItem[];
-    length: number;
-} | {
-    kind: 'inline';
-    start: number;
-    item: ContentItem & {
-        kind: 'inline';
-    };
-};
-```
-
 #### session/handles.d.ts#Handles
 
 ```ts
@@ -2764,19 +2789,10 @@ export declare class Handles {
     text: (blockId: string, ordinal: number) => Text;
     textById: (id: string) => Text | undefined;
     atom: (blockId: string, atomId: string) => InlineBlock;
-    parts: (id: string) => ContentPart[];
+    parts: (id: string) => readonly Part[];
     prune: (change: DocChange) => void;
     clear: () => void;
 }
-```
-
-#### session/handles.d.ts#TextRunItem
-
-```ts
-export type TextRunItem = {
-    text: string;
-    marks?: Record<string, unknown>;
-};
 ```
 
 #### session/keymap.d.ts#CHARS
@@ -2958,7 +2974,7 @@ export type SelectionSegment = {
     segOrd: number;
     start: number;
     end: number;
-    runs: TextRun[];
+    runs: readonly TextRun[];
 } | {
     block: BlockId;
     kind: 'inline';
@@ -2992,7 +3008,7 @@ export type SelectionValue = {
 #### session/selection.d.ts#TextRun
 
 ```ts
-type TextRun = Extract<ContentItem, {
+type TextRun = Extract<ContentRun, {
     kind: 'text';
 }>;
 ```

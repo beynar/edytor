@@ -40,6 +40,7 @@ import {
 } from './selection.js';
 import { untargeted } from './attempt.js';
 import { siblingSlot } from './handles.js';
+import { partsOf } from '$lib/crdt/parts.js';
 
 /**
  * With no target (`untargeted`: the value is `none`, no gesture placed the
@@ -61,9 +62,8 @@ const ATOM = '￼';
 
 /** A block's content as one string, each inline atom one `ATOM`. */
 const stringOf = (edytor: Edytor, block: string) =>
-	edytor.facade
-		.contentItems(block)
-		.map((item) => (item.kind === 'text' ? item.text : ATOM))
+	partsOf(edytor.facade.runs(block))
+		.map((part) => (part.kind === 'text' ? part.text : ATOM))
 		.join('');
 
 /** A block's stop at its edge in `dir` (its end going forward, its start going backward). */

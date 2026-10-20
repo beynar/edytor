@@ -3553,7 +3553,7 @@ export declare class Handles {
     text: (blockId: string, ordinal: number) => Text;
     textById: (id: string) => Text | undefined;
     atom: (blockId: string, atomId: string) => InlineBlock;
-    parts: (id: string) => ContentPart[];
+    parts: (id: string) => readonly Part[];
     prune: (change: DocChange) => void;
     clear: () => void;
 }
@@ -5657,7 +5657,7 @@ export type SelectionSegment = {
     segOrd: number;
     start: number;
     end: number;
-    runs: TextRun[];
+    runs: readonly TextRun[];
 } | {
     block: BlockId;
     kind: 'inline';

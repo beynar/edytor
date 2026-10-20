@@ -24,6 +24,7 @@ import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$l
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Caret } from '$lib/selection/selection.svelte.js';
+import { pointOf } from './selection.js';
 import { viewOf } from '$lib/selection/visibility.js';
 import { reveal } from '$lib/selection/replaceSelection.js';
 import { DEV } from 'esm-env';
@@ -595,8 +596,9 @@ export class Dispatcher {
 		const result = this.writer?.(plan) ?? facade.apply(plan);
 		for (const [id, hook] of touched) this.request(id, hook);
 		if (typed) selection.stage(undefined);
-		const after = atom ? caret!.block.textAtOffset(caret!.offset + 1) : null;
-		const value = after ? selection.textValue(after.text, after.offset) : null;
+		const value = atom
+			? selection.valueAt({ block: caret!.block.id, offset: caret!.offset + 1 })
+			: null;
 		if (value?.kind === 'text') selection.select(Object.freeze({ ...value, pending }));
 		for (const id of plan.effect.moves) {
 			const block = idToBlock.get(id);
@@ -669,19 +671,19 @@ export class Dispatcher {
 	caret = (caret: Caret | DocPosition | null | undefined, ops?: () => OpResult) => {
 		const block =
 			typeof caret?.block === 'string' ? this.edytor.idToBlock.get(caret.block) : caret?.block;
-		const at = block?.textAtOffset(Math.max(0, caret!.offset));
-		return this.caretIn(at?.text, at?.offset ?? 0, ops);
+		return this.#caretAt(block && { block: block.id, offset: Math.max(0, caret!.offset) }, ops);
 	};
 
 	/** @internal `caret` at an offset inside a text segment. */
-	caretIn = (
-		text: Text | null | undefined,
-		offset: number,
+	caretIn = (text: Text | null | undefined, offset: number, ops?: () => OpResult) =>
+		this.#caretAt(text && pointOf(text, Math.max(0, Math.min(offset, text.length))), ops);
+
+	#caretAt = (
+		point: DocPosition | null | undefined,
 		ops?: () => OpResult
 	): OpResult | undefined => {
 		const selection = this.edytor.selection;
-		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
-		const value = text ? selection.textValue(text, at) : null;
+		const value = point ? selection.valueAt(point) : null;
 		let out: OpResult | undefined;
 		if (ops) {
 			const outer = this.authoring;
@@ -693,7 +695,7 @@ export class Dispatcher {
 			}
 			if (out.status === 'refused') return out;
 		}
-		if (!text || !value || value.kind === 'none') return out;
+		if (!value || value.kind === 'none') return out;
 		selection.select(value);
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();

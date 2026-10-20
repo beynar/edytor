@@ -17,6 +17,7 @@ import type { BlockId, ContentRun } from '$lib/crdt/index.js';
 import { partsOf, segmentAt } from '$lib/crdt/parts.js';
 import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
 import { jsonEquals } from '$lib/utils/json.js';
+import type { Text } from '$lib/text/text.svelte.js';
 
 export type Marks = Record<string, unknown>;
 
@@ -61,6 +62,12 @@ export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
 
 /** A position within one document version: block id + display offset (an atom counts 1). */
 export type SelectionPoint = { block: BlockId; offset: number };
+
+/** A point inside a text segment (its block's `ordinal`-th) as a block-offset point. */
+export const pointOf = (text: Text, offset: number): SelectionPoint => ({
+	block: text.blockId,
+	offset: text.segStart + offset
+});
 
 type TextRun = Extract<ContentRun, { kind: 'text' }>;
 

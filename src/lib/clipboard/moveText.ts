@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Flow } from '$lib/crdt/flow.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DocAnchor } from '$lib/crdt/index.js';
-import type { Text } from '$lib/text/text.svelte.js';
 import { project, type SelectionPoint, type SelectionValue } from '$lib/session/selection.js';
 import { viewOf } from '$lib/selection/visibility.js';
 import { flowOfFragment } from './insertClipboardFragment.js';
@@ -110,14 +109,13 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 	);
 	if (dispatcher.last?.status !== 'applied' || !placed.to) return keep();
 	/** The text and offset an anchor resolves to. */
-	const point = (anchor: DocAnchor | null | undefined): [Text | null, number] => {
+	const point = (anchor: DocAnchor | null | undefined): SelectionPoint | null => {
 		const hit = anchor && facade.resolveAnchor(anchor);
-		const at = hit && edytor.idToBlock.get(hit.blockId)?.textAtOffset(hit.offset);
-		return at ? [at.text, at.offset] : [null, 0];
+		return hit && edytor.idToBlock.has(hit.blockId)
+			? { block: hit.blockId, offset: hit.offset }
+			: null;
 	};
-	const [startText, startOffset] = point(placed.from);
-	const [endText, endOffset] = point(placed.to);
-	if (startText && endText) edytor.selection.selectText(startText, startOffset, endText, endOffset);
-	else if (endText) edytor.selection.selectText(endText, endOffset);
+	const [from, at] = [point(placed.from), point(placed.to)];
+	if (at) edytor.selection.selectAt(from ?? at, at);
 	return true;
 };

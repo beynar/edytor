@@ -27,6 +27,12 @@ export const getDomSelection = (node?: Node | null): Selection | null =>
 export const getActiveElement = (node?: Node | null): Element | null =>
 	shadowOf(node)?.activeElement ?? ownerOf(node)?.activeElement ?? null;
 
+/** The focused element when it is `node` or inside it (the editor's own focus), else `null`. */
+export const focusIn = (node?: Node | null): Element | null => {
+	const active = getActiveElement(node);
+	return active && node?.contains(active) ? active : null;
+};
+
 export const clearDomSelection = (node?: Node | null) => {
 	getDomSelection(node)?.removeAllRanges();
 };
@@ -126,8 +132,7 @@ export const scrollCaretIntoView = (root: Element | null | undefined) => {
 	const selection = root && getDomSelection(root);
 	const focusNode = selection?.focusNode;
 	if (!selection || !focusNode || selection.rangeCount === 0 || !root.contains(focusNode)) return;
-	const active = getActiveElement(root);
-	if (!active || !root.contains(active)) return;
+	if (!focusIn(root)) return;
 	const element = focusNode instanceof Element ? focusNode : focusNode.parentElement;
 	if (!element) return;
 	// A scratch range collapsed at the FOCUS endpoint: a backward range

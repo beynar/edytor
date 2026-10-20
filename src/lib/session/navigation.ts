@@ -34,6 +34,7 @@ import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/repl
 import type { HotKey } from './keymap.js';
 import {
 	atomSelection,
+	pointOf,
 	segmentsOf,
 	type SelectionPoint,
 	type SelectionValue
@@ -125,8 +126,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 			: null;
 	if (atom?.kind === 'inline')
 		return selection.select(atomSelection(start.block, atom.id, order > 0 ? 'after' : 'before'));
-	const [from, to] = [selection.textAt(start), selection.textAt(end)];
-	if (from && to) selection.selectText(from.text, from.offset, to.text, to.offset, order > 0);
+	selection.selectAt(start, end, order > 0);
 };
 
 /**
@@ -154,8 +154,7 @@ export const move = (
 		const first = blocks.map((block) => shownText(block, 'first')).find(Boolean);
 		const last = blocks.map((block) => shownText(block, 'last')).findLast(Boolean);
 		if (first && last) {
-			start = { block: first.blockId, offset: first.segStart };
-			end = { block: last.blockId, offset: last.segStart + last.length };
+			[start, end] = [pointOf(first, 0), pointOf(last, last.length)];
 		}
 		// Voids alone show no line: the blocks stay selected, except for the
 		// document keys, whose target is the document's edge (`select` moves

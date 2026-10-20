@@ -85,6 +85,7 @@ import { DataWrites } from './session/props.js';
 import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
 import {
 	clearDomSelection,
+	focusIn,
 	getActiveElement,
 	getDomSelection,
 	getDomSelectionSnapshot
@@ -813,12 +814,13 @@ export class Edytor {
 	 * fires (element already focused).
 	 */
 	#expectInternalFocusArmed = false;
-	/** @internal */
-	expectInternalFocus = () => {
+	/** @internal Armed, and `element` (the host, an editing host in it) focused without scrolling. */
+	expectInternalFocus = (element?: HTMLElement | null) => {
 		this.#expectInternalFocusArmed = true;
 		queueMicrotask(() => {
 			this.#expectInternalFocusArmed = false;
 		});
+		element?.focus({ preventScroll: true });
 	};
 	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
@@ -856,14 +858,13 @@ export class Edytor {
 	stabilizeCompositionSelection = (text: Text, offset: number) => {
 		if (this.readonly || this.isComposing || !text.isInDocument) return;
 		const active = getActiveElement(this.node);
-		const selection = getDomSelection(this.node);
 		const ours = (node?: Node | null) => Boolean(node && this.node?.contains(node));
 		// Focus left for a foreign element with no selection of ours, or moved
 		// into a nested editable island (its own caret): the user owns it.
 		if (
 			(active &&
-				!ours(active) &&
-				!ours(selection?.anchorNode) &&
+				!focusIn(this.node) &&
+				!ours(getDomSelection(this.node)?.anchorNode) &&
 				!ours(this.selection.textRange().startText?.node)) ||
 			isKindControl(this.node, active)
 		)
@@ -1029,8 +1030,8 @@ export class Edytor {
 		return {
 			destroy: () => {
 				if (selectionIsInside(node)) clearDomSelection(node);
-				const active = getActiveElement(node);
-				if (active instanceof HTMLElement && node.contains(active)) active.blur();
+				const active = focusIn(node);
+				if (active instanceof HTMLElement) active.blur();
 				this.#detach();
 			}
 		};

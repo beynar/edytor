@@ -293,60 +293,35 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
 		const { plan } = steps;
-		// The prepared op families (`OpsContext`: the reads, capability and step writers).
-		const {
-			insertBlocks,
-			moveBlocks,
-			unNestBlocks,
-			unNestBlock,
-			landingOf,
-			liftOut,
-			duplicateBlock
-		} = moveOps(steps);
-		const { besideAt, placeBeside, wrapInLayout } = layoutOps(steps);
-		const { splitBlock, mergeBlocks, mergeBackward, mergeForward } = splitMergeOps(steps);
-		const { deleteBlocks, deleteBlock } = deleteOps(steps);
-		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
-		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
-			contentOps(steps);
+		// The prepared op families (`OpsContext`: the reads, capability and step
+		// writers): every op they answer is a document write, but for the reads
+		// and step writers taken out here.
+		const { landingOf, ...moves } = moveOps(steps);
+		const { besideAt, ...layouts } = layoutOps(steps);
+		const { dataSteps, replaceData, ...metas } = metaOps(steps);
+		const deletes = deleteOps(steps);
 
 		/** What range deletion and flow placement compose: the step writers and the ops. */
-		const ops = { ...steps, insertBlocks, deleteBlocks, dataSteps, replaceData };
+		const ops = { ...steps, ...moves, ...deletes, dataSteps, replaceData };
 
 		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
-			insertBlocks,
-			moveBlocks,
+			...moves,
+			...layouts,
+			...splitMergeOps(steps),
+			...deletes,
+			...metas,
+			...contentOps(steps),
 			/**
 			 * Move `id` to the last position under `parent` — under a container
 			 * it is no item of, under its last item (`nestParent`: Tab after a list).
 			 */
 			nestBlock: (id: BlockId, parent: BlockId) => {
 				const at = nestParent([ref(id)], ref(parent));
-				return moveBlocks([id], { parent: at, index: childrenIds(at).length });
+				return moves.moveBlocks([id], { parent: at, index: childrenIds(at).length });
 			},
-			unNestBlock,
-			unNestBlocks,
-			liftOut,
-			placeBeside,
-			wrapInLayout,
-			splitBlock,
-			mergeBlocks,
-			mergeBackward,
-			mergeForward,
-			deleteBlock,
-			setBlock,
-			setBlockType,
-			patchData,
-			duplicateBlock,
-			insertText,
-			deleteText,
-			formatRange,
-			clearMarks,
-			insertInline,
-			removeInline,
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
-			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => deletes.deleteBlocks(ids),
 			...rangeDeleteOps(ops),
 			...flowOps(ops)
 		};

@@ -40,6 +40,7 @@ import { tick, untrack } from 'svelte';
 import type { DocAnchor } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
+import type { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { diffText } from '../utils/diffText.js';
 import { jsonEquals } from '../utils/json.js';
 import { activeMarks, marksForInsertion } from '../session/editing/text.js';
@@ -59,8 +60,17 @@ import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js'
 type Verdict = 'adopt' | 'attempt' | 'invert' | 'defer';
 /** Where an adopted edit lands: the block and offset its anchor resolves to now. */
 type Place = { block: string; at: number; remove: number; insert: string };
-/** A registered element; `owned`: the attributes its render owns (a block's, `Block.svelte`). */
-type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
+/**
+ * A registered element; `owned`: the attributes its render owns (a block's,
+ * `Block.svelte`); `handle`: the text or atom it renders (the one node → handle map).
+ */
+type Entry = {
+	kind: Kind;
+	block: string;
+	name?: string;
+	owned?: () => Owned;
+	handle?: Text | InlineBlock;
+};
 /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
 type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
 /**
@@ -272,8 +282,15 @@ export class SurfaceObserver {
 	 * release. A text element takes the table's attributes now (its id, its
 	 * editing host inside a void).
 	 */
-	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
-		const entry = { kind, block, name, owned };
+	register = (
+		node: Element,
+		kind: Kind,
+		block: string,
+		name?: string,
+		owned?: () => Owned,
+		handle?: Text | InlineBlock
+	) => {
+		const entry = { kind, block, name, owned, handle };
 		this.#registry.set(node, entry);
 		if (kind === 'text') heal(node as HTMLElement, ownedOf(this.edytor, node, entry)!);
 		if (kind === 'block') this.#blocks.set(block, node);
@@ -375,26 +392,38 @@ export class SurfaceObserver {
 		return records.length > 0;
 	};
 
-	/** The block an element belongs to: its closest registered element's (`null`: the root). */
-	#owner = (node: Node): string | null | undefined => {
-		for (let at: Node | null = node; at; at = at.parentNode) {
+	/** The closest registered element holding `node` in the host: its entry (`null`: the host). */
+	#near = (node: Node | null): Entry | null | undefined => {
+		for (let at = node; at; at = at.parentNode) {
 			if (at === this.edytor.node) return null;
-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
-			// What happens in a preview is the view's own render: nothing to compare.
-			if (entry)
-				return entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block;
+			const entry = this.#registry.get(at as Element);
+			if (entry) return entry;
 		}
-		return undefined;
 	};
 
-	/** The text whose element holds `node`. */
-	#textOf = (node: Node): Text | undefined => {
-		for (let at: Node | null = node; at && at !== this.edytor.node; at = at.parentNode) {
-			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
-			if (entry)
-				return entry.kind === 'text' ? this.edytor.nodeToText.get(at as Element) : undefined;
-		}
-		return undefined;
+	/** The block an element belongs to: its closest registered element's (`null`: the root). */
+	#owner = (node: Node): string | null | undefined => {
+		const entry = this.#near(node);
+		// What happens in a preview is the view's own render: nothing to compare.
+		return (
+			entry && (entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block)
+		);
+	};
+
+	/** The handle a registered element of `kind` renders (`null`: another element). */
+	handleOf = <K extends 'text' | 'atom'>(element: Node | null | undefined, kind: K) => {
+		const entry = element && this.#registry.get(element as Element);
+		return (entry?.kind === kind ? entry.handle : null) as
+			| (K extends 'text' ? Text : InlineBlock)
+			| null;
+	};
+
+	/** The block `node` is in (its closest registered element's), none in a preview or outside the host. */
+	blockOf = (node: Node | null) => {
+		const entry = this.#near(node);
+		return entry && entry.kind !== 'preview' && entry.kind !== 'anchor'
+			? (this.edytor.idToBlock.get(entry.block) ?? null)
+			: null;
 	};
 
 	#registered = (node: Node) => node instanceof Element && this.#registry.has(node);
@@ -487,7 +516,8 @@ export class SurfaceObserver {
 			if (!held(removal) && !anchors && !(crossed && this.#lost(removal))) continue;
 			// A browser-owned attempt's host: its change is adopted whatever the
 			// browser did to its structure, which the re-render then restores.
-			const inside = this.#textOf(parent);
+			const near = this.#near(parent);
+			const inside = near?.kind === 'text' && (near.handle as Text);
 			if (inside && this.edytor.attempts.on(inside)) continue;
 			for (const node of added)
 				if (node.parentNode === parent && !this.#holds(node)) parent.removeChild(node);
@@ -778,9 +808,7 @@ export class SurfaceObserver {
 	};
 
 	#texts = (id: string): Text[] =>
-		[...(this.#contents.get(id) ?? [])].flatMap(
-			(element) => this.edytor.nodeToText.get(element) ?? []
-		);
+		[...(this.#contents.get(id) ?? [])].flatMap((element) => this.handleOf(element, 'text') ?? []);
 
 	/** A content's DOM: its registered text and atom elements in order; null when not shown. */
 	#read = (id: string): { text: string; broken: string | null } | null => {
@@ -800,7 +828,7 @@ export class SurfaceObserver {
 			else if (host && !host.contains(element)) broken ??= 'escaped';
 			if (kind === 'atom') text += ATOM;
 			else if (kind === 'text') {
-				const found = this.edytor.nodeToText.get(element);
+				const found = this.handleOf(element, 'text');
 				text += (found ? readDomText(found) : (element.textContent ?? '')).replace(ZWSP, '');
 			}
 		}

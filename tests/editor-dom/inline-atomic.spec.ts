@@ -1102,14 +1102,19 @@ test.describe('browser inline atomic behavior', () => {
 				.poll(async () =>
 					page.evaluate(() => {
 						const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-						const inlineBlocks = Array.from(
+						const elements = Array.from(
 							document.querySelectorAll<HTMLElement>('[data-edytor-inline-block]')
-						).filter((element) => !element.parentElement?.closest('[data-edytor-inline-block]'));
+						);
+						const inlineBlocks = elements.filter(
+							(element) => !element.parentElement?.closest('[data-edytor-inline-block]')
+						);
 						return {
 							inlineDomNodes: inlineBlocks.length,
 							// (R4: atoms are handles by id; only elements are registered.
 							// R5: one element per atom — the snippet no longer attaches its own.)
-							inlineNodeMappings: edytor?.nodeToInlineBlock.size ?? 0
+							inlineNodeMappings: elements.filter((element) =>
+								edytor?.surface.handleOf(element, 'atom')
+							).length
 						};
 					})
 				)

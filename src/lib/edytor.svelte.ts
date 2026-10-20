@@ -207,10 +207,6 @@ export class Edytor {
 	/** The view's handles: one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
 	/** @internal */
-	nodeToInlineBlock = new Map<Node, InlineBlock>();
-	/** @internal */
-	nodeToText = new Map<Node, Text>();
-	/** @internal */
 	transaction = new TRANSACTION();
 	/** @internal The view's keymap: consumer bindings, then the extensions', then the built-in rows. */
 	keymap: Keymap;
@@ -1089,8 +1085,6 @@ export class Edytor {
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
 		// stray mutation could still reach.
 		this.idToBlock.clear();
-		this.nodeToInlineBlock.clear();
-		this.nodeToText.clear();
 		this.root = undefined;
 		this.node = undefined;
 

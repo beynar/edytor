@@ -65,7 +65,13 @@ export const insideVoid = (edytor: Edytor, block: string) => {
 export const ownedOf = (
 	edytor: Edytor,
 	element: Element,
-	entry: { kind: Kind; block: string; name?: string; owned?: () => Owned } | null
+	entry: {
+		kind: Kind;
+		block: string;
+		name?: string;
+		owned?: () => Owned;
+		handle?: { id: string; type?: string; isEmpty?: boolean };
+	} | null
 ): Owned | null => {
 	if (element === edytor.node)
 		return {
@@ -97,7 +103,7 @@ export const ownedOf = (
 			style: { display: 'none' }
 		};
 	if (entry.kind === 'atom') {
-		const atom = edytor.nodeToInlineBlock.get(element);
+		const atom = entry.handle as { id: string; type?: string } | undefined;
 		return {
 			strict: true,
 			owned: {
@@ -108,7 +114,7 @@ export const ownedOf = (
 			style: {}
 		};
 	}
-	const text = edytor.nodeToText.get(element);
+	const text = entry.handle as { id: string; isEmpty?: boolean } | undefined;
 	const voided = insideVoid(edytor, block);
 	return {
 		strict: true,

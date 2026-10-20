@@ -604,11 +604,7 @@ export class EdytorSelection {
 	getTextOfNode = getTextOfNode.bind(this);
 
 	/** @internal The block whose element holds `node`, in this editor. */
-	getBlockOfNode = (node: Node | null) => {
-		const element = getElementFromNode(node)?.closest<HTMLElement>('[data-edytor-block]');
-		const id = element && this.edytor.node?.contains(element) && element.dataset.edytorId;
-		return (id && this.edytor.idToBlock.get(id)) || null;
-	};
+	getBlockOfNode = (node: Node | null) => this.edytor.surface.blockOf(node);
 
 	/** @internal */
 	init = () => {

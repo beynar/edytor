@@ -22,15 +22,15 @@ describe('attachment lifecycle maps', () => {
 
 		expect(text.node).toBe(currentNode);
 		expect(edytor.idToBlock.textById(text.id)).toBe(text);
-		expect(edytor.nodeToText.get(currentNode)).toBe(text);
-		expect(edytor.nodeToText.has(staleNode)).toBe(false);
+		expect(edytor.surface.handleOf(currentNode, 'text')).toBe(text);
+		expect(edytor.surface.handleOf(staleNode, 'text')).toBeNull();
 
 		currentAttachment.destroy();
 
 		// A live segment resolves by its id without an element (R4: handles read the index).
 		expect(text.node).toBeUndefined();
 		expect(edytor.idToBlock.textById(text.id)).toBe(text);
-		expect(edytor.nodeToText.has(currentNode)).toBe(false);
+		expect(edytor.surface.handleOf(currentNode, 'text')).toBeNull();
 	});
 
 	test('stale block attachment cleanup does not detach the current block node', () => {

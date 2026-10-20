@@ -117,9 +117,15 @@ export class Text {
 	/** @internal */
 	attach = (node: HTMLElement) => {
 		this.node = node;
-		this.edytor.nodeToText.set(node, this);
 		// Registered, it takes the attribute table's attributes (`surface/attributes.ts`).
-		const release = this.edytor.surface.register(node, 'text', this.parent.id);
+		const release = this.edytor.surface.register(
+			node,
+			'text',
+			this.parent.id,
+			undefined,
+			undefined,
+			this
+		);
 		const pluginDestroy = cleanups(this.edytor.plugins, (plugin) =>
 			plugin.onTextAttached?.({ node, text: this })
 		);
@@ -130,7 +136,6 @@ export class Text {
 		return {
 			destroy: () => {
 				if (this.node === node) this.node = undefined;
-				if (this.edytor.nodeToText.get(node) === this) this.edytor.nodeToText.delete(node);
 				release();
 				pluginDestroy.forEach((destroy) => destroy());
 			}

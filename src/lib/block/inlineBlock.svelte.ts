@@ -88,9 +88,15 @@ export class InlineBlock {
 		node.dataset.edytorId = this.id;
 		node.dataset.edytorInlineBlock = this.type;
 		this.#attachedNodes.add(node);
-		this.edytor.nodeToInlineBlock.set(node, this);
 		this.node = node;
-		const release = this.edytor.surface.register(node, 'atom', this.blockId);
+		const release = this.edytor.surface.register(
+			node,
+			'atom',
+			this.blockId,
+			undefined,
+			undefined,
+			this
+		);
 
 		const selectInlineBlock = (event: PointerEvent) => {
 			if (event.button !== 0) return;
@@ -123,7 +129,6 @@ export class InlineBlock {
 				if (this.node === node) {
 					this.node = this.#attachedNodes.values().next().value;
 				}
-				this.edytor.nodeToInlineBlock.delete(node);
 				release();
 			}
 		};

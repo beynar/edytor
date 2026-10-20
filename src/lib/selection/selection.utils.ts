@@ -155,7 +155,7 @@ const strayText = (node: Node, container?: HTMLElement | null) => {
 export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
 	if (!node) return null;
 	const { edytor } = this;
-	const textOf = (element: Node | null) => (element && edytor.nodeToText.get(element)) || null;
+	const textOf = (element: Node | null) => edytor.surface.handleOf(element, 'text');
 	// A point in a suggestion's preview is the stray boundary the preview sits at.
 	const preview = closestTo(node, SUGGESTION);
 	if (preview) return textOf(strayText(preview, edytor.node));
@@ -174,7 +174,7 @@ export const getInlineBlockOfNode = (edytor: Edytor, node: Node | null) => {
 	const element = getElementFromNode(node);
 	const around = element?.closest(INLINE);
 	const inline = around && edytor.node?.contains(around) ? around : element?.querySelector(INLINE);
-	return (inline && edytor.nodeToInlineBlock.get(inline)) || null;
+	return edytor.surface.handleOf(inline, 'atom');
 };
 
 /** The one inline atom a non-collapsed range covers, touching no text. */
@@ -186,7 +186,7 @@ export const getInlineBlockInSelectedRange = (edytor: Edytor, range: Range | und
 			(element) => range!.intersectsNode(element)
 		);
 	const atoms = new Set(
-		inside(INLINE).flatMap((element) => edytor.nodeToInlineBlock.get(element) ?? [])
+		inside(INLINE).flatMap((element) => edytor.surface.handleOf(element, 'atom') ?? [])
 	);
 	return atoms.size === 1 && !inside(TEXT).length ? [...atoms][0] : null;
 };

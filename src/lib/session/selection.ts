@@ -328,29 +328,11 @@ export const sameEnds = (a: SelectionProjection, b: SelectionProjection) =>
 
 export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 
-const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
-	a === b ||
-	(a.b === b.b &&
-		a.a.a === b.a.a &&
-		(a.a.i === b.a.i || (a.a.i?.c === b.a.i?.c && a.a.i?.k === b.a.i?.k)));
-
-const sameMarks = (a: Marks | undefined, b: Marks | undefined) => jsonEquals(a ?? null, b ?? null);
-
-/** Value equality: kind, anchors (item + side), ids, pending marks. */
-export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
-	if (a === b) return true;
-	if (a.kind === 'text' && b.kind === 'text')
-		return (
-			sameAnchor(a.anchor, b.anchor) &&
-			sameAnchor(a.focus, b.focus) &&
-			sameMarks(a.pending, b.pending)
-		);
-	if (a.kind === 'blocks' && b.kind === 'blocks')
-		return a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]);
-	if (a.kind === 'atom' && b.kind === 'atom')
-		return a.blockId === b.blockId && a.atomId === b.atomId && a.from === b.from;
-	return a.kind === b.kind && a.kind === 'none';
-};
+/**
+ * Value equality: kind, anchors (item + side), ids, pending marks. A value
+ * is plain JSON (anchors, ids, marks), so it is the JSON equality.
+ */
+export const sameValue: (a: SelectionValue, b: SelectionValue) => boolean = jsonEquals;
 
 /**
  * The presence payload: anchors only. A text range publishes its

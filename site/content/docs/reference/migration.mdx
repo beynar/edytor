@@ -14,6 +14,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 5.0.0
+
+#### Breaking changes
+
 - **The providers' own listener members are one teardown.** `IndexeddbPersistence` and `WebsocketProvider` no longer carry `_storeUpdate`, `_updateHandler` or `_awarenessUpdateHandler` (their document and presence listeners, never meant to be called): one `_unlisten` removes both listeners, as `destroy()` does. Nothing else of the providers changes.
 
 ### From 4.0.0

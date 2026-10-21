@@ -261,6 +261,27 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 			stampLastChanged(doc, node, actorId);
 		},
 		/**
+		 * A re-seed (`room.reseed.cut`): the block's record and `lastChangedBy`
+		 * become `att`, the old document's, whatever the seed wrote.
+		 */
+		restoreRecord: (
+			doc: EngineDoc,
+			node: EngineNode,
+			id: BlockId,
+			att: BlockAttribution | undefined
+		): void => {
+			const rec = ensureRecord(doc, id, node);
+			if (att?.createdBy === undefined) rec.deleteAttr(CREATED_KEY);
+			else if (rec.getAttr(CREATED_KEY) !== att.createdBy) rec.setAttr(CREATED_KEY, att.createdBy);
+			for (const key of rec.attrKeys())
+				if (key.startsWith(CONTRIBUTOR_PREFIX) && !att?.contributors.has(key.slice(2)))
+					rec.setAttr(key, false);
+			for (const a of att?.contributors ?? []) addContributor(rec, a);
+			if (att?.lastChangedBy === undefined) node.deleteAttr(LAST_CHANGED_ATTR);
+			else if (node.getAttr(LAST_CHANGED_ATTR) !== att.lastChangedBy)
+				node.setAttr(LAST_CHANGED_ATTR, att.lastChangedBy);
+		},
+		/**
 		 * Merge: the survivor unions the absorbed block's contributor set.
 		 * The merger itself lands via `stampChange` on the survivor.
 		 */

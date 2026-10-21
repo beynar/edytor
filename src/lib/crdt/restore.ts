@@ -67,7 +67,7 @@ export const unitsOf = (items: readonly ContentItem[]): Unit[] => {
 };
 
 /** Units back to runs: consecutive characters with the same marks joined. */
-const runsOf = (units: readonly Unit[]): ContentItem[] => {
+export const runsOf = (units: readonly Unit[]): ContentItem[] => {
 	const out: ContentItem[] = [];
 	let tag: string | null = null;
 	for (const { key, item } of units) {
@@ -172,6 +172,22 @@ export type RestoreFacade<Plan> = Partial<SuggestFacade> & {
 	};
 };
 
+/** How a restore writes content, and whether it rejects the pending suggestions. */
+export type RestoreOptions<Plan> = {
+	/**
+	 * The content rewrite of a block that differs (default `rewriteContent`).
+	 * Another one edits through the display, so the block keeps its claims.
+	 */
+	rewrite?: (
+		facade: RestoreFacade<Plan>,
+		id: BlockId,
+		have: readonly Unit[],
+		want: readonly Unit[]
+	) => boolean;
+	/** `keep`: the pending suggestions stay (a re-seed's rebase writes as one more writer). */
+	suggestions?: 'reject' | 'keep';
+};
+
 /**
  * Make the visible document `doc` (through `facade`, the facade over it)
  * equal `json`. Runs inside the caller's transaction; the writer is
@@ -180,7 +196,8 @@ export type RestoreFacade<Plan> = Partial<SuggestFacade> & {
 export const restoreDocument = <Plan>(
 	doc: EngineDoc,
 	facade: RestoreFacade<Plan>,
-	json: JSONDoc
+	json: JSONDoc,
+	{ rewrite, suggestions = 'reject' }: RestoreOptions<Plan> = {}
 ): RestoreReport => {
 	const report: RestoreReport = { revived: 0, moved: 0, rewritten: 0, created: 0, deleted: 0 };
 	const specs = json.children.map((block) => toBlockSpec(block));
@@ -261,6 +278,11 @@ export const restoreDocument = <Plan>(
 		let have = unitsOf(facade.contentItems(id));
 		if (have.length === want.length && have.every((u, i) => u.key === want[i].key)) continue;
 		const claims = modelView(doc).blocks.get(id)?.claims ?? [];
+		if (rewrite) {
+			rewrite(facade, id, have, want);
+			report.rewritten++;
+			continue;
+		}
 		if (claims.some((c) => c.stamp.c >= 0)) {
 			deleteClaims(doc, claims);
 			have = unitsOf(facade.contentItems(id));
@@ -292,7 +314,7 @@ export const restoreDocument = <Plan>(
 	// their proposals — is rejected, in the restore's step (its undo brings
 	// them back).
 	// (Built over the facade, its shared suggestions: `doc/suggest.ts`.)
-	const suggest = facade.part && suggestionsOf(facade as SuggestFacade);
+	const suggest = suggestions === 'reject' && facade.part && suggestionsOf(facade as SuggestFacade);
 	if (suggest) suggest.run(suggest.decide(suggest.changes(), false));
 	return report;
 };

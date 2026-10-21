@@ -7,7 +7,7 @@ export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdS
 export { Doc } from './utils/Doc.js'
 export { UpdateDecoder } from './utils/UpdateDecoder.js'
 export { UpdateEncoder } from './utils/UpdateEncoder.js'
-export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from './utils/encoding.js'
+export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, clipUpdate, mergeUpdates } from './utils/encoding.js' // YP34: clipUpdate
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
 export { idAtIndex, indexOfId } from './utils/positions.js' // YP19

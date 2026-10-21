@@ -11,7 +11,7 @@ export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";
 export type ContentIds = import("./utils/ids.js").ContentIds;
 export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
-export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from "./utils/encoding.js";
+export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, clipUpdate, mergeUpdates } from "./utils/encoding.js";
 export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { idAtIndex, indexOfId } from "./utils/positions.js";
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from "./utils/transaction-helpers.js";

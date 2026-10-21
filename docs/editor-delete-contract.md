@@ -3435,6 +3435,64 @@ undone, replaced by the next restore, or older than the purge horizon; a
 woken room rebuilds the step from the table. One level: a second
 `undoRestore` is a `noop`.
 
+### `room.reseed.cut` — a re-seed rebuilds the document from its content
+
+`cutDocument(old, seed)` (`crdt/reseed.ts`) seeds a new document from
+`old`'s JSON (`toJSON()`: block ids, kinds, data, content, marks, the
+document's data) and gives each block `old`'s attribution (`createdBy`,
+`contributors`, `lastChangedBy`: `restoreRecord`). Its identities are
+fresh: no deleted text, no history, no attribution lineage beyond the
+records. The cut it answers is what the room keeps of `old`: its state
+vector, its deletes (an update without structs) and the cut map, each seed
+character's old item (runs of `client, clock, length → old client, old
+clock`).
+
+### `room.reseed.rebase` — an offline client's edits after a re-seed
+
+`rebaseOnto(target, cut, upload, scratch)` merges the unsaved edits in a
+client's old document (`upload`, whole) into `target`, the current
+document of the epoch `cut` started, in the caller's transaction:
+
+1. the client's base is the part of `upload` the cut covers (its structs
+   under the cut's state vector, its deletes the cut's deletes also hold:
+   `Y.clipUpdate`, fork patch YP34), built into a scratch document, the
+   shadow; its own edits are the rest (`Y.diffUpdate`); nothing past the
+   cut → `noop`, nothing written;
+2. `target`, as shown, is written onto the shadow by identity
+   (`restoreByIdentity`): a seed character is its old one (the cut map),
+   so the shadow keeps it; one typed after the cut, or by a writer whose
+   edits the client never had, is new text there. A block of the shadow is
+   cut where its characters go to another block, and each block of
+   `target` is assembled from its pieces (the first takes its id, the
+   others are merged into it), so `target`'s splits and merges are splits
+   and merges in the shadow; a kept character whose marks differ is
+   formatted; nothing removes a merge claim;
+3. the client's edits are merged into the shadow by the CRDT;
+4. the shadow, as shown, is written onto `target` the same way, each of
+   its characters read as `target`'s, the client's own as new: every
+   character `target` holds keeps its identity (a later rebase's cut map
+   still names it), and `target`'s pending suggestions stay.
+
+### `room.reseed.text` — text edits merge exactly
+
+When neither side split, merged, moved, inserted or deleted blocks since
+the client's base, the rebased document shows every character the CRDT
+merge of the two documents would show, each in its block, and no other;
+the order of two inserts made at one place at once, and the edge of a mark
+the other side applied, can differ. Pins: `src/tests/crdt/reseed/`
+(`reseed.test.ts`, the `text` row of `reseed-random.test.ts`).
+
+### `room.reseed.residue` — when both sides restructured the same blocks
+
+The CRDT's outcome can depend on the old document's structure history,
+which the cut does not keep: text a side typed into a block it then
+deleted shows again in a piece the other side split from it concurrently,
+and a block merged into one the other side deleted comes back. The rebase
+does neither (a character no longer shown at the cut is not in the new
+document). Measured by the `structure` row of `reseed-random.test.ts` (a
+third of the edits structural, on the same few blocks: about 1 % of the
+characters, a regression bound); none is duplicated.
+
 ### `room.locks` — per-block locks (H10)
 
 `lockedBlocks({ key = 'lockedBy', subtree = false, bypass })`

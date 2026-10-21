@@ -22,7 +22,7 @@ import * as array from 'lib0-v14/array'
 
 import { getStateVector, StructStore } from './StructStore.js'
 import { getItemCleanStart, getItemCleanEnd } from './transaction-helpers.js'
-import { createIdSet, IdRange, readAndApplyDeleteSet, readIdSet, mergeIdSets, writeIdSet } from './ids.js'
+import { createIdSet, IdRange, readAndApplyDeleteSet, readIdSet, mergeIdSets, writeIdSet, intersectSets } from './ids.js' // YP34: intersectSets
 import { createID, ID } from './ID.js'
 import { UpdateDecoder } from './UpdateDecoder.js'
 import { UpdateEncoder } from './UpdateEncoder.js'
@@ -468,6 +468,47 @@ export const diffUpdate = (update, sv) => {
   writeIdSet(encoder, ds)
   return encoder.toUint8Array()
 }
+
+// YP34 begin
+/**
+ * The part of `update` that the state vector `sv` covers, with only the
+ * deletes `ds` also holds: `update` as it read at an earlier state (the
+ * counterpart of `diffUpdate`). A struct that crosses the state vector is
+ * cut at it; a skip is written only where a later struct of its client
+ * follows it.
+ *
+ * @param {Uint8Array} update
+ * @param {Uint8Array} sv
+ * @param {import('./ids.js').IdSet} ds
+ */
+export const clipUpdate = (update, sv, ds) => {
+  const state = decodeStateVector(sv)
+  const encoder = new UpdateEncoder()
+  const lazyStructWriter = new LazyStructWriter(encoder)
+  const decoder = new UpdateDecoder(decoding.createDecoder(update))
+  const reader = new LazyStructReader(decoder, false)
+  /** @type {Array<Skip>} */
+  let skips = []
+  let client = -1
+  for (let curr = reader.curr; curr !== null; curr = reader.next()) {
+    if (curr.id.client !== client) [client, skips] = [curr.id.client, []]
+    const svClock = state.get(client) || 0
+    if (curr.id.clock >= svClock) continue
+    if (curr.constructor === Skip) {
+      skips.push(/** @type {Skip} */ (curr))
+      continue
+    }
+    if (lazyStructWriter.written > 0 && lazyStructWriter.currClient === client) {
+      for (const skip of skips) writeStructToLazyStructWriter(lazyStructWriter, skip, 0, 0)
+    }
+    skips = []
+    writeStructToLazyStructWriter(lazyStructWriter, curr, 0, math.max(curr.id.clock + curr.length - svClock, 0))
+  }
+  finishLazyStructWriting(lazyStructWriter)
+  writeIdSet(encoder, intersectSets(readIdSet(decoder), ds))
+  return encoder.toUint8Array()
+}
+// YP34 end
 
 /**
  * Read decodedState and return State as Map.

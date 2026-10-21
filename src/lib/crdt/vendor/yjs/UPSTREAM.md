@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values), YP29 (a collected mark or claim keeps its class) and YP30 (a transaction's `beforeCommit`)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager), YP19 (only what edytor calls), YP20 (hold records), YP21 (claim items), YP22 (move records), YP23 (a block set's trim), YP24 (a string table per update), YP25 (paired marks written in parts), YP26 (a client table per update), YP27 (the parent kind in the info byte), YP28 (large integers in content values), YP29 (a collected mark or claim keeps its class), YP30 (a transaction's `beforeCommit`), YP31 (a hold inside a nested node holds nothing), YP32 (a delete that proposes), YP33 (one transaction log) and YP34 (an update read at an earlier state)
 global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -1663,6 +1663,36 @@ the YP20, YP22 and YP31 rows reading their entries of the log, the index's
 self-checks after every fold (they rebuild from the replicated state and
 never read the log), the fold's counters (`foldedStructs`, the scale rows),
 the random corpus, the upstream suite unchanged.
+
+### YP34 — an update read at an earlier state (`src/utils/encoding.js`, `src/index.js`)
+
+Reason: a re-seed's rebase (`room.reseed.rebase`, `crdt/reseed.ts`) gets an
+offline client's whole old document and must split it into the part the
+room held at the cut (the client's base) and the rest (its unsaved edits).
+`diffUpdate(update, sv)` gives the rest; nothing gave the base, and edytor
+has no access to the lazy struct reader and writer it would need (they are
+not exported). The engine now gives the counterpart. Encoding unchanged, no
+schema change.
+
+Patch (new code delimited by `// YP34 begin` / `// YP34 end`, edits marked `// YP34`):
+
+- **`clipUpdate(update, sv, ds)`**: the structs of `update` under the state
+  vector `sv` (a struct that crosses it is cut there, through the content's
+  `offsetEnd`; a skip is written only where a later struct of its client
+  follows it), and the deletes of `update` that the id set `ds` also holds
+  (`intersectSets`). Exported from `src/index.js`, not from edytor's engine
+  object (`crdt/engine.js`): only the room calls it, so apps keep none of it.
+
+Deleted content a document collected cannot come back (a collecting
+document writes it as deleted); edytor's text deletes are hold records
+(YP20), which keep it.
+
+Measured: vendored execution lines +30; the app bundle unchanged (the
+engine object does not hold it).
+
+Oracle: `src/tests/crdt/yp34-clip.test.ts` (an update read at an earlier
+state, its later deletes left out; a run cut at the state vector), the
+re-seed rows (`src/tests/crdt/reseed/`), the upstream suite unchanged.
 
 ## Generated declarations (`dts/`)
 

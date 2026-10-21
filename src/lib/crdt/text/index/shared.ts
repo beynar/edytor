@@ -8,7 +8,7 @@ import type { EngineNode } from '../../engine-api.js';
 import type { BlockId, BlockRec } from '../../placement/model.js';
 import { CONTENT, DATA, DATA_LEAF_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../../schema.js';
 import type { ContentRun, DisplayRoles } from '../runs.js';
-import type { SelfChecks } from './state.js';
+import type { IndexFacts, SelfChecks } from './build.js';
 import { getOr } from '../../../utils.js';
 
 /**
@@ -119,11 +119,7 @@ export const sameShape = (roles: DisplayRoles, a: string, b: string): boolean =>
  * against a rebuild from the replicated state and throws on the first
  * difference; after every report, the published tree.
  */
-export const indexChecks: { on: boolean; of?: (ix: never) => SelfChecks } = { on: false };
-
-/** `ix`'s checker ({@link indexChecks}), built on its first check. */
-export const checksOf = (ix: { checks: SelfChecks | null }): SelfChecks =>
-	(ix.checks ??= indexChecks.of!(ix as never));
+export const indexChecks: { on: boolean; of?: (facts: IndexFacts) => SelfChecks } = { on: false };
 
 /** Add `value` to `key`'s set in `index`. */
 export const addTo = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {

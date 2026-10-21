@@ -12,7 +12,7 @@
  * each parent are keyed densely in their sequence's order.
  *
  * Production decides the same placements another way: the index settles
- * one block at a time (`text/index/placement.ts` `settle`, a cycle dropping
+ * one block at a time (`text/index/build.ts` `settle`, a cycle dropping
  * its oldest edge, `retryFallen`), whose fixpoint is this acceptance's
  * unique result whatever the order. This rebuild shares production's reads
  * of the engine (the slots, the candidates, the homes), never its acceptance.

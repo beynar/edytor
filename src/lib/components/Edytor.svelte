@@ -379,7 +379,7 @@
 			contenteditable="false"
 			aria-hidden="true"
 			style="display: none"
-			use:edytor.surface.anchor
+			use:edytor.surface.own
 		></span>
 	</div>
 {:else if snapshot}

@@ -48,7 +48,7 @@ import { INTENTS } from '../session/attempt.js';
 import { runOccurrence } from '../events/onBeforeInput.js';
 import { getDomSelectionSnapshot } from '../selection/domSelection.js';
 import { domOffsetIn } from '../selection/selection.utils.js';
-import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
+import { diverges, heal, ownText, ownedOf, type Kind, type Owned } from './attributes.js';
 import { getTextContentOffsetAtPoint, textLeaves } from '../events/domTextOffset.js';
 import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
 
@@ -88,7 +88,8 @@ type Removal = {
 };
 type Replacement = { nodes: Node[]; value: string; caret: number | undefined };
 
-const ZWSP = /\u200B/g;
+/** The empty filler (and the trailing newline's marker). */
+const ZWSP = '\u200B';
 const ATOM = '\uFFFC';
 /** Attributes that claim a core element's identity: never on an unregistered element. */
 const IDENTITY_ATTRIBUTES = [
@@ -108,20 +109,11 @@ const BOUND = 100;
 const WINDOW_MS = 250;
 
 /** The text a cell renders: characters, an atom one unit, fillers stripped. */
-const textOf = (cell: Cell) =>
-	cell.runs
-		.map((run) => (run.kind === 'text' ? run.text : ATOM))
-		.join('')
-		.replace(ZWSP, '');
+const textOf = (cell: Cell) => ownText(cell.runs, ATOM).replaceAll(ZWSP, '');
 
 /** Svelte's anchors: comments and empty text nodes are never input and never removed. */
 const isAnchor = (node: Node) =>
 	node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE && !node.nodeValue);
-
-/** The `nth` non-empty text node under `node`. */
-const textLeaf = (node: Node, nth = 0) =>
-	(textLeaves(node).filter((leaf) => leaf.data)[nth] as globalThis.Text | undefined) ?? null;
-const ZERO_WIDTH_SPACE = '\u200B';
 
 /**
  * What the browser shows for `text`: its element's text nodes in order (WebKit's
@@ -130,41 +122,23 @@ const ZERO_WIDTH_SPACE = '\u200B';
  */
 export const readDomText = (text: Text) => {
 	let value = '';
-	const node = text.node;
-	for (const leaf of node ? textLeaves(node) : [])
+	for (const leaf of text.node ? textLeaves(text.node) : [])
 		value += leaf.parentElement?.closest('span.Apple-converted-space')
 			? leaf.data.replaceAll('\u00A0', ' ')
 			: leaf.data;
-
 	// An empty text's filler shares its node with what the browser typed, on either side.
-	if (text.isEmpty) return value.replaceAll(ZERO_WIDTH_SPACE, '');
-
-	if (text.endsWithNewline && value.endsWith(ZERO_WIDTH_SPACE)) {
-		value = value.slice(0, -ZERO_WIDTH_SPACE.length);
-	}
-
-	return value;
+	if (text.isEmpty) return value.replaceAll(ZWSP, '');
+	return text.endsWithNewline && value.endsWith(ZWSP) ? value.slice(0, -1) : value;
 };
 
 export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 	const selection = getDomSelectionSnapshot(edytor.node);
-	if (!selection?.anchorNode || !selection.isCollapsed) {
-		return null;
-	}
-
-	if (!edytor.node?.contains(selection.anchorNode)) {
-		return null;
-	}
-
-	const text = edytor.selection.getTextOfNode(selection.anchorNode);
-	if (!text?.node) {
-		return null;
-	}
-
+	const node = selection?.isCollapsed ? selection.anchorNode : null;
+	const text = node && edytor.node?.contains(node) ? edytor.selection.getTextOfNode(node) : null;
 	// No model rule here: the DOM caret is read BEFORE the reconcile writes
 	// the model, so a native insertion legitimately sits past `text.length`
 	// (`selectText` clamps the final write).
-	return { text, offset: domOffsetIn(text, selection.anchorNode, selection.anchorOffset) };
+	return text?.node ? { text, offset: domOffsetIn(text, node!, selection!.anchorOffset) } : null;
 };
 
 /** A native line break (a diff inserting only newlines at `at`) runs as the key's occurrence. */
@@ -183,16 +157,16 @@ const settle = (promises: Promise<unknown>[]) => Promise.all(promises).then(() =
 
 /** The collapsed DOM caret's text offset inside `nodes` (a replacement's), if it is there. */
 const caretIn = (nodes: Node[]) => {
-	const selection = nodes[0]?.ownerDocument?.getSelection();
-	const anchor = selection?.isCollapsed ? selection.anchorNode : null;
-	if (!anchor) return undefined;
+	const selection = nodes[0].ownerDocument?.getSelection();
 	let offset = 0;
-	for (const node of nodes) {
-		if (node.contains(anchor))
-			return offset + getTextContentOffsetAtPoint(node, anchor, selection!.anchorOffset);
-		offset += node.textContent?.length ?? 0;
-	}
-	return undefined;
+	if (selection?.isCollapsed)
+		for (const node of nodes) {
+			if (node.contains(selection.anchorNode))
+				return (
+					offset + getTextContentOffsetAtPoint(node, selection.anchorNode!, selection.anchorOffset)
+				);
+			offset += node.textContent!.length;
+		}
 };
 
 export class SurfaceObserver {
@@ -201,7 +175,7 @@ export class SurfaceObserver {
 	/** The records signal: the MutationObserver named elements to compare. */
 	records = $state(0);
 	#mo: MutationObserver | null = null;
-	#registry = new Map<Element, Entry>();
+	#registry = new Map<Node, Entry>();
 	#contents = new Map<string, Set<Element>>();
 	#blocks = new Map<string, Element>();
 	/** Contents to compare (`null`: the root's children). */
@@ -217,9 +191,9 @@ export class SurfaceObserver {
 	#rooted = new Set<Node>();
 	#removed: Removal[] = [];
 	/** A text element the browser replaced with its own nodes: their text is the edit. */
-	#replaced = new Map<Element, Replacement>();
+	#replaced = new Map<Node, Replacement>();
 	/** A restored text element's replacement: its text is the element's DOM text until adopted. */
-	#replacements = new Map<Element, Replacement>();
+	#replacements = new Map<Node, Replacement>();
 	/** Contents patched since the last pass: their DOM shows an older cell. */
 	#patched = new Set<string>();
 	/** Of those, the ones a commit re-rendered (a remount discards its DOM: never snapshotted). */
@@ -241,29 +215,22 @@ export class SurfaceObserver {
 	#rendering = false;
 	/** Passes under way (a pass's own repairs; an adoption's synchronous flush nests one). */
 	#passes = 0;
-	#window: ReturnType<typeof setTimeout> | null = null;
+	#window?: ReturnType<typeof setTimeout>;
 
 	constructor(private edytor: Edytor) {}
 
 	/** Observe `root` (the host): records name what to compare. */
 	attach = (root: HTMLElement) => {
 		const mo = (this.#mo = new MutationObserver((records) => {
-			for (const record of records) this.#intake(record, this.#own());
+			this.#take(records);
 			this.signal();
 		}));
 		for (const child of root.childNodes) this.#rooted.add(child);
 		this.#rendering = false;
-		mo.observe(root, {
-			attributes: true,
-			attributeOldValue: true,
-			characterData: true,
-			childList: true,
-			subtree: true
-		});
+		mo.observe(root, { attributes: true, characterData: true, childList: true, subtree: true });
 		return () => {
 			mo.disconnect();
-			if (this.#mo === mo) this.#mo = null;
-			clearTimeout(this.#window ?? undefined);
+			clearTimeout(this.#window);
 		};
 	};
 
@@ -296,17 +263,14 @@ export class SurfaceObserver {
 		};
 	};
 
-	/** The render anchor (`Edytor.svelte`): a registered child of the strict root. */
-	anchor = (node: HTMLElement) => {
-		const release = this.register(node, 'anchor', '');
-		return { destroy: release };
-	};
-
-	/** A suggestion's preview group (`components/Suggestion`): registered, view-only, never compared. */
-	preview = (node: HTMLElement, id: string) => {
-		const release = this.register(node, 'preview', id);
-		return { destroy: release };
-	};
+	/**
+	 * A view-only element the core renders in the host, never compared: the
+	 * render anchor (`Edytor.svelte`, a registered child of the strict root),
+	 * or with its suggestion's `id`, a preview group (`components/Suggestion`).
+	 */
+	own = (node: HTMLElement, id?: string) => ({
+		destroy: this.register(node, id ? 'preview' : 'anchor', id ?? '')
+	});
 
 	/** Extension view state rendered into the host, or a re-display request: an epoch bump. */
 	update = () => void this.epoch++;
@@ -368,16 +332,14 @@ export class SurfaceObserver {
 	};
 
 	/**
-	 * The editor writes the host now: the flush (from the pre pass to the end
-	 * of its compare pass) or a pass's own repairs. A record taken then is the
-	 * render's (`dom.anchors.foreign`); every other one is the browser's, a
-	 * page script's or an extension's.
+	 * Take `records` (the callback's; else the queue's): each names elements to
+	 * compare. The editor writes the host now: the flush (from the pre pass to
+	 * the end of its compare pass) or a pass's own repairs. A record taken then
+	 * is the render's (`dom.anchors.foreign`); every other one is the browser's,
+	 * a page script's or an extension's.
 	 */
-	#own = () => this.#rendering || this.#passes > 0;
-
-	#take = () => {
-		const records = this.#mo?.takeRecords() ?? [];
-		const own = this.#own();
+	#take = (records = this.#mo?.takeRecords() ?? []) => {
+		const own = this.#rendering || this.#passes > 0;
 		for (const record of records) this.#intake(record, own);
 		return records.length > 0;
 	};
@@ -386,15 +348,18 @@ export class SurfaceObserver {
 	#near = (node: Node | null): Entry | null | undefined => {
 		for (let at = node; at; at = at.parentNode) {
 			if (at === this.edytor.node) return null;
-			const entry = this.#registry.get(at as Element);
+			const entry = this.#registry.get(at);
 			if (entry) return entry;
 		}
 	};
 
-	/** The block an element belongs to: its closest registered element's (`null`: the root). */
+	/**
+	 * The block an element belongs to: its closest registered element's
+	 * (`null`: the root; `undefined`: a preview, the view's own render, or
+	 * outside the host).
+	 */
 	#owner = (node: Node): string | null | undefined => {
 		const entry = this.#near(node);
-		// What happens in a preview is the view's own render: nothing to compare.
 		return (
 			entry && (entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block)
 		);
@@ -402,7 +367,7 @@ export class SurfaceObserver {
 
 	/** The handle a registered element of `kind` renders (`null`: another element). */
 	handleOf = <K extends 'text' | 'atom'>(element: Node | null | undefined, kind: K) => {
-		const entry = element && this.#registry.get(element as Element);
+		const entry = element && this.#registry.get(element);
 		return (entry?.kind === kind ? entry.handle : null) as
 			| (K extends 'text' ? Text : InlineBlock)
 			| null;
@@ -410,17 +375,13 @@ export class SurfaceObserver {
 
 	/** The block `node` is in (its closest registered element's), none in a preview or outside the host. */
 	blockOf = (node: Node | null) => {
-		const entry = this.#near(node);
-		return entry && entry.kind !== 'preview' && entry.kind !== 'anchor'
-			? (this.edytor.idToBlock.get(entry.block) ?? null)
-			: null;
+		const id = node && this.#owner(node);
+		return id ? (this.edytor.idToBlock.get(id) ?? null) : null;
 	};
-
-	#registered = (node: Node) => node instanceof Element && this.#registry.has(node);
 
 	/** `node` is, or holds, an element the core still renders. */
 	#holds = (node: Node) =>
-		this.#registered(node) ||
+		this.#registry.has(node) ||
 		(node instanceof Element &&
 			[...node.querySelectorAll('*')].some((child) => this.#registry.has(child)));
 
@@ -431,30 +392,26 @@ export class SurfaceObserver {
 		if (id === undefined) return;
 		this.#dirty.add(id);
 		if (id) this.#seen(id);
-		if (record.type === 'attributes') this.#attributes.add(record);
-		if (record.type !== 'childList') return;
-		const rooted = record.target === this.edytor.node;
-		for (const node of record.addedNodes) {
-			this.#added.add(node);
-			if (rooted) this.#rooted.add(node);
-		}
-		const removed = [...record.removedNodes];
-		if (!removed.some((node) => isAnchor(node) || this.#holds(node))) return;
+		const { type, target: parent, nextSibling: next, previousSibling: prev } = record;
+		if (type === 'attributes') this.#attributes.add(record);
+		if (type !== 'childList') return;
 		const added = [...record.addedNodes];
-		const { target: parent, nextSibling: next, previousSibling: prev } = record;
-		this.#removed.push({ parent, nodes: removed, added, next, prev, foreign: !own });
-		// Wrapper replacement: the browser replaced a text element with its own nodes.
-		const [text] = removed;
-		if (
-			removed.length === 1 &&
-			this.#registry.get(text as Element)?.kind === 'text' &&
-			added.length &&
-			!added.some((node) => this.#holds(node) || node.nodeName === 'BR')
-		) {
-			const value = added.map((node) => node.textContent ?? '').join('');
-			if (value)
-				this.#replaced.set(text as Element, { nodes: added, value, caret: caretIn(added) });
+		for (const node of added) {
+			this.#added.add(node);
+			if (parent === this.edytor.node) this.#rooted.add(node);
 		}
+		const nodes = [...record.removedNodes];
+		if (!nodes.some((node) => isAnchor(node) || this.#holds(node))) return;
+		this.#removed.push({ parent, nodes, added, next, prev, foreign: !own });
+		// Wrapper replacement: the browser replaced a text element with its own nodes.
+		const value = added.map((node) => node.textContent).join('');
+		if (
+			nodes.length === 1 &&
+			this.#registry.get(nodes[0])?.kind === 'text' &&
+			value &&
+			!added.some((node) => this.#holds(node) || node.nodeName === 'BR')
+		)
+			this.#replaced.set(nodes[0], { nodes: added, value, caret: caretIn(added) });
 	};
 
 	/**
@@ -466,13 +423,15 @@ export class SurfaceObserver {
 		const cell = this.edytor.cells?.get(id);
 		if (!cell || this.#patched.has(id)) return;
 		const text = textOf(cell);
-		if (this.#bases.get(id)?.text !== text) this.#bases.set(id, { text, edit: null });
+		let base = this.#bases.get(id);
+		if (base?.text !== text) this.#bases.set(id, (base = { text, edit: null }));
 		const dom = this.#read(id)?.text;
-		const known = this.#bases.get(id)!;
-		if (dom === undefined || dom === text || known.edit?.dom === dom) return;
+		if (dom === undefined || dom === text || base.edit?.dom === dom) return;
 		const at = diffText(text, dom)!.at;
-		const anchor = this.edytor.facade.anchorAt(id, at, at < text.length ? 'right' : 'left');
-		known.edit = { dom, anchor };
+		base.edit = {
+			dom,
+			anchor: this.edytor.facade.anchorAt(id, at, at < text.length ? 'right' : 'left')
+		};
 	};
 
 	/**
@@ -497,76 +456,57 @@ export class SurfaceObserver {
 		const removals = this.#removed.splice(0).reverse();
 		const held = ({ parent, nodes }: Removal) =>
 			nodes.some((node) => node.parentNode !== parent && this.#holds(node));
+		// A foreign record took only the render's anchors, and they are gone from
+		// the page (not moved): they can return beside a recorded sibling still
+		// there (never at the parent's end).
+		const lost = ({ parent, nodes, next, prev, foreign }: Removal) =>
+			foreign &&
+			nodes.every((node) => isAnchor(node) && !node.isConnected) &&
+			(next?.parentNode === parent || prev?.parentNode === parent);
 		const parents = new Set(removals.filter(held).map(({ parent }) => parent));
-		const crossed = removals.some((removal) => this.#lost(removal) && this.#list(removal.parent));
+		// Took anchors from a block list: the root, or a parent of block elements (a block's children).
+		const crossed = removals.some(
+			(removal) =>
+				lost(removal) &&
+				(removal.parent === root ||
+					[...removal.parent.childNodes].some(
+						(child) => this.#registry.get(child)?.kind === 'block'
+					))
+		);
 		for (const removal of removals) {
 			const { parent, nodes, added, next, prev } = removal;
 			if (!root?.contains(parent)) continue;
 			const anchors = parents.has(parent) && nodes.every(isAnchor);
-			if (!held(removal) && !anchors && !(crossed && this.#lost(removal))) continue;
+			if (!held(removal) && !anchors && !(crossed && lost(removal))) continue;
 			// A browser-owned attempt's host: its change is adopted whatever the
 			// browser did to its structure, which the re-render then restores.
 			const near = this.#near(parent);
-			const inside = near?.kind === 'text' && (near.handle as Text);
-			if (inside && this.edytor.attempts.on(inside)) continue;
+			if (near?.kind === 'text' && this.edytor.attempts.on(near.handle as Text)) continue;
 			for (const node of added)
 				if (node.parentNode === parent && !this.#holds(node)) parent.removeChild(node);
 			const before =
 				next?.parentNode === parent ? next : prev?.parentNode === parent ? prev.nextSibling : null;
-			for (const node of nodes) if (node.parentNode !== parent) parent.insertBefore(node, before);
-			this.#wrote = true;
 			for (const node of nodes) {
-				const replaced = node instanceof Element && this.#replaced.get(node);
+				if (node.parentNode !== parent) parent.insertBefore(node, before);
 				// The replacement's text is the browser's edit: adopted into the element's text.
-				if (replaced) this.#replacements.set(node as Element, replaced);
+				const replaced = this.#replaced.get(node);
+				if (replaced) this.#replacements.set(node, replaced);
 			}
+			this.#wrote = true;
 		}
 		this.#replaced.clear();
 	};
 
-	/**
-	 * A foreign record took only the render's anchors, and they are gone from
-	 * the page (not moved): they can return beside a recorded sibling still
-	 * there (never at the parent's end).
-	 */
-	#lost = ({ parent, nodes, next, prev, foreign }: Removal) =>
-		foreign &&
-		nodes.every((node) => isAnchor(node) && !node.isConnected) &&
-		(next?.parentNode === parent || prev?.parentNode === parent);
-
-	/** A block list: the root, or a parent of block elements (a block's children). */
-	#list = (parent: Node) =>
-		parent === this.edytor.node ||
-		[...parent.childNodes].some(
-			(child) => child instanceof Element && this.#registry.get(child)?.kind === 'block'
-		);
-
-	/**
-	 * Where an edit made at `at` of the base lands now: through the anchor
-	 * minted at it (it follows its text through a re-key, split, move or
-	 * retype), else rebased within the block over the model's own change
-	 * (three-way prefix/suffix).
-	 */
-	#place = (id: string, base: Base, dom: string, at: number, now: string) => {
-		const to =
-			base.edit?.dom === dom &&
-			base.edit.anchor &&
-			this.edytor.facade.resolveAnchor(base.edit.anchor);
-		if (to) return { block: to.blockId, at: to.offset };
-		const model = diffText(base.text, now);
-		const before = model && model.at + model.remove <= at;
-		return { block: id, at: at + (before ? model.insert.length - model.remove : 0) };
-	};
-
 	/** Only a content this flush re-renders can lose an edit to its writes: snapshot it. */
 	#snapshot = () => {
-		if (this.edytor.readonly) return;
+		const { edytor } = this;
+		if (edytor.readonly) return;
 		for (const id of this.#rerendered) {
-			if (id === this.#host) continue;
 			const base = this.#bases.get(id);
-			const dom = base && this.#read(id);
-			const cell = this.edytor.cells?.get(id);
-			if (!dom || !cell || dom.text === base.text || dom.text === textOf(cell)) continue;
+			const read = base && id !== this.#host && this.#read(id);
+			const cell = edytor.cells?.get(id);
+			if (!read || !cell || read.text === base.text || read.text === textOf(cell)) continue;
+			const dom = read.text;
 			// An expectation claims the edit, or it is placed through the anchor minted at it.
 			const verdict = this.#divergence(id);
 			// An edit the window defers is drift: the flush's render restores the cell.
@@ -574,9 +514,18 @@ export class SurfaceObserver {
 				this.#snapshots.set(id, verdict === 'defer' ? 'invert' : verdict);
 				continue;
 			}
-			const change = diffText(base.text, dom.text)!;
-			const place = this.#place(id, base, dom.text, change.at, textOf(cell));
-			this.#snapshots.set(id, { ...change, ...place });
+			// Where it lands now: through the anchor minted at it (it follows its text
+			// through a re-key, split, move or retype), else rebased within the block
+			// over the model's own change (three-way prefix/suffix).
+			const change = diffText(base.text, dom)!;
+			const to =
+				base.edit?.dom === dom && base.edit.anchor && edytor.facade.resolveAnchor(base.edit.anchor);
+			const model = !to && diffText(base.text, textOf(cell));
+			const at = to
+				? to.offset
+				: change.at +
+					(model && model.at + model.remove <= change.at ? model.insert.length - model.remove : 0);
+			this.#snapshots.set(id, { ...change, block: to ? to.blockId : id, at });
 		}
 	};
 
@@ -606,7 +555,8 @@ export class SurfaceObserver {
 	#compare = (flushed: boolean): Promise<unknown>[] => {
 		const { edytor } = this;
 		const cells = edytor.cells;
-		if (!cells || !edytor.node?.isConnected || edytor.destroyed) return [];
+		const work: Promise<unknown>[] = [];
+		if (!cells || !edytor.node?.isConnected || edytor.destroyed) return work;
 		const live = this.#live();
 		// The hand-back: the IME host returns to the compare pass at the session's end.
 		if (this.#host !== live) {
@@ -615,63 +565,57 @@ export class SurfaceObserver {
 		}
 		this.#heal();
 		if (edytor.readonly) {
-			for (const id of this.#dirty) if (this.#diverges(id)) this.#readonly.add(id);
+			// The root is checked at the flip back (its strict check finds what diverged).
+			for (const id of this.#dirty) if (id === null || this.#diverges(id)) this.#readonly.add(id);
 			this.#dirty.clear();
-			if (this.#wrote) this.update();
-			this.#wrote = false;
-			return [];
+		} else {
+			// The flip back: what diverged while read-only is compared again; and
+			// what waited for a model-owned attempt's drift window, once it closed.
+			for (const id of this.#readonly) this.#dirty.add(id);
+			if (!edytor.attempts.busy) {
+				for (const id of this.#waiting) this.#dirty.add(id);
+				this.#waiting.clear();
+			}
+			this.#restore();
+			this.#clones();
+			const dirty = [...this.#dirty].filter(
+				(id) => flushed || id === null || !this.#patched.has(id)
+			);
+			for (const id of dirty) this.#dirty.delete(id);
+			if (flushed) {
+				this.#patched.clear();
+				this.#rerendered.clear();
+			}
+			for (const id of dirty) {
+				if (id === null) this.#strictRoot();
+				// A content this pass's own adoption re-rendered waits for that flush.
+				else if (!this.#patched.has(id)) work.push(...this.#resolve(id, cells.get(id)));
+			}
+			this.#readonly.clear();
+			if (this.#fresh) {
+				this.#fresh = false;
+				void settle(work).then(edytor.projector.rendered);
+			}
 		}
-		// The flip back: what diverged while read-only is compared again; and
-		// what waited for a model-owned attempt's drift window, once it closed.
-		for (const id of this.#readonly) this.#dirty.add(id);
-		if (!edytor.attempts.busy) {
-			for (const id of this.#waiting) this.#dirty.add(id);
-			this.#waiting.clear();
-		}
-		this.#restore();
-		this.#clones();
-		const work: Promise<unknown>[] = [];
-		const dirty = [...this.#dirty].filter((id) => flushed || id === null || !this.#patched.has(id));
-		for (const id of dirty) this.#dirty.delete(id);
-		if (flushed) {
-			this.#patched.clear();
-			this.#rerendered.clear();
-		}
-		for (const id of dirty) {
-			if (id === null) this.#strictRoot();
-			// A content this pass's own adoption re-rendered waits for that flush.
-			else if (!this.#patched.has(id)) work.push(...this.#resolve(id, cells.get(id)));
-		}
-		this.#readonly.clear();
 		if (this.#wrote) {
 			this.#wrote = false;
 			this.update();
-		}
-		if (this.#fresh) {
-			this.#fresh = false;
-			void settle(work).then(edytor.projector.rendered);
 		}
 		return work;
 	};
 
 	/** A content differs from its cell (text, structure or a missing element). */
-	#diverges = (id: string | null) => {
-		if (id === null) return this.#rootDiverges();
+	#diverges = (id: string, dom = id !== this.#host && this.#read(id)) => {
 		const cell = this.edytor.cells?.get(id);
-		const dom = cell && id !== this.#host && this.#read(id);
-		return Boolean(dom && (dom.broken || dom.text !== textOf(cell!) || this.#shape(id)));
+		return !!(cell && dom && (dom.broken || dom.text !== textOf(cell) || this.#shape(id)));
 	};
 
 	/** One content against its cell, and what that asks for. */
 	#resolve = (id: string, cell: Cell | undefined): Promise<unknown>[] => {
 		const snapshot = this.#snapshots.get(id);
 		this.#snapshots.delete(id);
-		if (!cell) {
-			this.#bases.delete(id);
-			return [];
-		}
-		if (id === this.#host) return [];
-		const dom = this.#read(id);
+		if (!cell) this.#bases.delete(id);
+		const dom = cell && id !== this.#host && this.#read(id);
 		if (!dom) return [];
 		// What the DOM shows once this pass acted: the base of the next edit.
 		this.#bases.set(id, { text: dom.text, edit: null });
@@ -682,21 +626,17 @@ export class SurfaceObserver {
 			if (snapshot === 'invert') this.#invert(id);
 			return [];
 		}
-		const want = textOf(cell);
-		const replaced = this.#texts(id).some((text) => text.node && this.#replacements.has(text.node));
-		if (dom.broken || this.#readonly.has(id)) {
-			if (dom.broken || dom.text !== want || this.#shape(id)) this.#invert(id);
-			return [];
-		}
-		if (dom.text === want && !replaced) {
-			if (this.#shape(id)) this.#invert(id);
+		const replaced = this.#texts(id).some((text) => this.#replacements.has(text.node!));
+		// Broken, read-only or equal text: the cell is restored when it differs.
+		if (dom.broken || this.#readonly.has(id) || (dom.text === textOf(cell) && !replaced)) {
+			if (this.#diverges(id, dom)) this.#invert(id);
 			return [];
 		}
 		const verdict = this.#divergence(id);
 		if (verdict === 'defer') this.#waiting.add(id);
-		if (verdict === 'invert') this.#invert(id);
-		if (verdict === 'defer' || verdict === 'invert') return [];
-		return this.#adoptContent(id);
+		else if (verdict === 'invert') this.#invert(id);
+		else return this.#adoptContent(id);
+		return [];
 	};
 
 	/**
@@ -730,14 +670,6 @@ export class SurfaceObserver {
 		else this.update();
 	};
 
-	/** A text element's children that stand for render deltas (Svelte's anchors and the newline marker aside). */
-	#nodes = (element: Element) =>
-		[...element.childNodes].filter(
-			(node) =>
-				!isAnchor(node) &&
-				!(node instanceof Element && node.hasAttribute('data-edytor-trailing-newline'))
-		);
-
 	/**
 	 * Adopt the browser's text of each text element of `id` (one command each,
 	 * through the dispatcher); a native line break runs as its occurrence. A
@@ -749,18 +681,22 @@ export class SurfaceObserver {
 		const caret = getCollapsedDomTextSelection(edytor);
 		const work: Promise<unknown>[] = [];
 		for (const text of this.#texts(id)) {
-			const replaced = text.node && this.#replacements.get(text.node);
-			if (replaced) this.#replacements.delete(text.node!);
+			const replaced = this.#replacements.get(text.node!);
+			this.#replacements.delete(text.node!);
 			const dom = replaced ? replaced.value : readDomText(text);
 			if (dom === text.stringContent) continue;
-			broken ||= Boolean(replaced);
-			const at = replaced ? replaced.caret : caret?.text === text ? caret.offset : undefined;
+			broken ||= !!replaced;
 			const line = diffText(text.stringContent, dom);
-			if (line && !line.remove && /^[\r\n]+$/.test(line.insert)) {
-				work.push(lineBreak(edytor, text, dom, line.at));
-				continue;
-			}
-			work.push(adopt(edytor, text, dom, at));
+			work.push(
+				line && !line.remove && /^[\r\n]+$/.test(line.insert)
+					? lineBreak(edytor, text, dom, line.at)
+					: adopt(
+							edytor,
+							text,
+							dom,
+							replaced ? replaced.caret : caret?.text === text ? caret.offset : undefined
+						)
+			);
 		}
 		if (broken) this.#invert(id);
 		return work;
@@ -792,15 +728,13 @@ export class SurfaceObserver {
 		let text = '';
 		let broken = !!host && !host.isConnected;
 		for (const element of elements) {
-			const kind = this.#registry.get(element)?.kind;
+			const entry = this.#registry.get(element);
 			// A mark is inside its text element: its presence is the shape check's.
-			if (kind === 'mark') continue;
+			if (entry?.kind === 'mark') continue;
 			broken ||= !element.isConnected || (!!host && !host.contains(element));
-			if (kind === 'atom') text += ATOM;
-			else if (kind === 'text') {
-				const found = this.handleOf(element, 'text');
-				text += (found ? readDomText(found) : (element.textContent ?? '')).replace(ZWSP, '');
-			}
+			if (entry?.kind === 'atom') text += ATOM;
+			else if (entry?.kind === 'text')
+				text += readDomText(entry.handle as Text).replaceAll(ZWSP, '');
 		}
 		return { text, broken };
 	};
@@ -809,56 +743,45 @@ export class SurfaceObserver {
 	 * Equal text, compared structurally: each text element (a strict
 	 * container) holds one node per render delta (the empty filler's one) — a
 	 * text node, or a registered mark element whose registered marks follow
-	 * the delta's chain and that renders one text node. Answers whether it
-	 * differs; `write`: a content that does not gets each delta's text back
-	 * in its node.
+	 * the delta's chain and that renders one text node. Svelte's anchors and
+	 * the newline marker stand for none. Answers whether it differs; `write`:
+	 * a content that does not gets each delta's text back in its node.
 	 */
 	#shape = (id: string, write?: boolean): boolean => {
-		const writes: [globalThis.Text, string][] = [];
+		const { edytor } = this;
+		const writes: [CharacterData, string][] = [];
 		for (const text of this.#texts(id)) {
 			const element = text.node;
 			if (!element) continue;
-			const deltas = this.edytor.deltasOf(text);
-			const shown = deltas.length ? deltas : [{ text: '\u200B', marks: [] }];
-			const nodes = this.#nodes(element);
+			const deltas = edytor.deltasOf(text);
+			const shown = deltas.length ? deltas : [{ text: ZWSP, marks: [] }];
+			const nodes = [...element.childNodes].filter(
+				(node) =>
+					!isAnchor(node) &&
+					!(node instanceof Element && node.hasAttribute('data-edytor-trailing-newline'))
+			);
 			if (nodes.length !== shown.length) return true;
 			for (const [i, delta] of shown.entries()) {
 				const node = nodes[i] as Element;
-				let leaf = node as unknown as globalThis.Text | null;
+				let leaf = node as unknown as CharacterData;
 				const chain = delta.marks
 					.map(([name]) => name)
-					.filter((name) => rendersMark(this.edytor.marks, name));
+					.filter((name) => rendersMark(edytor.marks, name));
 				if (chain.length) {
 					if (!this.#registry.has(node)) return true;
 					const marks = [node, ...node.querySelectorAll('[data-edytor-mark]')]
 						.map((el) => this.#registry.get(el)?.name)
 						.filter(Boolean);
-					leaf = textLeaf(node);
+					const leaves = textLeaves(node).filter((leaf) => leaf.data);
 					// The snippet's markup is its own, but the delta renders one text node.
-					if (marks.join() !== chain.join() || !leaf || textLeaf(node, 1)) return true;
+					if (marks.join() !== chain.join() || leaves.length !== 1) return true;
+					leaf = leaves[0];
 				} else if (node.nodeType !== Node.TEXT_NODE) return true;
-				if (leaf!.data !== delta.text) writes.push([leaf!, delta.text]);
+				if (leaf.data !== delta.text) writes.push([leaf, delta.text]);
 			}
 		}
 		if (write) for (const [leaf, value] of writes) leaf.data = value;
 		return false;
-	};
-
-	/** The root's children differ from its registered block elements in cell order, the anchor, Svelte's anchors. */
-	#rootDiverges = () => {
-		const { node, cells } = this.edytor;
-		if (!node || !cells) return false;
-		const shown: string[] = [];
-		for (const child of node.childNodes) {
-			if (isAnchor(child)) continue;
-			const entry = child instanceof Element ? this.#registry.get(child) : undefined;
-			if (entry?.kind === 'block') shown.push(entry.block);
-			else if (entry?.kind !== 'anchor' && entry?.kind !== 'preview') return true;
-		}
-		return (
-			cells.rootIds.some((id) => this.#blocks.get(id)?.parentNode !== node) ||
-			shown.join() !== cells.rootIds.join()
-		);
 	};
 
 	/**
@@ -866,10 +789,9 @@ export class SurfaceObserver {
 	 * Only a node a record put there can be one (`#rooted`).
 	 */
 	#strictRoot = () => {
-		const node = this.edytor.node;
-		if (!node) return;
+		const node = this.edytor.node!;
 		for (const child of this.#rooted)
-			if (child.parentNode === node && !isAnchor(child) && !this.#registered(child)) {
+			if (child.parentNode === node && !isAnchor(child) && !this.#registry.has(child)) {
 				node.removeChild(child);
 				this.#wrote = true;
 			}
@@ -886,8 +808,7 @@ export class SurfaceObserver {
 	#clones = () => {
 		const root = this.edytor.node!;
 		for (const node of this.#added) {
-			if (!node.isConnected || !root.contains(node) || isAnchor(node) || this.#holds(node))
-				continue;
+			if (!root.contains(node) || isAnchor(node) || this.#holds(node)) continue;
 			if (node instanceof Element && node.matches(REST)) continue;
 			const clone =
 				node instanceof Element &&
@@ -899,7 +820,7 @@ export class SurfaceObserver {
 						this.#claims(element)
 				);
 			if (!clone && !this.#inRun(node)) continue;
-			node.parentNode?.removeChild(node);
+			(node as ChildNode).remove();
 			this.#wrote = true;
 		}
 		this.#added.clear();
@@ -907,26 +828,25 @@ export class SurfaceObserver {
 
 	/** `node` sits between two registered text or atom elements of one content. */
 	#inRun = (node: Node) => {
-		const side = (step: (at: Node) => Node | null) => {
-			for (let at = step(node); at; at = step(at)) {
-				const entry = at instanceof Element ? this.#registry.get(at) : undefined;
+		const side = (step: 'previousSibling' | 'nextSibling') => {
+			for (let at = node[step]; at; at = at[step]) {
+				const entry = this.#registry.get(at);
 				if (entry) return entry.kind === 'text' || entry.kind === 'atom' ? entry.block : null;
 			}
 			return null;
 		};
-		const before = side((at) => at.previousSibling);
-		return before !== null && before === side((at) => at.nextSibling);
+		const before = side('previousSibling');
+		return before !== null && before === side('nextSibling');
 	};
 
 	/** A `data-edytor-mark` naming no declared mark claims nothing: its element is foreign input. */
 	#claims = (element: Element) =>
+		element.hasAttribute('data-edytor') ||
 		IDENTITY_ATTRIBUTES.some(
 			(name) =>
 				element.hasAttribute(name) &&
-				(name !== 'data-edytor-mark' ||
-					this.edytor.marks.has(element.getAttribute(name) ?? '') ||
-					element.hasAttribute('data-edytor'))
-		) || element.hasAttribute('data-edytor');
+				(name !== 'data-edytor-mark' || this.edytor.marks.has(element.getAttribute(name)!))
+		);
 
 	/**
 	 * Owned attributes against the table (read-only views included); an
@@ -942,32 +862,29 @@ export class SurfaceObserver {
 				this.#attributes.delete(record);
 				continue;
 			}
-			const entry = this.#registry.get(element) ?? null;
+			const entry = this.#registry.get(element);
 			const owner = this.#owner(element);
 			if (owner && owner === this.#host) continue;
 			if (this.#heals > BOUND) break;
 			this.#attributes.delete(record);
-			const name = record.attributeName ?? '';
+			const name = record.attributeName!;
 			const table = ownedOf(edytor, element, entry);
 			// A mark element's own attributes are its render: damage there re-renders the content.
 			if (entry?.kind === 'mark') {
 				if (table && owner && diverges(element, table)) edytor.cells?.remount(owner);
-				continue;
-			}
-			if (!table) {
-				if (
-					IDENTITY_ATTRIBUTES.includes(name) &&
-					element.hasAttribute(name) &&
-					!element.closest(SUGGESTION)
-				) {
-					element.removeAttribute(name);
+			} else if (table) {
+				if (diverges(element, table) && heal(element, table)) {
 					this.#counted();
+					if (element === edytor.node) this.#refocus();
 				}
-				continue;
+			} else if (
+				IDENTITY_ATTRIBUTES.includes(name) &&
+				element.hasAttribute(name) &&
+				!element.closest(SUGGESTION)
+			) {
+				element.removeAttribute(name);
+				this.#counted();
 			}
-			if (!diverges(element, table) || !heal(element, table)) continue;
-			this.#counted();
-			if (element === edytor.node) this.#refocus();
 		}
 	};
 
@@ -988,8 +905,11 @@ export class SurfaceObserver {
 		};
 		if (again())
 			setTimeout(() => {
-				if (edytor.intentSerial !== serial) return;
-				if (!edytor.node?.ownerDocument.getSelection()?.rangeCount) again();
+				if (
+					edytor.intentSerial === serial &&
+					!edytor.node?.ownerDocument.getSelection()?.rangeCount
+				)
+					again();
 			});
 	};
 
@@ -998,7 +918,6 @@ export class SurfaceObserver {
 		if (++this.#heals === 1)
 			this.#window = setTimeout(() => {
 				this.#heals = 0;
-				this.#window = null;
 				if (this.#attributes.size) this.signal();
 			}, WINDOW_MS);
 	};
@@ -1007,11 +926,10 @@ export class SurfaceObserver {
 /** The rendered marks (a tag or a snippet) the browser shows at `at` of `text`: the element chain of its node there. */
 const shownMarks = (text: Text, at: number) => {
 	const element = text.node;
-	if (!element) return null;
 	let offset = 0;
-	const node = textLeaves(element).find(
-		(leaf) => (offset += leaf.data.replace(ZWSP, '').length) > at
-	);
+	const node =
+		element &&
+		textLeaves(element).find((leaf) => (offset += leaf.data.replaceAll(ZWSP, '').length) > at);
 	if (!node) return null;
 	const names: string[] = [];
 	for (let el = node.parentElement; el && el !== element; el = el.parentElement) {
@@ -1047,15 +965,16 @@ export const adopt = async (
 	domCaret?: number,
 	prefer?: number
 ) => {
-	if (!text.isInDocument) return false;
+	if (!text.isInDocument) return;
+	const { attempts, selection } = edytor;
 	const serial = edytor.intentSerial;
-	const attempt = edytor.attempts.on(text);
+	const attempt = attempts.on(text);
 	const after = attempt?.expect?.kind === 'change' ? attempt.expect.after : null;
-	const drifted = after !== null && dom !== after && edytor.attempts.drifting(text);
+	const drifted = after !== null && dom !== after && attempts.drifting(text);
 	const value = drifted ? after : dom;
 	const caret = drifted ? undefined : domCaret;
-	if (attempt) edytor.selection.select(attempt.target);
-	const { startText, yStart } = edytor.selection.textRange();
+	if (attempt) selection.select(attempt.target);
+	const { startText, yStart } = selection.textRange();
 	const grow = value.length - text.length;
 	const back = attempt?.isCollapsed && INTENTS[attempt.inputType]?.dir === 'back';
 	const change = diffText(
@@ -1063,48 +982,44 @@ export const adopt = async (
 		value,
 		attempt && startText === text ? yStart + (back ? grow : Math.max(0, grow)) : (prefer ?? caret)
 	);
-	if (!change) return false;
+	if (!change) return;
 	const { at, remove, insert } = change;
 	// The command runs at the change (a hook reads the selection).
 	if (startText !== text && (attempt || caret !== undefined))
-		edytor.selection.select(edytor.selection.textValue(text, at));
+		selection.select(selection.textValue(text, at));
+	const replaced = remove ? text.getMarksAtRange(at, at + remove) : undefined;
 	// A deletion of uniformly marked text keeps its marks pending.
-	const removed = insert ? [] : text.getMarksAtRange(at, at + remove);
+	const removed = insert ? [] : replaced!;
 	const marks = activeMarks(removed[0]?.marks);
 	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
 	const shown = insert && shownMarks(text, at);
-	const kind = attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : null;
-	edytor.dispatcher.run(kind ?? 'foreignChange', () => {
-		const [id, from] = [text.parent.id, text.segStart + at];
-		// A replaced range's common marks; else the view's insertion rule.
-		const replaced = remove ? text.getMarksAtRange(at, at + remove) : undefined;
-		const marks = replaced && marksForInsertion(text, at, { replaced });
-		if (remove) edytor.deleteText(id, from, remove);
-		if (insert) edytor.insertText(id, from, insert, marks);
-	});
+	edytor.dispatcher.run(
+		attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : 'foreignChange',
+		() => {
+			const [id, from] = [text.parent.id, text.segStart + at];
+			// A replaced range's common marks; else the view's insertion rule.
+			const marks = replaced && marksForInsertion(text, at, { replaced });
+			if (remove) edytor.deleteText(id, from, remove);
+			if (insert) edytor.insertText(id, from, insert, marks);
+		}
+	);
 	const adopted = text.isInDocument && text.stringContent === value;
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
-	if (!text.isInDocument) return true;
+	if (!text.isInDocument) return;
 	// The render patches only the runs the command changed: when the one
 	// insertion rule (`marksForInsertion`) gave the text other marks than the
 	// node the browser wrote, that node keeps its copy — re-render.
-	const moved = adopted && insert !== '' && shown !== modelMarks(edytor, text, at);
-	if (!adopted || drifted || moved) text.refreshFromModel();
+	if (!adopted || drifted || (insert && shown !== modelMarks(edytor, text, at)))
+		text.refreshFromModel();
 	// Deferred past the re-render (selecting in the same turn left the
 	// native caret at 0), so it checks the gesture serial: a gesture since the
 	// adoption owns the selection, and its caret and pending marks stand
 	// (review 2026-09-29).
 	await tick();
-	if (edytor.intentSerial !== serial) return true;
+	if (!adopted || edytor.intentSerial !== serial) return;
 	const end = caret ?? (attempt ? at + insert.length : undefined);
-	if (adopted && end !== undefined) edytor.selection.selectText(text, Math.min(end, text.length));
+	if (end !== undefined) selection.selectText(text, Math.min(end, text.length));
 	// A deletion of uniformly marked text keeps its marks pending at the caret.
-	if (
-		adopted &&
-		same &&
-		Object.keys(marks).length > 0 &&
-		edytor.selection.textRange().startText === text
-	)
-		edytor.selection.stage(marks);
-	return true;
+	if (same && Object.keys(marks).length > 0 && selection.textRange().startText === text)
+		selection.stage(marks);
 };

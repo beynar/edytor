@@ -31,7 +31,7 @@
 	contenteditable="false"
 	aria-label={suggestion.label ?? labelsOf(edytor, 'editor', editorEnglish).suggestion}
 	role="group"
-	use:edytor.surface.preview={suggestion.id}
+	use:edytor.surface.own={suggestion.id}
 	onmousedown={cancel}
 >
 	{#each cells as cell (cell.id)}<Block kid={cell} />{/each}

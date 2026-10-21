@@ -9,6 +9,7 @@ import type { ContentRun, RunViewDebug } from '../runs.js';
 import type { IndexPlacement } from './placement.js';
 import { type Deps, runEquals } from './shared.js';
 import type { IndexState } from './state.js';
+import { getOr } from '../../../utils.js';
 
 /** The run cache of one doc's index. */
 export const indexCache = (ix: IndexState & IndexPlacement) => {
@@ -78,8 +79,7 @@ export const indexCache = (ix: IndexState & IndexPlacement) => {
 	};
 	const add = (index: Map<BlockId, Set<BlockId>>, keys: Set<BlockId>, b: BlockId) => {
 		for (const k of keys) {
-			let set = index.get(k);
-			if (set === undefined) index.set(k, (set = new Set()));
+			const set = getOr(index, k, () => new Set());
 			set.add(b);
 		}
 	};

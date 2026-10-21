@@ -46,6 +46,7 @@ import { isInitialized } from './gate.js';
 import { DocumentDestroyedError, type WriteFunnel } from './funnel.js';
 import type { DocBase } from './reads.js';
 import { registryOf, withdrawOnUndo } from '../placement/model.js';
+import { getOr } from '../../utils.js';
 
 /** The undo steps a document's history keeps by default: older ones are released. */
 export const DEFAULT_HISTORY_LIMIT = 200;
@@ -538,8 +539,7 @@ export const historyRules = (Y: EngineApi, doc: EngineDoc): Rules => {
 			if (!key.startsWith(DATA_LEAF_PREFIX) && !REPAIRED[node?.name]?.includes(key)) return;
 			if (step.inserts.has(s.id.client, s.id.clock)) return;
 			const values = (s as StoreStruct & { content: { getContent(): unknown[] } }).content;
-			let attrs = lost.get(node);
-			if (attrs === undefined) lost.set(node, (attrs = new Map()));
+			const attrs = getOr(lost, node, () => new Map());
 			attrs.set(key, values.getContent().at(-1));
 		});
 		for (const [node, attrs] of lost) {

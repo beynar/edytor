@@ -54,6 +54,7 @@ import {
 import type { FoldCtx, IndexState, TextEdit, TextEdits, Tx } from './state.js';
 import type { IndexStreams } from './streams.js';
 import type { IndexLayout } from './layout.js';
+import { getOr } from '../../../utils.js';
 
 /** The fold of one doc's index, over every part it folds into. */
 export const indexFold = (
@@ -141,9 +142,7 @@ export const indexFold = (
 		let seqs: Map<EngineNode, SeqChange> | undefined;
 		const rehome = new Set<BlockId>();
 		const seqOf = (node: EngineNode): SeqChange => {
-			let e = seqs!.get(node);
-			if (e === undefined) seqs!.set(node, (e = { blocks: new Set(), data: false }));
-			return e;
+			return getOr(seqs!, node, () => ({ blocks: new Set(), data: false }));
 		};
 		/** Note unit `c:k` (`value`) of the sequence of `node`: a block slot names its block, a data slot its data. */
 		const noteUnit = (
@@ -203,8 +202,7 @@ export const indexFold = (
 			const edit = (s: StoreStruct, from: number, to: number, deleted: boolean): void => {
 				const parent = s.parent as EngineNode;
 				if (s.parentSub !== null || !isNodeLike(parent)) return;
-				let e = out.get(parent);
-				if (e === undefined) out.set(parent, (e = { edits: [], scan: false, opaque: false }));
+				const e = getOr(out, parent, () => ({ edits: [], scan: false, opaque: false }));
 				// A format marker moves no unit; its effect reaches past the edit.
 				if (s.countable !== true) return void (e.opaque = true);
 				if (holdsBoundary(s, from, to)) return void (e.scan = true);
@@ -512,13 +510,11 @@ export const indexFold = (
 				const hit = locate(type as EngineNode, sub);
 				if (hit === null) continue;
 				const [id, facet, seq] = hit;
-				let facets = touched.get(id);
-				if (facets === undefined) touched.set(id, (facets = new Set()));
+				const facets = getOr(touched, id, () => new Set());
 				facets.add(facet);
 				if (facet !== CONTENT) continue;
 				// A sequence edit of the block's own text, or a change inside one of its atoms.
-				let list = edits.get(id);
-				if (list === undefined) edits.set(id, (list = []));
+				const list = getOr(edits, id, () => []);
 				list.push(seq ? editsOf.text(type as EngineNode) : null);
 			}
 		}
@@ -537,8 +533,7 @@ export const indexFold = (
 			if (ch.blocks.size > 0 || ch.data) derived = true;
 			const owner = ownerOfNode(registry, kept, node);
 			if (typeof owner === 'string') {
-				let facets = touched.get(owner);
-				if (facets === undefined) touched.set(owner, (facets = new Set()));
+				const facets = getOr(touched, owner, () => new Set());
 				facets.add(SEQ_FACET);
 				if (ch.data) facets.add(DATA_SEQ_FACET);
 			}
@@ -628,8 +623,7 @@ export const indexFold = (
 		const note = (s: StoreStruct): void => {
 			foldStats.structs++;
 			if (!isNodeLike(s.parent)) return;
-			let subs = changed.get(s.parent);
-			if (subs === undefined) changed.set(s.parent, (subs = new Set()));
+			const subs = getOr(changed, s.parent, () => new Set());
 			subs.add(s.parentSub);
 		};
 		walkIdSet(Y, doc, ins, note);

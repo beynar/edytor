@@ -7,6 +7,7 @@ import type { BlockId } from '../../placement/model.js';
 import { type Claim, DEAD, type Owner, type Stamp, cmpStamp } from '../model.js';
 import { addTo, dropFrom } from './shared.js';
 import type { FoldCtx, IndexState } from './state.js';
+import { getOr } from '../../../utils.js';
 
 /** The claim graph of one doc's index, over its state. */
 export const indexClaims = (ix: IndexState) => {
@@ -152,8 +153,7 @@ export const indexClaims = (ix: IndexState) => {
 	/** Union-ever claim targets per holder (never shrinks: a dropped claim still invalidates). */
 	const effects = new Map<BlockId, Set<BlockId>>();
 	const noteEffects = (id: BlockId, claims: readonly Claim[]): void => {
-		let fx = effects.get(id);
-		if (fx === undefined) effects.set(id, (fx = new Set()));
+		const fx = getOr(effects, id, () => new Set());
 		for (const c of claims) fx.add(c.m);
 	};
 	/** `id`'s claims went from `before` to `after`: its claim facts follow. */

@@ -75,6 +75,7 @@ import { indexRecords } from './index/records.js';
 import { indexCache } from './index/cache.js';
 import { indexFold } from './index/fold.js';
 import { indexReporter } from './index/report.js';
+import { getOr } from '../../utils.js';
 
 export { CONTENT_ATTR, ENTRY_FACET, SEQ_FACET, indexChecks } from './index/shared.js';
 
@@ -272,9 +273,7 @@ const indexes = new WeakMap<EngineDoc, RunView>();
 
 /** The doc's index — built on first use, torn down when the doc is destroyed. */
 export const indexOf = (doc: EngineDoc): RunView => {
-	let index = indexes.get(doc);
-	if (index === undefined) indexes.set(doc, (index = buildView(doc)));
-	return index;
+	return getOr(indexes, doc, () => buildView(doc));
 };
 
 /** The index binding (the public binding's `runs`): {@link indexOf}. */

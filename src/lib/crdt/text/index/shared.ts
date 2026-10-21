@@ -9,6 +9,7 @@ import type { BlockId, BlockRec } from '../../placement/model.js';
 import { CONTENT, DATA, DATA_LEAF_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../../schema.js';
 import type { ContentRun, DisplayRoles } from '../runs.js';
 import type { SelfChecks } from './state.js';
+import { getOr } from '../../../utils.js';
 
 /**
  * The facet name of a block's registry entry itself (inserted or removed) —
@@ -126,8 +127,7 @@ export const checksOf = (ix: { checks: SelfChecks | null }): SelfChecks =>
 
 /** Add `value` to `key`'s set in `index`. */
 export const addTo = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {
-	let set = index.get(key);
-	if (set === undefined) index.set(key, (set = new Set()));
+	const set = getOr(index, key, () => new Set());
 	set.add(value);
 };
 /** Remove `value` from `key`'s set in `index` (the set goes once empty). */

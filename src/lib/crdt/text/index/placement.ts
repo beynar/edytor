@@ -67,6 +67,7 @@ import type { IndexClaims } from './claims.js';
 import type { IndexLayout } from './layout.js';
 import type { IndexState, Slot } from './state.js';
 import type { IndexStreams } from './streams.js';
+import { getOr } from '../../../utils.js';
 
 /** Placement maintenance of one doc's index, over its state, claims, streams and layout rules. */
 export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & IndexLayout) => {
@@ -212,9 +213,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		const changed = new Map<BlockId, [BlockId | null | undefined, BlockId | null | undefined]>();
 		const copies = new Map<BlockId | null, ChildSlot[]>();
 		const list = (p: BlockId | null): ChildSlot[] => {
-			let l = copies.get(p);
-			if (l === undefined) copies.set(p, (l = [...(kids.get(p) ?? [])]));
-			return l;
+			return getOr(copies, p, () => [...(kids.get(p) ?? [])]);
 		};
 		for (const id of affected) {
 			const old = slotMap.get(id);
@@ -343,9 +342,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	};
 	/** The raw children of `parent` in order (every block whose edge parent it is), kept sorted by key. */
 	const rawList = (parent: BlockId | null): ChildSlot[] => {
-		let l = rawOrder.get(parent);
-		if (l === undefined) rawOrder.set(parent, (l = []));
-		return l;
+		return getOr(rawOrder, parent, () => []);
 	};
 	/** Counts the placement writes: a key's walk that saw one happen under it walks again. */
 	let placedEpoch = 0;

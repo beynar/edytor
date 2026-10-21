@@ -19,6 +19,7 @@ import type { Destination, DocChange } from '../crdt/index.js';
 import { partsOf, type Part } from '../crdt/parts.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { JSONText } from '../utils/json.js';
+import { getOr } from '../utils.js';
 
 export type TextRunItem = { text: string; marks?: Record<string, unknown> };
 
@@ -69,9 +70,7 @@ export class Handles {
 	/** The handle of block `id`, live or not (the one a caller held stays the same object). */
 	block = (id: string): Block => {
 		if (id === 'root') return this.root;
-		let block = this.#blocks.get(id);
-		if (!block) this.#blocks.set(id, (block = new Block(this.edytor, id)));
-		return block;
+		return getOr(this.#blocks, id, () => new Block(this.edytor, id));
 	};
 
 	/** The handle of live block `id`; none for a dead or unknown id. */
@@ -97,8 +96,7 @@ export class Handles {
 
 	/** The handle of atom `atomId`, shown in block `blockId`. */
 	atom = (blockId: string, atomId: string): InlineBlock => {
-		let atom = this.#atoms.get(atomId);
-		if (!atom) this.#atoms.set(atomId, (atom = new InlineBlock(this.edytor, blockId, atomId)));
+		const atom = getOr(this.#atoms, atomId, () => new InlineBlock(this.edytor, blockId, atomId));
 		atom.blockId = blockId;
 		return atom;
 	};

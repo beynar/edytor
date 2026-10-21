@@ -18,6 +18,7 @@ import {
 } from '../rows.js';
 import type { IndexClaims } from './claims.js';
 import type { FoldCtx, IndexState, Placed } from './state.js';
+import { getOr } from '../../../utils.js';
 
 /** The stream table of one doc's index, over its state and claim graph. */
 export const indexStreams = (ix: IndexState & IndexClaims) => {
@@ -89,8 +90,7 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 		}
 		for (const b of row?.bounds ?? []) {
 			if (b.m !== undefined || old?.keyIndex.has(b.key)) continue;
-			let by = boundsBy.get(b.s);
-			if (by === undefined) boundsBy.set(b.s, (by = new Map()));
+			const by = getOr(boundsBy, b.s, () => new Map());
 			by.set(b.key, { home, n: b.n });
 			named.add(b.s);
 		}
@@ -186,8 +186,7 @@ export const indexStreams = (ix: IndexState & IndexClaims) => {
 		for (const [home, row] of rows)
 			for (const b of row.bounds) {
 				if (b.m !== undefined) continue;
-				let by = boundsBy.get(b.s);
-				if (by === undefined) boundsBy.set(b.s, (by = new Map()));
+				const by = getOr(boundsBy, b.s, () => new Map());
 				by.set(b.key, { home, n: b.n });
 			}
 		ix.delim = new Map();

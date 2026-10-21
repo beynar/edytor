@@ -308,9 +308,11 @@ export class Item extends AbstractStruct {
       }
       addStructToIdSet(transaction.insertSet, this)
       transaction.doc.store.add(this)
+      // YP33: log the units it shows before its content integrates (a node's children follow it)
+      logItem(transaction, 0, this, this.content.constructor === ContentDeleted ? 0 : this.length, false)
       this.content.integrate(transaction, this)
-      // add parent to transaction.changed, and log the units it shows (YP33)
-      logItem(transaction, 0, this, this.removed ? 0 : this.length) // YP33
+      // add parent to transaction.changed
+      addChangedTypeToTransaction(transaction, /** @type {YNode} */ (this.parent), this.parentSub)
       const parentItem = /** @type {YNode} */ (this.parent)._item
       // YP14: a node a concurrent value replaced keeps its subtree: what lands in it stays
       if ((parentItem !== null && parentItem.removed && !isKeptReplaced(parentItem)) || (this.parentSub !== null && this.right !== null)) { // YP20: a held parent is alive
@@ -932,22 +934,24 @@ export class ContentDeleted {
 // YP33 begin (edytor fork: one log of what a transaction did to items — see UPSTREAM.md YP33)
 /**
  * Log `len` units of `item` as `kind` (0 an edit, 1 a hold, 2 a move) in
- * `tr.log`, in order, and its parent as changed. An entry the last one
- * continues (its kind, its client, the next clock, its sign) extends it, so
- * a run of one writer's items is one entry; `len` 0 logs none.
+ * `tr.log`, in order, and (unless `mark` is false) its parent as changed.
+ * An entry the last one continues (its kind, its client, the next clock, its
+ * sign) extends it, so a run of one writer's items is one entry; `len` 0
+ * logs none.
  *
  * @param {Transaction} tr
  * @param {number} kind
  * @param {Item} item
  * @param {number} len
+ * @param {boolean} [mark]
  */
-const logItem = (tr, kind, item, len) => {
+const logItem = (tr, kind, item, len, mark = true) => {
   const log = tr.log
   const n = log.length
   const { client, clock } = item.id
   if (log[n - 4] === kind && log[n - 3] === client && log[n - 2] + math.abs(log[n - 1]) === clock && log[n - 1] * len > 0) log[n - 1] += len
   else if (len !== 0) log.push(kind, client, clock, len)
-  addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
+  if (mark) addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
 }
 // YP33 end
 

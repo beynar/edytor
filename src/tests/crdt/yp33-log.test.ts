@@ -53,18 +53,18 @@ describe('YP33 — one log of what a transaction did to items', () => {
 	it('holds: a held delete logs the hold and its record; a held item removed logs its give-back', () => {
 		const a = seeded('abc', 2);
 		let logs = logsOf(a, () => t(a).delete(1, 1, a.get('textdel')));
-		// The record integrates (2:0) after it held b (1:1).
-		expect(logs).toEqual([[1, 1, 1, -1, 0, 2, 0, 1]]);
+		// The record (2:0) is logged as it integrates, then the hold it makes on b (1:1).
+		expect(logs).toEqual([[0, 2, 0, 1, 1, 1, 1, -1]]);
 		const b = t(a)._start.right;
 		logs = logsOf(a, () => a.transact((tr) => b.delete(tr)));
 		expect(logs).toEqual([[1, 1, 1, 1, 0, 1, 1, -1]]);
 		expect(t(a).toString()).toBe('ac');
 	});
 
-	it('moves: a record logs the units it moves, then itself', () => {
+	it('moves: a record logs itself, then the units it moves', () => {
 		const a = seeded(['a', 'b', 'c'], 2);
 		const logs = logsOf(a, () => t(a).move(3, [1, 1, 1])); // b after c
-		expect(logs).toEqual([[2, 1, 1, 1, 0, 2, 0, 1]]);
+		expect(logs).toEqual([[0, 2, 0, 1, 2, 1, 1, 1]]);
 	});
 
 	it('a run of one writer: an item that continues the last entry (kind, client, next clock, sign) extends it', () => {

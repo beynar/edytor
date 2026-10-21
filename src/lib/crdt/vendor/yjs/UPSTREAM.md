@@ -1624,15 +1624,17 @@ Patch (new code delimited by `// YP33 begin` / `// YP33 end`, edits marked `// Y
   transaction did them; an item that continues the last entry (its kind,
   its client, the next clock, its sign) extends it, so a bulk insert or
   delete is a few entries, as the id sets' ranges were. Kind 0, an edit:
-  `Item#integrate` logs `+length` (nothing for an item integrated removed,
-  a `ContentDeleted`), `Item#delete` `-length`; kind 1,
+  `Item#integrate` logs `+length` before its content integrates (a node's
+  children follow it; nothing for an item integrated removed, a
+  `ContentDeleted`), `Item#delete` `-length`; kind 1,
   a hold record's change of visibility (YP20's entries, unchanged: a held
   item removed logs its give-back, so an item's kinds 0 and 1 sum to its
   visibility change); kind 2, a mover change (YP22's entries, unchanged).
-- **`logItem(tr, kind, item, len)`** (`Item.js`): the one writer, which
-  also marks the parent changed (it replaces `logHold` and the
-  `addChangedTypeToTransaction` calls of `Item#integrate` and
-  `Item#delete`; `logMove` calls it).
+- **`logItem(tr, kind, item, len, mark)`** (`Item.js`): the one writer (it
+  extends a run's entry), which also marks the parent changed (it replaces
+  `logHold` and `Item#delete`'s `addChangedTypeToTransaction`; `logMove`
+  calls it). `Item#integrate` logs with `mark` false and keeps its own
+  mark, after its content, so `transaction.changed` keeps its order.
 
 The insert and delete sets, `transaction.changed` and every upstream path
 are untouched: the log is a list the engine appends to and never reads.
@@ -1648,8 +1650,8 @@ diffed id sets, the watermark, the second and third walks, the membership
 tests, the incomplete-walk fallback.
 
 Measured (`scripts/bundle-size.mjs`, own minified): minimal 425,374 →
-423,973 (−1,401 B; gzip −315), every plugin 675,230 → 673,829 (−1,401),
-`edytor/export` unchanged; the engine's share +45 B (one log writer, which
+424,034 (−1,340 B; gzip −290), every plugin 675,230 → 673,890 (−1,340),
+`edytor/export` unchanged; the engine's share +106 B (one log writer, which
 extends a run's entry). A first version logged one entry per item: the
 fold walked them one by one where the id sets gave it ranges, and a 5,000
 block construction and a 40-block range delete got slower (`bench/scale.js`);

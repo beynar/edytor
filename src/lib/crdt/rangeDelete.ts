@@ -76,10 +76,7 @@ export const rangeDeleteOps = (c: OpsContext) => {
 			const S = s.block;
 			const E = e.block;
 			if (S === E) {
-				const length = e.offset - s.offset;
-				const writes: PlanStep[] =
-					length > 0 ? [{ op: 'deleteText', id: S, offset: s.offset, length }] : [];
-				return { ...c.plan([S], writes), at: s };
+				return c.plan([S], c.cutText(S, s.offset, e.offset - s.offset), s);
 			}
 
 			const parent = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
@@ -143,10 +140,8 @@ export const rangeDeleteOps = (c: OpsContext) => {
 
 			const lenS = c.displayLength(S);
 			const writes: PlanStep[] = [];
-			if (!doomed.has(S) && lenS > s.offset)
-				writes.push({ op: 'deleteText', id: S, offset: s.offset, length: lenS - s.offset });
-			if (!gone(E) && e.offset > 0)
-				writes.push({ op: 'deleteText', id: E, offset: 0, length: e.offset });
+			if (!doomed.has(S)) writes.push(...c.cutText(S, s.offset, lenS - s.offset));
+			if (!gone(E)) writes.push(...c.cutText(E, 0, e.offset));
 			if (dest !== null) {
 				writes.push(...c.move(rescued, dest.parent, dest.index + 1));
 				// Each shows the kind of its new slot (an island's line, a list's item leave theirs).
@@ -155,8 +150,7 @@ export const rangeDeleteOps = (c: OpsContext) => {
 			if (merges) {
 				// The whole tail merges, then its cut prefix goes: E's own text is never written.
 				writes.push({ op: 'mergeBlocks', from: E, into: S, at: s.offset, length: lenE });
-				if (e.offset > 0)
-					writes.push({ op: 'deleteText', id: S, offset: s.offset, length: e.offset });
+				writes.push(...c.cutText(S, s.offset, e.offset));
 			}
 			const kept = [...rescued, ...(merges ? [E] : [])];
 			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(c.remove(id, kept));
@@ -179,7 +173,7 @@ export const rangeDeleteOps = (c: OpsContext) => {
 			})();
 			// Nothing else left to hold the caret: the head stays, emptied (whole-doc).
 			if (caret === null) return prepare(true, headDies)(from, to, view);
-			return { ...c.plan([caret.block], writes), at: caret };
+			return c.plan([caret.block], writes, caret);
 		};
 	/**
 	 * `table.range`: a range with an end in a cell. Every cell it crosses
@@ -196,23 +190,22 @@ export const rangeDeleteOps = (c: OpsContext) => {
 		const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !view.hidden?.(id));
 		const writes: PlanStep[] = [];
 		const lenS = c.displayLength(S);
-		if (lenS > s.offset)
-			writes.push({ op: 'deleteText', id: S, offset: s.offset, length: lenS - s.offset });
+		writes.push(...c.cutText(S, s.offset, lenS - s.offset));
 		const [tableS, tableE] = [c.tableOf(S), c.tableOf(E)];
 		const doomed = new Set<BlockId>();
 		for (const id of between) {
 			const table = c.tableOf(id);
 			if (kept.has(id) || (table !== null && (table === tableS || table === tableE))) {
 				const len = c.isTableCell(id) || kept.has(id) ? c.displayLength(id) : 0;
-				if (len > 0) writes.push({ op: 'deleteText', id, offset: 0, length: len });
+				writes.push(...c.cutText(id, 0, len));
 			} else doomed.add(id);
 		}
-		if (e.offset > 0) writes.push({ op: 'deleteText', id: E, offset: 0, length: e.offset });
+		writes.push(...c.cutText(E, 0, e.offset));
 		const parentOf = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
 		const roots = [...doomed].filter((id) => !doomed.has(parentOf(id)!));
 		for (const id of roots) writes.push(c.remove(id, []));
 		writes.push(...c.dissolving(new Set(roots), [], writes));
-		return { ...c.plan([S], writes), at: s };
+		return c.plan([S], writes, s);
 	};
 
 	return { deleteRange: prepare(false), replaceRange: prepare(true) };

@@ -163,7 +163,7 @@ export const flowOps = (c: OpsContext) => {
 				const at = endOf(placed.at(-1)!) ?? { block: last().id, offset: lengthOf(last()) };
 				// The lines are placed while the replaced blocks still show (each step reads the
 				// display as it stands), then those go.
-				return 'writes' in p ? { ...c.plan(p.ids, [...p.writes, ...pre]), at } : p;
+				return 'writes' in p ? c.plan(p.ids, [...p.writes, ...pre], at) : p;
 			};
 			if ('replace' in target || 'slot' in target) {
 				let slot: Destination;
@@ -227,7 +227,7 @@ export const flowOps = (c: OpsContext) => {
 			const inside =
 				o === len && !inLines && !flow.whole && header === true && !(empty && apart(lines[0]!, B));
 			const home = inside ? B : parent;
-			if (lines.length === 0) return { ...c.plan([B], []), at: { block: B, offset: o } };
+			if (lines.length === 0) return c.plan([B], [], { block: B, offset: o });
 			if (flow.whole && !inLines && !cell)
 				return atSlot({ parent, index: index + 1 }, empty ? [c.remove(B, [])] : []);
 			// A void is never split: its caption takes the lines as one run; nor is a cell.
@@ -257,9 +257,10 @@ export const flowOps = (c: OpsContext) => {
 			const writes: PlanStep[] = [];
 			/** A joined line's children lead the block it joins; `moved` follow them. */
 			const kids = (to: BlockId, l: FlowLine | undefined, moved: BlockId[] = []) => {
-				const k = l?.children?.length ?? 0;
-				if (k) writes.push({ op: 'insertBlocks', parent: to, index: 0, specs: l!.children! });
-				if (moved.length) writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: k });
+				const lead = l?.children ?? [];
+				writes.push(...c.insertAt(to, 0, lead));
+				if (moved.length)
+					writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: lead.length });
 			};
 			/**
 			 * `l` joins `B` at `at`: its content, its kind when `B` shows no text (a header
@@ -277,16 +278,8 @@ export const flowOps = (c: OpsContext) => {
 				return end;
 			};
 			/** The placed lines at `at` under `home` (`split`: the tail of the split they come with). */
-			const place = (at: number, split?: BlockId) => {
-				if (placed.length)
-					writes.push({
-						op: 'insertBlocks',
-						parent: home,
-						index: at,
-						specs: placed,
-						...(split !== undefined && { split })
-					});
-			};
+			const place = (at: number, split?: BlockId) =>
+				writes.push(...c.insertAt(home, at, placed, split));
 			// Under a header, the first line's children, the placed lines and the rest, in order.
 			const k = joinsHead ? (first.children?.length ?? 0) : 0;
 			const slot = inside ? k : index + 1;
@@ -301,26 +294,22 @@ export const flowOps = (c: OpsContext) => {
 					const at = join(last(), 0);
 					// A closed header's taken line's nested lines follow it, the caret ending them.
 					const after = shut ? specs(parent, last().children ?? []) : [];
-					if (after.length) {
-						const slot = index + placed.length + 1;
-						writes.push({ op: 'insertBlocks', parent, index: slot, specs: after });
-					}
+					writes.push(...c.insertAt(parent, index + placed.length + 1, after));
 					const caret = after.length ? endOf(after.at(-1)!) : undefined;
 					const touched = [...ids, B, ...after.map((s) => s.id)];
-					return { ...c.plan(touched, writes), at: caret ?? { block: B, offset: at } };
+					return c.plan(touched, writes, caret ?? { block: B, offset: at });
 				}
-				if (empty && end) return { ...c.plan(ids, [...writes, c.remove(B, [])]), at: end };
-				return { ...c.plan([...ids, B], writes), at: end ?? { block: B, offset: 0 } };
+				if (empty && end) return c.plan(ids, [...writes, c.remove(B, [])], end);
+				return c.plan([...ids, B], writes, end ?? { block: B, offset: 0 });
 			}
 
 			const head = joinsHead ? join(first, o) : o;
-			if (lines.length === 1 && joinsHead)
-				return { ...c.plan([B], writes), at: { block: B, offset: head } };
+			if (lines.length === 1 && joinsHead) return c.plan([B], writes, { block: B, offset: head });
 			const moved = inside ? [] : c.childrenIds(B).filter((id) => !view.hidden?.(id));
 			// Nothing after the position to keep, and the caret has a line: no split.
 			if (!joinsTail && o === len && moved.length === 0 && end) {
 				place(slot);
-				return { ...c.plan([B, ...ids], writes), at: end };
+				return c.plan([B, ...ids], writes, end);
 			}
 			// The rest of `B` stays in a shown line: the last line's block when it joins, else
 			// a line of `B`'s kind, as Enter makes; one made only for the caret (after a
@@ -350,7 +339,7 @@ export const flowOps = (c: OpsContext) => {
 			const at = joinsTail
 				? { block: T, offset: c.writeContent(writes, T, 0, last().content) }
 				: (end ?? { block: T, offset: 0 });
-			return { ...c.plan([B, ...ids, T], writes), at };
+			return c.plan([B, ...ids, T], writes, at);
 		}
 	};
 };

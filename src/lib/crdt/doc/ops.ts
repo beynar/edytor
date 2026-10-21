@@ -72,6 +72,7 @@ import {
 import { REFUSED, effectOf, ref, refused, sanitizeInline, sanitizeItem } from './plan.js';
 import type { DataTarget, JsonObj, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
+import type { DocPosition } from '../rangeDelete.js';
 
 /**
  * A record's order among the records standing at one block, for the
@@ -285,12 +286,27 @@ export const docOps = (c: DocBase & DocReads) => {
 	// Each prepare normalizes its inputs once, here at ingress: ids
 	// and strings as the wire would deliver them, payloads cloned.
 
-	const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({
+	/** The plan of `writes` touching `ids`; `at`, where it leaves the caret when it decides one. */
+	const plan = (ids: readonly BlockId[], writes: PlanStep[], at?: DocPosition): Plan => ({
 		ids,
 		writes,
 		effect: effectOf(writes),
-		version: runsView.version()
+		version: runsView.version(),
+		...(at && { at })
 	});
+	/** The step deleting `length` display units of `id` from `offset` (none for nothing). */
+	const cutText = (id: BlockId, offset: number, length: number): PlanStep[] =>
+		length > 0 ? [{ op: 'deleteText', id, offset, length }] : [];
+	/** The step inserting `specs` at `index` under `parent` (none for no spec). */
+	const insertAt = (
+		parent: BlockId | null,
+		index: number,
+		specs: BlockSpec[],
+		split?: BlockId
+	): PlanStep[] =>
+		specs.length
+			? [{ op: 'insertBlocks', parent, index, specs, ...(split !== undefined && { split }) }]
+			: [];
 
 	/**
 	 * Move `ids` to display index `index` among `parent`'s children (the
@@ -615,7 +631,7 @@ export const docOps = (c: DocBase & DocReads) => {
 		if ((parent !== null && !live(parent)) || collides(doc, clean)) return REFUSED;
 		return plan(
 			clean.map((s) => s.id),
-			[{ op: 'insertBlocks', parent, index: dest.index, specs: clean }]
+			insertAt(parent, dest.index, clean)
 		);
 	};
 
@@ -711,11 +727,10 @@ export const docOps = (c: DocBase & DocReads) => {
 	): Plan => {
 		const moved = keep ? [] : [...ids];
 		const placed = [...moved, ...specs.map((s) => s.id)];
-		const insert = (at: BlockId | null, index: number, s: BlockSpec[]) =>
-			s.length ? [{ op: 'insertBlocks' as const, parent: at, index, specs: s }] : [];
 		const last = ids.at(-1)!;
 		const { parent, index } = positionOf(levels.at(-1) ?? last)!;
-		if (levels.length === 0) return plan(placed, [...insert(parent, index + 1, specs), ...retype]);
+		if (levels.length === 0)
+			return plan(placed, [...insertAt(parent, index + 1, specs), ...retype]);
 		// Bottom up: what stays before the split at each level (the level
 		// itself, or a new head holding it), and whether anything follows it.
 		const heads: { spec: BlockSpec; kids: BlockId[]; inner?: BlockSpec }[] = [];
@@ -772,8 +787,8 @@ export const docOps = (c: DocBase & DocReads) => {
 			else runs.push([id]);
 		}
 		const writes: PlanStep[] = [
-			...insert(levels[0]!, home, specs),
-			...(before?.head ? insert(levels[0]!, home, [before.head]) : []),
+			...insertAt(levels[0]!, home, specs),
+			...(before?.head ? insertAt(levels[0]!, home, [before.head]) : []),
 			...moveTo(specIds, parent, gap, side, stands, part),
 			...runs.reverse().flatMap((run) => moveTo(run, parent, gap, side, run[0], PART.self)),
 			...(before?.head
@@ -783,7 +798,7 @@ export const docOps = (c: DocBase & DocReads) => {
 		for (const { spec, kids, inner } of heads.reverse()) {
 			writes.push(
 				...moveTo(kids, spec.id, 0),
-				...(inner ? insert(spec.id, kids.length, [inner]) : [])
+				...(inner ? insertAt(spec.id, kids.length, [inner]) : [])
 			);
 		}
 		writes.push(...retype);
@@ -956,14 +971,14 @@ export const docOps = (c: DocBase & DocReads) => {
 		let writes: PlanStep[];
 		let kept: Set<BlockId | null>;
 		if (layout !== null) {
-			writes = [{ op: 'insertBlocks', parent: layout, index, specs: [fresh] }, ...into(fresh.id)];
+			writes = [...insertAt(layout, index, [fresh]), ...into(fresh.id)];
 			kept = new Set([fresh.id, ...landing(layout)]);
 		} else {
 			const pos = positionOf(at)!;
 			const host = spec(item);
 			const wrapper = { ...spec(wrap), children: right ? [host, fresh] : [fresh, host] };
 			writes = [
-				{ op: 'insertBlocks', parent: pos.parent, index: pos.index, specs: [wrapper] },
+				...insertAt(pos.parent, pos.index, [wrapper]),
 				...moveTo([at], host.id, 0),
 				...into(fresh.id)
 			];
@@ -1013,7 +1028,7 @@ export const docOps = (c: DocBase & DocReads) => {
 		const wrapper = { ...spec(wrap), children: items };
 		const at = positionOf(ordered[0]!)!.index;
 		const writes: PlanStep[] = [
-			{ op: 'insertBlocks', parent, index: at, specs: [wrapper] },
+			...insertAt(parent, at, [wrapper]),
 			...ordered.flatMap((id, i) => moveTo([id], items[i]!.id, 0))
 		];
 		const kept = new Set<BlockId | null>([
@@ -1465,14 +1480,12 @@ export const docOps = (c: DocBase & DocReads) => {
 			...data
 		];
 		if (content !== undefined) {
-			const length = displayLength(id);
-			if (length > 0) writes.push({ op: 'deleteText', id, offset: 0, length });
+			writes.push(...cutText(id, 0, displayLength(id)));
 			writeContent(writes, id, 0, content);
 		}
 		if (children !== undefined) {
 			for (const kid of childrenIds(id)) writes.push(remove(kid));
-			if (children.length > 0)
-				writes.push({ op: 'insertBlocks', parent: id, index: 0, specs: children });
+			writes.push(...insertAt(id, 0, children));
 		}
 		return plan([id], writes);
 	};
@@ -1503,7 +1516,7 @@ export const docOps = (c: DocBase & DocReads) => {
 		id = ref(id);
 		if (!contentTarget(id)) return REFUSED;
 		const [at, end] = clamp(id, offset, length);
-		return plan([id], end > at ? [{ op: 'deleteText', id, offset: at, length: end - at }] : []);
+		return plan([id], cutText(id, at, end - at));
 	};
 
 	/**
@@ -1561,6 +1574,8 @@ export const docOps = (c: DocBase & DocReads) => {
 		// what range deletion, flow placement and the facade compose
 		REFUSED,
 		plan,
+		cutText,
+		insertAt,
 		canPlace,
 		fits,
 		nestParent,

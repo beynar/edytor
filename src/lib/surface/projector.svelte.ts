@@ -64,6 +64,7 @@ import type { RangeEndpoints } from '../selection/replaceSelection.js';
 
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
 import { isKindControl, isOwnPoint } from '../events/nativeInteractiveControl.js';
+import { textLeaves } from '../events/domTextOffset.js';
 
 /** What a `selectionchange` is. Drift is displayed again; foreign writes and intent are adopted. */
 export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
@@ -82,10 +83,9 @@ type Points = { anchor: Point; focus: Point };
 
 /** The DOM point of a text-segment offset: its text leaf, else the element itself. */
 export const domPointOf = (element: HTMLElement, offset: number): Point => {
-	const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
 	let at = 0;
-	for (let leaf = walker.nextNode(); leaf; leaf = walker.nextNode()) {
-		const end = at + (leaf as CharacterData).length;
+	for (const leaf of textLeaves(element)) {
+		const end = at + leaf.length;
 		if (offset <= end) return [leaf, offset - at];
 		at = end;
 	}

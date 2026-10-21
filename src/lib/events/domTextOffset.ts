@@ -22,3 +22,14 @@ export const getTextContentOffsetAtPoint = (textNode: Node, node: Node, offset: 
 	if (side === 0) range.setEnd(node, at);
 	return range.toString().length;
 };
+
+/** `element`'s text nodes in document order: the leaves the offsets above count. */
+export const textLeaves = (element: Node): CharacterData[] => {
+	const walker = (element.ownerDocument ?? document).createTreeWalker(
+		element,
+		NodeFilter.SHOW_TEXT
+	);
+	const leaves: CharacterData[] = [];
+	while (walker.nextNode()) leaves.push(walker.currentNode as CharacterData);
+	return leaves;
+};

@@ -14,7 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+- **The providers' own listener members are one teardown.** `IndexeddbPersistence` and `WebsocketProvider` no longer carry `_storeUpdate`, `_updateHandler` or `_awarenessUpdateHandler` (their document and presence listeners, never meant to be called): one `_unlisten` removes both listeners, as `destroy()` does. Nothing else of the providers changes.
 
 ### From 4.0.0
 
@@ -1502,6 +1502,7 @@ Every public change since 0.0.11, by area.
 - **One provider per target.** `EdytorSync.target` (`indexeddb:<name>`, `websocket:<server>/<room>`); attaching a target already attached is a no-op returning nothing; attaching on a destroyed document throws `DocumentDestroyedError`.
 - **Admission.** Unversioned content is not refused at ingress: the document is read-only and quarantined until admission accepts it (`document.writable`, `onWritableChange`).
 - **`IndexeddbPersistence`**: `get`/`set`/`del` are removed (the `custom` store holds only the generation record).
+- **Provider listeners.** `IndexeddbPersistence` and `WebsocketProvider` keep one `_unlisten` (their document and presence listeners' teardown) instead of `_storeUpdate`, `_updateHandler` and `_awarenessUpdateHandler`.
 - **SSR.** `<Edytor>` releases the document it created in `onDestroy`, which also runs after a server render.
 - **First paint from a snapshot.** `EdytorProps.snapshot` (`JSONDoc`, rendered read-only inside `[data-edytor-snapshot]` while the document is pending); `documentSnapshot(options: LastUpdatedOptions): Promise<JSONDoc | null>` (package root, `edytor/collaboration` and `bindCrdt(Y).providers`); `routeDocumentSocket` answers `GET <room>?snapshot` and the room's `PROBE_HEADER` takes `snapshot` (`{ lastUpdated, document }`, `503` while the room has no document).
 - **Offline coverage.** `prefetch(options: PrefetchOptions): Promise<PrefetchResult>` and `lastUpdated(options: LastUpdatedOptions)` (package root and `bindCrdt(Y).providers`); `DocumentOptions.requireHydration`, `EdytorDocument.requireHydration`, `EdytorOptions.requireHydration` and the `<Edytor requireHydration>` prop; the room's `lastUpdated()` (RPC), its `meta` table and `PROBE_HEADER`; `routeDocumentSocket` answers `GET <room>?lastUpdated`.

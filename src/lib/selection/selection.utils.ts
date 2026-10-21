@@ -3,7 +3,7 @@ import type { Text } from '../text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
-import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
+import { getTextContentOffsetAtPoint, textLeaves } from '$lib/events/domTextOffset.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
 export const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
@@ -197,12 +197,11 @@ export const getInlineBlockInSelectedRange = (edytor: Edytor, range: Range | und
  * point, outside when one does not; `undefined` when that character has none.
  */
 export const getMarkEdgeSide = (text: Text, node: Node | null, offset: number) => {
-	const walker = text.node?.ownerDocument.createTreeWalker(text.node, NodeFilter.SHOW_TEXT);
-	let leaf: Node | null | undefined = null;
-	for (let start = 0; node && offset > 0 && (leaf = walker?.nextNode()); ) {
-		start += leaf.textContent?.length ?? 0;
-		if (offset <= start) break;
-	}
+	let start = 0;
+	const leaf =
+		node && offset > 0 && text.node
+			? textLeaves(text.node).find((l) => offset <= (start += l.length))
+			: undefined;
 	let side: EdgeSide | undefined;
 	for (let element = leaf?.parentElement; element && element !== text.node; ) {
 		if (element.hasAttribute('data-edytor-mark'))

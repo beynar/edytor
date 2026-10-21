@@ -6,6 +6,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { holdsNothing, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
+import type { Marks } from '$lib/session/selection.js';
 import { selectedTextSpans, viewOf } from '$lib/selection/visibility.js';
 
 export type RichTextMark =
@@ -99,6 +100,10 @@ export const openLink = (href: string, view: Window | null = globalThis.window ?
 	if (safe) view?.open(safe, '_blank', 'noopener,noreferrer');
 };
 
+/** A mark's value as written: `true` when none is given. */
+const markValue = (value: SerializableContent | null | undefined) =>
+	value === undefined ? true : value;
+
 /** Set `mark` to `value` (`null`: remove it) over `start`–`end` of `text`: the view's `formatRange`. */
 const markText = (
 	edytor: Edytor,
@@ -109,7 +114,7 @@ const markText = (
 	value: SerializableContent | null | undefined
 ) =>
 	edytor.formatRange(text.parent.id, text.segStart + start, end - start, {
-		[mark]: value === undefined ? true : value
+		[mark]: markValue(value)
 	});
 
 const formatSelectedTextRange = (
@@ -127,7 +132,7 @@ const formatSelectedTextRange = (
 	const on = spans.every(({ text, start, end }) =>
 		text.getMarksAtRange(start, end).every(({ marks }) => marks && mark in marks)
 	);
-	const next = toggle && on ? null : value === undefined ? true : value;
+	const next = toggle && on ? null : markValue(value);
 
 	// One command per span: a vetoed one keeps its marks (`dispatcher.each`).
 	edytor.dispatcher.each('format', spans, ({ text, start, end }) =>
@@ -143,6 +148,25 @@ const formatSelectedTextRange = (
  * mark at (a lone selected divider's text is a phantom).
  */
 const selectsBlocks = (edytor: Edytor) => edytor.selection.value.kind === 'blocks';
+
+/**
+ * At a caret (no block selection: a lone divider's text is a phantom),
+ * stage what `next` makes of the full set the next insertion carries
+ * (values kept), as a `format` command, and keep the caret; `false` over a
+ * range.
+ */
+const stageAtCaret = (edytor: Edytor, next: (marks: Marks) => Marks): boolean => {
+	const { startText, yStart } = edytor.selection.textRange();
+	const { selection } = edytor;
+	if (!selection.projection.isCollapsed) return false;
+	if (startText && !selectsBlocks(edytor)) {
+		edytor.dispatcher.run('format', () =>
+			selection.stage(next(marksForInsertion(startText, yStart, { pending: selection.pending })))
+		);
+		selection.selectText(startText, yStart);
+	}
+	return true;
+};
 
 export const richTextOperations = (edytor: Edytor) => ({
 	/**
@@ -257,22 +281,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const safeValue =
 			mark === 'color' || mark === 'highlight' ? sanitizeCssColorValue(value) : value;
 		if (safeValue === null) return;
-		const { startText, yStart } = edytor.selection.textRange();
-		const { isCollapsed } = edytor.selection.projection;
-		if (isCollapsed) {
-			if (startText && !selectsBlocks(edytor)) {
-				// Stage the full set the next insertion carries, values kept.
-				edytor.dispatcher.run('format', () =>
-					edytor.selection.stage({
-						...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),
-						[mark]: safeValue
-					})
-				);
-				edytor.selection.selectText(startText, yStart);
-			}
-			return;
-		}
-		formatSelectedTextRange(edytor, mark, safeValue, false);
+		if (!stageAtCaret(edytor, (marks) => ({ ...marks, [mark]: safeValue })))
+			formatSelectedTextRange(edytor, mark, safeValue, false);
 	},
 	/**
 	 * Toggle `mark` (any mark the editor defines: the rich text ones are
@@ -280,24 +290,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * stage it for the next character typed.
 	 */
 	setMarkAtRange: (mark: RichTextMark | (string & {}), value?: SerializableContent) => {
-		const { yStart, yEnd, startText, endText } = edytor.selection.textRange();
-		const { selection } = edytor;
-		if (selection.projection.isCollapsed) {
-			if (startText && !selectsBlocks(edytor)) {
-				// A caret stages the full set the next insertion carries (values kept).
-				edytor.dispatcher.run('format', () => {
-					const { [mark]: current = null, ...rest } = marksForInsertion(startText, yStart, {
-						pending: selection.pending
-					});
-					selection.stage(
-						current !== null ? rest : { ...rest, [mark]: value === undefined ? true : value }
-					);
-				});
-				selection.selectText(startText, yStart, endText, yEnd);
-			}
-			return;
-		}
-
-		formatSelectedTextRange(edytor, mark, value, true);
+		const toggled = ({ [mark]: current = null, ...rest }: Marks) =>
+			current !== null ? rest : { ...rest, [mark]: markValue(value) };
+		if (!stageAtCaret(edytor, toggled)) formatSelectedTextRange(edytor, mark, value, true);
 	}
 });

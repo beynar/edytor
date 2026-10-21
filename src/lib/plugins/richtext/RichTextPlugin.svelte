@@ -1,6 +1,11 @@
 <script module lang="ts">
 	import './richtext.css';
-	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
+	import type {
+		Plugin,
+		BlockDefinition,
+		BlockSnippetPayload,
+		PlaceholderView
+	} from '$lib/plugins.js';
 	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { presetId } from '$lib/kinds.js';
@@ -191,11 +196,15 @@
 		let retyping: string | null = null;
 		/** The disclosures this view created, opened once drawn (`onBlockAttached`). */
 		const opening = new Set<string>();
-		const presets = (type: string, rows: KindPreset[]) =>
-			rows.map((row, index) => {
-				const own = keywordsOf(edytor, presetId(type, index, rows.length), row.keywords);
-				return own ? { ...row, keywords: own } : row;
-			});
+		/** Each kind's presets, their keywords the view's (`labels`) where it names some. */
+		const named = (blocks: Record<string, BlockDefinition>) => {
+			for (const [type, kind] of Object.entries(blocks))
+				kind.presets = kind.presets?.map((row, index, rows) => {
+					const own = keywordsOf(edytor, presetId(type, index, rows.length), row.keywords);
+					return own ? { ...row, keywords: own } : row;
+				});
+			return blocks;
+		};
 		const operations = richTextOperations(edytor);
 		/** The space an autolink types itself: its own insertion is not looked at again. */
 		let autolinking = false;
@@ -395,62 +404,57 @@
 					])
 				)
 			},
-			blocks: {
+			blocks: named({
 				paragraph: {
 					snippet: paragraph,
-					presets: presets('paragraph', [
-						{ label: kinds.paragraph, icon: 'T', keywords: ['paragraph', 'plain'] }
-					])
+					presets: [{ label: kinds.paragraph, icon: 'T', keywords: ['paragraph', 'plain'] }]
 				},
 				heading: {
 					...headingRead,
 					...headingWrite,
 					snippet: textThenChildren,
-					presets: presets(
-						'heading',
-						HEADING_LEVELS.map((level, index) => ({
-							label: [kinds.heading1, kinds.heading2, kinds.heading3][index]!,
-							icon: `H${['₁', '₂', '₃'][index]}`,
-							keywords: [level, ...[['title'], ['subtitle'], []][index]!],
-							data: { level },
-							markdown: [`${'#'.repeat(index + 1)} `]
-						}))
-					)
+					presets: HEADING_LEVELS.map((level, index) => ({
+						label: [kinds.heading1, kinds.heading2, kinds.heading3][index]!,
+						icon: `H${['₁', '₂', '₃'][index]}`,
+						keywords: [level, ...[['title'], ['subtitle'], []][index]!],
+						data: { level },
+						markdown: [`${'#'.repeat(index + 1)} `]
+					}))
 				},
 				'bulleted-list-item': {
 					...itemRead,
 					...itemWrite,
 					continues: true,
 					snippet: listItem,
-					presets: presets('bulleted-list-item', [
+					presets: [
 						{
 							label: kinds.bulletedList,
 							icon: '•',
 							keywords: ['bullet', 'ul'],
 							markdown: ['- ', '* ', '+ ']
 						}
-					])
+					]
 				},
 				'numbered-list-item': {
 					...numberedRead,
 					...itemWrite,
 					continues: true,
 					snippet: listItem,
-					presets: presets('numbered-list-item', [
+					presets: [
 						{
 							label: kinds.numberedList,
 							icon: '1.',
 							keywords: ['number', 'ol'],
 							markdown: ['1. ', 'a. ', 'i. ']
 						}
-					])
+					]
 				},
 				'todo-item': {
 					...todoWrite,
 					continues: true,
 					// The app's control markup, if any, through its own snippet: the default costs no branch.
 					snippet: checkbox ? todoItemOwn : todoItem,
-					presets: presets('todo-item', [
+					presets: [
 						{
 							label: kinds.todoList,
 							icon: '☐',
@@ -458,7 +462,7 @@
 							data: { checked: false },
 							markdown: ['[ ] ', '[] ']
 						}
-					])
+					]
 				},
 				toggle: {
 					...toggleRead,
@@ -466,14 +470,14 @@
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
-					presets: presets('toggle', [
+					presets: [
 						{
 							label: kinds.toggleList,
 							icon: '▸',
 							keywords: ['details', 'expand'],
 							markdown: ['> ']
 						}
-					])
+					]
 				},
 				// Notion's toggle headings: a heading's text as a toggle's header over its
 				// children. From a heading, `>` + space at its start makes it one (its level
@@ -485,23 +489,20 @@
 					container: true,
 					snippet: emptyBody ? detailsOwn : details,
 					...disclosure,
-					presets: presets(
-						'toggle-heading',
-						HEADING_LEVELS.map((level, index) => {
-							const hashes = '#'.repeat(index + 1);
-							return {
-								label: [kinds.toggleHeading1, kinds.toggleHeading2, kinds.toggleHeading3][index]!,
-								icon: `▸H${['₁', '₂', '₃'][index]}`,
-								keywords: ['toggle', 'heading', 'collapse'],
-								data: { level },
-								markdownFrom: {
-									heading: ['> '],
-									toggle: [`${hashes} `],
-									'toggle-heading': [`${hashes} `]
-								}
-							};
-						})
-					)
+					presets: HEADING_LEVELS.map((level, index) => {
+						const hashes = '#'.repeat(index + 1);
+						return {
+							label: [kinds.toggleHeading1, kinds.toggleHeading2, kinds.toggleHeading3][index]!,
+							icon: `▸H${['₁', '₂', '₃'][index]}`,
+							keywords: ['toggle', 'heading', 'collapse'],
+							data: { level },
+							markdownFrom: {
+								heading: ['> '],
+								toggle: [`${hashes} `],
+								'toggle-heading': [`${hashes} `]
+							}
+						};
+					})
 				},
 				// Notion's callout: an icon (`data.icon`, the picker's), a title (its own
 				// text) and a content (its children, any blocks), which shows even empty
@@ -511,9 +512,7 @@
 					container: true,
 					body: true,
 					snippet: calloutIcon || emptyBody ? calloutOwn : callout,
-					presets: presets('callout', [
-						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
-					]),
+					presets: [{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }],
 					// A callout without its own icon exports the view's.
 					...calloutWrite((data) => iconOf(data, edytor)),
 					// The block menu's Change icon, while the view lists a picker: the keyboard's way to it.
@@ -537,15 +536,15 @@
 					container: true,
 					snippet: textThenChildren,
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
-					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }])
+					presets: [{ label: kinds.quote, icon: '❝', markdown: ['" '] }]
 				},
 				divider: {
 					...richTextKinds.divider,
 					...dividerRead,
 					...dividerWrite,
-					presets: presets('divider', [
+					presets: [
 						{ label: kinds.divider, icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
-					]),
+					],
 					empty: { content: [], children: [] }
 				},
 				'ordered-list': {
@@ -561,7 +560,7 @@
 					snippet: list
 				},
 				'list-item': { ...itemRead, ...itemWrite, snippet: listItem }
-			}
+			})
 		};
 	};
 </script>
@@ -576,9 +575,12 @@
 	the browser to walk (`render.markers`).
 -->
 <!-- prettier-ignore -->
+{#snippet nested(children: Snippet)}<div data-edytor-children>{@render children()}</div>{/snippet}
+
+<!-- prettier-ignore -->
 {#snippet paragraph({ content, children }: BlockSnippetPayload)}<!--
 --><p>{@render content()}</p><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -588,7 +590,7 @@
 <!-- prettier-ignore -->
 {#snippet details({ block, content, children }: BlockSnippetPayload)}<!--
 --><summary>{@render content()}</summary><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<EmptyBody {block} kind="toggle" />{/if}<!--
 -->{/snippet}
 
@@ -600,7 +602,7 @@
 <!-- prettier-ignore -->
 {#snippet textThenChildren({ content, children }: BlockSnippetPayload)}<!--
 -->{@render content()}<!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -611,7 +613,7 @@
 {#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
 --><CalloutIcon {block} /><!--
 --><div data-edytor-callout-title>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<EmptyBody {block} kind="callout" />{/if}<!--
 -->{/snippet}
 
@@ -619,7 +621,7 @@
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
 --><TodoCheckbox {block} /><!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -630,13 +632,13 @@
 {#snippet todoItemOwn({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
 --><RichTextControl {block} control="checkbox" /><!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
 {#snippet detailsOwn({ block, content, children }: BlockSnippetPayload)}<!--
 --><summary>{@render content()}</summary><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<RichTextControl {block} control="toggle" />{/if}<!--
 -->{/snippet}
 
@@ -644,14 +646,14 @@
 {#snippet calloutOwn({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
 --><RichTextControl {block} control="calloutIcon" /><!--
 --><div data-edytor-callout-title>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<RichTextControl {block} control="callout" />{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
 {#snippet listItem({ content, children }: BlockSnippetPayload)}<!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--

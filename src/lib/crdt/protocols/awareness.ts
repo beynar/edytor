@@ -137,38 +137,16 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 
 	setLocalState(state: Record<string, unknown> | null): void {
 		const clientID = this.clientID;
-		const currLocalMeta = this.meta.get(clientID);
-		const clock = currLocalMeta === undefined ? 0 : currLocalMeta.clock + 1;
 		const prevState = this.states.get(clientID);
-		if (state === null) {
-			this.states.delete(clientID);
-		} else {
-			this.states.set(clientID, state);
+		put(this, clientID, (this.meta.get(clientID)?.clock ?? -1) + 1, state, time.getUnixTime());
+		const changes = noChanges();
+		if (state === null) changes.removed.push(clientID);
+		else if (prevState == null) changes.added.push(clientID);
+		else {
+			changes.updated.push(clientID);
+			if (!jsonEquals(prevState, state)) changes.changed.push(clientID);
 		}
-		this.meta.set(clientID, {
-			clock,
-			lastUpdated: time.getUnixTime()
-		});
-		const added: number[] = [];
-		const updated: number[] = [];
-		const filteredUpdated: number[] = [];
-		const removed: number[] = [];
-		if (state === null) {
-			removed.push(clientID);
-		} else if (prevState == null) {
-			if (state != null) {
-				added.push(clientID);
-			}
-		} else {
-			updated.push(clientID);
-			if (!jsonEquals(prevState, state)) {
-				filteredUpdated.push(clientID);
-			}
-		}
-		if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
-			this.emit('change', [{ added, updated: filteredUpdated, removed }, 'local']);
-		}
-		this.emit('update', [{ added, updated, removed }, 'local']);
+		emitChanges(this, changes, 'local', true);
 	}
 
 	setLocalStateField(field: string, value: unknown): void {
@@ -186,6 +164,40 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 	}
 }
 
+/** The clients an awareness change touched: `changed`, the updated ones whose state differs. */
+type Changes = { added: number[]; updated: number[]; changed: number[]; removed: number[] };
+
+const noChanges = (): Changes => ({ added: [], updated: [], changed: [], removed: [] });
+
+/** Write client `clientID`'s `state` (`null`: removed) at `clock`, heard `now`. */
+const put = (
+	awareness: Awareness,
+	clientID: number,
+	clock: number,
+	state: Record<string, unknown> | null,
+	now: number
+): void => {
+	if (state === null) awareness.states.delete(clientID);
+	else awareness.states.set(clientID, state);
+	awareness.meta.set(clientID, { clock, lastUpdated: now });
+};
+
+/**
+ * Emit a change: `change` when a client was added, removed or changed its
+ * state, `update` when one was touched at all (`always`: even when none was).
+ */
+const emitChanges = (
+	awareness: Awareness,
+	{ added, updated, changed, removed }: Changes,
+	origin: unknown,
+	always = false
+): void => {
+	if (added.length > 0 || changed.length > 0 || removed.length > 0)
+		awareness.emit('change', [{ added, updated: changed, removed }, origin]);
+	if (always || added.length > 0 || updated.length > 0 || removed.length > 0)
+		awareness.emit('update', [{ added, updated, removed }, origin]);
+};
+
 /**
  * Mark (remote) clients as inactive and remove them from the list of active
  * peers. This change is propagated to remote clients.
@@ -195,25 +207,16 @@ export const removeAwarenessStates = (
 	clients: number[],
 	origin: unknown
 ): void => {
-	const removed: number[] = [];
-	for (let i = 0; i < clients.length; i++) {
-		const clientID = clients[i];
+	const changes = noChanges();
+	for (const clientID of clients) {
 		if (awareness.states.has(clientID)) {
 			awareness.states.delete(clientID);
-			if (clientID === awareness.clientID) {
-				const curMeta = awareness.meta.get(clientID) as MetaClientState;
-				awareness.meta.set(clientID, {
-					clock: curMeta.clock + 1,
-					lastUpdated: time.getUnixTime()
-				});
-			}
-			removed.push(clientID);
+			if (clientID === awareness.clientID)
+				put(awareness, clientID, awareness.meta.get(clientID)!.clock + 1, null, time.getUnixTime());
+			changes.removed.push(clientID);
 		}
 	}
-	if (removed.length > 0) {
-		awareness.emit('change', [{ added: [], updated: [], removed }, origin]);
-		awareness.emit('update', [{ added: [], updated: [], removed }, origin]);
-	}
+	emitChanges(awareness, changes, origin);
 };
 
 /** The update carrying `clients`' entries of `awareness` (their states in `states`). */
@@ -272,13 +275,9 @@ export const applyAwarenessUpdate = (
 	origin: unknown
 ): void => {
 	const timestamp = time.getUnixTime();
-	const added: number[] = [];
-	const updated: number[] = [];
-	const filteredUpdated: number[] = [];
-	const removed: number[] = [];
-	for (const entry of readAwarenessEntries(update)) {
-		const { clientID, state } = entry;
-		let { clock } = entry;
+	const changes = noChanges();
+	const { added, updated, changed, removed } = changes;
+	for (const { clientID, clock, state } of readAwarenessEntries(update)) {
 		const clientMeta = awareness.meta.get(clientID);
 		const prevState = awareness.states.get(clientID);
 		const currClock = clientMeta === undefined ? 0 : clientMeta.clock;
@@ -286,38 +285,20 @@ export const applyAwarenessUpdate = (
 			currClock < clock ||
 			(currClock === clock && state === null && awareness.states.has(clientID))
 		) {
-			if (state === null) {
-				// never let a remote client remove this local state
-				if (clientID === awareness.clientID && awareness.getLocalState() != null) {
-					// remote client removed the local state. Do not remove state. Broadcast a message
-					// indicating that this client still exists by increasing the clock
-					clock++;
-				} else {
-					awareness.states.delete(clientID);
-				}
-			} else {
-				awareness.states.set(clientID, state);
-			}
-			awareness.meta.set(clientID, {
-				clock,
-				lastUpdated: timestamp
-			});
+			// Never let a remote client remove this local state: keep it and
+			// broadcast that this client still exists, by increasing the clock.
+			const local = awareness.getLocalState();
+			const keep = state === null && clientID === awareness.clientID && local != null;
+			put(awareness, clientID, keep ? clock + 1 : clock, keep ? local : state, timestamp);
 			if (clientMeta === undefined && state !== null) {
 				added.push(clientID);
 			} else if (clientMeta !== undefined && state === null) {
 				removed.push(clientID);
 			} else if (state !== null) {
-				if (!jsonEquals(state, prevState)) {
-					filteredUpdated.push(clientID);
-				}
+				if (!jsonEquals(state, prevState)) changed.push(clientID);
 				updated.push(clientID);
 			}
 		}
 	}
-	if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
-		awareness.emit('change', [{ added, updated: filteredUpdated, removed }, origin]);
-	}
-	if (added.length > 0 || updated.length > 0 || removed.length > 0) {
-		awareness.emit('update', [{ added, updated, removed }, origin]);
-	}
+	emitChanges(awareness, changes, origin);
 };

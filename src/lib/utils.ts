@@ -8,6 +8,17 @@ export const id = (prefix: 't' | 'b' | 'i' | 'v' | 's' | 'c') => {
 	return `${prefix}_${t}`;
 };
 
+/** `key`'s value in `map`, made (`make`) and stored when it holds none. */
+export const getOr = <K, V>(
+	map: { get(key: K): V | undefined; set(key: K, value: V): unknown },
+	key: K,
+	make: () => V
+): V => {
+	let value = map.get(key);
+	if (value === undefined) map.set(key, (value = make()));
+	return value;
+};
+
 /**
  * A hook's veto as the dispatcher carries it: what `prevent(cb?)` recorded,
  * and the extension that recorded it. Hooks never see one thrown at them:

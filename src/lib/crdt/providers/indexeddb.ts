@@ -57,6 +57,7 @@ import {
 	bindRoomProtocol,
 	tabs,
 	emitFailed,
+	fault,
 	initLifecycle,
 	markSynced,
 	quarantined,
@@ -266,16 +267,13 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		loadError: unknown = null;
 		_storeTimeout: number;
 		_storeTimeoutId: ReturnType<typeof setTimeout> | null;
-		_storeUpdate: (update: Uint8Array, origin: unknown) => void;
+		/** @internal Removes the document and presence listeners (`room.listen`). */
+		_unlisten: () => void;
 		awareness: Awareness;
 		bcconnected = false;
 		disableBc: boolean;
 		_ownsAwareness: boolean;
-		_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
-		_awarenessUpdateHandler: (
-			updates: { added: number[]; updated: number[]; removed: number[] },
-			origin: unknown
-		) => void;
+		_bcSubscriber!: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 
 		constructor(name: string, doc: YDoc, options: IndexeddbPersistenceOptions = {}) {
 			super();
@@ -293,9 +291,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 			this.destroy = this.destroy.bind(this);
 			initLifecycle(this, this.destroy, () => room.depart(this));
-
-			this._bcSubscriber = room.bcSubscriber(this);
-			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 
 			// Fail closed: no sync, no BC room join, whenSynced rejects, and
 			// the terminal 'failed' fires — the provider can never reach
@@ -317,7 +312,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
 							rtop(updatesStore.add(encodeRow(Y.encodeStateAsUpdate(doc)))).catch((error) =>
-								this.emit('message-error', [error, this])
+								fault(this, error)
 							);
 						}
 					};
@@ -344,7 +339,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this._storeTimeout = 1000;
 			this._storeTimeoutId = null;
 
-			this._storeUpdate = (update: Uint8Array, origin: unknown) => {
+			const storeUpdate = (update: Uint8Array, origin: unknown) => {
 				// Outbound quarantine: a read-only doc is never persisted
 				// (`broadcastUpdate` applies the same rule to the room).
 				if (origin === this || quarantined(doc)) return;
@@ -353,9 +348,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 						const [updatesStore] = storesOf(this.db, [updatesStoreName]);
 						// Storage failures must surface — never an unobserved
 						// rejection (the error channel observes every failure mode).
-						rtop(updatesStore.add(encodeRow(update))).catch((error) => {
-							this.emit('message-error', [error, this]);
-						});
+						rtop(updatesStore.add(encodeRow(update))).catch((error) => fault(this, error));
 						if (++this._dbsize >= PREFERRED_TRIM_SIZE) {
 							if (this._storeTimeoutId !== null) {
 								clearTimeout(this._storeTimeoutId);
@@ -364,22 +357,21 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 								this._storeTimeoutId = null;
 								// The timed caller has no promise consumer — surface
 								// compaction/storage failures on the error channel.
-								storeState(this, false).catch((error) => this.emit('message-error', [error, this]));
+								storeState(this, false).catch((error) => fault(this, error));
 							}, this._storeTimeout);
 						}
 					} catch (error) {
 						// A synchronous transact failure (e.g. a handle closed
 						// mid-session) still lands on the error channel rather
 						// than propagating into the doc's update dispatch.
-						this.emit('message-error', [error, this]);
+						fault(this, error);
 					}
 				}
 				// Broadcast the update to other tabs
 				room.broadcastUpdate(this, update);
 			};
 
-			doc.on('update', this._storeUpdate);
-			this.awareness.on('update', this._awarenessUpdateHandler);
+			this._unlisten = room.listen(this, storeUpdate);
 			const onDocDestroy = (): void => void this.destroy();
 			destroyWithDoc.set(this, onDocDestroy);
 			doc.on('destroy', onDocDestroy);
@@ -433,10 +425,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			if (this._storeTimeoutId) {
 				clearTimeout(this._storeTimeoutId);
 			}
-			this.doc.off('update', this._storeUpdate);
+			this._unlisten();
 			const onDocDestroy = destroyWithDoc.get(this);
 			if (onDocDestroy) this.doc.off('destroy', onDocDestroy);
-			this.awareness.off('update', this._awarenessUpdateHandler);
 			this.disconnectBc();
 			if (this._ownsAwareness) {
 				this.awareness.destroy();

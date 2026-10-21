@@ -76,8 +76,10 @@ import {
 	CLOSE,
 	createChunkReader,
 	emitFailed,
+	fault,
 	initLifecycle,
 	isRefusal,
+	unknownType,
 	LOCAL_PRESENCE_LOSS,
 	markSynced,
 	messageAuth,
@@ -275,10 +277,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				) {
 					// An auth type we do not speak inside a valid v14 envelope is
 					// protocol skew — reported, never dropped silently.
-					provider.emit('message-error', [
-						new Error(`Unknown auth message type ${authType}`),
-						provider
-					]);
+					unknownType(provider, 'auth', authType);
 				}
 			}
 		},
@@ -619,7 +618,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 						sendOn(provider, websocket, buf)
 					);
 				} catch (error) {
-					provider.emit('message-error', [error, provider]);
+					fault(provider, error);
 				}
 			};
 			websocket.onerror = (event) => {
@@ -661,7 +660,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		bcChannel: string;
 		bcconnected = false;
 		disableBc: boolean;
-		_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
+		_bcSubscriber!: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 		/** The transaction origin of updates heard from another tab. */
 		_fromTab = {};
 		wsUnsuccessfulReconnects = 0;
@@ -685,16 +684,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/** Closes the current dial if it has not opened in time. */
 		_connectTimer: ReturnType<typeof setTimeout> | undefined;
 		_checkInterval: ReturnType<typeof setInterval>;
-		_updateHandler: (
-			update: Uint8Array,
-			origin: unknown,
-			doc?: unknown,
-			transaction?: { local: boolean }
-		) => void;
-		_awarenessUpdateHandler: (
-			updates: { added: number[]; updated: number[]; removed: number[] },
-			origin: unknown
-		) => void;
+		/** @internal Removes the document and presence listeners (`room.listen`). */
+		_unlisten!: () => void;
 
 		constructor(
 			serverUrl: string,
@@ -735,14 +726,18 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			if (resyncInterval > 0) {
 				this._resync = setInterval(() => send(this, room.step1(this)), resyncInterval);
 			}
-			this._bcSubscriber = room.bcSubscriber(this);
 			providers.add(this);
 			// Local doc updates go to the room; another tab's go to the server
 			// only (`broadcastUpdate` quarantines a read-only document). A
 			// socket the room made read-only gets this document's own edits
 			// alone (each is denied): what a tab or a store delivered, and the
 			// actor records, would draw denials nobody made.
-			this._updateHandler = (update, origin, _doc, transaction) => {
+			const onUpdate = (
+				update: Uint8Array,
+				origin: unknown,
+				_doc?: unknown,
+				transaction?: { local: boolean }
+			) => {
 				if (origin === this) return;
 				const heard = origin === this._fromTab;
 				if (!this.readOnly) room.broadcastUpdate(this, update, heard ? send : broadcast);
@@ -759,9 +754,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				this.emit('saved', [{ saved: unsaved === 0, unsaved }, this])
 			);
 			this._writes.trackDocument();
-			this.doc.on('update', this._updateHandler);
-			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
-			awareness.on('update', this._awarenessUpdateHandler);
+			this._unlisten = room.listen(this, onUpdate);
 			this._checkInterval = setInterval(() => {
 				if (!this.wsconnected) return;
 				const now = time.getUnixTime();
@@ -842,8 +835,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			clearInterval(this._checkInterval);
 			providers.delete(this);
 			this.disconnect();
-			this.awareness.off('update', this._awarenessUpdateHandler);
-			this.doc.off('update', this._updateHandler);
+			this._unlisten();
 			super.destroy();
 		}
 

@@ -49,7 +49,7 @@ import { runOccurrence } from '../events/onBeforeInput.js';
 import { getDomSelectionSnapshot } from '../selection/domSelection.js';
 import { domOffsetIn } from '../selection/selection.utils.js';
 import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
-import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
+import { getTextContentOffsetAtPoint, textLeaves } from '../events/domTextOffset.js';
 import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
 
 /**
@@ -119,13 +119,8 @@ const isAnchor = (node: Node) =>
 	node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE && !node.nodeValue);
 
 /** The `nth` non-empty text node under `node`. */
-const textLeaf = (node: Node, nth = 0) => {
-	const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
-	while (walker.nextNode())
-		if ((walker.currentNode as globalThis.Text).data && nth-- === 0)
-			return walker.currentNode as globalThis.Text;
-	return null;
-};
+const textLeaf = (node: Node, nth = 0) =>
+	(textLeaves(node).filter((leaf) => leaf.data)[nth] as globalThis.Text | undefined) ?? null;
 const ZERO_WIDTH_SPACE = '\u200B';
 
 /**
@@ -136,15 +131,10 @@ const ZERO_WIDTH_SPACE = '\u200B';
 export const readDomText = (text: Text) => {
 	let value = '';
 	const node = text.node;
-	if (node) {
-		const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
-		while (walker.nextNode()) {
-			const leaf = walker.currentNode as globalThis.Text;
-			value += leaf.parentElement?.closest('span.Apple-converted-space')
-				? leaf.data.replaceAll('\u00A0', ' ')
-				: leaf.data;
-		}
-	}
+	for (const leaf of node ? textLeaves(node) : [])
+		value += leaf.parentElement?.closest('span.Apple-converted-space')
+			? leaf.data.replaceAll('\u00A0', ' ')
+			: leaf.data;
 
 	// An empty text's filler shares its node with what the browser typed, on either side.
 	if (text.isEmpty) return value.replaceAll(ZERO_WIDTH_SPACE, '');
@@ -1018,19 +1008,17 @@ export class SurfaceObserver {
 const shownMarks = (text: Text, at: number) => {
 	const element = text.node;
 	if (!element) return null;
-	const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
 	let offset = 0;
-	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-		offset += (node as globalThis.Text).data.replace(ZWSP, '').length;
-		if (offset <= at) continue;
-		const names: string[] = [];
-		for (let el = node.parentElement; el && el !== element; el = el.parentElement) {
-			const name = el.getAttribute('data-edytor-mark');
-			if (name) names.push(name);
-		}
-		return names.sort().join();
+	const node = textLeaves(element).find(
+		(leaf) => (offset += leaf.data.replace(ZWSP, '').length) > at
+	);
+	if (!node) return null;
+	const names: string[] = [];
+	for (let el = node.parentElement; el && el !== element; el = el.parentElement) {
+		const name = el.getAttribute('data-edytor-mark');
+		if (name) names.push(name);
 	}
-	return null;
+	return names.sort().join();
 };
 
 /** The rendered marks the model gives the character at `at` of `text`. */

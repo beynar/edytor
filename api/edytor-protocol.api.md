@@ -670,29 +670,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 nestBlock: (id: import("./index.js").BlockId, parent: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
-                insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
-                removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
-                setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
-                patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
-                setBlock: (id: import("./index.js").BlockId, value: {
-                    type?: string;
-                    data?: Record<string, unknown>;
-                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
-                }) => import("./edytor-doc.js").Prepared;
-                deleteBlock: (id: import("./index.js").BlockId, opts?: {
-                    keepChildren?: boolean;
-                }) => import("./edytor-doc.js").Prepared;
-                splitBlock: (id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail?: import("./placement/model.js").SplitTail) => import("./edytor-doc.js").Prepared;
-                mergeBlocks: (fromId: import("./index.js").BlockId, intoId: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                mergeBackward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                mergeForward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                placeBeside: (ids: readonly import("./index.js").BlockId[], target: import("./index.js").BlockId, side: "left" | "right", kind?: string) => import("./edytor-doc.js").Prepared;
-                wrapInLayout: (ids: readonly import("./index.js").BlockId[], kind?: string, columns?: number) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
                 unNestBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -702,6 +679,29 @@ declare const bindCrdt: (Y: EngineApi) => {
                     after?: readonly import("./index.js").BlockSpec[];
                 }) => import("./edytor-doc.js").Prepared;
                 duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
+                placeBeside: (ids: readonly import("./index.js").BlockId[], target: import("./index.js").BlockId, side: "left" | "right", kind?: string) => import("./edytor-doc.js").Prepared;
+                wrapInLayout: (ids: readonly import("./index.js").BlockId[], kind?: string, columns?: number) => import("./edytor-doc.js").Prepared;
+                splitBlock: (id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail?: import("./placement/model.js").SplitTail) => import("./edytor-doc.js").Prepared;
+                mergeBlocks: (fromId: import("./index.js").BlockId, intoId: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                mergeBackward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                mergeForward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                deleteBlock: (id: import("./index.js").BlockId, opts?: {
+                    keepChildren?: boolean;
+                }) => import("./edytor-doc.js").Prepared;
+                setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
+                patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
+                setBlock: (id: import("./index.js").BlockId, value: {
+                    type?: string;
+                    data?: Record<string, unknown>;
+                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
+                }) => import("./edytor-doc.js").Prepared;
+                insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
+                deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
+                formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
+                clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
+                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").Prepared;
+                removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
             };
             apply: (p: import("./edytor-doc.js").Prepared, quiet?: boolean) => import("./edytor-doc.js").OpResult;
             compose: (...parts: import("./edytor-doc.js").Prepared[]) => import("./edytor-doc.js").Prepared;
@@ -712,29 +712,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
-            insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
-            deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
-            removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
-            setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
-            patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
-            setBlock: (id: string, value: {
-                type?: string;
-                data?: Record<string, unknown>;
-                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
-            }) => import("./edytor-doc.js").OpResult;
-            deleteBlock: (id: string, opts?: {
-                keepChildren?: boolean;
-            } | undefined) => import("./edytor-doc.js").OpResult;
-            splitBlock: (id: string, offset: number, newId: string, tail?: import("./placement/model.js").SplitTail | undefined) => import("./edytor-doc.js").OpResult;
-            mergeBlocks: (fromId: string, intoId: string) => import("./edytor-doc.js").OpResult;
-            mergeBackward: (id: string) => import("./edytor-doc.js").OpResult;
-            mergeForward: (id: string) => import("./edytor-doc.js").OpResult;
-            placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
-            wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             unNestBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
@@ -744,6 +721,29 @@ declare const bindCrdt: (Y: EngineApi) => {
                 after?: readonly import("./index.js").BlockSpec[];
             } | undefined) => import("./edytor-doc.js").OpResult;
             duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
+            placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
+            wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => import("./edytor-doc.js").OpResult;
+            splitBlock: (id: string, offset: number, newId: string, tail?: import("./placement/model.js").SplitTail | undefined) => import("./edytor-doc.js").OpResult;
+            mergeBlocks: (fromId: string, intoId: string) => import("./edytor-doc.js").OpResult;
+            mergeBackward: (id: string) => import("./edytor-doc.js").OpResult;
+            mergeForward: (id: string) => import("./edytor-doc.js").OpResult;
+            deleteBlock: (id: string, opts?: {
+                keepChildren?: boolean;
+            } | undefined) => import("./edytor-doc.js").OpResult;
+            setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
+            patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
+            setBlock: (id: string, value: {
+                type?: string;
+                data?: Record<string, unknown>;
+                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
+            }) => import("./edytor-doc.js").OpResult;
+            insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
+            deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
+            formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
+            clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
+            insertInline: (id: string, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").OpResult;
+            removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: (options?: {
                 suggestions?: boolean;
@@ -915,17 +915,12 @@ declare const bindCrdt: (Y: EngineApi) => {
                 loadError: unknown;
                 _storeTimeout: number;
                 _storeTimeoutId: ReturnType<typeof setTimeout> | null;
-                _storeUpdate: (update: Uint8Array, origin: unknown) => void;
+                _unlisten: () => void;
                 awareness: _Awareness;
                 bcconnected: boolean;
                 disableBc: boolean;
                 _ownsAwareness: boolean;
                 _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
-                _awarenessUpdateHandler: (updates: {
-                    added: number[];
-                    updated: number[];
-                    removed: number[];
-                }, origin: unknown) => void;
                 get synced(): boolean;
                 messageHandlers: Record<number, import("./providers/room.js").RoomMessageHandler<any>>;
                 readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;
@@ -933,7 +928,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 connectBc(): void;
                 disconnectBc(): void;
                 destroy(): Promise<void>;
-                emit<N extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
+                emit<N extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
                     synced: (provider: any) => void;
                     'protocol-mismatch': (mismatch: import("./protocol.js").ProtocolMismatch, provider: any) => void;
                     'load-error': (error: unknown, provider: any) => void;
@@ -942,7 +937,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     failed: (error: unknown, provider: any) => void;
                 }[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+                on<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                     synced: (provider: any) => void;
                     'protocol-mismatch': (mismatch: import("./protocol.js").ProtocolMismatch, provider: any) => void;
                     'load-error': (error: unknown, provider: any) => void;
@@ -957,7 +952,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     'schema-mismatch': (detail: import("./protocol.js").SchemaMismatchDetail, provider: any) => void;
                     failed: (error: unknown, provider: any) => void;
                 }[NAME];
-                once<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+                once<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                     synced: (provider: any) => void;
                     'protocol-mismatch': (mismatch: import("./protocol.js").ProtocolMismatch, provider: any) => void;
                     'load-error': (error: unknown, provider: any) => void;
@@ -965,7 +960,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     'schema-mismatch': (detail: import("./protocol.js").SchemaMismatchDetail, provider: any) => void;
                     failed: (error: unknown, provider: any) => void;
                 }[NAME]): void;
-                off<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+                off<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                     synced: (provider: any) => void;
                     'protocol-mismatch': (mismatch: import("./protocol.js").ProtocolMismatch, provider: any) => void;
                     'load-error': (error: unknown, provider: any) => void;
@@ -1026,14 +1021,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 _resync: ReturnType<typeof setInterval> | undefined;
                 _connectTimer: ReturnType<typeof setTimeout> | undefined;
                 _checkInterval: ReturnType<typeof setInterval>;
-                _updateHandler: (update: Uint8Array, origin: unknown, doc?: unknown, transaction?: {
-                    local: boolean;
-                }) => void;
-                _awarenessUpdateHandler: (updates: {
-                    added: number[];
-                    updated: number[];
-                    removed: number[];
-                }, origin: unknown) => void;
+                _unlisten: () => void;
                 get url(): string;
                 get unsaved(): number;
                 get saved(): boolean;
@@ -1043,11 +1031,11 @@ declare const bindCrdt: (Y: EngineApi) => {
                 destroy(): void;
                 disconnect(): void;
                 connect(): void;
-                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
+                emit<N extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
-                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
-                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                on<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
+                once<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                off<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
         watchComments: (server: string | null, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
@@ -1595,17 +1583,12 @@ declare const bindProviders: (Y: EngineApi) => {
             loadError: unknown;
             _storeTimeout: number;
             _storeTimeoutId: ReturnType<typeof setTimeout> | null;
-            _storeUpdate: (update: Uint8Array, origin: unknown) => void;
+            _unlisten: () => void;
             awareness: Awareness;
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
             _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
-            _awarenessUpdateHandler: (updates: {
-                added: number[];
-                updated: number[];
-                removed: number[];
-            }, origin: unknown) => void;
             get synced(): boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;
@@ -1613,7 +1596,7 @@ declare const bindProviders: (Y: EngineApi) => {
             connectBc(): void;
             disconnectBc(): void;
             destroy(): Promise<void>;
-            emit<N extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
+            emit<N extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1622,7 +1605,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 failed: (error: unknown, provider: any) => void;
             }[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            on<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1637,7 +1620,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 'schema-mismatch': (detail: import("./room.js").SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME];
-            once<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            once<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1645,7 +1628,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 'schema-mismatch': (detail: import("./room.js").SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME]): void;
-            off<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            off<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1706,14 +1689,7 @@ declare const bindProviders: (Y: EngineApi) => {
             _resync: ReturnType<typeof setInterval> | undefined;
             _connectTimer: ReturnType<typeof setTimeout> | undefined;
             _checkInterval: ReturnType<typeof setInterval>;
-            _updateHandler: (update: Uint8Array, origin: unknown, doc?: unknown, transaction?: {
-                local: boolean;
-            }) => void;
-            _awarenessUpdateHandler: (updates: {
-                added: number[];
-                updated: number[];
-                removed: number[];
-            }, origin: unknown) => void;
+            _unlisten: () => void;
             get url(): string;
             get unsaved(): number;
             get saved(): boolean;
@@ -1723,11 +1699,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string | null, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);
@@ -1787,17 +1763,12 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
             loadError: unknown;
             _storeTimeout: number;
             _storeTimeoutId: ReturnType<typeof setTimeout> | null;
-            _storeUpdate: (update: Uint8Array, origin: unknown) => void;
+            _unlisten: () => void;
             awareness: Awareness;
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
             _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
-            _awarenessUpdateHandler: (updates: {
-                added: number[];
-                updated: number[];
-                removed: number[];
-            }, origin: unknown) => void;
             get synced(): boolean;
             messageHandlers: Record<number, RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => encoding.Encoder;
@@ -1805,7 +1776,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
             connectBc(): void;
             disconnectBc(): void;
             destroy(): Promise<void>;
-            emit<N extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
+            emit<N extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1814,7 +1785,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
                 failed: (error: unknown, provider: any) => void;
             }[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            on<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1829,7 +1800,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
                 'schema-mismatch': (detail: SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME];
-            once<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            once<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -1837,7 +1808,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
                 'schema-mismatch': (detail: SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME]): void;
-            off<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            off<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;

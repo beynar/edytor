@@ -70,6 +70,7 @@ import {
 	removedKeys,
 	scanText
 } from './streams.js';
+import { getOr } from '../../utils.js';
 
 export { isBoundary, isClaimItem, isRowMark, nodeStart } from './items.js';
 export { canonKey, deepFreeze, inlineItemOf, protectItems, readRange } from './ranges.js';
@@ -328,8 +329,7 @@ export const readSegs = (segs: readonly Seg[], stats?: RangeReadStats): RangeIte
 	const out: RangeItem[] = [];
 	const cursors = new Map<EngineNode, RangeCursor>();
 	for (const seg of segs) {
-		let cur = cursors.get(seg.text);
-		if (cur === undefined) cursors.set(seg.text, (cur = openRangeCursor(seg.text)));
+		const cur = getOr(cursors, seg.text, () => openRangeCursor(seg.text));
 		readRange(cur, seg.i0, seg.i1, stats, out);
 	}
 	return out;

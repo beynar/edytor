@@ -31,8 +31,8 @@
  *   (`canPlace`, `fits`, `canMerge`, the island and void rules), the step
  *   writers every op composes (ranks, settle, emptying, dissolving) and the
  *   prepared op families (placement, layout, split and merge, delete, type
- *   and data, text, atoms and marks); range deletion and flow placement are
- *   `rangeDelete.ts` and `flow.ts`, over them (`OpsContext`).
+ *   and data, text, atoms and marks), then range deletion and flow placement
+ *   over them (their types in `rangeDelete.ts` and `flow.ts`).
  *
  * ── Identity discipline ────────────────────────────────────────────────
  *
@@ -74,8 +74,6 @@ import {
 	blockAttributionOf,
 	type BlockAttribution
 } from './attribution/block.js';
-import { rangeDeleteOps } from './rangeDelete.js';
-import { flowOps } from './flow.js';
 import type { JSONBlock, JSONDoc } from '../utils/json.js';
 import {
 	assertSchema,
@@ -326,9 +324,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 				return ops.prepare.moveBlocks([id], { parent: at, index: childrenIds(at).length });
 			},
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
-			deleteBlocks: (ids: readonly BlockId[]): Prepared => ops.prepare.deleteBlocks(ids),
-			...rangeDeleteOps(ops),
-			...flowOps(ops)
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => ops.prepare.deleteBlocks(ids)
 		};
 
 		/**

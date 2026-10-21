@@ -4,8 +4,9 @@
  * advance and at execution), the step writers every op composes, and the
  * op families — placement (insert, move, outdent, lift), layout, split and
  * merge, block deletion, meta (type and data) and content (text, atoms,
- * marks). Range deletion and flow placement (`rangeDelete.ts`, `flow.ts`)
- * compose them.
+ * marks) — then range deletion (`del.range.*`) and flow placement
+ * (`flow.*`), which compose them; the types they read are in
+ * `../rangeDelete.ts` and `../flow.ts`.
  *
  * ── Island/void enforcement (operation-layer, not stored) ──────────────
  *
@@ -72,7 +73,15 @@ import {
 import { REFUSED, effectOf, ref, refused, sanitizeInline, sanitizeItem } from './plan.js';
 import type { DataTarget, JsonObj, Plan, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
-import type { DocPosition } from '../rangeDelete.js';
+import type { DocPosition, RangeView } from '../rangeDelete.js';
+import {
+	placedEnd,
+	lengthOf,
+	type Flow,
+	type FlowLine,
+	type FlowTarget,
+	type FlowView
+} from '../flow.js';
 
 /**
  * A record's order among the records standing at one block, for the
@@ -117,6 +126,8 @@ export const docOps = (c: DocBase & DocReads) => {
 		isTableRow,
 		isRowKind,
 		isCellKind,
+		isTableCell,
+		tableOf,
 		next,
 		previous,
 		displayLength,
@@ -1570,30 +1581,485 @@ export const docOps = (c: DocBase & DocReads) => {
 		return plan([id], [{ op: 'removeInline', id, offset: atom.at, inlineId: ref(inlineId) }]);
 	};
 
+	// ── range deletion (`deleteRange`, `replaceRange`) ─────────────────
+	// Here `view` is what the view knows (`RangeView`, `FlowView`); the
+	// document's own view is `c.view()`.
+	/**
+	 * Range deletion between two positions — one prepared document operation
+	 * whose merge is the document's `canMerge`. The rules are the
+	 * `del.range.*` rows of `docs/editor-delete-contract.md`:
+	 *
+	 * - the head keeps `[0, start)`, the tail keeps `[end, len)`, and every
+	 *   block strictly between them in document order dies;
+	 * - the head dies iff its prefix is empty (never for a replacement,
+	 *   `del.range.replace`, nor when nothing else would be left to hold the
+	 *   caret, `del.range.whole-doc`: the head is kept, emptied, with its id,
+	 *   type and data, so peers deleting the same range keep the same block)
+	 *   and the tail then keeps its id; the tail dies iff
+	 *   its suffix is empty; otherwise the tail's suffix merges into the head
+	 *   when `canMerge(tail, head)` allows it (`del.range.island-seal`) — an end
+	 *   at the tail's start included: the seam between them is deleted;
+	 * - what follows the range end survives: the dying tail's children and the
+	 *   later siblings inside every container the range dies through take the
+	 *   topmost such container's slot, unless that would cross an island seal —
+	 *   then those containers stay (`del.range.outside-survives`);
+	 * - a container (a list: the document's `isContainer`) never dies because
+	 *   the range starts before it: it keeps what follows the range end, like
+	 *   the keys (`del.merge.container`); it dies only when it loses every
+	 *   child and holds no text of its own — the document's `emptiable`, the
+	 *   keys' rule (`del.range.empty-container`). An island that renders
+	 *   no content dies when it loses every child too, except a `lines` island
+	 *   (a code block) the range lies in: its head is then kept, emptied
+	 *   (`del.range.island-kept`);
+	 * - what a range rescues takes the kind it shows in its new slot (the
+	 *   document's `settle`: a paragraph rescued into a list is its item);
+	 * - blocks the view hides (a closed toggle's body) are not in the range:
+	 *   they go only with a block that goes, so a surviving head keeps its
+	 *   hidden children, unless it is kept only to hold the caret; a dying
+	 *   closed tail's body takes its place, shown (`del.range.hidden-body`);
+	 * - a layout the range leaves with one column dissolves, in the same plan
+	 *   (`layout.dissolving`);
+	 * - a range with an end in a table's cell keeps every cell and row: each
+	 *   cell it crosses loses the text it covers, nothing merges across a
+	 *   cell's edge, the blocks outside the table between the ends go, a
+	 *   table wholly between them goes whole, and the caret lands at the start
+	 *   (`table.range`);
+	 * - the plan's `at` is where the caret lands (`del.range.caret`).
+	 *
+	 * `headSpent`: a whole-doc retry keeps the head, but what it hid goes as if it went.
+	 */
+	const rangeDelete =
+		(keepHead: boolean, headSpent = false) =>
+		(from: DocPosition, to: DocPosition, view: RangeView = {}): Prepared => {
+			// A position names shown text: a live block that renders its own content.
+			const holds = (id: BlockId) => contentTarget(id) && rendersContent(id);
+			const pos = (p: DocPosition): DocPosition => {
+				const block = ref(p.block);
+				const len = holds(block) ? displayLength(block) : -1;
+				return { block, offset: Math.max(0, Math.min(p.offset, len)) };
+			};
+			let [s, e] = [pos(from), pos(to)];
+			if (!holds(s.block) || !holds(e.block)) return REFUSED;
+			const { ids, at } = c.view().order;
+			if (at.get(s.block)! > at.get(e.block)! || (s.block === e.block && s.offset > e.offset))
+				[s, e] = [e, s];
+			const S = s.block;
+			const E = e.block;
+			if (S === E) {
+				return plan([S], cutText(S, s.offset, e.offset - s.offset), s);
+			}
+
+			const parent = (id: BlockId) => ancestorsOf(id)[0] ?? null;
+			const chain = ancestorsOf(E);
+			if (isTableCell(S) || isTableCell(E)) return inTables(s, e, view);
+			// What the view hides once `removed` go (nothing: as it is now).
+			const hiddenOnce = (removed: readonly BlockId[]) => {
+				const set = new Set(removed);
+				return (id: BlockId) => !!view.hidden?.(id, set);
+			};
+			const headDies = !keepHead && s.offset === 0;
+			// What the view hides is not in the range: it goes only with a block that goes,
+			// a dying head's body included.
+			const hidden = hiddenOnce(headDies || headSpent ? [S] : []);
+			const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !hidden(id));
+			const lenE = displayLength(E);
+			const tailDies = e.offset === lenE;
+			const merges = !headDies && !tailDies && canMerge(E, S);
+			const tailGone = tailDies || merges;
+
+			// E's ancestors the range starts before die unless the rescue would cross an island.
+			// A container (a list) is not one: it dies only when the range empties it, and
+			// keeps its later items like the keys do (`del.merge.container`).
+			const partial = chain.filter(
+				(a) => (a === (headDies ? S : null) || between.includes(a)) && !isContainer(a)
+			);
+			const top = partial.at(-1);
+			const sealed = top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some(isIsland);
+			const spared = new Set(sealed ? chain : []);
+			const doomed = new Set(between.filter((id) => !spared.has(id) && !chain.includes(id)));
+			if (!sealed) partial.forEach((a) => doomed.add(a));
+			if (headDies && !spared.has(S)) doomed.add(S);
+			if (tailDies) doomed.add(E);
+
+			// Rescue what follows the range end right after the topmost dying container's slot
+			// (after, not at it: a concurrent delete of S revives a merged E above them).
+			const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
+			const rescued = home === undefined ? [] : tailGone ? childrenIds(E) : [E];
+			for (let cur = E; home !== undefined && cur !== home; cur = parent(cur)!) {
+				const sibs = childrenIds(parent(cur));
+				rescued.push(...sibs.slice(sibs.indexOf(cur) + 1));
+			}
+			const dest = home === undefined || rescued.length === 0 ? null : positionOf(home)!;
+
+			// A container (or an island that renders nothing) losing every child dies too.
+			const gone = (id: BlockId) => doomed.has(id) || (merges && id === E);
+			const dies = (id: BlockId) => emptiable(id) || (isIsland(id) && !rendersContent(id));
+			const emptied = (id: BlockId | null): void => {
+				if (id === null || gone(id) || !dies(id) || id === dest?.parent) return;
+				if (!childrenIds(id).every(gone)) return;
+				doomed.add(id);
+				emptied(parent(id));
+			};
+			[...doomed, ...(merges ? [E] : [])].forEach((id) => emptied(parent(id)));
+			// A range inside one `lines` island never removes it: the head stays, emptied
+			// (a code block's Mod+A, `del.range.island-kept`).
+			const island = ancestorsOf(S).find(isIsland);
+			const linesIsland = island !== undefined && isLines(island);
+			if (!keepHead && linesIsland && doomed.has(island) && chain.includes(island))
+				return rangeDelete(true, headDies)(from, to, view);
+
+			const lenS = displayLength(S);
+			const writes: PlanStep[] = [];
+			if (!doomed.has(S)) writes.push(...cutText(S, s.offset, lenS - s.offset));
+			if (!gone(E)) writes.push(...cutText(E, 0, e.offset));
+			if (dest !== null) {
+				writes.push(...move(rescued, dest.parent, dest.index + 1));
+				// Each shows the kind of its new slot (an island's line, a list's item leave theirs).
+				for (const id of rescued) writes.push(...settle(parent(id), [id], dest.parent));
+			}
+			if (merges) {
+				// The whole tail merges, then its cut prefix goes: E's own text is never written.
+				writes.push({ op: 'mergeBlocks', from: E, into: S, at: s.offset, length: lenE });
+				writes.push(...cutText(S, s.offset, e.offset));
+			}
+			const kept = [...rescued, ...(merges ? [E] : [])];
+			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(remove(id, kept));
+			// A layout the range leaves with one column dissolves (`layout.dissolving`).
+			writes.push(...dissolving(new Set([...doomed, ...(merges ? [E] : [])]), rescued, writes));
+
+			const caret = ((): DocPosition | null => {
+				if (!doomed.has(S)) return s;
+				if (!gone(E)) return { block: E, offset: 0 };
+				const survives = (id: BlockId | null): boolean =>
+					id === null || rescued.includes(id) || (!gone(id) && survives(parent(id)));
+				// Shown once the plan runs: a dying closed tail's rescued body is.
+				const hiddenAfter = hiddenOnce([...doomed, ...(merges ? [E] : [])]);
+				const shown = (id: BlockId) => survives(id) && holds(id) && !hiddenAfter(id);
+				// Before the tail: blocks a sealed rescue spared between S and E count too.
+				const prev = ids.slice(0, at.get(E)).findLast(shown);
+				if (prev !== undefined) return { block: prev, offset: displayLength(prev) };
+				const next = ids.slice(at.get(E)! + 1).find(shown);
+				return next === undefined ? null : { block: next, offset: 0 };
+			})();
+			// Nothing else left to hold the caret: the head stays, emptied (whole-doc).
+			if (caret === null) return rangeDelete(true, headDies)(from, to, view);
+			return plan([caret.block], writes, caret);
+		};
+	/**
+	 * `table.range`: a range with an end in a cell. Every cell it crosses
+	 * loses the text it covers and stays, with its row; the ends keep what
+	 * lies outside the range, merging nothing; any other block between the
+	 * ends goes (a table wholly between them whole), but the ancestors of
+	 * the end, which stay and lose their text (the range covers it: they
+	 * come after the start in reading order); the caret lands at the start.
+	 */
+	const inTables = (s: DocPosition, e: DocPosition, view: RangeView): Prepared => {
+		const { ids, at } = c.view().order;
+		const [S, E] = [s.block, e.block];
+		const kept = new Set(ancestorsOf(E));
+		const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !view.hidden?.(id));
+		const writes: PlanStep[] = [];
+		const lenS = displayLength(S);
+		writes.push(...cutText(S, s.offset, lenS - s.offset));
+		const [tableS, tableE] = [tableOf(S), tableOf(E)];
+		const doomed = new Set<BlockId>();
+		for (const id of between) {
+			const table = tableOf(id);
+			if (kept.has(id) || (table !== null && (table === tableS || table === tableE))) {
+				const len = isTableCell(id) || kept.has(id) ? displayLength(id) : 0;
+				writes.push(...cutText(id, 0, len));
+			} else doomed.add(id);
+		}
+		writes.push(...cutText(E, 0, e.offset));
+		const parentOf = (id: BlockId) => ancestorsOf(id)[0] ?? null;
+		const roots = [...doomed].filter((id) => !doomed.has(parentOf(id)!));
+		for (const id of roots) writes.push(remove(id, []));
+		writes.push(...dissolving(new Set(roots), [], writes));
+		return plan([S], writes, s);
+	};
+
+	// ── flow placement (`insertFlow`) ────────────────────────────────
+	/** What a kind is in a table: the table, its row or its cell. */
+	const tableKind = (kind: string): 'table' | 'row' | 'cell' | undefined =>
+		roles.of(kind).table !== undefined
+			? 'table'
+			: isRowKind(kind)
+				? 'row'
+				: isCellKind(kind)
+					? 'cell'
+					: undefined;
+	/**
+	 * Placement of an admitted flow — one prepared document operation for
+	 * paste, drop and fragment insertion. The rules are the `flow.*` rows of
+	 * `docs/editor-delete-contract.md`:
+	 *
+	 * - a flow is lines with fresh ids: a kinded block, or an inline run (no
+	 *   `type`); an empty flow changes nothing (`flow.shape`);
+	 * - one line joins the text at the position; an empty block takes a kinded
+	 *   line's kind (`flow.inline`);
+	 * - several lines split the block: the first joins the head, the last is the
+	 *   tail's block and takes the text after the position and the block's
+	 *   children, the rest go between (`flow.split`) — children the view
+	 *   hides (a closed toggle's body) stay with the head, as Enter keeps them;
+	 * - a line that joins no text (a list, a code block, a divider: it renders
+	 *   none of its own, or is a void or an island) is placed as a block, never
+	 *   joined; the text after the position stays in a shown line of the
+	 *   block's kind (`flow.apart`), and the caret ends the last pasted
+	 *   shown line;
+	 * - in a code line (a `lines` island) the lines, nested ones included, are
+	 *   placed as plain lines (`flow.lines`);
+	 * - a `whole` flow (a block-selection copy) goes after the block, replacing
+	 *   it when empty (`flow.whole`); over selected blocks the lines take their
+	 *   slot (`flow.slot`), and at a slot they are placed with nothing replaced
+	 *   (`flow.place`: an accepted suggestion), as plain inserts (`insertBlocks`: their order
+	 *   against a peer's split beside them is not claimed); a void
+	 *   takes one run (`flow.void`);
+	 * - a table's cell is never split: it takes the lines a flow shows, nested
+	 *   ones and a pasted table's cells included, as one text joined by line
+	 *   breaks; a cell outside a row (cells copied out of a table) is a line of
+	 *   text, and a row outside a table its cells (`table.paste`);
+	 * - a plain line that lands directly in a container takes its item kind
+	 *   (the document's `fitted`: a pasted paragraph in a list is its item),
+	 *   and so does a line of the list's flat item kind (the view's
+	 *   `itemKind`: a pasted numbered item in an `ordered-list`); any
+	 *   other kind keeps its kind and data (a pasted image stays an image, a
+	 *   bulleted item in an `ordered-list` a bulleted item).
+	 */
+	const insertFlow = (target: FlowTarget, flow: Flow, view: FlowView = {}): Prepared => {
+		// Ingress: a run carries a placeholder kind through the spec sanitizer.
+		let lines: FlowLine[] = flow.lines
+			.map((l) => sanitizeSpec({ ...l, type: l.type ?? '' }))
+			.map((s) => ({ ...s, type: s.type || undefined }));
+		if (lines.length === 0) return plan([], []);
+		// A cell outside a row is its text, a row outside a table its cells (`table.paste`).
+		const unbare = (l: FlowLine, holder: 'table' | 'row' | null): FlowLine[] => {
+			const kind = l.type ? tableKind(l.type) : undefined;
+			const kids = (next: 'table' | 'row' | null) =>
+				(l.children ?? []).flatMap((kid) => unbare(kid, next));
+			if (kind === 'cell' && holder !== 'row')
+				return [{ id: l.id, content: l.content }, ...kids(null)];
+			if (kind === 'row' && holder !== 'table') return kids(null);
+			if (!l.children) return [l];
+			return [{ ...l, children: kids(kind === 'cell' ? null : (kind ?? null)) as BlockSpec[] }];
+		};
+		lines = lines.flatMap((l) => unbare(l, null));
+		/** A line's kind under `parent`: the list's item for its flat item kind, then `fitted`. */
+		const fit = (parent: BlockId | null, kind: string | undefined) =>
+			fitted(
+				parent,
+				parent !== null && kind !== undefined && kind === view.itemKind?.(parent)
+					? defaultChild(parent)
+					: kind
+			);
+		const specs = (parent: BlockId | null, of: FlowLine[] = lines): BlockSpec[] =>
+			of.map((l) => ({ ...l, type: fit(parent, l.type) ?? defaultChild(parent) }));
+		const last = () => lines.at(-1)!;
+		/** `l` and its nested lines as runs, each line that shows its own content one run. */
+		const plain = (l: FlowLine): FlowLine[] => [
+			...(!l.type || roles.of(l.type).rendersContent ? [{ id: l.id, content: l.content }] : []),
+			...(l.children ?? []).flatMap(plain)
+		];
+		const endOf = placedEnd(roles.of);
+		/**
+		 * A layout line, here or nested, as its items' lines in reading order, and
+		 * any other child it holds (`flow.layout`): no layout lands in an item.
+		 */
+		const unwrap = (l: FlowLine): FlowLine[] => {
+			const item = l.type ? roles.of(l.type).layout : undefined;
+			if (item === undefined)
+				return [l.children ? { ...l, children: l.children.flatMap(unwrap) as BlockSpec[] } : l];
+			return (l.children ?? []).flatMap((kid) =>
+				kid.type === item ? (kid.children ?? []).flatMap(unwrap) : unwrap(kid)
+			);
+		};
+		const intoItem = (parent: BlockId | null) => {
+			if (parent !== null && insideItem(parent)) lines = lines.flatMap(unwrap);
+		};
+		/** Whole blocks at a slot, after `pre`; the caret ends the last one's shown content. */
+		const atSlot = (dest: Destination, pre: PlanStep[]): Prepared => {
+			const placed = specs(dest.parent);
+			const p = insertBlocks(dest, placed);
+			const at = endOf(placed.at(-1)!) ?? { block: last().id, offset: lengthOf(last()) };
+			// The lines are placed while the replaced blocks still show (each step reads the
+			// display as it stands), then those go.
+			return 'writes' in p ? plan(p.ids, [...p.writes, ...pre], at) : p;
+		};
+		if ('replace' in target || 'slot' in target) {
+			let slot: Destination;
+			let pre: PlanStep[] = [];
+			if ('slot' in target) slot = target.slot;
+			else {
+				// The lines fill the first block's slot: its parent is never emptied
+				// by the delete, so a column keeps its layout (`layout.flow-slot`).
+				const at = c.view().order.at;
+				const first = target.replace
+					.filter((id) => at.has(id))
+					.sort((a, b) => at.get(a)! - at.get(b)!)[0];
+				const del = deleteBlocks(
+					target.replace,
+					false,
+					first === undefined ? undefined : positionOf(first)?.parent
+				);
+				if (!('writes' in del)) return del;
+				if (first === undefined) return REFUSED;
+				slot = positionOf(first)!;
+				pre = [...del.writes];
+			}
+			intoItem(slot.parent);
+			if (lines.length === 0) return plan([], []);
+			// In a code block (selected lines, a slot), the lines are plain lines too (`flow.lines`).
+			if (slot.parent !== null && isLines(slot.parent)) {
+				const shown = lines.flatMap(plain);
+				lines = shown.length ? shown : [{ id: lines[0]!.id, content: [] }];
+			}
+			return atSlot(slot, pre);
+		}
+		const B = ref(target.block);
+		if (!contentTarget(B) || !rendersContent(B)) return REFUSED;
+		const len = displayLength(B);
+		const o = Math.max(0, Math.min(target.offset, len));
+		const { parent, index } = positionOf(B)!;
+		intoItem(B);
+		const empty = len === 0 && childrenIds(B).length === 0;
+		// A line of a lines island (a code line) takes plain lines: every line the flow
+		// shows, nested ones included, in order; no block lands in the island (`flow.lines`).
+		const inLines = parent !== null && isLines(parent);
+		if (inLines) lines = lines.flatMap(plain);
+		// A table's cell is never split: the lines it shows join its text (`table.paste`).
+		const cell = isTableCell(B);
+		if (cell) lines = lines.flatMap(plain);
+		// A line that joins no text under `under` (`flow.apart`): its kind renders
+		// none of its own (a list, a code block), or is a void or an island.
+		const apart = (l: FlowLine, under: BlockId | null) => {
+			const kind = l.type && fit(under, l.type);
+			const role = kind ? roles.of(kind) : undefined;
+			return !!role && (!role.rendersContent || role.childless || role.island);
+		};
+		// At the end of a container's header whose body shows, what follows the caret
+		// leads its children and the body stays, as Enter opens a first child
+		// (`flow.header`), unless the first line stands apart and replaces an empty
+		// one (`flow.apart`); elsewhere it follows `B` among its siblings.
+		const header = view.header?.(B);
+		// A closed header shows no children: a line it takes brings none into its hidden
+		// body; they follow it, shown (`flow.header`).
+		const shut = header === 'closed';
+		const inside =
+			o === len && !inLines && !flow.whole && header === true && !(empty && apart(lines[0]!, B));
+		const home = inside ? B : parent;
+		if (lines.length === 0) return plan([B], [], { block: B, offset: o });
+		if (flow.whole && !inLines && !cell)
+			return atSlot({ parent, index: index + 1 }, empty ? [remove(B, [])] : []);
+		// A void is never split: its caption takes the lines as one run; nor is a cell.
+		const br = { kind: 'text' as const, text: '\n' };
+		if (isVoid(B) || cell) {
+			const content = lines.flatMap((l, i) => [...(i ? [br] : []), ...(l.content ?? [])]);
+			lines = [{ id: lines[0]!.id, content }];
+		}
+		// So a first line it joins leaves its nested lines as lines of the flow after it.
+		if (shut && lines[0]!.children?.length && !apart(lines[0]!, home))
+			lines = [{ ...lines[0]!, children: undefined }, ...lines[0]!.children!, ...lines.slice(1)];
+		const first = lines[0]!;
+		const [joinsHead, joinsTail] = [!apart(first, home), lines.length > 1 && !apart(last(), home)];
+		const all = specs(home);
+		const placed = all.slice(joinsHead ? 1 : 0, joinsTail ? -1 : undefined);
+		const ids = placed.map((s) => s.id);
+		if (
+			collides(doc, [...(joinsHead ? (first.children ?? []) : []), ...all.slice(joinsHead ? 1 : 0)])
+		)
+			return REFUSED;
+		const writes: PlanStep[] = [];
+		/** A joined line's children lead the block it joins; `moved` follow them. */
+		const kids = (to: BlockId, l: FlowLine | undefined, moved: BlockId[] = []) => {
+			const lead = l?.children ?? [];
+			writes.push(...insertAt(to, 0, lead));
+			if (moved.length)
+				writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: lead.length });
+		};
+		/**
+		 * `l` joins `B` at `at`: its content, its kind when `B` shows no text (a header
+		 * keeps its own, as Enter does), its children first.
+		 */
+		const join = (l: FlowLine, at: number): number => {
+			const end = writeContent(writes, B, at, l.content);
+			const kind = l.type && fit(parent, l.type);
+			if (len === 0 && !header && kind && kind === l.type)
+				writes.push(...attr(B, TYPE, kind), ...(dataSteps(B, replaceData(l.data ?? {})) ?? []));
+			if (!shut) kids(B, l);
+			return end;
+		};
+		/** The placed lines at `at` under `home` (`split`: the tail of the split they come with). */
+		const place = (at: number, split?: BlockId) =>
+			writes.push(...insertAt(home, at, placed, split));
+		// Under a header, the first line's children, the placed lines and the rest, in order.
+		const k = joinsHead ? (first.children?.length ?? 0) : 0;
+		const slot = inside ? k : index + 1;
+		// Where the placed lines end the caret: after their last shown line (`flow.apart`).
+		const end = placed.length ? endOf(placed.at(-1)!) : undefined;
+
+		// Nothing before the position and the first line stands apart: the lines go before `B`,
+		// which keeps its text and takes a joining last line, or goes when empty and not needed.
+		if (!joinsHead && o === 0 && !inside) {
+			place(index);
+			if (joinsTail) {
+				const at = join(last(), 0);
+				// A closed header's taken line's nested lines follow it, the caret ending them.
+				const after = shut ? specs(parent, last().children ?? []) : [];
+				writes.push(...insertAt(parent, index + placed.length + 1, after));
+				const caret = after.length ? endOf(after.at(-1)!) : undefined;
+				const touched = [...ids, B, ...after.map((s) => s.id)];
+				return plan(touched, writes, caret ?? { block: B, offset: at });
+			}
+			if (empty && end) return plan(ids, [...writes, remove(B, [])], end);
+			return plan([...ids, B], writes, end ?? { block: B, offset: 0 });
+		}
+
+		const head = joinsHead ? join(first, o) : o;
+		if (lines.length === 1 && joinsHead) return plan([B], writes, { block: B, offset: head });
+		const moved = inside ? [] : childrenIds(B).filter((id) => !view.hidden?.(id));
+		// Nothing after the position to keep, and the caret has a line: no split.
+		if (!joinsTail && o === len && moved.length === 0 && end) {
+			place(slot);
+			return plan([B, ...ids], writes, end);
+		}
+		// The rest of `B` stays in a shown line: the last line's block when it joins, else
+		// a line of `B`'s kind, as Enter makes; one made only for the caret (after a
+		// divider at the end) or under a header is a fresh line of its parent's default kind.
+		const T = joinsTail ? last().id : newId('b');
+		const lastType = joinsTail && last().type && fit(home, last().type);
+		const bare = !joinsTail && o === len && moved.length === 0;
+		const tail = lastType
+			? { type: lastType, data: last().data }
+			: bare || inside
+				? { type: defaultChild(home), data: {} }
+				: { type: kindToCopy(B), data: blockDataOf(B) };
+		// After `B` (under a header: after the first line's children); the placed lines go before it.
+		const length = len - o;
+		writes.push({
+			op: 'splitBlock',
+			id: B,
+			offset: head,
+			length,
+			newId: T,
+			tail,
+			parent: home,
+			index: slot
+		});
+		kids(T, joinsTail ? last() : undefined, moved);
+		place(slot, T);
+		const at = joinsTail
+			? { block: T, offset: writeContent(writes, T, 0, last().content) }
+			: (end ?? { block: T, offset: 0 });
+		return plan([B, ...ids, T], writes, at);
+	};
+
 	return {
-		// what range deletion, flow placement and the facade compose
-		REFUSED,
+		// what the facade composes
 		plan,
-		cutText,
-		insertAt,
 		canPlace,
 		fits,
 		nestParent,
 		canMerge,
-		rendersContent,
 		defaultChild,
-		kindToCopy,
-		isContainer,
-		fitted,
-		emptiable,
-		move,
-		attr,
-		settle,
-		dissolving,
-		remove,
-		writeContent,
-		dataSteps,
-		replaceData,
 		landingOf,
 		besideAt,
 		/** Every op of the families, prepared. */
@@ -1620,12 +2086,12 @@ export const docOps = (c: DocBase & DocReads) => {
 			formatRange,
 			clearMarks,
 			insertInline,
-			removeInline
+			removeInline,
+			insertFlow,
+			deleteRange: rangeDelete(false),
+			replaceRange: rangeDelete(true)
 		}
 	};
 };
 
 export type DocOps = ReturnType<typeof docOps>;
-
-/** What range deletion and flow placement are prepared over: the reads and the ops. */
-export type OpsContext = DocBase & DocReads & DocOps;

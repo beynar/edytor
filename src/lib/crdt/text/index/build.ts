@@ -1961,9 +1961,11 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	};
 	/** What a fold changed in one sequence (fork patch YP22): the blocks whose slot, record or mover it touched, and its data slots. */
 	type SeqChange = { blocks: Set<BlockId>; data: boolean };
+	/** How much of a transaction's log a read folded: its length, and its last entry's `len` then (the engine extends a run's entry). */
+	type Cursor = readonly [from: number, seen?: number];
 	/**
-	 * What a transaction's log from entry `from` on did (fork patch YP33:
-	 * per item `kind, client, clock, len`, in order), in one pass: per text
+	 * What a transaction's log past a read's cursor did (fork patch YP33:
+	 * per run of items `kind, client, clock, len`, in order), in one pass: per text
 	 * (`texts`), its edits (the units each item showed or hid, in order); per
 	 * sequence (`seqs`), what changed in it: the slots written and removed, the
 	 * records written and removed and the units whose mover changed name
@@ -1974,7 +1976,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	 */
 	const makeEditIndex = (
 		log: readonly number[],
-		from: number,
+		[from, seen]: Cursor,
 		pairs?: Map<EngineNode, Set<string | null>>
 	) => {
 		const texts = new Map<EngineNode, TextEdits>();
@@ -2002,20 +2004,10 @@ const buildIndex = (doc: EngineDoc): RunView => {
 				rehome.add(value.b);
 			} else if (isDataSlot(value)) e.data = true;
 		};
-		for (let i = from; i < log.length; ) {
-			const [kind, c, k] = [log[i]!, log[i + 1]!, log[i + 2]!];
-			let n = log[i + 3]!;
-			// The entries that continue it (its kind, its client, the next clock, its sign): one walk per run.
-			for (
-				i += 4;
-				log[i] === kind &&
-				log[i + 1] === c &&
-				log[i + 2] === k + Math.abs(n) &&
-				log[i + 3]! * n > 0;
-				i += 4
-			)
-				n += log[i + 3]!;
-			walkRange(Y, doc, c, k, Math.abs(n), (s, a, b) => {
+		/** Walk `n` units of entry `i` from clock `k` (`n`'s sign is the entry's). */
+		const run = (i: number, k: number, n: number): void => {
+			const kind = log[i]!;
+			walkRange(Y, doc, log[i + 1]!, k, Math.abs(n), (s, a, b) => {
 				structs++;
 				note(s);
 				// A unit a record moved: where it shows now changed too.
@@ -2050,7 +2042,11 @@ const buildIndex = (doc: EngineDoc): RunView => {
 					for (let k = a; k < b; k++)
 						noteUnit(e, owner, it.content.arr[k - s.id.clock], s.id.client, k, inserted);
 			});
-		}
+		};
+		// The units the engine added to the entry a read folded last (`seen`: its length then), then the rest.
+		if (from > 0 && log[from - 1] !== seen)
+			run(from - 4, log[from - 2]! + Math.abs(seen!), log[from - 1]! - seen!);
+		for (let i = from; i < log.length; i += 4) run(i, log[i + 2]!, log[i + 3]!);
 		return { texts, seqs, structs, rehome };
 	};
 	type EditLookup = ReturnType<typeof makeEditIndex>;
@@ -2385,8 +2381,12 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		return touched;
 	};
 
-	/** Each transaction's folded part: the length of its log a read folded. */
-	const cursors = new WeakMap<Tx, number>();
+	/** Each transaction's folded part (`Cursor`). */
+	const cursors = new WeakMap<Tx, Cursor>();
+	const NONE: Cursor = [0];
+	/** Whether `log` holds entries or units past `cursor`. */
+	const past = (log: readonly number[], [from, seen]: Cursor): boolean =>
+		log.length !== from || log[from - 1] !== seen;
 	/** The transactions whose commit fold ran. */
 	const committed = new WeakSet<Tx>();
 
@@ -2398,12 +2398,12 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	 */
 	const syncPending = (tr: Tx | null | undefined): boolean => {
 		const log = tr?.log;
-		const from = cursors.get(tr!) ?? 0;
-		if (log === undefined || from === log.length) return false;
-		cursors.set(tr!, log.length);
+		const cursor = cursors.get(tr!) ?? NONE;
+		if (log === undefined || !past(log, cursor)) return false;
+		cursors.set(tr!, [log.length, log[log.length - 1]]);
 		for (const f of frames) f.wrote = true;
 		const pairs = new Map<EngineNode, Set<string | null>>();
-		const edits = makeEditIndex(log, from, pairs);
+		const edits = makeEditIndex(log, cursor, pairs);
 		foldStats.structs += edits.structs;
 		fold(pairs, edits);
 		return true;
@@ -2423,7 +2423,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	/** Some queued transaction holds writes no fold has seen. */
 	const unfolded = (): boolean =>
 		(queuedTransactions(doc) as Tx[]).some(
-			(tr) => !committed.has(tr) && (tr.log?.length ?? 0) !== (cursors.get(tr) ?? 0)
+			(tr) => !committed.has(tr) && tr.log !== undefined && past(tr.log, cursors.get(tr) ?? NONE)
 		);
 
 	/**
@@ -2434,10 +2434,10 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		if (!changedUnder(tr as { changed: Map<unknown, unknown> }, [registry])) return;
 		// The writes a read folded already moved the rows: only the rest
 		// are edits now (the facets fold again, idempotent).
-		const from = cursors.get(tr) ?? 0;
+		const cursor = cursors.get(tr) ?? NONE;
 		cursors.delete(tr);
 		committed.add(tr);
-		fold(tr.changed ?? new Map(), makeEditIndex(tr.log ?? [], from));
+		fold(tr.changed ?? new Map(), makeEditIndex(tr.log ?? [], cursor));
 	};
 
 	// ══ The change report ═══════════════════════════════════════════

@@ -42,9 +42,10 @@ export class Transaction {
     this.insertSet = createIdSet()
     // YP33 begin (edytor fork: one log of what the transaction did to items — see UPSTREAM.md YP33)
     /**
-     * What the transaction did to items, in order: per item `kind, client,
-     * clock, len`. Kind 0, an edit: integrated (`len > 0`; `0` for an item
-     * integrated removed) or removed (`len < 0`); kind 1, a hold record's
+     * What the transaction did to items, in order: per run of one writer's
+     * items `kind, client, clock, len` (an item that continues the last entry
+     * extends it). Kind 0, an edit: integrated (`len > 0`; an item integrated
+     * removed logs none) or removed (`len < 0`); kind 1, a hold record's
      * (YP20): shown (`len > 0`) or hidden (`< 0`; an item removed while held
      * is logged shown, so an item's kinds 0 and 1 sum to its visibility
      * change); kind 2, its mover changed (YP22: a move record integrated or

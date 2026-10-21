@@ -932,7 +932,9 @@ export class ContentDeleted {
 // YP33 begin (edytor fork: one log of what a transaction did to items — see UPSTREAM.md YP33)
 /**
  * Log `len` units of `item` as `kind` (0 an edit, 1 a hold, 2 a move) in
- * `tr.log`, in order, and its parent as changed.
+ * `tr.log`, in order, and its parent as changed. An entry the last one
+ * continues (its kind, its client, the next clock, its sign) extends it, so
+ * a run of one writer's items is one entry; `len` 0 logs none.
  *
  * @param {Transaction} tr
  * @param {number} kind
@@ -940,7 +942,11 @@ export class ContentDeleted {
  * @param {number} len
  */
 const logItem = (tr, kind, item, len) => {
-  tr.log.push(kind, item.id.client, item.id.clock, len)
+  const log = tr.log
+  const n = log.length
+  const { client, clock } = item.id
+  if (log[n - 4] === kind && log[n - 3] === client && log[n - 2] + math.abs(log[n - 1]) === clock && log[n - 1] * len > 0) log[n - 1] += len
+  else if (len !== 0) log.push(kind, client, clock, len)
   addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
 }
 // YP33 end

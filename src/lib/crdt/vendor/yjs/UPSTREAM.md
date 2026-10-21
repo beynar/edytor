@@ -1620,9 +1620,12 @@ no schema change.
 Patch (new code delimited by `// YP33 begin` / `// YP33 end`, edits marked `// YP33`):
 
 - **`transaction.log`** (replaces YP20's `holds` and YP22's `moves`): per
-  item `kind, client, clock, len`, in the order the transaction did them.
-  Kind 0, an edit: `Item#integrate` logs `+length` (`0` for an item
-  integrated removed, a `ContentDeleted`), `Item#delete` `-length`; kind 1,
+  run of one writer's items `kind, client, clock, len`, in the order the
+  transaction did them; an item that continues the last entry (its kind,
+  its client, the next clock, its sign) extends it, so a bulk insert or
+  delete is a few entries, as the id sets' ranges were. Kind 0, an edit:
+  `Item#integrate` logs `+length` (nothing for an item integrated removed,
+  a `ContentDeleted`), `Item#delete` `-length`; kind 1,
   a hold record's change of visibility (YP20's entries, unchanged: a held
   item removed logs its give-back, so an item's kinds 0 and 1 sum to its
   visibility change); kind 2, a mover change (YP22's entries, unchanged).
@@ -1635,9 +1638,8 @@ The insert and delete sets, `transaction.changed` and every upstream path
 are untouched: the log is a list the engine appends to and never reads.
 
 Edytor side: the fold keeps one number per open transaction (the length of
-its log a read folded), merges the entries that continue one another (one
-kind, one client, the next clock, one sign: a bulk insert or delete is one
-run, as the id sets' ranges were), reads each run's structs once
+its log a read folded and that entry's last length then, so the units the
+engine added to it since are folded too), reads each entry's structs once
 (`walkRange`, the walk `walkIdSet` now runs per range) and replays the units each item showed
 or hid in order, so an edit made and undone within one fold moves the row
 by nothing; the sequences read kind 0 as their slots and records written and
@@ -1646,10 +1648,12 @@ diffed id sets, the watermark, the second and third walks, the membership
 tests, the incomplete-walk fallback.
 
 Measured (`scripts/bundle-size.mjs`, own minified): minimal 425,374 →
-423,821 (−1,553 B; gzip −388), every plugin 675,230 → 673,683 (−1,547),
-`edytor/export` unchanged; the engine's share −54 B (three log writers
-became one). The engine logs per item; the merge is the fold's, so a read
-mid-transaction never misses an entry the engine extended after it.
+423,973 (−1,401 B; gzip −315), every plugin 675,230 → 673,829 (−1,401),
+`edytor/export` unchanged; the engine's share +45 B (one log writer, which
+extends a run's entry). A first version logged one entry per item: the
+fold walked them one by one where the id sets gave it ranges, and a 5,000
+block construction and a 40-block range delete got slower (`bench/scale.js`);
+the runs bring both back.
 
 Oracle: `src/tests/crdt/yp33-log.test.ts` (edits, holds and a removed held
 item's give-back, a move, a remote update with an item integrated removed),

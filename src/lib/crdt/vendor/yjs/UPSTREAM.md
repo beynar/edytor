@@ -1022,7 +1022,8 @@ Patch (new code delimited by `// YP20 begin` / `// YP20 end`, edits marked `// Y
   text a room lost is stored and acknowledged at once. A GC struct takes
   nothing. An item that starts or stops being held (and is not removed)
   moves its parent's length, drops its search markers, joins
-  `transaction.changed` and is logged in `transaction.holds`
+  `transaction.changed` and is logged in `transaction.holds` (since YP33:
+  `transaction.log`, kind 1)
   (`client, clock, ±len`, in order: the index's edits).
 - **`YNode#delete(index, length, into, fresh)`**: with `into` (the records
   list) the live units are held by one record appended there instead of
@@ -1038,7 +1039,8 @@ Edytor side: a text delete passes the records list (`crdt/text/model.ts`
 copies the record (never the text), an undo of typing holds the typed text,
 a dropped step removes what this writer's records of it hold
 (`hist.delete-marks.release`); the purge removes what a record older than
-the horizon holds; the index folds `transaction.holds`. Removed:
+the horizon holds; the index folds `transaction.holds` (since YP33, the one
+`transaction.log`). Removed:
 `bindCrdt(Y).doc.keepCopies`, `PurgeReport.records`, the restoration
 records root, the engine object's `ContentAny`.
 
@@ -1172,7 +1174,8 @@ Patch (new code delimited by `// YP22 begin` / `// YP22 end`, edits marked `// Y
   pending holds only. A
   unit that starts or stops being moved (and is not gone) moves
   its home sequence's length and drops its search markers; one whose mover
-  changed is logged in `transaction.moves` (`client, clock, len`, in
+  changed is logged in `transaction.moves` (since YP33: `transaction.log`,
+  kind 2; `client, clock, len`, in
   order), and its home and its new mover's sequences are marked changed.
 - **`doc._clock`** (was YP13's `_markClock`): the greatest Lamport
   timestamp of a mark or a move this document integrated; a local mark or
@@ -1537,7 +1540,7 @@ Patch (new code delimited by `// YP31 begin` / `// YP31 end`, edits marked `// Y
   records list, `textdel`). `ContentHold#integrate` and `ContentHold#delete`
   hold and release only then; inside a nested node's sequence the record is
   a list of ids: it moves no length, waits in no `pendingHolds`, logs
-  nothing in `transaction.holds`, and its delete (an undo, a reviewer's
+  nothing in `transaction.holds` (YP33: `transaction.log`), and its delete (an undo, a reviewer's
   withdrawal, its node's delete) releases nothing. `YNode#hold(ids)` on a
   nested node appends one such list entry.
 
@@ -1597,6 +1600,60 @@ Oracle: the shared-suggestion rows (`src/tests/crdt/suggest/`, the random
 schedules with the index's self-checks on), `suggesting-input.test.tsx`
 (typing over a selection, a paste, Backspace and Delete over struck text),
 the YP20 rows, the upstream suite unchanged.
+
+### YP33 — one log of what a transaction did to items (`src/utils/Transaction.js`, `src/structs/Item.js`)
+
+Reason: edytor's index folds each transaction into its derived facts (rows,
+streams, slots, placements) once at commit and, for read-your-writes, over
+the part of an open transaction a read has not folded. The engine logged
+the holds (YP20, `transaction.holds`) and the mover changes (YP22,
+`transaction.moves`) in order, but the inserts and removals only as id sets,
+so the fold reconstructed them: it kept, per open transaction, copies of the
+insert and delete sets and diffed them at every read, walked both sets'
+structs again for the texts and again for the sequences, and decided by set
+membership which edits cancelled within a fold (about 1.6 KB minified in
+every app, `makeEditIndex` and `syncPending` in `crdt/text/index/build.ts`).
+The engine now logs the edits in the same log as the holds and the moves,
+and the fold reads one log from a cursor. In memory only: nothing encoded,
+no schema change.
+
+Patch (new code delimited by `// YP33 begin` / `// YP33 end`, edits marked `// YP33`):
+
+- **`transaction.log`** (replaces YP20's `holds` and YP22's `moves`): per
+  item `kind, client, clock, len`, in the order the transaction did them.
+  Kind 0, an edit: `Item#integrate` logs `+length` (`0` for an item
+  integrated removed, a `ContentDeleted`), `Item#delete` `-length`; kind 1,
+  a hold record's change of visibility (YP20's entries, unchanged: a held
+  item removed logs its give-back, so an item's kinds 0 and 1 sum to its
+  visibility change); kind 2, a mover change (YP22's entries, unchanged).
+- **`logItem(tr, kind, item, len)`** (`Item.js`): the one writer, which
+  also marks the parent changed (it replaces `logHold` and the
+  `addChangedTypeToTransaction` calls of `Item#integrate` and
+  `Item#delete`; `logMove` calls it).
+
+The insert and delete sets, `transaction.changed` and every upstream path
+are untouched: the log is a list the engine appends to and never reads.
+
+Edytor side: the fold keeps one number per open transaction (the length of
+its log a read folded), reads each entry's structs once (`walkRange`, the
+walk `walkIdSet` now runs per range) and replays the units each item showed
+or hid in order, so an edit made and undone within one fold moves the row
+by nothing; the sequences read kind 0 as their slots and records written and
+removed, kind 2 as their units whose mover changed. Removed: the copied and
+diffed id sets, the watermark, the second and third walks, the membership
+tests, the incomplete-walk fallback.
+
+Measured (`scripts/bundle-size.mjs`, own minified): minimal 425,374 →
+423,743 (−1,631 B; gzip −424), every plugin 675,230 → 673,605 (−1,625),
+`edytor/export` unchanged; the engine's share −54 B (three log writers
+became one).
+
+Oracle: `src/tests/crdt/yp33-log.test.ts` (edits, holds and a removed held
+item's give-back, a move, a remote update with an item integrated removed),
+the YP20, YP22 and YP31 rows reading their entries of the log, the index's
+self-checks after every fold (they rebuild from the replicated state and
+never read the log), the fold's counters (`foldedStructs`, the scale rows),
+the random corpus, the upstream suite unchanged.
 
 ## Generated declarations (`dts/`)
 

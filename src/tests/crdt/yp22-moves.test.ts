@@ -16,6 +16,13 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { mulberry32 } from './harness/rng.js';
 
+/** The `client, clock, len` entries of kind `kind` in `tr`'s log (fork patch YP33: 1 a hold, 2 a move). */
+const logged = (tr, kind) => {
+	const out = [];
+	for (let i = 0; i < tr.log.length; i += 4)
+		if (tr.log[i] === kind) out.push(tr.log[i + 1], tr.log[i + 2], tr.log[i + 3]);
+	return out;
+};
 const mk = (client: number) => {
 	const doc = new Y.Doc();
 	doc.clientID = client;
@@ -110,7 +117,7 @@ describe('YP22 — a move record shows its units at the record, hidden at home',
 	it('one record: the unit shows at the destination, the home is shorter, the log names it', () => {
 		const [a] = seeded(['a', 'b', 'c', 'd'], 2);
 		const logs = [];
-		a.on('commit', (tr) => logs.push([...tr.moves]));
+		a.on('commit', (tr) => logs.push(logged(tr, 2)));
 		t(a).move(4, ids(a, 'b')); // b after d: a c d | R[b]
 		expect(shown(a)).toEqual(['a', 'c', 'd', 'b']);
 		// The record counts one unit; the moved unit none at home.
@@ -248,7 +255,7 @@ describe('YP22 — a removed or held unit shows nowhere; a record waits for its 
 		const [a] = seeded(['x', 'y', 'z'], 2);
 		t(a).move(3, ids(a, 'x'));
 		let log;
-		a.on('commit', (tr) => (log = [...tr.moves]));
+		a.on('commit', (tr) => (log = logged(tr, 2)));
 		const { item } = unitAt(a, 1, 0);
 		a.transact((tr) => item.delete(tr)); // the purge's delete
 		expect(log).toEqual([1, 0, 1]);
@@ -279,7 +286,7 @@ describe('YP22 — a removed or held unit shows nowhere; a record waits for its 
 		expect(records(a)).toHaveLength(0);
 		expect(shown(a)).toEqual(['x', 'y']);
 		let log;
-		a.on('commit', (tr) => (log = [...tr.moves]));
+		a.on('commit', (tr) => (log = logged(tr, 2)));
 		sync(c, a);
 		expect(a.store.pendingStructs).toBeNull();
 		expect(log).toEqual([4, 0, 1]);
@@ -311,7 +318,7 @@ describe('YP22 — a removed or held unit shows nowhere; a record waits for its 
 		expect(records(a)).toHaveLength(0);
 		expect(shown(a)).toEqual(['x', 'y']);
 		let log;
-		a.on('commit', (tr) => (log = [...tr.moves]));
+		a.on('commit', (tr) => (log = logged(tr, 2)));
 		Y.applyUpdate(a, Y.encodeStateAsUpdate(c), 'remote');
 		expect(a.store.pendingStructs).toBeNull();
 		expect(a.store.skips.isEmpty()).toBe(true);

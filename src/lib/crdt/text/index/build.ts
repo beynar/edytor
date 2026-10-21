@@ -36,16 +36,13 @@ import {
 } from '../../schema.js';
 import {
 	changedUnder,
-	clientsOf,
 	engineOps,
 	firstItem,
-	type IdSetLike,
 	itemOf,
 	queuedTransactions,
 	sequenceLength,
 	type StoreStruct,
-	structAt,
-	walkIdSet
+	walkRange
 } from '../../structs.js';
 import {
 	gapOfItem,
@@ -163,7 +160,7 @@ import { callEach } from '../../protocols/observable.js';
 // written or removed makes the row rescan; a format marker (its effect
 // runs to the next same-key marker) or an unresolvable id makes the
 // text opaque: every consumer recomputes.
-export type TextEdit = { item: RowItem; len: number; del: boolean };
+export type TextEdit = { item: RowItem; n: number };
 export type TextEdits = { edits: TextEdit[]; scan: boolean; opaque: boolean };
 
 /** One fold's effects: invalidated blocks, rescanned texts, rebuilt facets. */
@@ -204,13 +201,9 @@ export type Published = {
 
 /** A transaction as the fold reads it. */
 export type Tx = {
-	insertSet?: IdSetLike;
-	deleteSet?: IdSetLike;
 	changed?: EngineTransaction['changed'];
-	/** The visibility changes hold records made, in order (fork patch YP20). */
-	holds?: number[];
-	/** The units whose mover changed, in order (fork patch YP22). */
-	moves?: number[];
+	/** What the transaction did to items, in order: per item `kind, client, clock, len` (fork patch YP33). */
+	log?: number[];
 };
 
 /** The index's self-checks (`indexChecks`), run after each fold and each report. */
@@ -1954,7 +1947,6 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	// THE fold: one pass over a transaction's changed `(type, parentSub)` pairs
 	// into the index, once at commit and, for read-your-writes, over the
 	// pending part of every transaction whose commit fold has not run.
-	const ops = engineOps(Y);
 
 	const NO_EDITS: TextEdits = Object.freeze({
 		edits: [],
@@ -1967,34 +1959,31 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		for (let k = from - s.id.clock; k < to - s.id.clock; k++) if (isRowMark(arr[k])) return true;
 		return false;
 	};
-	/** The struct holding id `client:clock` (unsplit), `null` when the store holds none. */
-	const structOf = (client: number, clock: number): StoreStruct | null =>
-		structAt(Y, clientsOf(doc).get(client) ?? [], clock);
 	/** What a fold changed in one sequence (fork patch YP22): the blocks whose slot, record or mover it touched, and its data slots. */
 	type SeqChange = { blocks: Set<BlockId>; data: boolean };
 	/**
-	 * The edits the id sets `ins`/`del`, the hold log `log` and the move log
-	 * `moves` (what the fold has not folded yet) hold: per text, its edits
-	 * (a log entry is a unit a hold record hid or showed, fork patch YP20:
-	 * `client, clock, ±len`, in order); per sequence, what changed in it
-	 * (`seq`): the slots written and removed, the records written and
-	 * removed and the units whose mover changed name the blocks to re-place.
-	 * Reading the sequences writes the slot map (the slots written and
-	 * removed, `putSlot`) and lists the ids whose home to read again
-	 * (`rehome`).
+	 * What a transaction's log from entry `from` on did (fork patch YP33:
+	 * per item `kind, client, clock, len`, in order), in one pass: per text
+	 * (`texts`), its edits (the units each item showed or hid, in order); per
+	 * sequence (`seqs`), what changed in it: the slots written and removed, the
+	 * records written and removed and the units whose mover changed name
+	 * the blocks to re-place; the `(type, key)` pairs it changed (`pairs`)
+	 * and the structs it named (`structs`). Reading the sequences writes the
+	 * slot map (the slots written and removed, `putSlot`) and lists the ids
+	 * whose home to read again (`rehome`).
 	 */
-	const makeEditIndex = (
-		ins: IdSetLike | undefined,
-		del: IdSetLike | undefined,
-		log: readonly number[] = [],
-		moves: readonly number[] = []
-	) => {
-		let seqs: Map<EngineNode, SeqChange> | undefined;
+	const makeEditIndex = (log: readonly number[], from: number) => {
+		const texts = new Map<EngineNode, TextEdits>();
+		const seqs = new Map<EngineNode, SeqChange>();
+		const pairs = new Map<EngineNode, Set<string | null>>();
 		const rehome = new Set<BlockId>();
-		const seqOf = (node: EngineNode): SeqChange => {
-			return getOr(seqs!, node, () => ({ blocks: new Set(), data: false }));
+		let structs = 0;
+		const seqOf = (node: EngineNode): SeqChange =>
+			getOr(seqs, node, () => ({ blocks: new Set(), data: false }));
+		const note = (s: StoreStruct): void => {
+			if (isNodeLike(s.parent)) getOr(pairs, s.parent, () => new Set()).add(s.parentSub);
 		};
-		/** Note unit `c:k` (`value`) of the sequence of `node`: a block slot names its block, a data slot its data. */
+		/** Note unit `c:k` (`value`) of a sequence: a block slot names its block, a data slot its data. */
 		const noteUnit = (
 			e: SeqChange,
 			owner: BlockId | null | undefined,
@@ -2010,87 +1999,45 @@ const buildIndex = (doc: EngineDoc): RunView => {
 				rehome.add(value.b);
 			} else if (isDataSlot(value)) e.data = true;
 		};
-		const visitSeq = (s: StoreStruct, from: number, to: number, inserted: boolean | null): void => {
-			const parent = s.parent as EngineNode;
-			if (s.parentSub !== null || !isNodeLike(parent) || parent.name === CONTENT_NODE) return;
-			const e = seqOf(parent);
-			const owner = ownerOfNode(registry, kept, parent);
-			const it = s as SeqItem;
-			if (it.content === undefined) return;
-			if (isRecord(it)) {
-				const ids = it.content.ids!;
-				for (let i = 0; i < ids.length; i += 3)
-					for (let j = 0; j < ids[i + 2]!; j++) {
-						const u = unitOf(doc, { c: ids[i]!, k: ids[i + 1]! + j });
-						if (u !== null) noteUnit(e, owner, u.value, ids[i]!, ids[i + 1]! + j, null);
-					}
-			} else if (it.content.arr !== undefined)
-				for (let k = from; k < to; k++)
-					noteUnit(e, owner, it.content.arr[k - s.id.clock], s.id.client, k, inserted);
-		};
-		const buildSeqs = (): Map<EngineNode, SeqChange> => {
-			if (seqs !== undefined) return seqs;
-			seqs = new Map();
-			if (ins === undefined || del === undefined) return seqs;
-			walkIdSet(Y, doc, ins, (s, from, to) => visitSeq(s, from, to, true));
-			walkIdSet(Y, doc, del, (s, from, to) => visitSeq(s, from, to, false));
-			for (let i = 0; i < moves.length; i += 3) {
-				const s = structOf(moves[i]!, moves[i + 1]!);
-				if (s === null) continue;
-				visitSeq(s, moves[i + 1]!, moves[i + 1]! + moves[i + 2]!, null);
-				// Where the unit shows now: that sequence changed too.
+		for (let i = from; i < log.length; i += 4) {
+			const [kind, n] = [log[i]!, log[i + 3]!];
+			walkRange(Y, doc, log[i + 1]!, log[i + 2]!, Math.abs(n), (s, a, b) => {
+				structs++;
+				note(s);
+				// A unit a record moved: where it shows now changed too.
 				const mover = (s as SeqItem).mover;
-				if (mover) seqOf(mover.parent as EngineNode);
-			}
-			return seqs;
-		};
-		let built: Map<EngineNode, TextEdits> | null | undefined;
-		const build = (): Map<EngineNode, TextEdits> | null => {
-			if (built !== undefined) return built;
-			if (ins === undefined || del === undefined) return (built = null);
-			const out = new Map<EngineNode, TextEdits>();
-			const edit = (s: StoreStruct, from: number, to: number, deleted: boolean): void => {
-				const parent = s.parent as EngineNode;
-				if (s.parentSub !== null || !isNodeLike(parent)) return;
-				const e = getOr(out, parent, () => ({ edits: [], scan: false, opaque: false }));
-				// A format marker moves no unit; its effect reaches past the edit.
-				if (s.countable !== true) return void (e.opaque = true);
-				if (holdsBoundary(s, from, to)) return void (e.scan = true);
-				e.edits.push({ item: s as RowItem, len: to - from, del: deleted });
-			};
-			const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
-				walkIdSet(Y, doc, idSet, (s, from, to) => {
-					// Written and removed (or held) within the fold: nothing moved.
-					if (!(deleted ? ins.has(s.id.client, from) : s.deleted)) edit(s, from, to, deleted);
-				});
-			// In order, after the inserts and before the deletes (each gap then
-			// holds what an edit takes); a unit written within the fold shows or
-			// not as its insert says.
-			const held = (): boolean => {
-				for (let i = 0; i < log.length; i += 3) {
-					const s = structOf(log[i], log[i + 1]);
-					if (s === null) return false;
-					const n = log[i + 2];
-					if (!ins.has(log[i], log[i + 1])) edit(s, log[i + 1], log[i + 1] + Math.abs(n), n < 0);
+				if (mover) {
+					note(mover);
+					seqOf(mover.parent as EngineNode);
 				}
-				return true;
-			};
-			built = visit(ins, false) && held() && visit(del, true) ? out : null;
-			return built;
-		};
-		return {
-			/** `node`'s edits (`null`: unknown — rescan, every consumer recomputes). */
-			text: (node: EngineNode): TextEdits | null => {
-				const map = build();
-				return map === null ? null : (map.get(node) ?? NO_EDITS);
-			},
-			/** What changed in `node`'s sequence (`undefined`: nothing). */
-			seq: (node: EngineNode): SeqChange | undefined => buildSeqs().get(node),
-			/** The sequences the fold changed. */
-			seqNodes: (): Iterable<EngineNode> => buildSeqs().keys(),
-			/** The ids whose home to read again (their slots changed). */
-			rehome
-		};
+				const parent = s.parent as EngineNode;
+				const it = s as SeqItem;
+				if (s.parentSub !== null || !isNodeLike(parent) || it.content === undefined) return;
+				if (parent.name === CONTENT_NODE) {
+					if (kind > 1) return;
+					const e = getOr(texts, parent, () => ({ edits: [], scan: false, opaque: false }));
+					// A format marker moves no unit; its effect reaches past the edit.
+					if (s.countable !== true) e.opaque = true;
+					else if (holdsBoundary(s, a, b)) e.scan = true;
+					else e.edits.push({ item: s as RowItem, n: n < 0 ? a - b : b - a });
+					return;
+				}
+				const e = seqOf(parent);
+				const owner = ownerOfNode(registry, kept, parent);
+				const inserted = kind > 1 ? null : n > 0;
+				if (isRecord(it)) {
+					const ids = it.content.ids!;
+					for (let i = 0; i < ids.length; i += 3)
+						for (let j = 0; j < ids[i + 2]!; j++) {
+							const u = unitOf(doc, { c: ids[i]!, k: ids[i + 1]! + j });
+							if (u !== null) noteUnit(e, owner, u.value, ids[i]!, ids[i + 1]! + j, null);
+						}
+				} else if (it.content.arr !== undefined)
+					for (let k = a; k < b; k++)
+						noteUnit(e, owner, it.content.arr[k - s.id.clock], s.id.client, k, inserted);
+			});
+		}
+		return { texts, seqs, pairs, structs, rehome };
 	};
 	type EditLookup = ReturnType<typeof makeEditIndex>;
 
@@ -2157,7 +2104,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 			ensureRec(id);
 			const rec = blocks.get(id);
 			// A data slot in the block's sequence: its arrays' items changed (the seq pass seeded the blocks).
-			if (kinds.has('seq') && rec && editsOf.seq(rec.node)?.data) kinds.add('meta');
+			if (kinds.has('seq') && rec && editsOf.seqs.get(rec.node)?.data) kinds.add('meta');
 			if (kinds.has('meta') && rec) {
 				const was = rec.type;
 				const facts = tableFacts(id, rec.data);
@@ -2205,7 +2152,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 			if (!fresh) {
 				for (const e of t.edits) {
 					const gap = gapOfItem(row!, e.item);
-					if (gap < 0 || !shiftGap(row!, gap, e.del ? -e.len : e.len)) {
+					if (gap < 0 || !shiftGap(row!, gap, e.n)) {
 						fresh = true;
 						break;
 					}
@@ -2365,7 +2312,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 				if (facet !== CONTENT) continue;
 				// A sequence edit of the block's own text, or a change inside one of its atoms.
 				const list = getOr(edits, id, () => []);
-				list.push(seq ? editsOf.text(type as EngineNode) : null);
+				list.push(seq ? (editsOf.texts.get(type as EngineNode) ?? NO_EDITS) : null);
 			}
 		}
 		const ctx: FoldCtx = {
@@ -2376,8 +2323,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 			parents: new Set()
 		};
 		// The sequences (the root's, the blocks'): their slots index the blocks' homes, their changes seed the placements.
-		for (const node of editsOf.seqNodes()) {
-			const ch = editsOf.seq(node)!;
+		for (const [node, ch] of editsOf.seqs) {
 			seqEpoch++;
 			for (const b of ch.blocks) placementSeeds.add(b);
 			if (ch.blocks.size > 0 || ch.data) derived = true;
@@ -2425,72 +2371,26 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		return touched;
 	};
 
-	/** Each transaction's folded part: copies of its id sets, the hold and move logs' folded lengths, and the watermark. */
-	const cursors = new WeakMap<
-		Tx,
-		{ ins: IdSetLike; del: IdSetLike; holds: number; moves: number; mark: number }
-	>();
+	/** Each transaction's folded part: the length of its log a read folded. */
+	const cursors = new WeakMap<Tx, number>();
 	/** The transactions whose commit fold ran. */
 	const committed = new WeakSet<Tx>();
-	const lengthOf = (set: IdSetLike): number => {
-		let n = 0;
-		set.clients.forEach((ranges) => {
-			for (const r of ranges.getIds()) n += r.len;
-		});
-		return n;
-	};
-	/** How much a transaction wrote so far: its id sets' lengths and its hold and move logs'. */
-	const watermark = (tr: Tx): number =>
-		lengthOf(tr.insertSet!) +
-		lengthOf(tr.deleteSet!) +
-		(tr.holds?.length ?? 0) +
-		(tr.moves?.length ?? 0);
 
 	/**
-	 * Fold the pending part of `tr` — the structs its insert/delete sets
-	 * gained since the last fold — before a read inside it (read-your-
-	 * writes; `transaction.changed` does not grow on a second edit to an
+	 * Fold the pending part of `tr` — the entries its log gained since the
+	 * last fold — before a read inside it (read-your-writes;
+	 * `transaction.changed` does not grow on a second edit to an
 	 * already-changed type).
 	 */
 	const syncPending = (tr: Tx | null | undefined): boolean => {
-		if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;
-		let cursor = cursors.get(tr);
-		if (cursor === undefined)
-			cursors.set(
-				tr,
-				(cursor = { ins: ops.idSet(), del: ops.idSet(), holds: 0, moves: 0, mark: 0 })
-			);
-		const mark = watermark(tr);
-		if (mark === cursor.mark) return false;
-		const ins = ops.diff(tr.insertSet, cursor.ins);
-		const del = ops.diff(tr.deleteSet, cursor.del);
-		const log = (tr.holds ?? []).slice(cursor.holds);
-		const moves = (tr.moves ?? []).slice(cursor.moves);
-		ops.insertInto(cursor.ins, ins);
-		ops.insertInto(cursor.del, del);
-		cursor.holds += log.length;
-		cursor.moves += moves.length;
-		cursor.mark = mark;
+		const log = tr?.log;
+		const from = cursors.get(tr!) ?? 0;
+		if (log === undefined || from === log.length) return false;
+		cursors.set(tr!, log.length);
 		for (const f of frames) f.wrote = true;
-		const changed = new Map<EngineNode, Set<string | null>>();
-		const note = (s: StoreStruct): void => {
-			foldStats.structs++;
-			if (!isNodeLike(s.parent)) return;
-			const subs = getOr(changed, s.parent, () => new Set());
-			subs.add(s.parentSub);
-		};
-		walkIdSet(Y, doc, ins, note);
-		walkIdSet(Y, doc, del, note);
-		for (const l of [log, moves])
-			for (let i = 0; i < l.length; i += 3) {
-				const s = structOf(l[i]!, l[i + 1]!);
-				if (s === null) continue;
-				note(s);
-				// A unit a record moved: where it shows now changed too (a held unit has no mover).
-				const mover = (s as SeqItem).mover;
-				if (mover) note(mover as unknown as StoreStruct);
-			}
-		fold(changed, makeEditIndex(ins, del, log, moves));
+		const edits = makeEditIndex(log, from);
+		foldStats.structs += edits.structs;
+		fold(edits.pairs, edits);
 		return true;
 	};
 	const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;
@@ -2508,11 +2408,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	/** Some queued transaction holds writes no fold has seen. */
 	const unfolded = (): boolean =>
 		(queuedTransactions(doc) as Tx[]).some(
-			(tr) =>
-				!committed.has(tr) &&
-				tr.insertSet !== undefined &&
-				tr.deleteSet !== undefined &&
-				watermark(tr) !== (cursors.get(tr)?.mark ?? 0)
+			(tr) => !committed.has(tr) && (tr.log?.length ?? 0) !== (cursors.get(tr) ?? 0)
 		);
 
 	/**
@@ -2521,19 +2417,12 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	 */
 	const onCommit = (tr: Tx): void => {
 		if (!changedUnder(tr as { changed: Map<unknown, unknown> }, [registry])) return;
-		let [ins, del] = [tr.insertSet, tr.deleteSet];
 		// The writes a read folded already moved the rows: only the rest
 		// are edits now (the facets fold again, idempotent).
-		const cursor = cursors.get(tr);
-		if (cursor !== undefined && ins !== undefined && del !== undefined) {
-			ins = ops.diff(ins, cursor.ins);
-			del = ops.diff(del, cursor.del);
-		}
-		const log = (tr.holds ?? []).slice(cursor?.holds ?? 0);
-		const moves = (tr.moves ?? []).slice(cursor?.moves ?? 0);
+		const from = cursors.get(tr) ?? 0;
 		cursors.delete(tr);
 		committed.add(tr);
-		fold(tr.changed ?? new Map(), makeEditIndex(ins, del, log, moves));
+		fold(tr.changed ?? new Map(), makeEditIndex(tr.log ?? [], from));
 	};
 
 	// ══ The change report ═══════════════════════════════════════════

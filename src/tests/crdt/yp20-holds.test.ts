@@ -16,6 +16,13 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { mulberry32 } from './harness/rng.js';
 
+/** The `client, clock, len` entries of kind `kind` in `tr`'s log (fork patch YP33: 1 a hold, 2 a move). */
+const logged = (tr, kind) => {
+	const out = [];
+	for (let i = 0; i < tr.log.length; i += 4)
+		if (tr.log[i] === kind) out.push(tr.log[i + 1], tr.log[i + 2], tr.log[i + 3]);
+	return out;
+};
 const mk = (client: number) => {
 	const doc = new Y.Doc();
 	doc.clientID = client;
@@ -65,7 +72,7 @@ describe('YP20 — a hold record hides, its delete shows the same items', () => 
 	it('one record: hidden, length and log; deleting it shows the item in place', () => {
 		const [a] = seeded('abc', 2);
 		const logs = [];
-		a.on('commit', (tr) => logs.push([...tr.holds]));
+		a.on('commit', (tr) => logs.push(logged(tr, 1)));
 		t(a).delete(1, 1, records(a));
 		expect(text(a)).toBe('ac');
 		expect(t(a).length).toBe(2);
@@ -142,7 +149,7 @@ describe('YP20 — causality, storage and collection', () => {
 		expect(a.store.pendingHolds.get(4)).toEqual([0, 1, 1]);
 		expect(live(a)).toHaveLength(1);
 		let log;
-		a.on('commit', (tr) => (log = [...tr.holds]));
+		a.on('commit', (tr) => (log = logged(tr, 1)));
 		sync(c, a);
 		expect(a.store.pendingHolds).toBeNull();
 		expect(log).toEqual([4, 0, -1]);
@@ -188,7 +195,7 @@ describe('YP20 — causality, storage and collection', () => {
 		expect(b.content.constructor.name).toBe('ContentString');
 		expect(text(reload(a))).toBe('ac');
 		let log;
-		a.on('commit', (tr) => (log = { holds: [...tr.holds], removed: tr.deleteSet.has(1, 1) }));
+		a.on('commit', (tr) => (log = { holds: logged(tr, 1), removed: tr.deleteSet.has(1, 1) }));
 		a.transact((tr) => b.delete(tr)); // the purge's delete
 		expect(log).toEqual({ holds: [1, 1, 1], removed: true });
 		expect(b.content.constructor.name).toBe('ContentDeleted');

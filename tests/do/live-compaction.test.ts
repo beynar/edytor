@@ -91,9 +91,10 @@ describe('P2 · compaction stores the live state', () => {
 				text = text.slice(0, -1);
 			}
 		}
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe(text)
-		);
+		// The room stored every keystroke: an ack covers them. Its text alone
+		// holds early: the last key is a typo the last delete erases.
+		await vi.waitFor(() => expect(client.stored()).toBe(true));
+		expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe(text);
 		// What a merge of every record would store (the room's compaction before P2).
 		const merged = Y.mergeUpdates(sent).length;
 		const snapshot = await inRoom(room, (r) => {

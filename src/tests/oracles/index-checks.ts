@@ -29,15 +29,8 @@ import {
 	scanText
 } from '../../lib/crdt/text/model.js';
 import { boundAt, rowLength, type LiveRow } from '../../lib/crdt/text/rows.js';
-import type { IndexCache } from '../../lib/crdt/text/index/cache.js';
-import type { IndexClaims } from '../../lib/crdt/text/index/claims.js';
-import type { IndexFold } from '../../lib/crdt/text/index/fold.js';
-import type { IndexLayout } from '../../lib/crdt/text/index/layout.js';
-import type { IndexPlacement } from '../../lib/crdt/text/index/placement.js';
-import type { IndexReporter } from '../../lib/crdt/text/index/report.js';
+import type { IndexFacts, Published } from '../../lib/crdt/text/index/build.js';
 import { keyOf } from '../../lib/crdt/text/index/shared.js';
-import type { IndexState, Published } from '../../lib/crdt/text/index/state.js';
-import type { IndexStreams } from '../../lib/crdt/text/index/streams.js';
 
 /** The inverse of `ownerOf` over `blocks`: each live owner → the blocks it displays. */
 export const displayIndex = (
@@ -65,16 +58,7 @@ export const sameRow = (row: LiveRow, scan: TextRow): boolean => {
 };
 
 /** The self-checks of one doc's index, over every part they compare. */
-export const indexSelfChecks = (
-	ix: IndexState &
-		IndexClaims &
-		IndexStreams &
-		IndexLayout &
-		IndexPlacement &
-		IndexCache &
-		IndexFold &
-		IndexReporter
-) => {
+export const indexSelfChecks = (ix: IndexFacts) => {
 	const {
 		blocks,
 		displaysMap,

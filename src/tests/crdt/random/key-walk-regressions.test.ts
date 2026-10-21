@@ -1,5 +1,5 @@
 /**
- * The index's order keys (`text/index/placement.ts` `keyFor`): a placed
+ * The index's order keys (`text/index/build.ts` `keyFor`): a placed
  * block's key sits between the key of the nearest block shown before its
  * place in the sequence and the next key of the list. The walk places a
  * pending neighbour first, and placing one can close a cycle that drops a

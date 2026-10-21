@@ -3,7 +3,7 @@
  * slot belongs to, each block's display edges (the sequences that can show
  * its slot: its live move records', strongest first, then its parent's), the
  * places of every sequence, and the cycle walk. Which edge a block takes is
- * the index's acceptance (`text/index/placement.ts` `settle`). Pure over
+ * the index's acceptance (`text/index/build.ts` `settle`). Pure over
  * replicated state.
  */
 import type { EngineDoc, EngineNode } from '../engine-api.js';

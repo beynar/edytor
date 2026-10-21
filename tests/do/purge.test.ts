@@ -78,12 +78,27 @@ const writer = async (
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true));
+	// The room stored the seed before the row moves its clock (the purge
+	// tick is due a day after the first stored change). `synced` says less:
+	// the room's Step2 can reach us before it stores our seed.
+	await vi.waitFor(() => expect(client.synced && client.stored()).toBe(true));
 	return { document, client };
 };
 
+/**
+ * Each of `docs` holds everything the room holds (its state vector covers
+ * the room's) and reads as the room does. The JSON alone holds early: a
+ * purge changes no JSON, so it does not say the replica applied it.
+ */
 const converged = async (room: string, ...docs: E.YDoc[]) => {
 	await vi.waitFor(async () => {
+		const state = await inRoom(room, (r) => Y.encodeStateVector(r.doc!));
+		for (const doc of docs) {
+			const ours = Y.decodeStateVector(Y.encodeStateVector(doc));
+			for (const [client, clock] of Y.decodeStateVector(state)) {
+				expect(ours.get(client) ?? 0).toBeGreaterThanOrEqual(clock);
+			}
+		}
 		const json = await roomJSON(room);
 		for (const doc of docs) {
 			const facade = crdt.doc.create(doc as never);

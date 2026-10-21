@@ -31,6 +31,7 @@ describe('independent review: real room boundaries', () => {
 		const stub = env.ROOM.getByName(room);
 		const writer = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const initial = writer.encode();
+		const initialState = Y.decodeStateVector(Y.encodeStateVector(writer.doc));
 		let forged: Uint8Array = new Uint8Array();
 		writer.doc.once('update', (u: Uint8Array) => {
 			forged = u;
@@ -40,9 +41,10 @@ describe('independent review: real room boundaries', () => {
 		socket.send(E.frame(E.messageSync, (e) => crdt.sync.writeUpdate(e, forged)));
 		await vi.waitFor(() => expect(socket.acks.length).toBeGreaterThan(0));
 		socket.send(E.frame(E.messageSync, (e) => crdt.sync.writeUpdate(e, initial)));
-		await vi.waitFor(async () =>
-			expect(await runInDurableObject(stub, (r: Room) => r.records().length)).toBeGreaterThan(1)
-		);
+		// The room stored `initial` (and released the forgery): an ack covers
+		// it. A count of records held before `initial` was even sent: the
+		// forged frame already stored the generation and a write of the room's.
+		await vi.waitFor(() => expect(socket.stored(initialState)).toBe(true));
 		const beforeRestart = await runInDurableObject(stub, (r: Room) => {
 			const stored = crdt.createDoc();
 			Y.applyUpdate(stored, storedUpdate(r.records()));

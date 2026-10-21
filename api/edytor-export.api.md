@@ -228,7 +228,6 @@ declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
             lines?: boolean;
-            itemKind?: string;
             island?: boolean;
             rendersContent: boolean;
             defaultChild?: string;
@@ -239,6 +238,7 @@ declare const equationForms: (mathml?: MathML) => {
             parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
             element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
             contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
+            itemKind?: string;
         };
     };
     inlineBlocks: {
@@ -1563,7 +1563,6 @@ declare const bundledRead: () => {
                 };
             }[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1574,11 +1573,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'bulleted-list-item': {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1589,11 +1588,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'numbered-list-item': {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1604,6 +1603,7 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'todo-item': {
             presets: {
@@ -1615,7 +1615,6 @@ declare const bundledRead: () => {
         toggle: {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1626,6 +1625,7 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'toggle-heading': {
             presets: {
@@ -1634,7 +1634,6 @@ declare const bundledRead: () => {
                 };
             }[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1645,11 +1644,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         callout: {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1660,11 +1659,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         quote: {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1675,11 +1674,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         divider: {
             presets: {}[];
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild?: string | undefined;
@@ -1690,10 +1689,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'ordered-list': {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild: string;
@@ -1704,10 +1703,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'unordered-list': {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild: string;
@@ -1718,6 +1717,7 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         'list-item': Form;
         code: {
@@ -1729,7 +1729,6 @@ declare const bundledRead: () => {
         codeLine: {};
         table: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild: string;
@@ -1740,11 +1739,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
             table: true;
         };
         tableRow: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild: string;
@@ -1755,10 +1754,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         tableCell: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island: boolean;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1769,10 +1768,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         image: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1783,10 +1782,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         embed: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1797,10 +1796,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         bookmark: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1811,10 +1810,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         file: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1825,10 +1824,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         video: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1839,10 +1838,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         audio: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent?: boolean | undefined;
             defaultChild?: string | undefined;
@@ -1853,10 +1852,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         page: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild?: string | undefined;
@@ -1867,10 +1866,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         toc: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild?: string | undefined;
@@ -1881,10 +1880,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         equation: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild?: string | undefined;
@@ -1895,10 +1894,10 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
         columns: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild: string;
@@ -1909,11 +1908,11 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
             layout: true;
         };
         column: {
             lines?: boolean | undefined;
-            itemKind?: string | undefined;
             island?: boolean | undefined;
             rendersContent: boolean;
             defaultChild?: string | undefined;
@@ -1924,6 +1923,7 @@ declare const bundledRead: () => {
             parse?: ((element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined) | undefined;
             element?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
             contentElement?: (import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement)) | undefined;
+            itemKind?: string | undefined;
         };
     };
     marks: Record<string, MarkForms>;

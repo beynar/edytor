@@ -665,9 +665,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             api: object;
         } & {
             prepare: {
-                insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => import("./edytor-doc.js").Prepared;
-                deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
-                replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 nestBlock: (id: import("./index.js").BlockId, parent: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
@@ -702,14 +699,14 @@ declare const bindCrdt: (Y: EngineApi) => {
                 clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").Prepared;
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
+                insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => import("./edytor-doc.js").Prepared;
+                deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
+                replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
             };
             apply: (p: import("./edytor-doc.js").Prepared, quiet?: boolean) => import("./edytor-doc.js").OpResult;
             compose: (...parts: import("./edytor-doc.js").Prepared[]) => import("./edytor-doc.js").Prepared;
             transact: <R>(fn: () => R, origin?: unknown) => R;
             version: number;
-            insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
-            deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
@@ -744,6 +741,9 @@ declare const bindCrdt: (Y: EngineApi) => {
             clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             insertInline: (id: string, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").OpResult;
             removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
+            insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
+            deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
+            replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: (options?: {
                 suggestions?: boolean;

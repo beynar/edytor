@@ -10,7 +10,7 @@
  * semantics, mirroring the implementation contract in:
  *
  *   src/lib/events/beforeInputDeleteCommands.ts  (dispatch + boundaries)
- *   src/lib/crdt/rangeDelete.ts                (prepare.deleteRange, D6)
+ *   src/lib/crdt/doc/ops.ts                    (prepare.deleteRange, D6)
  *   src/lib/crdt/doc/                          (deleteBlock/removeInline)
  *   src/lib/crdt/edytor-doc.ts                 (mergeBackward/Forward/unNest)
  *   src/lib/text/wordBoundary.ts               (grapheme-aware deleteText)

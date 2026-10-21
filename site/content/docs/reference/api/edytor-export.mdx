@@ -132,7 +132,6 @@ declare const equationForms: (mathml?: MathML) => {
     blocks: {
         equation: {
             lines?: boolean;
-            itemKind?: string;
             island?: boolean;
             rendersContent: boolean;
             defaultChild?: string;
@@ -143,6 +142,7 @@ declare const equationForms: (mathml?: MathML) => {
             parse?: (element: HTMLElement) => Record<string, import("../utils/json.js").SerializableContent> | undefined;
             element?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
             contentElement?: import("../plugins.js").BlockElement | ((data: Record<string, any>, id?: string) => import("../plugins.js").BlockElement);
+            itemKind?: string;
         };
     };
     inlineBlocks: {

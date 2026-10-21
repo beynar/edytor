@@ -766,7 +766,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   The index's rows track claim items as bounds that never delimit (no read
   shows them): a claim item written or removed rescans its text and the
   claims of that row's blocks are re-read (`applyReclaims` in
-  `text/index/streams.ts`, checked against a fresh scan by `indexChecks`).
+  `text/index/build.ts`, checked against a fresh scan by `indexChecks`).
   The purge and a restore delete claim items by id. Pins:
   `text/merge-claim-anchor.test.ts` (48 client-id pairs),
   `yp21-claims.test.ts`, `dr-crdt-order.test.ts` (the matrix excuses no
@@ -1816,7 +1816,7 @@ in `data.column`, and the header flags are `data.headerRow` and
 `data.headerColumn`. Rows are blocks, ordered by placement. As for
 layouts, the role is data read from the document's roles (`roles.table`):
 no core code names `table`, `tableRow` or `tableCell`, and the read-time
-rules own the display (the index's layout pass, `crdt/text/index/layout.ts`).
+rules own the display (the index's layout pass, `crdt/text/index/build.ts`).
 The write rows below are the table plugin's ops (`plugins/table/ops.ts`,
 each taking the document first), plans composed of the document's
 `patchData`, `insertBlocks`, `deleteBlocks` and `moveBlocks`.

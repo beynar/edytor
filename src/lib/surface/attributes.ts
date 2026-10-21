@@ -50,9 +50,9 @@ export const blockDir = (text: string): 'rtl' | 'ltr' | null => {
 	return strong === undefined ? null : RTL.test(strong) ? 'rtl' : 'ltr';
 };
 
-/** The text a cell's runs show (its atoms left out): what `blockDir` reads. */
-export const ownText = (runs: readonly ContentRun[]) =>
-	runs.map((run) => (run.kind === 'text' ? run.text : '')).join('');
+/** The text a cell's runs show, each atom as `atom` (left out: what `blockDir` reads). */
+export const ownText = (runs: readonly ContentRun[], atom = '') =>
+	runs.map((run) => (run.kind === 'text' ? run.text : atom)).join('');
 
 /** A text inside a void block is its own editing host (the core sets it at attach). */
 export const insideVoid = (edytor: Edytor, block: string) => {
@@ -65,7 +65,7 @@ export const insideVoid = (edytor: Edytor, block: string) => {
 export const ownedOf = (
 	edytor: Edytor,
 	element: Element,
-	entry: {
+	entry?: {
 		kind: Kind;
 		block: string;
 		name?: string;

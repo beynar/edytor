@@ -81,23 +81,25 @@ export type TextRange = RangeEndpoints & { texts: Text[] };
  * order), comparing boundary points — a focus on an ancestor element of the
  * anchor (`(textElement, childCount)`) is after it.
  */
-export const isBackward = (selection: {
+export const isBackward = ({
+	anchorNode,
+	anchorOffset,
+	focusNode,
+	focusOffset
+}: {
 	anchorNode: Node | null;
 	anchorOffset: number;
 	focusNode: Node | null;
 	focusOffset: number;
 }) => {
-	const { anchorNode, focusNode } = selection;
 	if (!anchorNode || !focusNode) return false;
-	if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
+	if (anchorNode === focusNode) return focusOffset < anchorOffset;
 	try {
 		const range = createDomRange(anchorNode);
-		range.setStart(anchorNode, selection.anchorOffset);
-		return range.comparePoint(focusNode, selection.focusOffset) < 0;
+		range.setStart(anchorNode, anchorOffset);
+		return range.comparePoint(focusNode, focusOffset) < 0;
 	} catch {
-		return Boolean(
-			anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
-		);
+		return !!(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
 	}
 };
 
@@ -121,18 +123,6 @@ const atomBetween = (start: Text, end: Text | null, yStart: number, yEnd: number
 	const [from, to] = [content.indexOf(start), content.indexOf(end)];
 	const part = from !== -1 && to === from + 2 ? content[from + 1] : null;
 	return part instanceof InlineBlock ? part : null;
-};
-
-/**
- * Where a range ending in `block` starts (`first`) or ends (`last`): its
- * first or last shown line (a list's items, a code block's lines); a block
- * that shows none (a divider) passes to its neighbours as a caret does, the
- * next line first.
- */
-const rangeEdge = (block: Block, edge: 'first' | 'last'): SelectionInsertionTarget | null => {
-	const text = shownText(block, edge);
-	if (text) return { text, offset: edge === 'first' ? 0 : text.length };
-	return caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore');
 };
 
 /** One block's membership of the selected and focused sets, as its own two signals. */
@@ -262,15 +252,22 @@ export class EdytorSelection {
 		};
 	};
 
+	/** The DOM fields observed with the current value, if they were. */
+	get #observed() {
+		return this.#surface?.value === this.value ? this.#surface : undefined;
+	}
+
 	/** @internal The mark-edge side the DOM showed the current caret with (`marksForInsertion`). */
 	get edge(): EdgeSide | undefined {
-		return this.#surface?.value === this.value ? this.#surface.edge : undefined;
+		return this.#observed?.edge;
 	}
 
 	/** @internal Focus is in a void block's own `input` or `textarea`. */
 	get voidField(): boolean {
-		const tag = getActiveElement(this.edytor.node)?.tagName.toUpperCase();
-		return this.projection.voidRoot !== null && (tag === 'INPUT' || tag === 'TEXTAREA');
+		return (
+			this.projection.voidRoot !== null &&
+			/^(input|textarea)$/i.test(getActiveElement(this.edytor.node)?.tagName ?? '')
+		);
 	}
 
 	/**
@@ -292,6 +289,7 @@ export class EdytorSelection {
 		cause: SelectCause = 'model',
 		surface?: { edge?: EdgeSide; nodeBound?: boolean }
 	) => {
+		const { edytor } = this;
 		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
 		if (changed) this.#value = next;
@@ -299,24 +297,22 @@ export class EdytorSelection {
 		this.epoch++;
 		// A repair is a background display (it never takes focus); a command,
 		// history or host code asks for one.
-		if (cause === 'repair') this.edytor.surface.update();
+		if (cause === 'repair') edytor.surface.update();
 		else if (cause !== 'dom') this.display();
 		if (surface) this.#surface = { value, ...surface };
-		const projection = project(value, this.edytor.facade);
-		const blocksOf = (ids: readonly string[]) =>
-			ids.flatMap((id) => this.edytor.idToBlock.get(id) ?? []);
+		const projection = project(value, edytor.facade);
+		const handles = edytor.idToBlock;
+		const blocksOf = (ids: readonly string[]) => ids.flatMap((id) => handles.get(id) ?? []);
 		const atom =
 			value.kind === 'atom' && projection.start
-				? this.edytor.idToBlock.atom(value.blockId, value.atomId)
+				? handles.atom(value.blockId, value.atomId)
 				: undefined;
-		this.#sync(this.#selected, value.kind === 'blocks' ? blocksOf(value.ids) : [], 'selected');
+		this.#sync(this.#selected, blocksOf(value.kind === 'blocks' ? value.ids : []), 'selected');
 		this.#sync(
 			this.#focused,
-			value.kind === 'text'
-				? blocksOf(projection.blocks)
-				: value.kind === 'atom'
-					? blocksOf([value.blockId])
-					: [],
+			blocksOf(
+				value.kind === 'text' ? projection.blocks : value.kind === 'atom' ? [value.blockId] : []
+			),
 			'focused'
 		);
 		if (atom !== this.inlineBlockDeletionTarget || (!atom && this.selectedInlineBlock.size)) {
@@ -324,21 +320,17 @@ export class EdytorSelection {
 			if (atom) this.selectedInlineBlock.add(atom);
 			this.inlineBlockDeletionTarget = atom ?? null;
 		}
-		this.edytor.history?.selected(value);
+		edytor.history?.selected(value);
 		const start = this.textAt(projection.start);
-		if (start) {
-			this.#lastText = start.text;
-		}
+		if (start) this.#lastText = start.text;
 		if (!changed) return;
 		// A dead view never publishes: its entry went with its teardown.
-		if (!this.edytor.destroyed) {
+		if (!edytor.destroyed) {
 			const focus = projection.isReversed ? projection.start : projection.end;
-			this.edytor.presence.write(serialize(value, projection), focus?.block ?? null);
+			edytor.presence.write(serialize(value, projection), focus?.block ?? null);
 		}
 		this.edytorOnSelectionChange?.(this);
-		this.edytor.plugins.forEach((plugin) => {
-			plugin.onSelectionChange?.(this);
-		});
+		for (const plugin of edytor.plugins) plugin.onSelectionChange?.(this);
 	};
 
 	/**
@@ -396,12 +388,16 @@ export class EdytorSelection {
 		if (next.kind !== 'text') return next;
 		const { start, end, isReversed } = project(next, this.edytor.facade);
 		const caret = next.focus === next.anchor;
+		// A range's end goes to its block's first or last shown line (a list's
+		// items, a code block's lines); a caret, or a block that shows none (a
+		// divider), passes to its neighbours, the next line first.
 		const moved = (at: SelectionPoint | null, anchor: TextAnchor, edge: 'first' | 'last') => {
 			const block = at && this.edytor.idToBlock.get(at.block);
 			if (!block || block.rendersContent) return anchor;
-			const to = caret
-				? (caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore'))
-				: rangeEdge(block, edge);
+			const text = !caret && shownText(block, edge);
+			const to = text
+				? { text, offset: edge === 'first' ? 0 : text.length }
+				: (caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore'));
 			return to && this.createTextAnchor(to.text, to.offset);
 		};
 		const [first, last] = isReversed ? (['last', 'first'] as const) : (['first', 'last'] as const);
@@ -592,8 +588,7 @@ export class EdytorSelection {
 	 * `inlineBlockDeletionTarget` follow the value (`commit`).
 	 */
 	clearInlineBlockSelection = () => {
-		const value = this.value;
-		if (value.kind !== 'atom') return;
+		if (this.value.kind !== 'atom') return;
 		const { start } = this.projection;
 		this.select(start ? this.valueAt(start) : noSelection);
 	};
@@ -654,9 +649,10 @@ export class EdytorSelection {
 		selection: DomSelectionSnapshot | null,
 		options: { restoreNormalizedDomRange?: boolean } = {}
 	) => {
-		if (this.dragging && this.pointer.dragAcross(selection)) return;
+		const { edytor, pointer } = this;
+		if (this.dragging && pointer.dragAcross(selection)) return;
 		// A block selection ignores the DOM, but the one a drag across columns made while it lasts.
-		if (this.selectedBlocks.size > 0 && !(this.dragging && this.pointer.across)) return;
+		if (this.selectedBlocks.size > 0 && !(this.dragging && pointer.across)) return;
 
 		// A selection in a kind's own control (a form control, a nested
 		// editable island) or a focused one belongs to it, not the model —
@@ -664,44 +660,48 @@ export class EdytorSelection {
 		// corrupt the next model-routed write. Both endpoints are checked: a
 		// range anchored in host text but focused inside an island must not
 		// resolve either.
-		const container = this.edytor.node;
+		const container = edytor.node;
 		const read = this.#read(selection);
-		if (!selection || !read || isKindControl(container, getActiveElement(container))) return;
+		if (!read || isKindControl(container, getActiveElement(container))) return;
 
-		const { anchorNode, focusNode, isCollapsed } = selection;
+		const { anchorNode, focusNode, isCollapsed, rangeCount } = selection!;
 		// A native vertical move that landed on no caret stop takes the key's line stop.
 		if (
 			isCollapsed &&
 			!isTextBoundSelectionPoint(anchorNode) &&
-			!getInlineBlockOfNode(this.edytor, anchorNode) &&
-			landed(this.edytor)
+			!getInlineBlockOfNode(edytor, anchorNode) &&
+			landed(edytor)
 		)
 			return;
 		const { isReversed, startNode, start, endNode, end } = read;
 
 		const atom = getInlineBlockInSelectedRange(
-			this.edytor,
-			selection.rangeCount ? selection.getRangeAt(0) : undefined
+			edytor,
+			rangeCount ? selection!.getRangeAt(0) : undefined
 		);
-		const startText = atom ? null : this.getTextOfNode(startNode, start);
-		let endText = startText && this.getTextOfNode(endNode, end);
+		const startText = atom ? null : read.startText;
+		let endText = startText && read.endText;
+		/** The atom selection: the DOM shows no range for it. */
+		const toAtom = (atom: InlineBlock, from?: AtomSide) => {
+			clearDomSelection(container);
+			this.selectInlineBlock(atom, from);
+		};
 
 		if (!startText) {
-			const inlineBlock = atom ?? getInlineBlockOfNode(this.edytor, startNode);
+			const inlineBlock = atom ?? getInlineBlockOfNode(edytor, startNode);
 			// A press in a non-native editable island (contenteditable=false, no control).
 			const island = getElementFromNode(startNode)?.closest('[contenteditable="false"]');
-			const islandBlock =
-				island && !isNativeInteractiveControl(island) && this.getBlockOfNode(island);
-			if (islandBlock && islandBlock.firstText) return this.selectText(islandBlock.firstText, 0);
+			const first =
+				island && !isNativeInteractiveControl(island) && this.getBlockOfNode(island)?.firstText;
+			if (first) return this.selectText(first, 0);
 			// A point on a white space node: the model caret is displayed again.
 			if (!inlineBlock && this.textAt(this.projection.start)) return this.display();
-			clearDomSelection(this.edytor.node);
-			if (inlineBlock) this.selectInlineBlock(inlineBlock);
-			else this.clearInlineBlockSelection();
-			return;
+			if (inlineBlock) return toAtom(inlineBlock);
+			clearDomSelection(container);
+			return this.clearInlineBlockSelection();
 		}
 
-		const overlay = isCollapsed ? overlayAt(startNode, start) : null;
+		const overlay = isCollapsed && overlayAt(startNode, start);
 		if (overlay) {
 			const text = this.getBlockOfNode(overlay)?.lastText ?? startText;
 			return this.selectText(text, text.length);
@@ -709,7 +709,7 @@ export class EdytorSelection {
 
 		const rawYStart = getYIndex(startText, startNode, start);
 		const rawYEnd = isCollapsed ? rawYStart : getYIndex(endText, endNode, end);
-		let yStart = normalizeUtf16Boundary(
+		const yStart = normalizeUtf16Boundary(
 			startText.stringContent,
 			rawYStart,
 			isCollapsed ? 'forward' : 'backward'
@@ -733,7 +733,7 @@ export class EdytorSelection {
 			yEnd === 0
 		) {
 			// The shown block before: a closed toggle's header, not its hidden body.
-			const previous = visibility.shown(endText.parent, 'blockBefore')?.lastText ?? null;
+			const previous = visibility.shown(endText.parent, 'blockBefore')?.lastText;
 			if (previous?.node?.isConnected) {
 				endText = previous;
 				yEnd = previous.length;
@@ -747,11 +747,7 @@ export class EdytorSelection {
 		}
 
 		const between = atomBetween(startText, endText, yStart, yEnd);
-		if (between) {
-			clearDomSelection(this.edytor.node);
-			this.selectInlineBlock(between, isReversed ? 'after' : 'before');
-			return;
-		}
+		if (between) return toAtom(between, isReversed ? 'after' : 'before');
 
 		const value = this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed);
 		// A node-bound native range (endpoints outside text elements: a block
@@ -767,10 +763,10 @@ export class EdytorSelection {
 			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined,
 			nodeBound
 		});
-		this.edytor.projector.observe();
+		edytor.projector.observe();
 		if (restore && options.restoreNormalizedDomRange !== false && endText) {
 			// Writing the DOM under a pointer drag would reset its anchor: after it.
-			if (this.dragging) this.pointer.hold();
+			if (this.dragging) pointer.hold();
 			else this.selectText(startText, yStart, endText, yEnd, isReversed);
 		}
 	};
@@ -781,8 +777,7 @@ export class EdytorSelection {
 	 * engine-defined and therefore intercepted by the hotkey layer.
 	 * @internal
 	 */
-	hasNativeNodeSelection = () =>
-		this.#surface?.value === this.value && this.#surface.nodeBound === true;
+	hasNativeNodeSelection = () => this.#observed?.nodeBound === true;
 
 	/**
 	 * Anchor a text position into the BACKING text that owns the atom at
@@ -866,57 +861,41 @@ export class EdytorSelection {
 	 * @internal
 	 */
 	restoreDeadSelectionEndpoints = () => {
-		if (this.expectHistoryRestore) {
-			return;
-		}
-		// Mid pointer-drag the user's in-progress range owns the selection; a
-		// command that declared its result selection owns this view's endpoints.
-		if (this.dragging || this.edytor.dispatcher.authoring) {
-			return;
-		}
+		// A history step selects its own value; mid pointer-drag the user's
+		// in-progress range owns the selection; a command that declared its
+		// result selection owns this view's endpoints.
+		if (this.expectHistoryRestore || this.dragging || this.edytor.dispatcher.authoring) return;
 		const { value } = this;
-		const facade = this.edytor.facade;
+		const { facade } = this.edytor;
 		const { start, isCollapsed } = this.projection;
 		const at = this.textAt(start);
 		let dead: string | null;
 		if (value.kind === 'blocks') {
 			const live = value.ids.filter((id) => facade.isVisibleBlock(id));
 			if (live.length === value.ids.length) return;
-			if (live.length) {
-				this.commit(blockSelection(live), 'repair');
-				return;
-			}
+			if (live.length) return this.#land(blockSelection(live));
 			dead = value.ids[0] ?? null;
 		} else if (value.kind === 'atom') {
 			if (at) return;
 			const anchor = facade.isVisibleBlock(value.blockId)
 				? facade.anchorAt(value.blockId, 0, 'left')
 				: null;
-			if (anchor) {
-				this.#land(textSelection(anchor));
-				return;
-			}
+			if (anchor) return this.#land(textSelection(anchor));
 			dead = value.blockId;
 		} else if (value.kind === 'text') {
 			// A peer or host code turned the block it rests in into one that shows
 			// no content (an empty line into a divider): the nearest shown line.
 			const shown = this.#shown(value);
-			if (shown !== value) {
-				this.#land(shown);
-				return;
-			}
-			if (at && start && isCollapsed && value.anchor !== value.focus) {
+			if (shown !== value) return this.#land(shown);
+			if (at && isCollapsed && value.anchor !== value.focus) {
 				// A range whose content died is a caret at the seam (`sel.seam.covered-atom`):
 				// its two anchors would re-open around text re-inserted there.
-				const caret = facade.anchorAt(start.block, start.offset, 'left');
-				if (caret) {
-					this.#land(textSelection(caret));
-					return;
-				}
+				const caret = facade.anchorAt(start!.block, start!.offset, 'left');
+				if (caret) return this.#land(textSelection(caret));
 			}
 			if (at) {
 				// The text it was displayed in died while its anchor moved on: display again.
-				if (this.#lastText !== null && !this.#lastText.isInDocument) this.display();
+				if (this.#lastText && !this.#lastText.isInDocument) this.display();
 				this.#lastText = at.text;
 				return;
 			}
@@ -946,24 +925,26 @@ export class EdytorSelection {
 	 */
 	mint = (snapshot: DomSelectionSnapshot): SelectionValue | null => {
 		const read = this.#read(snapshot);
-		if (!read) return null;
-		const { isReversed, startNode, start, endNode, end } = read;
-		const startText = this.getTextOfNode(startNode, start);
-		const endText = startText && this.getTextOfNode(endNode, end);
+		const { startText, endText } = read ?? {};
 		if (!startText || !endText) return null;
+		const { isReversed, startNode, start, endNode, end } = read!;
 		const from = offsetIn(startText, startNode, start);
 		return this.textValue(startText, from, endText, offsetIn(endText, endNode, end), isReversed);
 	};
 
 	/**
 	 * A DOM selection whose two endpoints are this editor's own points (not
-	 * in a kind's control): its endpoints in document order and its direction.
+	 * in a kind's control): its endpoints in document order, its direction,
+	 * and the texts they are in (the end's only when the start is in one).
 	 */
 	#read = (dom: DomSelectionSnapshot | null) => {
 		const container = this.edytor.node;
 		if (!dom || !isOwnPoint(container, dom.anchorNode) || !isOwnPoint(container, dom.focusNode))
 			return null;
 		const isReversed = isBackward(dom);
-		return { isReversed, ...ordered(dom, isReversed) };
+		const ends = ordered(dom, isReversed);
+		const startText = this.getTextOfNode(ends.startNode, ends.start);
+		const endText = startText && this.getTextOfNode(ends.endNode, ends.end);
+		return { isReversed, ...ends, startText, endText };
 	};
 }

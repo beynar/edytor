@@ -31,6 +31,7 @@ import { DEV } from 'esm-env';
 import { PreventionError, vetoable } from '$lib/utils.js';
 import { kindOf } from './attempt.js';
 import { insertionMarksAt } from './editing/text.js';
+import { diffText } from '$lib/utils/diffText.js';
 
 /**
  * The result of the last command a view ran (`edytor.dispatcher.last`): its
@@ -136,29 +137,18 @@ const textPatch = (args: unknown): TextPatch | null => {
 };
 
 /**
- * `next` is `previous` with one contiguous run typed in or deleted (their
- * common prefix and suffix cover the shorter one): what typing and Backspace
- * produce. Another value ('todo' → 'done', 'doing' → 'done') is not.
+ * `patch` continues `previous`: the same paths, each string edited by typing
+ * (one contiguous run typed in or deleted, what typing and Backspace produce;
+ * another value, 'todo' → 'done', is not).
  */
-const typedFrom = (previous: string, next: string) => {
-	const shorter = Math.min(previous.length, next.length);
-	let prefix = 0;
-	while (prefix < shorter && previous[prefix] === next[prefix]) prefix++;
-	let suffix = 0;
-	while (
-		suffix < shorter - prefix &&
-		previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
-	)
-		suffix++;
-	return prefix + suffix === shorter;
-};
-
-/** `patch` continues `previous`: the same paths, each string edited by typing. */
 const continuesTyping = (previous: TextPatch | null, patch: TextPatch | null) =>
 	patch !== null &&
 	previous !== null &&
 	patch.key === previous.key &&
-	patch.values.every((value, i) => typedFrom(previous.values[i]!, value));
+	patch.values.every((value, i) => {
+		const edit = diffText(previous.values[i]!, value);
+		return !edit || !edit.remove || !edit.insert;
+	});
 
 /** A kind's normalizer (`BlockDefinition.normalizeContent`/`normalizeChildren`). */
 export type Normalizer = 'normalizeContent' | 'normalizeChildren';
@@ -294,10 +284,10 @@ export class Dispatcher {
 	 * writable, and decided when it requires hydration. Every command asks
 	 * it first; a plugin's own write outside a command asks it too.
 	 */
-	permits = () =>
-		!this.edytor.readonly &&
-		this.edytor.document.writable &&
-		(this.edytor.document.ready || !this.edytor.document.requireHydration);
+	permits = () => {
+		const { readonly, document } = this.edytor;
+		return !readonly && document.writable && (document.ready || !document.requireHydration);
+	};
 
 	/**
 	 * Apply the undo policy's cut before a `kind` command writes.
@@ -368,7 +358,7 @@ export class Dispatcher {
 				this.kind = null;
 			}
 		});
-		if (this.applied && this.last?.status !== 'applied' && this.last?.status !== 'failed')
+		if (this.applied && this.#last?.status !== 'applied' && this.#last?.status !== 'failed')
 			this.#last = this.applied;
 		this.applied = null;
 		const after = () => this.cut(kind, 'after');
@@ -400,15 +390,14 @@ export class Dispatcher {
 		prepare?: (payload: P) => Prepared
 	): R | undefined => {
 		if (this.active) return body(payload);
+		const { edytor } = this;
+		const { facade, plugins } = edytor;
 		const lead = this.leading;
 		this.leading = null;
 		// A led operation, or one `alone` runs: its own step, never an insertion's.
 		const led = !!lead || this.#alone;
 		this.#alone = false;
-		if (!this.permits()) {
-			this.#refused(operation);
-			return undefined;
-		}
+		if (!this.permits()) return void this.#refused(operation);
 		const original = payload;
 		const replaced = new Set<unknown>();
 		// A lead composes with the command's plan (both prepared at this version);
@@ -416,7 +405,7 @@ export class Dispatcher {
 		const prepared = (p: P) => {
 			const own = prepare?.(p);
 			if (!lead || !own || !('writes' in own)) return own;
-			const { displayLength, compose } = this.edytor.facade;
+			const { displayLength, compose } = facade;
 			const whole = own.writes.flatMap((w) =>
 				w.op === 'deleteText' && w.offset === 0 && w.length === displayLength(w.id) ? [w.id] : []
 			);
@@ -424,15 +413,16 @@ export class Dispatcher {
 			return compose({ ...lead, writes }, own);
 		};
 		let plan = prepared(payload);
+		let planned: Plan | undefined;
 		hooks: for (;;) {
 			// A command refused at preparation is still shown (without steps): an
 			// extension may replace or retarget it.
-			const planned = plan && 'writes' in plan ? plan : undefined;
+			planned = plan && 'writes' in plan ? plan : undefined;
 			const command: Change = { operation, payload, ...context, effect: planned?.effect };
 			const steps = [...(lead && !plan ? lead.writes : []), ...(planned?.writes ?? [])];
 			const changes = [command, ...this.steps(steps, planned?.effect.creates ?? [], command)];
 			for (const change of changes) {
-				for (const plugin of this.edytor.plugins) {
+				for (const plugin of plugins) {
 					let out: unknown;
 					try {
 						out = vetoable((prevent) =>
@@ -465,30 +455,30 @@ export class Dispatcher {
 			break;
 		}
 		// Refused at preparation, and no extension replaced it.
-		if (plan && !('writes' in plan)) {
+		if (plan && !planned) {
 			this.#refused(operation);
 			return body(payload, plan);
 		}
-		const version = this.edytor.facade.version;
+		const version = facade.version;
 		// A text patch typing into the strings the previous command set on the
 		// same paths (a bound field) continues its step, within the capture
 		// window, as typing does; another value of them is its own step.
 		const patch = operation === 'patchData' ? textPatch(payload) : null;
-		const again = continuesTyping(this.patched, patch) && this.last?.operation === operation;
+		const again = continuesTyping(this.patched, patch) && this.#last?.operation === operation;
 		// A write outside the history continues nothing and leaves the typing's record.
 		if (!this.untracked) this.patched = patch;
 		const cut = again ? undefined : this.policy(operation, led);
-		if (cut) this.edytor.undoManager?.stopCapturing();
+		if (cut) edytor.undoManager?.stopCapturing();
 		let result: R;
 		try {
-			result = this.edytor.transact(() => {
+			result = edytor.transact(() => {
 				// What the step holds, recorded as the transaction ends: only an
 				// insertion's step may be continued (`history.continues`).
-				this.edytor.history.wrote(inserts(this.kind ?? operation, led));
+				edytor.history.wrote(inserts(this.kind ?? operation, led));
 				this.active = true;
 				try {
 					// An unplanned command runs after its lead, reading the state it leaves.
-					if (lead && !plan) void (this.writer?.(lead) ?? this.edytor.facade.apply(lead));
+					if (lead && !plan) void (this.writer?.(lead) ?? facade.apply(lead));
 					return body(payload, plan);
 				} finally {
 					this.active = false;
@@ -498,16 +488,20 @@ export class Dispatcher {
 			this.#last = { operation, status: 'failed', error };
 			throw error;
 		}
-		if (cut === 'both') this.edytor.undoManager?.stopCapturing();
+		if (cut === 'both') edytor.undoManager?.stopCapturing();
 		const own: CommandResult = {
 			operation,
-			status: this.edytor.facade.version === version ? 'noop' : 'applied'
+			status: facade.version === version ? 'noop' : 'applied'
 		};
 		this.#last = own;
 		if (this.running && own.status === 'applied') this.applied = own;
-		const effect = plan && 'writes' in plan ? plan.effect : undefined;
-		const change = { operation, payload: original, ...context, effect } as AfterOperationPayload;
-		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
+		const change = {
+			operation,
+			payload: original,
+			...context,
+			effect: planned?.effect
+		} as AfterOperationPayload;
+		for (const plugin of plugins) plugin.onAfterOperation?.(change);
 		return result;
 	};
 
@@ -536,12 +530,13 @@ export class Dispatcher {
 			(p, plan = prepare(p)) => {
 				const out = this.write(plan);
 				// Read once written: a plan a plugin wrote says where its caret stands now.
-				at = 'writes' in plan ? plan.at : undefined;
+				at = (plan as Plan).at;
 				return out;
 			},
 			prepare
 		);
-		if (at && !this.active && out && out.status !== 'refused') this.caret(at);
+		// A caret is set only by a body that wrote (`out` is its result).
+		if (at && !this.active && out!.status !== 'refused') this.caret(at);
 		return out ?? PREVENTED;
 	};
 
@@ -611,18 +606,18 @@ export class Dispatcher {
 	#touched(w: PlanStep): Pass[] {
 		const { facade } = this.edytor;
 		const parent = (id: BlockId) => facade.parentOf(id);
+		const content = (...ids: BlockId[]): Pass[] => ids.map((id) => [id, 'normalizeContent']);
 		const children = (...ids: (BlockId | null)[]): Pass[] =>
 			ids.map((id) => [id ?? 'root', 'normalizeChildren']);
 		if (w.op === 'insertBlocks')
-			return [...children(w.parent), ...w.specs.map(({ id }): Pass => [id, 'normalizeContent'])];
+			return [...children(w.parent), ...content(...w.specs.map(({ id }) => id))];
 		if (w.op === 'moveBlocks') return children(w.parent, ...w.ids.map(parent));
 		if (w.op === 'deleteBlock') return children(parent(w.id));
-		if (w.op === 'splitBlock')
-			return [[w.id, 'normalizeContent'], ...children(w.parent, parent(w.id))];
-		if (w.op === 'mergeBlocks') return [[w.into, 'normalizeContent'], ...children(parent(w.from))];
-		if (w.op === 'setBlockType') return [[w.id, 'normalizeContent'], ...children(w.id)];
-		if (w.op === 'patchData') return w.id === undefined ? [] : [[w.id, 'normalizeContent']];
-		return [[w.id, 'normalizeContent']];
+		if (w.op === 'splitBlock') return [...content(w.id), ...children(w.parent, parent(w.id))];
+		if (w.op === 'mergeBlocks') return [...content(w.into), ...children(parent(w.from))];
+		if (w.op === 'setBlockType') return [...content(w.id), ...children(w.id)];
+		// A text step's block; a data patch's, none for the document's data.
+		return w.id === undefined ? [] : content(w.id);
 	}
 
 	/**
@@ -726,7 +721,7 @@ export class Dispatcher {
 	drain = () => {
 		if (this.#draining) return;
 		this.#draining = true;
-		const passes = new Map<Normalizer, Map<string, number>>();
+		const passes = new Map<string, number>();
 		const { edytor } = this;
 		try {
 			for (let i = 0; i < this.queue.length; i++) {
@@ -739,9 +734,8 @@ export class Dispatcher {
 				const [id, normalize] = entry;
 				const block = edytor.idToBlock.get(id);
 				if (!block) continue;
-				const counts = passes.get(normalize) ?? passes.set(normalize, new Map()).get(normalize)!;
-				const count = (counts.get(id) ?? 0) + 1;
-				counts.set(id, count);
+				const count = (passes.get(normalize + id) ?? 0) + 1;
+				passes.set(normalize + id, count);
 				if (count > MAX_PASSES) {
 					if (DEV && count === MAX_PASSES + 1)
 						console.warn(

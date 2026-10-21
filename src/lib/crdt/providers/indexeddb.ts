@@ -267,7 +267,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		loadError: unknown = null;
 		_storeTimeout: number;
 		_storeTimeoutId: ReturnType<typeof setTimeout> | null;
-		/** Removes the document and presence listeners (`room.listen`). */
+		/** @internal Removes the document and presence listeners (`room.listen`). */
 		_unlisten: () => void;
 		awareness: Awareness;
 		bcconnected = false;

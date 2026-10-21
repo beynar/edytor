@@ -684,7 +684,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/** Closes the current dial if it has not opened in time. */
 		_connectTimer: ReturnType<typeof setTimeout> | undefined;
 		_checkInterval: ReturnType<typeof setInterval>;
-		/** Removes the document and presence listeners (`room.listen`). */
+		/** @internal Removes the document and presence listeners (`room.listen`). */
 		_unlisten!: () => void;
 
 		constructor(

@@ -5442,17 +5442,12 @@ declare const bindProviders: (Y: EngineApi) => {
             loadError: unknown;
             _storeTimeout: number;
             _storeTimeoutId: ReturnType<typeof setTimeout> | null;
-            _storeUpdate: (update: Uint8Array, origin: unknown) => void;
+            _unlisten: () => void;
             awareness: Awareness;
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
             _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
-            _awarenessUpdateHandler: (updates: {
-                added: number[];
-                updated: number[];
-                removed: number[];
-            }, origin: unknown) => void;
             get synced(): boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;
@@ -5460,7 +5455,7 @@ declare const bindProviders: (Y: EngineApi) => {
             connectBc(): void;
             disconnectBc(): void;
             destroy(): Promise<void>;
-            emit<N extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
+            emit<N extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: N, args: Parameters<{
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -5469,7 +5464,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 failed: (error: unknown, provider: any) => void;
             }[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            on<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -5484,7 +5479,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 'schema-mismatch': (detail: import("./room.js").SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME];
-            once<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            once<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -5492,7 +5487,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 'schema-mismatch': (detail: import("./room.js").SchemaMismatchDetail, provider: any) => void;
                 failed: (error: unknown, provider: any) => void;
             }[NAME]): void;
-            off<NAME extends "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
+            off<NAME extends "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "load-error">(name: NAME, f: {
                 synced: (provider: any) => void;
                 'protocol-mismatch': (mismatch: import("./room.js").ProtocolMismatch, provider: any) => void;
                 'load-error': (error: unknown, provider: any) => void;
@@ -5553,14 +5548,7 @@ declare const bindProviders: (Y: EngineApi) => {
             _resync: ReturnType<typeof setInterval> | undefined;
             _connectTimer: ReturnType<typeof setTimeout> | undefined;
             _checkInterval: ReturnType<typeof setInterval>;
-            _updateHandler: (update: Uint8Array, origin: unknown, doc?: unknown, transaction?: {
-                local: boolean;
-            }) => void;
-            _awarenessUpdateHandler: (updates: {
-                added: number[];
-                updated: number[];
-                removed: number[];
-            }, origin: unknown) => void;
+            _unlisten: () => void;
             get url(): string;
             get unsaved(): number;
             get saved(): boolean;
@@ -5570,11 +5558,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "message-error" | "schema-mismatch" | "protocol-mismatch" | "synced" | "access" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string | null, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);

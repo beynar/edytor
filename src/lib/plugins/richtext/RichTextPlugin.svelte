@@ -576,9 +576,12 @@
 	the browser to walk (`render.markers`).
 -->
 <!-- prettier-ignore -->
+{#snippet nested(children: Snippet)}<div data-edytor-children>{@render children()}</div>{/snippet}
+
+<!-- prettier-ignore -->
 {#snippet paragraph({ content, children }: BlockSnippetPayload)}<!--
 --><p>{@render content()}</p><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -588,7 +591,7 @@
 <!-- prettier-ignore -->
 {#snippet details({ block, content, children }: BlockSnippetPayload)}<!--
 --><summary>{@render content()}</summary><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<EmptyBody {block} kind="toggle" />{/if}<!--
 -->{/snippet}
 
@@ -600,7 +603,7 @@
 <!-- prettier-ignore -->
 {#snippet textThenChildren({ content, children }: BlockSnippetPayload)}<!--
 -->{@render content()}<!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -611,7 +614,7 @@
 {#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
 --><CalloutIcon {block} /><!--
 --><div data-edytor-callout-title>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<EmptyBody {block} kind="callout" />{/if}<!--
 -->{/snippet}
 
@@ -619,7 +622,7 @@
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
 --><TodoCheckbox {block} /><!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--
@@ -630,13 +633,13 @@
 {#snippet todoItemOwn({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
 --><RichTextControl {block} control="checkbox" /><!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
 {#snippet detailsOwn({ block, content, children }: BlockSnippetPayload)}<!--
 --><summary>{@render content()}</summary><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<RichTextControl {block} control="toggle" />{/if}<!--
 -->{/snippet}
 
@@ -644,14 +647,14 @@
 {#snippet calloutOwn({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
 --><RichTextControl {block} control="calloutIcon" /><!--
 --><div data-edytor-callout-title>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{#if children}{@render nested(children)}<!--
 -->{:else}<RichTextControl {block} control="callout" />{/if}<!--
 -->{/snippet}
 
 <!-- prettier-ignore -->
 {#snippet listItem({ content, children }: BlockSnippetPayload)}<!--
 --><div>{@render content()}</div><!--
--->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{#if children}{@render nested(children)}{/if}<!--
 -->{/snippet}
 
 <!--

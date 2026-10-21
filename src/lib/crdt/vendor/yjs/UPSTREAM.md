@@ -1635,8 +1635,10 @@ The insert and delete sets, `transaction.changed` and every upstream path
 are untouched: the log is a list the engine appends to and never reads.
 
 Edytor side: the fold keeps one number per open transaction (the length of
-its log a read folded), reads each entry's structs once (`walkRange`, the
-walk `walkIdSet` now runs per range) and replays the units each item showed
+its log a read folded), merges the entries that continue one another (one
+kind, one client, the next clock, one sign: a bulk insert or delete is one
+run, as the id sets' ranges were), reads each run's structs once
+(`walkRange`, the walk `walkIdSet` now runs per range) and replays the units each item showed
 or hid in order, so an edit made and undone within one fold moves the row
 by nothing; the sequences read kind 0 as their slots and records written and
 removed, kind 2 as their units whose mover changed. Removed: the copied and
@@ -1644,9 +1646,10 @@ diffed id sets, the watermark, the second and third walks, the membership
 tests, the incomplete-walk fallback.
 
 Measured (`scripts/bundle-size.mjs`, own minified): minimal 425,374 →
-423,743 (−1,631 B; gzip −424), every plugin 675,230 → 673,605 (−1,625),
+423,821 (−1,553 B; gzip −388), every plugin 675,230 → 673,683 (−1,547),
 `edytor/export` unchanged; the engine's share −54 B (three log writers
-became one).
+became one). The engine logs per item; the merge is the fold's, so a read
+mid-transaction never misses an entry the engine extended after it.
 
 Oracle: `src/tests/crdt/yp33-log.test.ts` (edits, holds and a removed held
 item's give-back, a move, a remote update with an item integrated removed),

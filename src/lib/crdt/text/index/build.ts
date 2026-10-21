@@ -1967,21 +1967,24 @@ const buildIndex = (doc: EngineDoc): RunView => {
 	 * (`texts`), its edits (the units each item showed or hid, in order); per
 	 * sequence (`seqs`), what changed in it: the slots written and removed, the
 	 * records written and removed and the units whose mover changed name
-	 * the blocks to re-place; the `(type, key)` pairs it changed (`pairs`)
-	 * and the structs it named (`structs`). Reading the sequences writes the
+	 * the blocks to re-place; with `pairs` (a read's fold), the `(type, key)`
+	 * pairs it changed, and the structs it named (`structs`). Reading the sequences writes the
 	 * slot map (the slots written and removed, `putSlot`) and lists the ids
 	 * whose home to read again (`rehome`).
 	 */
-	const makeEditIndex = (log: readonly number[], from: number) => {
+	const makeEditIndex = (
+		log: readonly number[],
+		from: number,
+		pairs?: Map<EngineNode, Set<string | null>>
+	) => {
 		const texts = new Map<EngineNode, TextEdits>();
 		const seqs = new Map<EngineNode, SeqChange>();
-		const pairs = new Map<EngineNode, Set<string | null>>();
 		const rehome = new Set<BlockId>();
 		let structs = 0;
 		const seqOf = (node: EngineNode): SeqChange =>
 			getOr(seqs, node, () => ({ blocks: new Set(), data: false }));
 		const note = (s: StoreStruct): void => {
-			if (isNodeLike(s.parent)) getOr(pairs, s.parent, () => new Set()).add(s.parentSub);
+			if (pairs && isNodeLike(s.parent)) getOr(pairs, s.parent, () => new Set()).add(s.parentSub);
 		};
 		/** Note unit `c:k` (`value`) of a sequence: a block slot names its block, a data slot its data. */
 		const noteUnit = (
@@ -1999,9 +2002,20 @@ const buildIndex = (doc: EngineDoc): RunView => {
 				rehome.add(value.b);
 			} else if (isDataSlot(value)) e.data = true;
 		};
-		for (let i = from; i < log.length; i += 4) {
-			const [kind, n] = [log[i]!, log[i + 3]!];
-			walkRange(Y, doc, log[i + 1]!, log[i + 2]!, Math.abs(n), (s, a, b) => {
+		for (let i = from; i < log.length; ) {
+			const [kind, c, k] = [log[i]!, log[i + 1]!, log[i + 2]!];
+			let n = log[i + 3]!;
+			// The entries that continue it (its kind, its client, the next clock, its sign): one walk per run.
+			for (
+				i += 4;
+				log[i] === kind &&
+				log[i + 1] === c &&
+				log[i + 2] === k + Math.abs(n) &&
+				log[i + 3]! * n > 0;
+				i += 4
+			)
+				n += log[i + 3]!;
+			walkRange(Y, doc, c, k, Math.abs(n), (s, a, b) => {
 				structs++;
 				note(s);
 				// A unit a record moved: where it shows now changed too.
@@ -2037,7 +2051,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 						noteUnit(e, owner, it.content.arr[k - s.id.clock], s.id.client, k, inserted);
 			});
 		}
-		return { texts, seqs, pairs, structs, rehome };
+		return { texts, seqs, structs, rehome };
 	};
 	type EditLookup = ReturnType<typeof makeEditIndex>;
 
@@ -2388,9 +2402,10 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		if (log === undefined || from === log.length) return false;
 		cursors.set(tr!, log.length);
 		for (const f of frames) f.wrote = true;
-		const edits = makeEditIndex(log, from);
+		const pairs = new Map<EngineNode, Set<string | null>>();
+		const edits = makeEditIndex(log, from, pairs);
 		foldStats.structs += edits.structs;
-		fold(edits.pairs, edits);
+		fold(pairs, edits);
 		return true;
 	};
 	const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;

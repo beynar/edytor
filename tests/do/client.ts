@@ -206,12 +206,12 @@ export class RawClient {
 	 * an ack's state vector covers ours. The room acknowledges every sync
 	 * message, our Step1 first (before it stored anything of ours), so "an
 	 * ack came" is not "our seed is stored" (CC-05: a race a loaded runner
-	 * lost).
+	 * lost). `state` names another state to cover (a bare socket's frames:
+	 * its own document holds nothing).
 	 */
-	stored() {
-		const ours = Y.decodeStateVector(Y.encodeStateVector(this.doc));
+	stored(state: Map<number, number> = Y.decodeStateVector(Y.encodeStateVector(this.doc))) {
 		return this.acks.some((ack) =>
-			[...ours].every(([client, clock]) => (ack.get(client) ?? 0) >= clock)
+			[...state].every(([client, clock]) => (ack.get(client) ?? 0) >= clock)
 		);
 	}
 

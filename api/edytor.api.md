@@ -5242,7 +5242,7 @@ export type SlotWrite = {
 };
 ```
 
-#### crdt/doc/content.d.ts#NewInline
+#### crdt/doc/ops.d.ts#NewInline
 
 ```ts
 export type NewInline = Omit<InlineSpec, 'id'> & {

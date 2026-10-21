@@ -1337,29 +1337,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 nestBlock: (id: import("./index.js").BlockId, parent: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
-                insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
-                removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
-                setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
-                patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
-                setBlock: (id: import("./index.js").BlockId, value: {
-                    type?: string;
-                    data?: Record<string, unknown>;
-                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
-                }) => import("./edytor-doc.js").Prepared;
-                deleteBlock: (id: import("./index.js").BlockId, opts?: {
-                    keepChildren?: boolean;
-                }) => import("./edytor-doc.js").Prepared;
-                splitBlock: (id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail?: import("./placement/model.js").SplitTail) => import("./edytor-doc.js").Prepared;
-                mergeBlocks: (fromId: import("./index.js").BlockId, intoId: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                mergeBackward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                mergeForward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
-                placeBeside: (ids: readonly import("./index.js").BlockId[], target: import("./index.js").BlockId, side: "left" | "right", kind?: string) => import("./edytor-doc.js").Prepared;
-                wrapInLayout: (ids: readonly import("./index.js").BlockId[], kind?: string, columns?: number) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
                 unNestBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -1369,6 +1346,29 @@ declare const bindCrdt: (Y: EngineApi) => {
                     after?: readonly import("./index.js").BlockSpec[];
                 }) => import("./edytor-doc.js").Prepared;
                 duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
+                placeBeside: (ids: readonly import("./index.js").BlockId[], target: import("./index.js").BlockId, side: "left" | "right", kind?: string) => import("./edytor-doc.js").Prepared;
+                wrapInLayout: (ids: readonly import("./index.js").BlockId[], kind?: string, columns?: number) => import("./edytor-doc.js").Prepared;
+                splitBlock: (id: import("./index.js").BlockId, offset: number, newId: import("./index.js").BlockId, tail?: import("./placement/model.js").SplitTail) => import("./edytor-doc.js").Prepared;
+                mergeBlocks: (fromId: import("./index.js").BlockId, intoId: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                mergeBackward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                mergeForward: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
+                deleteBlock: (id: import("./index.js").BlockId, opts?: {
+                    keepChildren?: boolean;
+                }) => import("./edytor-doc.js").Prepared;
+                setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
+                patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
+                setBlock: (id: import("./index.js").BlockId, value: {
+                    type?: string;
+                    data?: Record<string, unknown>;
+                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
+                }) => import("./edytor-doc.js").Prepared;
+                insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
+                deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
+                formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
+                clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
+                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").Prepared;
+                removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
             };
             apply: (p: import("./edytor-doc.js").Prepared, quiet?: boolean) => import("./edytor-doc.js").OpResult;
             compose: (...parts: import("./edytor-doc.js").Prepared[]) => import("./edytor-doc.js").Prepared;
@@ -1379,29 +1379,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
-            insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
-            deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
-            removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
-            setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
-            patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
-            setBlock: (id: string, value: {
-                type?: string;
-                data?: Record<string, unknown>;
-                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
-            }) => import("./edytor-doc.js").OpResult;
-            deleteBlock: (id: string, opts?: {
-                keepChildren?: boolean;
-            } | undefined) => import("./edytor-doc.js").OpResult;
-            splitBlock: (id: string, offset: number, newId: string, tail?: import("./placement/model.js").SplitTail | undefined) => import("./edytor-doc.js").OpResult;
-            mergeBlocks: (fromId: string, intoId: string) => import("./edytor-doc.js").OpResult;
-            mergeBackward: (id: string) => import("./edytor-doc.js").OpResult;
-            mergeForward: (id: string) => import("./edytor-doc.js").OpResult;
-            placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
-            wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             unNestBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
@@ -1411,6 +1388,29 @@ declare const bindCrdt: (Y: EngineApi) => {
                 after?: readonly import("./index.js").BlockSpec[];
             } | undefined) => import("./edytor-doc.js").OpResult;
             duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
+            placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => import("./edytor-doc.js").OpResult;
+            wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => import("./edytor-doc.js").OpResult;
+            splitBlock: (id: string, offset: number, newId: string, tail?: import("./placement/model.js").SplitTail | undefined) => import("./edytor-doc.js").OpResult;
+            mergeBlocks: (fromId: string, intoId: string) => import("./edytor-doc.js").OpResult;
+            mergeBackward: (id: string) => import("./edytor-doc.js").OpResult;
+            mergeForward: (id: string) => import("./edytor-doc.js").OpResult;
+            deleteBlock: (id: string, opts?: {
+                keepChildren?: boolean;
+            } | undefined) => import("./edytor-doc.js").OpResult;
+            setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
+            patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
+            setBlock: (id: string, value: {
+                type?: string;
+                data?: Record<string, unknown>;
+                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
+            }) => import("./edytor-doc.js").OpResult;
+            insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
+            deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
+            formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
+            clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
+            insertInline: (id: string, offset: number, atom: import("./doc/ops.js").NewInline) => import("./edytor-doc.js").OpResult;
+            removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: (options?: {
                 suggestions?: boolean;
@@ -2171,14 +2171,6 @@ export type SlotWrite = {
 };
 ```
 
-#### crdt/doc/content.d.ts#NewInline
-
-```ts
-export type NewInline = Omit<InlineSpec, 'id'> & {
-    id?: string;
-};
-```
-
 #### crdt/doc/gate.d.ts#SchemaProblem
 
 ```ts
@@ -2186,6 +2178,14 @@ export type SchemaProblem = {
     kind: 'unversioned' | 'unsupported' | 'foreign';
     version?: number;
     schema?: unknown;
+};
+```
+
+#### crdt/doc/ops.d.ts#NewInline
+
+```ts
+export type NewInline = Omit<InlineSpec, 'id'> & {
+    id?: string;
 };
 ```
 
@@ -2581,29 +2581,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
             nestBlock: (id: BlockId, parent: BlockId) => Prepared;
             deleteBlocks: (ids: readonly BlockId[]) => Prepared;
-            insertText: (id: BlockId, offset: number, text: string, marks?: Record<string, unknown>) => Prepared;
-            deleteText: (id: BlockId, offset: number, length: number) => Prepared;
-            formatRange: (id: BlockId, offset: number, length: number, marks: Record<string, unknown>) => Prepared;
-            clearMarks: (id: BlockId, offset: number, length: number) => Prepared;
-            insertInline: (id: BlockId, offset: number, atom: import("./doc/content.js").NewInline) => Prepared;
-            removeInline: (id: BlockId, inlineId: string) => Prepared;
-            setBlockType: (id: BlockId, type: string) => Prepared;
-            patchData: (target: DataTarget, patches: readonly DataPatch[]) => Prepared;
-            setBlock: (id: BlockId, value: {
-                type?: string;
-                data?: Record<string, unknown>;
-                content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-                children?: (import("./index.js").BlockSpec | JSONBlock)[];
-            }) => Prepared;
-            deleteBlock: (id: BlockId, opts?: {
-                keepChildren?: boolean;
-            }) => Prepared;
-            splitBlock: (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail) => Prepared;
-            mergeBlocks: (fromId: BlockId, intoId: BlockId) => Prepared;
-            mergeBackward: (id: BlockId) => Prepared;
-            mergeForward: (id: BlockId) => Prepared;
-            placeBeside: (ids: readonly BlockId[], target: BlockId, side: "left" | "right", kind?: string) => Prepared;
-            wrapInLayout: (ids: readonly BlockId[], kind?: string, columns?: number) => Prepared;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | JSONBlock)[]) => Prepared;
             moveBlocks: (ids: readonly BlockId[], dest: import("./index.js").Destination) => Prepared;
             unNestBlocks: (ids: readonly BlockId[]) => Prepared;
@@ -2613,6 +2590,29 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
                 after?: readonly import("./index.js").BlockSpec[];
             }) => Prepared;
             duplicateBlock: (id: BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => Prepared;
+            placeBeside: (ids: readonly BlockId[], target: BlockId, side: "left" | "right", kind?: string) => Prepared;
+            wrapInLayout: (ids: readonly BlockId[], kind?: string, columns?: number) => Prepared;
+            splitBlock: (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail) => Prepared;
+            mergeBlocks: (fromId: BlockId, intoId: BlockId) => Prepared;
+            mergeBackward: (id: BlockId) => Prepared;
+            mergeForward: (id: BlockId) => Prepared;
+            deleteBlock: (id: BlockId, opts?: {
+                keepChildren?: boolean;
+            }) => Prepared;
+            setBlockType: (id: BlockId, type: string) => Prepared;
+            patchData: (target: DataTarget, patches: readonly DataPatch[]) => Prepared;
+            setBlock: (id: BlockId, value: {
+                type?: string;
+                data?: Record<string, unknown>;
+                content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | JSONBlock)[];
+            }) => Prepared;
+            insertText: (id: BlockId, offset: number, text: string, marks?: Record<string, unknown>) => Prepared;
+            deleteText: (id: BlockId, offset: number, length: number) => Prepared;
+            formatRange: (id: BlockId, offset: number, length: number, marks: Record<string, unknown>) => Prepared;
+            clearMarks: (id: BlockId, offset: number, length: number) => Prepared;
+            insertInline: (id: BlockId, offset: number, atom: import("./doc/ops.js").NewInline) => Prepared;
+            removeInline: (id: BlockId, inlineId: string) => Prepared;
         };
         apply: (p: Prepared, quiet?: boolean) => OpResult;
         compose: (...parts: Prepared[]) => Prepared;
@@ -2623,29 +2623,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
         deleteBlocks: (ids: readonly string[]) => OpResult;
-        insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => OpResult;
-        deleteText: (id: string, offset: number, length: number) => OpResult;
-        formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => OpResult;
-        clearMarks: (id: string, offset: number, length: number) => OpResult;
-        insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => OpResult;
-        removeInline: (id: string, inlineId: string) => OpResult;
-        setBlockType: (id: string, type: string) => OpResult;
-        patchData: (target: DataTarget, patches: readonly DataPatch[]) => OpResult;
-        setBlock: (id: string, value: {
-            type?: string;
-            data?: Record<string, unknown>;
-            content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
-            children?: (import("./index.js").BlockSpec | JSONBlock)[];
-        }) => OpResult;
-        deleteBlock: (id: string, opts?: {
-            keepChildren?: boolean;
-        } | undefined) => OpResult;
-        splitBlock: (id: string, offset: number, newId: string, tail?: SplitTail | undefined) => OpResult;
-        mergeBlocks: (fromId: string, intoId: string) => OpResult;
-        mergeBackward: (id: string) => OpResult;
-        mergeForward: (id: string) => OpResult;
-        placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => OpResult;
-        wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => OpResult;
         insertBlocks: (dest: import("./index.js").Destination, specs: readonly (JSONBlock | import("./index.js").BlockSpec)[]) => OpResult;
         moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => OpResult;
         unNestBlocks: (ids: readonly string[]) => OpResult;
@@ -2655,6 +2632,29 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             after?: readonly import("./index.js").BlockSpec[];
         } | undefined) => OpResult;
         duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => OpResult;
+        placeBeside: (ids: readonly string[], target: string, side: "left" | "right", kind?: string | undefined) => OpResult;
+        wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => OpResult;
+        splitBlock: (id: string, offset: number, newId: string, tail?: SplitTail | undefined) => OpResult;
+        mergeBlocks: (fromId: string, intoId: string) => OpResult;
+        mergeBackward: (id: string) => OpResult;
+        mergeForward: (id: string) => OpResult;
+        deleteBlock: (id: string, opts?: {
+            keepChildren?: boolean;
+        } | undefined) => OpResult;
+        setBlockType: (id: string, type: string) => OpResult;
+        patchData: (target: DataTarget, patches: readonly DataPatch[]) => OpResult;
+        setBlock: (id: string, value: {
+            type?: string;
+            data?: Record<string, unknown>;
+            content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+            children?: (import("./index.js").BlockSpec | JSONBlock)[];
+        }) => OpResult;
+        insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => OpResult;
+        deleteText: (id: string, offset: number, length: number) => OpResult;
+        formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => OpResult;
+        clearMarks: (id: string, offset: number, length: number) => OpResult;
+        insertInline: (id: string, offset: number, atom: import("./doc/ops.js").NewInline) => OpResult;
+        removeInline: (id: string, inlineId: string) => OpResult;
         project: () => import("./index.js").ProjectedDoc;
         toJSON: (options?: {
             suggestions?: boolean;

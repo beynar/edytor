@@ -134,8 +134,8 @@ declare const equationForms: (mathml?: MathML) => {
             lines?: boolean;
             itemKind?: string;
             island?: boolean;
-            defaultChild?: string;
             rendersContent: boolean;
+            defaultChild?: string;
             void: boolean;
             html?: string | ((block: JSONBlock, content: string, children: string) => string);
             markdown?: (block: JSONBlock, content: string, children: string, context: import("../plugins.js").MarkdownContext) => string;

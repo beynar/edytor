@@ -43,7 +43,7 @@
 import type { BlockId } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
 import { ref } from './doc/plan.js';
-import type { OpsContext } from './doc/steps.js';
+import type { OpsContext } from './doc/ops.js';
 
 /** A position in one document version: a block and a display offset. */
 export type DocPosition = { block: BlockId; offset: number };

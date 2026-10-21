@@ -39,10 +39,7 @@ import type { BlockId, BlockSpec, Destination } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
 import type { DocPosition, RangeView } from './rangeDelete.js';
 import { ref } from './doc/plan.js';
-import type { OpsContext } from './doc/steps.js';
-import type { MoveOps } from './doc/moves.js';
-import type { DeleteOps } from './doc/delete.js';
-import type { MetaOps } from './doc/meta.js';
+import type { OpsContext } from './doc/ops.js';
 import { id as freshId } from '../utils.js';
 import { sanitizeSpec } from '../utils/json.js';
 import { collides } from './placement/model.js';
@@ -71,11 +68,6 @@ export type FlowView = RangeView & {
 export type FlowTarget = DocPosition | { replace: readonly BlockId[] } | { slot: Destination };
 
 /** What flow placement composes: the step writers and the ops it places and deletes with. */
-export type FlowContext = OpsContext &
-	Pick<MoveOps, 'insertBlocks'> &
-	Pick<DeleteOps, 'deleteBlocks'> &
-	Pick<MetaOps, 'dataSteps' | 'replaceData'>;
-
 const lengthOf = (l: FlowLine) =>
 	(l.content ?? []).reduce((n, i) => n + (i.kind === 'text' ? i.text.length : 1), 0);
 
@@ -102,7 +94,7 @@ export const placedEnd = (
 };
 
 /** `insertFlow`, prepared. */
-export const flowOps = (c: FlowContext) => {
+export const flowOps = (c: OpsContext) => {
 	const roleOf = c.roles.of;
 	/** What a kind is in a table: the table, its row or its cell. */
 	const tableKind = (kind: string): 'table' | 'row' | 'cell' | undefined =>
@@ -167,7 +159,7 @@ export const flowOps = (c: FlowContext) => {
 			/** Whole blocks at a slot, after `pre`; the caret ends the last one's shown content. */
 			const atSlot = (dest: Destination, pre: PlanStep[]): Prepared => {
 				const placed = specs(dest.parent);
-				const p = c.insertBlocks(dest, placed);
+				const p = c.prepare.insertBlocks(dest, placed);
 				const at = endOf(placed.at(-1)!) ?? { block: last().id, offset: lengthOf(last()) };
 				// The lines are placed while the replaced blocks still show (each step reads the
 				// display as it stands), then those go.
@@ -184,7 +176,7 @@ export const flowOps = (c: FlowContext) => {
 					const first = target.replace
 						.filter((id) => at.has(id))
 						.sort((a, b) => at.get(a)! - at.get(b)!)[0];
-					const del = c.deleteBlocks(
+					const del = c.prepare.deleteBlocks(
 						target.replace,
 						false,
 						first === undefined ? undefined : c.positionOf(first)?.parent

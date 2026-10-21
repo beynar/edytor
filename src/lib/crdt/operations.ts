@@ -24,7 +24,7 @@ import type {
 	Prepared
 } from './doc/types.js';
 import type { DataPatch } from './data.js';
-import type { NewInline } from './doc/content.js';
+import type { NewInline } from './doc/ops.js';
 import type { Flow, FlowTarget, FlowView } from './flow.js';
 import type {
 	BlockId,

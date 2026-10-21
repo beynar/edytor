@@ -23,18 +23,16 @@
  *   `doc/types.ts` — the public types; `doc/plan.ts` — op results, a plan's
  *   effect, ingress normalization.
  * - `doc/reads.ts` (`DocBase`: the doc, its engine, its index and
- *   roles) — the reads, roles and document order; `doc/capability.ts` —
- *   structural capability (`canPlace`, `fits`, `canMerge`, the island and
- *   void rules).
+ *   roles) — the reads, roles and document order.
  * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution);
  *   `doc/events.ts` — `onChange`; `doc/history.ts` —
  *   `createUndoManager`; `doc/anchors.ts` — caret anchors.
- * - `doc/steps.ts` — the step writers every op composes (ranks, settle,
- *   emptying, dissolving); the prepared op families over them
- *   (`OpsContext`): `doc/moves.ts`, `doc/layout.ts`, `doc/split-merge.ts`,
- *   `doc/delete.ts`, `doc/meta.ts` (type and data), `doc/content.ts`
- *   (text, atoms, marks); range deletion and flow placement are
- *   `rangeDelete.ts` and `flow.ts`.
+ * - `doc/ops.ts` — one closure over the reads: the structural capability
+ *   (`canPlace`, `fits`, `canMerge`, the island and void rules), the step
+ *   writers every op composes (ranks, settle, emptying, dissolving) and the
+ *   prepared op families (placement, layout, split and merge, delete, type
+ *   and data, text, atoms and marks); range deletion and flow placement are
+ *   `rangeDelete.ts` and `flow.ts`, over them (`OpsContext`).
  *
  * ── Identity discipline ────────────────────────────────────────────────
  *
@@ -93,18 +91,11 @@ import {
 import { bindSeed, restore } from './doc/seed.js';
 import { applied, ref } from './doc/plan.js';
 import { docReads, type DocBase } from './doc/reads.js';
-import { docCapability } from './doc/capability.js';
 import { writeFunnel } from './doc/funnel.js';
 import { docEvents } from './doc/events.js';
 import { docHistory } from './doc/history.js';
 import { docAnchors } from './doc/anchors.js';
-import { planSteps } from './doc/steps.js';
-import { moveOps } from './doc/moves.js';
-import { layoutOps } from './doc/layout.js';
-import { splitMergeOps } from './doc/split-merge.js';
-import { deleteOps } from './doc/delete.js';
-import { metaOps } from './doc/meta.js';
-import { contentOps } from './doc/content.js';
+import { docOps } from './doc/ops.js';
 import type { SuggestContext } from './doc/suggest.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path
@@ -279,7 +270,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		// The facade's parts, each over the ones before it (`doc/*`).
 		const base: DocBase = { Y, doc, runsView, roles, roleOf, rendersContentOf };
 		const reads = { ...base, ...docReads(base) };
-		const shape = { ...reads, ...docCapability(reads) };
+		// The capability, the step writers and the prepared op families (`doc/ops.ts`).
+		const ops = { ...reads, ...docOps(reads) };
 		const {
 			blockJSON,
 			view,
@@ -309,7 +301,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			hasBlock,
 			live
 		} = reads;
-		const { canPlace, fits, nestParent, canMerge, defaultChild } = shape;
+		const { canPlace, fits, nestParent, canMerge, defaultChild, plan, landingOf, besideAt } = ops;
 
 		const funnel = writeFunnel({ ...reads, BA, config });
 		const { write, apply } = funnel;
@@ -321,37 +313,20 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		};
 		const { createUndoManager } = docHistory({ ...base, ...funnel, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
-		const steps = { ...shape, ...planSteps(shape) };
-		const { plan } = steps;
-		// The prepared op families (`OpsContext`: the reads, capability and step
-		// writers): every op they answer is a document write, but for the reads
-		// and step writers taken out here.
-		const { landingOf, ...moves } = moveOps(steps);
-		const { besideAt, ...layouts } = layoutOps(steps);
-		const { dataSteps, replaceData, ...metas } = metaOps(steps);
-		const deletes = deleteOps(steps);
-
-		/** What range deletion and flow placement compose: the step writers and the ops. */
-		const ops = { ...steps, ...moves, ...deletes, dataSteps, replaceData };
 
 		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
-			...moves,
-			...layouts,
-			...splitMergeOps(steps),
-			...deletes,
-			...metas,
-			...contentOps(steps),
+			...ops.prepare,
 			/**
 			 * Move `id` to the last position under `parent` — under a container
 			 * it is no item of, under its last item (`nestParent`: Tab after a list).
 			 */
 			nestBlock: (id: BlockId, parent: BlockId) => {
 				const at = nestParent([ref(id)], ref(parent));
-				return moves.moveBlocks([id], { parent: at, index: childrenIds(at).length });
+				return ops.prepare.moveBlocks([id], { parent: at, index: childrenIds(at).length });
 			},
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
-			deleteBlocks: (ids: readonly BlockId[]): Prepared => deletes.deleteBlocks(ids),
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => ops.prepare.deleteBlocks(ids),
 			...rangeDeleteOps(ops),
 			...flowOps(ops)
 		};

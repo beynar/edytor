@@ -308,6 +308,8 @@ export class Item extends AbstractStruct {
       }
       addStructToIdSet(transaction.insertSet, this)
       transaction.doc.store.add(this)
+      // YP33: log the units it shows before its content integrates (a node's children follow it)
+      logItem(transaction, 0, this, this.content.constructor === ContentDeleted ? 0 : this.length, false)
       this.content.integrate(transaction, this)
       // add parent to transaction.changed
       addChangedTypeToTransaction(transaction, /** @type {YNode} */ (this.parent), this.parentSub)
@@ -393,7 +395,7 @@ export class Item extends AbstractStruct {
       // adjust the length of parent
       if (this.holds > 0) {
         // YP20: already hidden — the delete set counts it again, the log gives it back
-        logHold(transaction, this, this.length)
+        logItem(transaction, 1, this, this.length) // YP33
       } else if (this.movers !== null) {
         // YP22: hidden at home already; its mover shows it no more (`gone`)
         logMove(transaction, this, this.mover)
@@ -411,7 +413,7 @@ export class Item extends AbstractStruct {
       }
       this.markDeleted()
       transaction.deleteSet.add(this.id.client, this.id.clock, this.length)
-      addChangedTypeToTransaction(transaction, parent, this.parentSub)
+      logItem(transaction, 0, this, -this.length) // YP33
       // YP14: a node a concurrent value replaced keeps its subtree (the document asked)
       if (!isKeptReplaced(this)) this.content.delete(transaction, this) // YP22: a move record drops itself from its units' movers
     }
@@ -929,26 +931,36 @@ export class ContentDeleted {
 }
 
 // YP20 begin (edytor fork: hold records — see UPSTREAM.md YP20)
+// YP33 begin (edytor fork: one log of what a transaction did to items — see UPSTREAM.md YP33)
 /**
- * Log that a hold changed `item`'s visibility (`len > 0`: shown, `< 0`:
- * hidden) in `tr.holds`, in order, and its parent as changed.
+ * Log `len` units of `item` as `kind` (0 an edit, 1 a hold, 2 a move) in
+ * `tr.log`, in order, and (unless `mark` is false) its parent as changed.
+ * An entry the last one continues (its kind, its client, the next clock, its
+ * sign) extends it, so a run of one writer's items is one entry; `len` 0
+ * logs none.
  *
  * @param {Transaction} tr
+ * @param {number} kind
  * @param {Item} item
  * @param {number} len
+ * @param {boolean} [mark]
  */
-const logHold = (tr, item, len) => {
-  tr.holds.push(item.id.client, item.id.clock, len)
-  addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
+const logItem = (tr, kind, item, len, mark = true) => {
+  const log = tr.log
+  const n = log.length
+  const { client, clock } = item.id
+  if (log[n - 4] === kind && log[n - 3] === client && log[n - 2] + math.abs(log[n - 1]) === clock && log[n - 1] * len > 0) log[n - 1] += len
+  else if (len !== 0) log.push(kind, client, clock, len)
+  if (mark) addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
 }
+// YP33 end
 
 /**
  * Add `delta` (1, or -1: release) of a hold record (`record` null: `holds`)
  * or of the move record `record` (its `movers`, YP22; a record never moves a
  * record) to `item`. An item that is not removed and starts or stops being
  * hidden moves its parent's length and drops its search markers; a hold that
- * does is logged (`tr.holds`), and so is a unit whose mover changed
- * (`tr.moves`).
+ * does is logged (`tr.log`, YP33), and so is a unit whose mover changed.
  *
  * @param {Transaction} tr
  * @param {Item} item
@@ -976,7 +988,7 @@ const holdItem = (tr, item, delta, record) => {
     if (item.countable && item.parentSub === null) parent._length += len
     // the indices the search markers counted moved (a held delete moves them itself)
     if (parent._searchMarker) parent._searchMarker.length = 0
-    if (record === null) logHold(tr, item, len)
+    if (record === null) logItem(tr, 1, item, len) // YP33
   }
   const after = item.mover
   if (before !== after) {
@@ -1223,15 +1235,14 @@ const stronger = (a, b) =>
 
 /**
  * Log that `item`'s mover changed (or it left its mover: removed) in
- * `tr.moves`, in order, and its home and its new mover's sequences as changed.
+ * `tr.log` (YP33), and its home and its new mover's sequences as changed.
  *
  * @param {Transaction} tr
  * @param {Item} item
  * @param {Item|null} mover
  */
 const logMove = (tr, item, mover) => {
-  tr.moves.push(item.id.client, item.id.clock, item.length)
-  addChangedTypeToTransaction(tr, /** @type {YNode} */ (item.parent), item.parentSub)
+  logItem(tr, 2, item, item.length) // YP33
   if (mover !== null) addChangedTypeToTransaction(tr, /** @type {YNode} */ (mover.parent), null)
 }
 

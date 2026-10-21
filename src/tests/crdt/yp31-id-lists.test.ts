@@ -13,6 +13,13 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 
+/** The `client, clock, len` entries of kind `kind` in `tr`'s log (fork patch YP33: 1 a hold, 2 a move). */
+const logged = (tr, kind) => {
+	const out = [];
+	for (let i = 0; i < tr.log.length; i += 4)
+		if (tr.log[i] === kind) out.push(tr.log[i + 1], tr.log[i + 2], tr.log[i + 3]);
+	return out;
+};
 const mk = (client: number) => {
 	const doc = new Y.Doc();
 	doc.clientID = client;
@@ -59,7 +66,7 @@ describe('YP31 — a hold record inside a nested node holds nothing', () => {
 	it('written, the items it names still show; the root records list still holds', () => {
 		const [a] = seeded('abcdef', 2);
 		const logs = [];
-		a.on('commit', (tr) => logs.push([...tr.holds]));
+		a.on('commit', (tr) => logs.push(logged(tr, 1)));
 		nested(a).hold([1, 1, 2]);
 		expect(text(a)).toBe('abcdef');
 		expect(t(a).length).toBe(6);

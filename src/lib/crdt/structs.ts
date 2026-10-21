@@ -97,53 +97,43 @@ export const structAt = (
 };
 
 /**
- * Walk every struct an IdSet covers, in (client, clock) order: `fn(struct,
- * from, to)` gets the struct and the clock range `[from, to)` of it the set
- * covers (a struct can reach past a range a diff of two id sets cut). The
- * walk never splits a struct; `fn` returning `false` halts it.
- *
- * Returns `false` when coverage was INCOMPLETE — a client's struct list
- * was missing or a range start could not be located — so the caller can
- * fall back to an all-consumers/opaque answer instead of trusting a
- * partial walk. `clientsOf` throws first when the store itself is absent.
+ * Walk every struct the range `client:clock`, `len` units, covers, in clock
+ * order: `fn(struct, from, to)` gets the struct and the clock range `[from,
+ * to)` of it the range covers (a struct can reach past it). The walk never
+ * splits a struct; a client or a clock the store lacks walks nothing.
  */
+export const walkRange = (
+	Y: EngineApi,
+	doc: EngineDoc,
+	client: number,
+	clock: number,
+	len: number,
+	fn: (struct: StoreStruct, from: number, to: number) => void
+): void => {
+	const structs = clientsOf(doc).get(client) ?? [];
+	const end = clock + len;
+	let i = structs.length;
+	try {
+		if (clock < end) i = Y.findIndexSS(structs as never[], clock);
+	} catch {
+		// past the client's clock: nothing to walk
+	}
+	for (; i < structs.length && structs[i]!.id.clock < end; i++) {
+		const s = structs[i]!;
+		fn(s, Math.max(clock, s.id.clock), Math.min(end, s.id.clock + s.length));
+	}
+};
+
+/** Walk every struct an IdSet covers, in (client, clock) order (`walkRange` over each range). */
 export const walkIdSet = (
 	Y: EngineApi,
 	doc: EngineDoc,
 	idSet: IdSetLike,
-	fn: (struct: StoreStruct, from: number, to: number) => boolean | void
-): boolean => {
-	const clients = clientsOf(doc);
-	let complete = true;
-	let stopped = false;
+	fn: (struct: StoreStruct, from: number, to: number) => void
+): void =>
 	idSet.clients.forEach((ranges, client) => {
-		if (stopped) return;
-		const structs = clients.get(client);
-		if (structs === undefined) {
-			complete = false;
-			return;
-		}
-		for (const r of ranges.getIds()) {
-			const end = r.clock + r.len;
-			let i: number;
-			try {
-				i = Y.findIndexSS(structs as never[], r.clock);
-			} catch {
-				complete = false;
-				continue;
-			}
-			for (; i < structs.length; i++) {
-				const s = structs[i]!;
-				if (s.id.clock >= end) break;
-				if (fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length)) === false) {
-					stopped = true;
-					return;
-				}
-			}
-		}
+		for (const r of ranges.getIds()) walkRange(Y, doc, client, r.clock, r.len, fn);
 	});
-	return complete;
-};
 
 /**
  * The id the local `redone` chain leads `id` to: the copy an undo or redo

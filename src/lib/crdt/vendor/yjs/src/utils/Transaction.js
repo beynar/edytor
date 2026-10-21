@@ -40,19 +40,21 @@ export class Transaction {
      * Describes the set of inserted items by ids
      */
     this.insertSet = createIdSet()
+    // YP33 begin (edytor fork: one log of what the transaction did to items — see UPSTREAM.md YP33)
     /**
-     * YP20: the visibility changes hold records made, in order: per item,
-     * `client, clock, len` (`len > 0`: shown, `< 0`: hidden; an item removed
-     * while held is logged shown, as the delete set counts it hidden).
+     * What the transaction did to items, in order: per run of one writer's
+     * items `kind, client, clock, len` (an item that continues the last entry
+     * extends it). Kind 0, an edit: integrated (`len > 0`, before its content
+     * integrates; an item integrated removed logs none) or removed (`len < 0`);
+     * kind 1, a hold record's
+     * (YP20): shown (`len > 0`) or hidden (`< 0`; an item removed while held
+     * is logged shown, so an item's kinds 0 and 1 sum to its visibility
+     * change); kind 2, its mover changed (YP22: a move record integrated or
+     * deleted, a moved unit removed).
      * @type {Array<number>}
      */
-    this.holds = []
-    /**
-     * YP22: the units whose mover changed (a move record integrated or
-     * deleted, a moved unit removed), in order: per item `client, clock, len`.
-     * @type {Array<number>}
-     */
-    this.moves = []
+    this.log = []
+    // YP33 end
     /**
      * All types that were directly modified (property added or child
      * inserted/deleted). New types are not included in this Set.

@@ -371,6 +371,19 @@ export const markSynced = (host: LifecycleHost): boolean => {
 	return true;
 };
 
+/** Report `error` on `provider`'s error channel (`'message-error'`): a frame, a payload or a storage failure. */
+export const fault = (
+	provider: { emit?(event: 'message-error', args: [unknown, unknown]): void },
+	error: unknown
+): void => provider.emit?.('message-error', [error, provider]);
+
+/** A message type no handler claims inside a valid envelope: protocol skew, reported, never dropped silently. */
+export const unknownType = (
+	provider: { emit?(event: 'message-error', args: [unknown, unknown]): void },
+	what: string,
+	type: number
+): void => fault(provider, new Error(`Unknown ${what} message type ${type}`));
+
 /**
  * Terminal `'failed'` emission (the sync-failure contract): fires at
  * most once per provider, only while it has never synced — destroy before
@@ -567,7 +580,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				// (`discarded`) and reported the same way.
 				const update = decoding.readVarUint8Array(decoder);
 				const origin = emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider);
-				const onError = (error: Error) => provider.emit?.('message-error', [error, provider]);
+				const onError = (error: Error) => fault(provider, error);
 				const { applied, problem, discarded } = syncProtocol.applyRemote(
 					provider.doc,
 					update,
@@ -578,7 +591,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				if (refused) {
 					const docName = behavior.docName(provider);
 					provider.emit?.('schema-mismatch', [{ docName, problem: refused }, provider]);
-					provider.emit?.('message-error', [new SchemaMismatchError(docName, refused), provider]);
+					fault(provider, new SchemaMismatchError(docName, refused));
 				}
 				// Only an ACCEPTED Step2 is a held member state — a refused
 				// one never claims the handshake.
@@ -588,10 +601,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				return;
 			}
 			// Unknown sync subtype inside a valid envelope — observable.
-			provider.emit?.('message-error', [
-				new Error(`Unknown sync message type ${syncMessageType}`),
-				provider
-			]);
+			unknownType(provider, 'sync', syncMessageType);
 		},
 		[messageQueryAwareness]: (encoder, _decoder, provider) => {
 			encoding.writeVarUint(encoder, messageAwareness);
@@ -633,10 +643,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		if (!messageHandler) {
 			// Fail closed + observable: a VALID envelope carrying a message
 			// type no handler claims is protocol skew — never silent.
-			provider.emit?.('message-error', [
-				new Error(`Unknown v14 message type ${messageType}`),
-				provider
-			]);
+			unknownType(provider, 'v14', messageType);
 			return encoder;
 		}
 		const followUp = messageHandler(encoder, decoder, provider, emitSynced);
@@ -657,7 +664,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 			} catch (error) {
 				// same-tab publishes are delivered synchronously — a malformed
 				// message must not propagate into the publisher's call stack.
-				provider.emit?.('message-error', [error, provider]);
+				fault(provider, error);
 			}
 		};
 	};
@@ -723,6 +730,30 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 			awarenessFrame(provider.awareness, [provider.doc.clientID], new Map())
 		);
 
+	/**
+	 * Wire `provider` to its room: its BroadcastChannel subscriber, `onUpdate`
+	 * on its document's updates and its presence changes to the room
+	 * (`awarenessUpdateHandler`). The teardown removes both listeners.
+	 */
+	const listen = (
+		provider: P & BcMember,
+		onUpdate: (
+			update: Uint8Array,
+			origin: unknown,
+			doc?: unknown,
+			transaction?: { local: boolean }
+		) => void
+	): (() => void) => {
+		provider._bcSubscriber = bcSubscriber(provider);
+		const onPresence = awarenessUpdateHandler(provider);
+		provider.doc.on('update', onUpdate);
+		provider.awareness.on('update', onPresence);
+		return () => {
+			provider.awareness.off('update', onPresence);
+			provider.doc.off('update', onUpdate);
+		};
+	};
+
 	/** Leave the room: announce the presence removal, then unsubscribe the BC channel. */
 	const disconnectBc = (provider: P & BcMember): void => {
 		depart(provider);
@@ -742,6 +773,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		hello,
 		depart,
 		connectBc,
-		disconnectBc
+		disconnectBc,
+		listen
 	};
 };

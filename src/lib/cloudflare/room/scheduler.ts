@@ -8,8 +8,16 @@ import { noTimers } from './shared.js';
 import type { RoomContext } from './context.js';
 
 /** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */
-export type Task = 'history' | 'save' | 'purge' | 'retention' | 'forward' | 'expiry';
-const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention', 'forward', 'expiry'];
+export type Task = 'history' | 'save' | 'reseed' | 'purge' | 'retention' | 'forward' | 'expiry';
+const TASKS: readonly Task[] = [
+	'history',
+	'save',
+	'reseed',
+	'purge',
+	'retention',
+	'forward',
+	'expiry'
+];
 
 /** What runs each task: a promise is awaited before the next task. */
 export type TaskRunners = Record<Task, () => Promise<void> | void>;

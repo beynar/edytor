@@ -77,6 +77,12 @@ export const messageChunk = 5;
  * room sends it only to a socket that subscribed.
  */
 export const messageComments = 6;
+/**
+ * Client → server, after a re-seed (`room.reseed.protocol`): the client's
+ * whole old document, its unsaved edits in it, for the room to rebase onto
+ * the current epoch. Sent only when the room asks (its epoch notice).
+ */
+export const messageRebase = 7;
 
 /** A WebSocket message limit on Cloudflare (32 MiB): a larger frame is sent as chunks. */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
@@ -422,6 +428,14 @@ export const CLOSE = {
 	/** The dialed replica is bound to another user. */
 	replicaTaken: 4409,
 	/**
+	 * The room re-seeded the document (`room.reseed.protocol`; the reason is
+	 * the new epoch): not a refusal. A client with unsaved edits redials to
+	 * hand them over; then, or with none, it loads the new epoch.
+	 */
+	reseeded: 4410,
+	/** The client's epoch is older than the cuts the room keeps: its unsaved edits cannot merge. */
+	epochExpired: 4411,
+	/**
 	 * A room quota refused the socket's write (`quota: document`,
 	 * `quota: rate`, `quota: frame`): the frame was not applied, and a
 	 * redial would resend it and meet the same quota.
@@ -449,7 +463,8 @@ export const assertRoomId = (id: string): void => {
 
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`) but `expired`. */
 export const isRefusal = (code: number): boolean =>
-	code === CLOSE.refused || (code >= 4000 && code < 5000 && code !== CLOSE.expired);
+	code === CLOSE.refused ||
+	(code >= 4000 && code < 5000 && code !== CLOSE.expired && code !== CLOSE.reseeded);
 
 /**
  * A terminal refusal: the server closed the socket with a policy code

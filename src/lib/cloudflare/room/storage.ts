@@ -61,17 +61,21 @@ class CompressedRecord extends Error {
 const loadedUpdate = (
 	found: LoadedDocument,
 	seed: (value: JSONDoc) => Uint8Array
-): { update: Uint8Array; replicas: ReplicaOwner[] | null } => {
+): { update: Uint8Array; replicas: ReplicaOwner[] | null; epoch?: number } => {
 	if (found instanceof Uint8Array) return { update: found, replicas: null };
 	if (typeof found === 'object' && found !== null) {
 		if ('update' in found && found.update instanceof Uint8Array) {
-			const replicas = found.replicas;
+			const { replicas, epoch } = found as { replicas: ReplicaOwner[]; epoch?: unknown };
 			const valid = (owner: ReplicaOwner) =>
 				parseReplica(owner?.replica) !== null &&
 				typeof owner.user === 'string' &&
 				owner.user.length <= 256;
 			if (Array.isArray(replicas) && replicas.every(valid))
-				return { update: found.update, replicas };
+				return {
+					update: found.update,
+					replicas,
+					...(Number.isSafeInteger(epoch) && (epoch as number) >= 0 && { epoch: epoch as number })
+				};
 		} else if ('children' in found && Array.isArray(found.children)) {
 			return { update: seed(found as JSONDoc), replicas: [] };
 		}
@@ -239,11 +243,13 @@ export class RoomStorage {
 					tables.editors,
 					tables.restore,
 					tables.moves,
-					tables.late
+					tables.late,
+					tables.cuts
 				])
 					sql.exec(`DROP TABLE IF EXISTS ${table}`);
 			});
 			room.scheduler.forget();
+			room.reseed.forget();
 			room.history.forget();
 			room.moves.forget();
 			room.state.presence.clear();
@@ -273,6 +279,7 @@ export class RoomStorage {
 		noTimers(() => {
 			let doc: YDoc;
 			let replicas: ReplicaOwner[] | null;
+			let epoch: number | undefined;
 			try {
 				// JSON is seeded deterministically: a client seeding the same value writes the same update.
 				const loaded = loadedUpdate(found, ({ children, data }) => {
@@ -286,6 +293,7 @@ export class RoomStorage {
 				});
 				doc = admit(loaded.update, `room ${room.ctx.id} onLoad`, () => room.history.restoreKeep);
 				replicas = loaded.replicas;
+				epoch = loaded.epoch;
 			} catch (error) {
 				return this.fail(error, false);
 			}
@@ -296,6 +304,8 @@ export class RoomStorage {
 				room.ctx.storage.transactionSync(() => {
 					record = this.insert('snapshot', snapshot);
 					this.touch();
+					// A mirror saved after a re-seed carries its epoch (`room.reseed.protocol`).
+					if (epoch !== undefined) room.reseed.setEpoch(epoch);
 					if (!waiting.isEmpty()) this.insert('pending', deletesUpdate(waiting));
 					// Without a registry, every id with content is left claimable (user
 					// ''). As in `register`, an unowned row never replaces an owner a
@@ -601,6 +611,34 @@ export class RoomStorage {
 	}
 
 	/**
+	 * A re-seed (`room.reseed.cut`): `update`, the new epoch, replaces every
+	 * row (the generation record and one snapshot), in one storage
+	 * transaction with `within` (the re-seed's own rows). The live document
+	 * is not touched: the caller rebuilds it from the rows.
+	 */
+	replaceWith(update: Uint8Array, within: () => void) {
+		const room = this.room;
+		const measured = this.documentBytes;
+		let record = -1;
+		try {
+			room.ctx.storage.transactionSync(() => {
+				room.sql.exec(`DELETE FROM ${room.tables.rows}`);
+				this.documentBytes = 0;
+				this.#nextRecord = 0;
+				record = this.insert('snapshot', update);
+				this.touch();
+				within();
+			});
+		} catch (error) {
+			this.documentBytes = measured;
+			throw error;
+		}
+		this.updates = 0;
+		this.storedWaiting = Y.createIdSet();
+		this.#compressLater(record, update);
+	}
+
+	/**
 	 * Automatic compaction, once the message that made it due is
 	 * acknowledged. A failure is logged and retried after half the
 	 * threshold; the edit is already stored and nobody is closed.
@@ -781,6 +819,7 @@ export class RoomStorage {
 	private noteChange(origin: unknown) {
 		const at = this.room.clock();
 		this.room.purge.noteChange(at);
+		this.room.reseed.noteChange(at);
 		this.room.history.noteChange(origin, at);
 	}
 
@@ -804,6 +843,7 @@ export class RoomStorage {
 		const saved = {
 			value: room.read(),
 			update: Y.encodeStateAsUpdate(room.live),
+			epoch: room.reseed.epoch,
 			replicas: room.sql
 				.exec<ReplicaOwner>(`SELECT replica, user FROM ${room.tables.replicas} ORDER BY replica`)
 				.toArray()

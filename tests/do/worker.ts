@@ -35,6 +35,7 @@ import {
 	type DocumentRoomEnv,
 	type RoomLogEntry,
 	type LoadedDocument,
+	type ReseedOptions,
 	type SavedDocument
 } from '../../src/lib/cloudflare/index.js';
 import { Y } from '../../src/lib/crdt/engine.js';
@@ -523,6 +524,34 @@ export class TimedRoom extends DocumentRoom<Env> {
 	}
 }
 
+/**
+ * Rooms that re-seed (`reseed-*`, `room.reseed.*`): a fake clock, an
+ * 8,000-byte quota, a re-seed due past 2,000 stored bytes after a minute
+ * idle; `reseed-off-*` never re-seeds. Log entries are kept.
+ */
+export class ReseedRoom extends DocumentRoom<Env> {
+	readonly logged: RoomLogEntry[] = [];
+	constructor(ctx: DurableObjectState, env: Env) {
+		fakeAlarms(ctx);
+		super(ctx, {
+			...env,
+			EDYTOR_MAX_DOCUMENT_BYTES: '8000',
+			EDYTOR_MAX_INBOUND_FRAME_BYTES: '64000'
+		});
+	}
+	protected override log(entry: RoomLogEntry) {
+		this.logged.push(entry);
+	}
+	protected override now(): number {
+		return fakeNow(this.ctx.storage.sql);
+	}
+	protected override reseeding(): ReseedOptions | false {
+		return (this.ctx.id.name ?? '').startsWith('reseed-off-')
+			? false
+			: { at: 2000, idleMs: 60_000 };
+	}
+}
+
 /** Any Durable Object: `attachRoom` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
 	document = attachRoom(this, { onLoad: () => LOADED });
@@ -608,6 +637,7 @@ export type Env = DocumentRoomEnv & {
 	LOCKED: DurableObjectNamespace<LockedRoom>;
 	MOVES: DurableObjectNamespace<MoveRoom>;
 	TIMED: DurableObjectNamespace<TimedRoom>;
+	RESEED: DurableObjectNamespace<ReseedRoom>;
 	DEMO: DurableObjectNamespace<DocumentRoom>;
 	HISTORY: KVNamespace;
 	HISTORY_R2: R2Bucket;
@@ -697,6 +727,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('timed-')) {
 		return routeDocumentSocket(request, env.TIMED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('reseed-')) {
+		return routeDocumentSocket(request, env.RESEED, name, authorizeFromQuery);
 	}
 	if (name.startsWith('locked-')) {
 		return routeDocumentSocket(request, env.LOCKED, name, authorizeFromQuery);

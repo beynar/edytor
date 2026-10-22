@@ -65,8 +65,8 @@ const both = (s: ReturnType<typeof setup>, after?: (epoch: Replica) => void) => 
 	Y.applyUpdate(oracle.doc, s.offline.encode(), 'remote');
 	const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
 	after?.(epoch);
-	const report = (epoch.doc as never as { transact: (f: () => unknown) => unknown }).transact(() =>
-		rebaseOnto(epoch, decodeCut(encodeCut(cut)), s.offline.encode(), scratch)
+	const report = (epoch.doc as never as { transact: (f: () => unknown) => unknown }).transact(
+		() => rebaseOnto(epoch, [decodeCut(encodeCut(cut))], s.offline.encode(), scratch).report
 	);
 	return { want: oracle.toJSON(), got: epoch.facade.toJSON(), report };
 };
@@ -149,5 +149,33 @@ describe('the rebase (room.reseed.rebase)', () => {
 		s.offline.facade.insertText('b0', 3, '!');
 		const { want, got } = both(s);
 		expect(texts(got)).toEqual(texts(want));
+	});
+
+	it('a second upload of the same edits (another tab) merges nothing twice', () => {
+		const s = setup(value('alpha'));
+		s.offline.facade.insertText('b0', 5, ' beta');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const tx = (f: () => unknown) =>
+			(epoch.doc as never as { transact: (f: () => unknown) => unknown }).transact(f);
+		let merged: ReturnType<typeof rebaseOnto>['merged'] | undefined;
+		tx(() => (merged = rebaseOnto(epoch, [cut], s.offline.encode(), scratch).merged));
+		let again: ReturnType<typeof rebaseOnto>['report'] | undefined;
+		tx(() => (again = rebaseOnto(epoch, [cut], s.offline.encode(), scratch, merged).report));
+		expect(again).toEqual({ status: 'noop' });
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'alpha beta' });
+	});
+
+	it('a client two re-seeds behind: the cuts read down to its epoch', () => {
+		const s = setup(value('one two'));
+		s.offline.facade.insertText('b0', 3, ' and a half');
+		s.online.facade.insertText('b0', 7, ' three');
+		const first = cutDocument(asReplica(s.online), seed);
+		first.document.facade.apply(first.document.facade.prepare.insertText('b0', 13, ' four'));
+		const second = cutDocument(first.document, seed);
+		const epoch = second.document;
+		(epoch.doc as never as { transact: (f: () => unknown) => unknown }).transact(() =>
+			rebaseOnto(epoch, [first.cut, second.cut], s.offline.encode(), scratch)
+		);
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'one and a half two three four' });
 	});
 });

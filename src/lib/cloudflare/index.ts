@@ -25,6 +25,10 @@ export {
 	DEFAULT_MAX_PRESENCE_FANOUT,
 	DEFAULT_MAX_COMMENT_BYTES,
 	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
+	DEFAULT_RESEED_FORCE,
+	DEFAULT_RESEED_GAIN,
+	DEFAULT_RESEED_GRACE_DAYS,
+	DEFAULT_RESEED_IDLE,
 	MAX_REFUSALS,
 	MAX_WAITING_DELETES,
 	ROOM_ORIGIN,
@@ -45,9 +49,11 @@ export {
 	type ValidatedBlock,
 	type RoomMetrics,
 	type RoomLogEntry,
+	type ReseedOptions,
 	type RestoreResult,
 	type Timing
 } from './DocumentRoom.js';
+
 export {
 	DEFAULT_RETENTION_DAYS,
 	HISTORY_MAX_VALUE_BYTES,

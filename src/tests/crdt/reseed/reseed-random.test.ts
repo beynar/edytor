@@ -192,7 +192,7 @@ const run = (seed: number, mix: Mix) => {
 		return asReplica(d);
 	});
 	(epoch.doc as never as { transact: (f: () => unknown) => unknown }).transact(() =>
-		rebaseOnto(epoch, decodeCut(encodeCut(cut)), offline.encode(), (update) => {
+		rebaseOnto(epoch, [decodeCut(encodeCut(cut))], offline.encode(), (update) => {
 			const d = loadDocument(update, { actor: { id: 'room' } });
 			d.sync();
 			d.doc.clientID = 9001;

@@ -89,5 +89,14 @@ export const DEFAULT_MAX_COMMENT_BYTES = 4 * 1024 * 1024;
 /** Comment requests per second and user (or socket), by default. */
 export const DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND = 2;
 
+/** How long nobody may write before a re-seed runs, by default (ten minutes, `room.reseed.timing`). */
+export const DEFAULT_RESEED_IDLE = 10 * 60_000;
+/** The share of the stored bytes a re-seed must give back, by default. */
+export const DEFAULT_RESEED_GAIN = 0.4;
+/** The share of the document quota past which a re-seed waits for no idle period, by default. */
+export const DEFAULT_RESEED_FORCE = 0.8;
+/** Days a re-seed's cut is kept, so an offline client's edits still merge, by default (`room.reseed.grace`). */
+export const DEFAULT_RESEED_GRACE_DAYS = 30;
+
 /** The tag of the document's sockets: other sockets of the object are left to you. */
 export const SOCKET_TAG = 'edytor';

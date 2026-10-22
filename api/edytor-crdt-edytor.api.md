@@ -1487,7 +1487,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             text: import("./text/model.js").TextEngine;
         }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
         horizonOf: (doc: import("./engine-api.js").EngineDoc) => import("./purge.js").Horizon | null;
-        restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc) => import("./restore.js").RestoreReport;
+        restoreTo: <Plan>(doc: import("./engine-api.js").EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: import("./index.js").JSONDoc, { rewrite, suggestions }?: import("./restore.js").RestoreOptions<Plan>) => import("./restore.js").RestoreReport;
         model: {
             REGISTRY_KEY: string;
             registryOf: (doc: import("./engine-api.js").EngineDoc) => import("./engine-api.js").EngineNode;
@@ -2719,7 +2719,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         text: import("./text/model.js").TextEngine;
     }, horizon: import("./purge.js").Horizon | null) => import("./purge.js").PurgeReport;
     horizonOf: (doc: EngineDoc) => import("./purge.js").Horizon | null;
-    restoreTo: <Plan>(doc: EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: JSONDoc) => import("./restore.js").RestoreReport;
+    restoreTo: <Plan>(doc: EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: JSONDoc, { rewrite, suggestions }?: import("./restore.js").RestoreOptions<Plan>) => import("./restore.js").RestoreReport;
     model: {
         REGISTRY_KEY: string;
         registryOf: (doc: EngineDoc) => EngineNode;

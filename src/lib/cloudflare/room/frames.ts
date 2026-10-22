@@ -75,6 +75,10 @@ export const readOnlyDenialFrame = (): Uint8Array =>
 export const suggestOnlyDenialFrame = (): Uint8Array =>
 	E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, SUGGEST_ONLY_DENIAL));
 
+/** The room's epoch, to a socket that dialed an older one (`room.reseed.protocol`). */
+export const epochFrame = (epoch: number): Uint8Array =>
+	E.frame(E.messageAuth, (e) => E.writeEpoch(e, epoch));
+
 /** The socket's access, at the join and at a change in place (`write`, `suggest`, `comment`, `read`). */
 export const accessFrame = (access: string): Uint8Array =>
 	E.frame(E.messageAuth, (e) => E.writeAccess(e, access));

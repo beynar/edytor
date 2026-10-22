@@ -149,6 +149,7 @@ import { RoomHistory } from './room/history.js';
 import { RoomMoves } from './room/moves.js';
 import { RoomPresence } from './room/presence.js';
 import { RoomPurge } from './room/purge.js';
+import { RoomReseed } from './room/reseed.js';
 import { ReplicaRegistry } from './room/replicas.js';
 import { Scheduler } from './room/scheduler.js';
 import { RoomStorage } from './room/storage.js';
@@ -159,6 +160,10 @@ export {
 	COMMENTS_HEADER,
 	DEFAULT_MAX_COMMENT_BYTES,
 	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
+	DEFAULT_RESEED_FORCE,
+	DEFAULT_RESEED_GAIN,
+	DEFAULT_RESEED_GRACE_DAYS,
+	DEFAULT_RESEED_IDLE,
 	HISTORY_HEADER,
 	HISTORY_KEY_HEADER,
 	IDENTITY_HEADERS,
@@ -264,10 +269,22 @@ export type SavedDocument = {
 	 * tell which user wrote under which id.
 	 */
 	replicas: ReplicaOwner[];
+	/**
+	 * The room's epoch (`room.reseed.protocol`): how many times it re-seeded.
+	 * Store it with `update`: a room restored without it refuses the clients
+	 * of a later epoch.
+	 */
+	epoch: number;
 };
 
-/** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
-export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
+/**
+ * What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }`
+ * (a `SavedDocument`, its `epoch` too when it has one).
+ */
+export type LoadedDocument =
+	| JSONDoc
+	| Uint8Array
+	| (Pick<SavedDocument, 'update' | 'replicas'> & { epoch?: number });
 
 /**
  * Optional knobs (strings, as `vars` arrive): row size, outgoing frame
@@ -289,6 +306,8 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_PRESENCE_FANOUT?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
+	/** `off`: the room never re-seeds its document ({@link AttachRoomOptions.reseed}). */
+	EDYTOR_RESEED?: string;
 	/**
 	 * Days after which deleted content is purged (default: the history
 	 * retention, else 30); `off` never purges.
@@ -343,7 +362,12 @@ export type SocketIdentity = {
  * A socket's attachment (survives hibernation): its identity, its presence
  * clock, and whether it subscribed to the comment changes.
  */
-export type Attachment = SocketIdentity & { clock: number | null; comments?: boolean };
+export type Attachment = SocketIdentity & {
+	clock: number | null;
+	comments?: boolean;
+	/** The older epoch the socket dialed: it may only hand over its old document (`room.reseed.protocol`). */
+	epoch?: number;
+};
 
 export type Refusal = {
 	reason:
@@ -395,7 +419,10 @@ export type Refusal = {
 		// A version the history could not write ({ key, bytes, limit } past the
 		// size limit, { key, error } when the store failed, { room } past the key
 		// limit): skipped; or a retention sweep that failed ({ retention, error }).
-		| 'history';
+		| 'history'
+		// A dial of an epoch the room does not serve ({ user, epoch, room }): none, in a room
+		// that re-seeded, or a later one (closed 1008); one past the cuts kept (closed 4411).
+		| 'epoch';
 	detail: unknown;
 };
 
@@ -442,6 +469,8 @@ export type RoomMetrics = {
 	history: { written: number; skipped: number; lastKey: string | null };
 	/** Purges run and what they wrote, summed; the last horizon purged (ms since the epoch). */
 	purge: PurgeReport & { runs: number; horizon: number | null };
+	/** The room's epoch (`room.reseed.protocol`): how many times its document was re-seeded. */
+	epoch: number;
 	/** When this instance started (ms since the epoch). */
 	since: number;
 };
@@ -462,6 +491,28 @@ export type RoomLogEntry =
 	| { edytor: 'semantics'; user: string; kinds: string[] }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
 	| { edytor: 'move'; moveId: string; role: 'out' | 'in'; peer: string; blocks: number }
+	// A re-seed (`room.reseed.cut`): the new epoch, the stored bytes before and after, the pending
+	// suggestions it dropped (forced); or one skipped (pending suggestions, too little to gain).
+	| {
+			edytor: 'reseed';
+			epoch: number;
+			before: number;
+			after: number;
+			suggestions: number;
+			ms: number;
+	  }
+	| { edytor: 'reseed'; skipped: 'suggestions'; bytes: number; pending: number }
+	| { edytor: 'reseed'; skipped: 'gain'; bytes: number; estimate: number }
+	// An offline client's edits rebased onto the current epoch (`room.reseed.rebase`).
+	| {
+			edytor: 'rebase';
+			user: string;
+			from: number;
+			epoch: number;
+			status: 'noop' | 'applied';
+			bytes: number;
+			ms: number;
+	  }
 	| {
 			edytor: 'late';
 			moveId: string;
@@ -542,6 +593,23 @@ export type CommentOptions = {
 	 * are not counted.
 	 */
 	maxRequestsPerSecond?: number;
+};
+
+/** When the room re-seeds its document (`AttachRoomOptions.reseed`, `room.reseed.timing`). */
+export type ReseedOptions = {
+	/** Stored bytes past which a re-seed is due (default half of `maxDocumentBytes`). */
+	at?: number;
+	/** ms nobody may write before it runs (default {@link DEFAULT_RESEED_IDLE}, ten minutes). */
+	idleMs?: number;
+	/** The share of the stored bytes it must give back (default {@link DEFAULT_RESEED_GAIN}, 0.4). */
+	gain?: number;
+	/**
+	 * The share of `maxDocumentBytes` past which it waits for no idle period
+	 * and drops the pending suggestions (default {@link DEFAULT_RESEED_FORCE}, 0.8).
+	 */
+	force?: number;
+	/** Days a cut is kept, so an offline client's edits still merge (default {@link DEFAULT_RESEED_GRACE_DAYS}, 30). */
+	graceDays?: number;
 };
 
 /** What {@link attachRoom} (and `DocumentRoom`) takes. */
@@ -652,6 +720,16 @@ export type AttachRoomOptions = {
 	/** The room's clock, ms since the epoch (default `Date.now`): its slots, epochs and alarm read it. */
 	now?: () => number;
 	/**
+	 * Re-seed (`room.reseed.*`): a document that grew past `at` of its stored
+	 * bytes (default half of `maxDocumentBytes`) is rebuilt from its content,
+	 * with fresh identities, once nobody wrote for `idleMs` (default ten
+	 * minutes) and when that gives back at least `gain` (0.4) of it; past
+	 * `force` (0.8) of the quota at once. Every client reloads it; an offline
+	 * client's unsaved edits are rebased onto it for `graceDays` (30). On by
+	 * default; `false` never re-seeds.
+	 */
+	reseed?: ReseedOptions | false;
+	/**
 	 * Comment threads (`room.comments`): kept in the room's `threads` and
 	 * `comments` tables, read and written through `routeDocumentComments`
 	 * (or `listComments` and `comment` over RPC), each change sent to the
@@ -752,6 +830,7 @@ export class AttachedDocument {
 			purge: () => {
 				room.purge.tick();
 			},
+			reseed: () => room.reseed.task(),
 			retention: () => room.history.expireVersions(),
 			forward: () => room.moves.forwardMoves(),
 			expiry: () => noTimers(() => room.access.expireSockets())
@@ -765,6 +844,7 @@ export class AttachedDocument {
 		room.presence = new RoomPresence(room);
 		room.access = new RoomAccess(room);
 		room.comments = new RoomComments(room);
+		room.reseed = new RoomReseed(room);
 		// The provider pings a silent socket: answer without waking the object.
 		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
 			ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
@@ -1054,9 +1134,25 @@ export class AttachedDocument {
 				refusals: { ...this.refusalCounts },
 				history: { ...counters.history },
 				purge: { ...counters.purge },
+				epoch: room.reseed.epoch,
 				since: counters.since
 			};
 		});
+	}
+
+	/** The room's epoch (`room.reseed.protocol`): how many times its document was re-seeded. */
+	get epoch(): number {
+		return this.room.reseed.epoch;
+	}
+
+	/**
+	 * Re-seed the document now (`room.reseed.cut`), whatever it gives back
+	 * and whether a suggestion is pending (they are dropped): every socket
+	 * is closed `4410` and reloads it. Answers the new epoch, or `null`
+	 * when re-seeding is off or the room is inside a transaction.
+	 */
+	reseed(): number | null {
+		return this.room.reseed.run('manual');
 	}
 
 	/**
@@ -1201,6 +1297,7 @@ export class DocumentRoom<
 		const semantics = () => this.semantics();
 		const history = () => this.history();
 		const locks = () => this.locks();
+		const reseeding = () => this.reseeding();
 		const comments = (): CommentOptions | false =>
 			String(knobs.EDYTOR_COMMENTS ?? '') === 'off'
 				? false
@@ -1234,6 +1331,9 @@ export class DocumentRoom<
 			},
 			get locks() {
 				return locks();
+			},
+			get reseed() {
+				return reseeding();
 			},
 			get comments() {
 				return comments();
@@ -1322,6 +1422,14 @@ export class DocumentRoom<
 	}
 
 	/**
+	 * When the room re-seeds — see {@link AttachRoomOptions.reseed}. Default:
+	 * on, with its default thresholds; `false` when `EDYTOR_RESEED` is `off`.
+	 */
+	protected reseeding(): ReseedOptions | false | undefined {
+		return String((this.env as DocumentRoomEnv).EDYTOR_RESEED ?? '') === 'off' ? false : undefined;
+	}
+
+	/**
 	 * The rooms blocks move to — see {@link AttachRoomOptions.rooms}.
 	 * Default: the `EDYTOR_ROOMS` binding; none without it.
 	 */
@@ -1362,6 +1470,14 @@ export class DocumentRoom<
 	/** Restore a version, also over RPC — see {@link AttachedDocument.restoreHistory}. */
 	restoreHistory(key: string, options?: { user?: string }): Promise<RestoreResult> {
 		return this.room.restoreHistory(key, options);
+	}
+	/** Re-seed the document now, also over RPC — see {@link AttachedDocument.reseed}. */
+	reseed(): number | null {
+		return this.room.reseed();
+	}
+	/** The room's epoch — see {@link AttachedDocument.epoch}. */
+	get epoch(): number {
+		return this.room.epoch;
 	}
 	/** Undo the last restore, also over RPC — see {@link AttachedDocument.undoRestore}. */
 	undoRestore(options?: { user?: string }): Promise<{ status: 'applied' | 'noop' }> {

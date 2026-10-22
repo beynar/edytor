@@ -165,6 +165,8 @@ export class Admission {
 		try {
 			const type = decode(() => E.readVarUint(decoder));
 			if (type === E.messageChunk) return this.#onChunk(ws, attachment, doc, decoder);
+			// A socket of an older epoch hands over its old document, nothing else (`room.reseed.protocol`).
+			if (attachment.epoch != null) return room.reseed.onStale(ws, attachment, type, decoder);
 			if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
 			if (type === E.messageAwareness) {
 				const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));

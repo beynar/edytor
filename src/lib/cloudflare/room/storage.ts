@@ -615,7 +615,9 @@ export class RoomStorage {
 			room.ctx.storage.transactionSync(() => {
 				room.sql.exec(`DELETE FROM ${room.tables.rows}`);
 				this.documentBytes = 0;
-				this.#nextRecord = 0;
+				// Record numbers keep growing, as at compaction: a compression of
+				// an earlier snapshot never lands on this one.
+				this.insert('generation', encodeJSON(GENERATION_RECORD));
 				record = this.insert('snapshot', update);
 				this.touch();
 				within();

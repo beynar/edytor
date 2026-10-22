@@ -3438,60 +3438,93 @@ woken room rebuilds the step from the table. One level: a second
 ### `room.reseed.cut` — a re-seed rebuilds the document from its content
 
 `cutDocument(old, seed)` (`crdt/reseed.ts`) seeds a new document from
-`old`'s JSON (`toJSON()`: block ids, kinds, data, content, marks, the
-document's data) and gives each block `old`'s attribution (`createdBy`,
-`contributors`, `lastChangedBy`: `restoreRecord`). Its identities are
-fresh: no deleted text, no history, no attribution lineage beyond the
-records. The cut it answers is what the room keeps of `old`: its state
-vector, its deletes (an update without structs) and the cut map, each seed
-character's old item (runs of `client, clock, length → old client, old
-clock`).
+`old`'s base, the document without its pending suggestions (`baseOf`,
+`sugg.json.base`: block ids, kinds, data, content, marks, the document's
+data), and gives each block `old`'s attribution (`createdBy`,
+`contributors`, `lastChangedBy`). Its identities are fresh: no deleted
+text, no history, no attribution lineage beyond the records. The cut it
+answers is what the room keeps of `old`: its state vector, its deletes (an
+update without structs) and the cut map, each seed character's old item
+(runs of `client, clock, length → old client, old clock`), read from the
+same base view as the seed.
 
 ### `room.reseed.rebase` — an offline client's edits after a re-seed
 
-`rebaseOnto(target, cut, upload, scratch)` merges the unsaved edits in a
-client's old document (`upload`, whole) into `target`, the current
-document of the epoch `cut` started, in the caller's transaction:
+`rebaseOnto(target, cuts, upload, scratch, merged)` merges the unsaved
+edits in a client's old document (`upload`, whole) into `target`, the
+current document (`cuts`: the re-seeds since the client's epoch), in the
+caller's transaction. `merged` is what that user's earlier rebases from
+the same cut merged (the cut's own state at first): a state vector, the
+deletes, and the merged maps (each unit an earlier rebase wrote → the old
+unit it stands for). It is kept per user: another user's upload never
+counts as theirs.
 
-1. the client's base is the part of `upload` the cut covers (its structs
-   under the cut's state vector, its deletes the cut's deletes also hold:
+1. the client's base is the part of `upload` already merged (its structs
+   under `merged`'s state vector, its deletes `merged`'s also hold:
    `Y.clipUpdate`, fork patch YP34), built into a scratch document, the
-   shadow; its own edits are the rest (`Y.diffUpdate`); nothing past the
-   cut → `noop`, nothing written;
+   shadow, its pending suggestions rejected (the cut dropped them); its
+   own edits are the rest (`Y.diffUpdate`); nothing past `merged` →
+   `noop`, nothing written;
 2. `target`, as shown, is written onto the shadow by identity
-   (`restoreByIdentity`): a seed character is its old one (the cut map),
-   so the shadow keeps it; one typed after the cut, or by a writer whose
-   edits the client never had, is new text there. A block of the shadow is
+   (`restoreByIdentity`): a seed character is its old one (the cut maps,
+   read down the cuts), a character an earlier rebase wrote the one it
+   stood for (the merged maps), so the shadow keeps it; one typed after the
+   cut, or by a writer whose edits the client never had, is new text there
+   (identities are compared with their characters: a wrong one never keeps
+   another character). A block of the shadow is
    cut where its characters go to another block, and each block of
    `target` is assembled from its pieces (the first takes its id, the
    others are merged into it), so `target`'s splits and merges are splits
    and merges in the shadow; a kept character whose marks differ is
    formatted; nothing removes a merge claim;
-3. the client's edits are merged into the shadow by the CRDT;
+3. the client's edits are merged into the shadow by the CRDT; its pending
+   suggestions are rejected (`room.reseed.suggestions`);
 4. the shadow, as shown, is written onto `target` the same way, each of
-   its characters read as `target`'s, the client's own as new: every
-   character `target` holds keeps its identity (a later rebase's cut map
-   still names it), and `target`'s pending suggestions stay.
+   its characters read as `target`'s, the client's own as new (written
+   once; an atom whose data changed is written again): every character
+   `target` holds keeps its identity (a later rebase's cut map still names
+   it), and `target`'s pending suggestions stay. Each new character goes
+   into the merged map, and `merged` grows by the structs the shadow took
+   in and the upload's deletes.
+
+The room (`RoomReseed.onStale`) runs it on a copy of the live document,
+under a client id of the copy's own, and admits the update the copy's
+writes make as the user's (`Admission.admitRebase`: the document quota,
+access at that moment, validation and locks, attribution, forged marks);
+refused, nothing is written and `merged` is not stored. One rebase per user
+every ten seconds (`1011` past it); a hand-over that cannot be read or
+rebased is dropped, closed `4410`. Pins: `src/tests/crdt/reseed/`,
+`tests/do/reseed.test.ts`.
+
+### `room.reseed.suggestions` — pending suggestions across a re-seed
+
+A re-seed in `idle` mode waits while a suggestion is pending; `full` and
+`manual` drop them (the seed is the base, `room.reseed.cut`). A client's
+pending suggestions in its hand-over are rejected in the shadow: neither
+accepted nor carried over. A suggest-only socket of an older epoch is
+closed `4410` at once (its offline work is suggestions). Pins: the
+suggestion rows of `src/tests/crdt/reseed/reseed.test.ts`.
 
 ### `room.reseed.timing` — when the room re-seeds
 
-`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above). `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
+`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above), past `force` too. A run that throws is due again a minute later. `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
 
 ### `room.reseed.protocol` — epochs, the hand-over and `4410`
 
-A re-seed's seed writes its epoch in the document (root `epoch`, attr `n`; only the room writes it: a client's struct there is stripped, `mark`); the room's epoch is its document's. A dial names its document's (`?epoch=<n>`, `new` for one that holds nothing); the door (`RoomReseed.door`): its own or `new` joins; none or a later one, in a room that re-seeded, `1008` `refused: epoch`; an earlier one whose cuts are kept is a stale socket (no replica bound, no Step1): a writer hears `messageEpoch` and only its `messageRebase` is read (`room.reseed.rebase`), anything else closes `4410` at once; one past the cuts kept, `4411`. A re-seed closes every socket `4410`, its reason the epoch. The provider hands its whole document over on `messageEpoch`; a `4410` that finds it with unsaved updates redials once (`_rebasing`); any other `4410` is a refusal of the document. `createWebsocketSync` dials once its local copy loaded, and deletes it on that refusal; `EdytorRoot` keys the view: an `<Edytor>` owning its document builds itself again on a new one. Pins: `tests/do/reseed.test.ts`, `src/tests/fixtures/dom/collaboration/reseed-props.test.tsx`, the hosted re-seed row.
+A re-seed's seed writes its epoch in the document (root `epoch`, attr `n`; only the room writes it: a client's struct there is stripped, `mark`); the room's epoch is its document's. A dial names its document's (`?epoch=<n>`, `new` for one that holds nothing); the door (`RoomReseed.door`): its own or `new` joins; none, in a room that re-seeded, `1008` `refused: epoch`; an earlier one whose cuts are kept is a stale socket (no replica bound, no Step1, tagged `edytor-stale`: nothing is relayed to it): a writer hears `messageEpoch` and only its `messageRebase` is read (`room.reseed.rebase`; its frame quota is up to twice the document quota), anything else closes `4410` at once; one past the cuts kept, or a later one, `4410`, its reason the room's epoch. A re-seed closes every socket `4410`, its reason the epoch. A socket of the current epoch whose update holds a struct of a client the kept cuts name, which the document holds nothing of (an older epoch's content), is closed `4410`. The provider hands its whole document over on `messageEpoch`; a `4410` that finds it with unsaved updates redials once (`_rebasing`); any other `4410` is a refusal of the document. `createWebsocketSync` dials once its local copy loaded, and deletes it on that refusal; `EdytorRoot` keys the view: an `<Edytor>` owning its document builds itself again on a new one. Pins: `tests/do/reseed.test.ts`, `src/tests/fixtures/dom/collaboration/reseed-props.test.tsx`, the hosted re-seed row.
 
 ### `room.reseed.grace` — how long an offline client's edits can merge
 
-Each epoch's cut is kept `graceDays` (30): the purge's daily tick drops older ones (`RoomReseed.prune`), and the door reads one older than the grace as gone (`4411`).
+Each epoch's cut is kept `graceDays` (30), with what its rebases merged: the `reseed` task, due when the oldest cut passes its grace, drops older ones (`RoomReseed.prune`), and the door reads one older than the grace as gone (`4410`).
 
 ### `room.reseed.text` — text edits merge exactly
 
 When neither side split, merged, moved, inserted or deleted blocks since
 the client's base, the rebased document shows every character the CRDT
-merge of the two documents would show, each in its block, and no other;
-the order of two inserts made at one place at once, and the edge of a mark
-the other side applied, can differ. Pins: `src/tests/crdt/reseed/`
+merge of the two documents would show, each in its block and in its
+order, and no other; the order of two inserts made at one place at once
+(one of them over a deleted character: the rebase writes the other side's
+after it), and the edge of a mark the other side applied, can differ. Pins: `src/tests/crdt/reseed/`
 (`reseed.test.ts`, the `text` row of `reseed-random.test.ts`).
 
 ### `room.reseed.residue` — when both sides restructured the same blocks

@@ -169,8 +169,12 @@ export type SuggestContext = DocBase &
 		create: (doc: EngineDoc, config: EdytorDocConfig) => SuggestFacade;
 		/** Its changes no index fact shows: counted in the facade's `version`. */
 		v: number;
-		/** The export `toJSON()` gives unless asked for the suggestions. */
-		base: (() => JSONDoc | undefined) | undefined;
+		/**
+		 * The document without its pending suggestions, read by `read` (the
+		 * export `toJSON()` gives unless asked for the suggestions);
+		 * `undefined` while none is pending.
+		 */
+		base: (<T>(read: (other: SuggestFacade) => T) => T | undefined) | undefined;
 	};
 
 /** The facade the part is built over: its `part`, and the operations it writes through. */
@@ -712,10 +716,11 @@ const docSuggest = (f: SuggestFacade) => {
 	};
 
 	/**
-	 * The document without its pending suggestions (`sugg.json.base`): on a
-	 * copy, every pending one rejected; `undefined` while none is pending.
+	 * The document without its pending suggestions (`sugg.json.base`), read
+	 * by `read`: on a copy, every pending one rejected; `undefined` while
+	 * none is pending.
 	 */
-	const base = (): JSONDoc | undefined => {
+	const base = <T>(read: (other: SuggestFacade) => T): T | undefined => {
 		if (root().attrKeys().next().done || !changes().length) return;
 		const { Y } = c;
 		const copy = keepingReplaced(new Y.Doc());
@@ -723,11 +728,11 @@ const docSuggest = (f: SuggestFacade) => {
 		const other = c.create(copy as EngineDoc, { ...c.config, actor: undefined });
 		const all = suggestionsOf(other);
 		all.run(all.decide(all.changes(), false));
-		const json = other.toJSON({ suggestions: true });
+		const out = read(other);
 		all.dispose();
 		other.dispose();
 		copy.destroy();
-		return json;
+		return out;
 	};
 	c.base = base;
 

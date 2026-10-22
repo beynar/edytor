@@ -10,24 +10,31 @@
  *
  * A socket that dials an older epoch (`room.reseed.protocol`) is told the
  * room's (`messageEpoch`) when it may write, and hands over its old
- * document (`messageRebase`): its unsaved edits are rebased onto the
- * current document as one transaction of its user (`room.reseed.rebase`),
- * then it is closed `4410` too; one that may not write is closed at once.
- * An epoch older than the cuts kept (`graceDays`) is closed `4411`, and a
- * dial that names none, in a room that re-seeded, `1008` (a client that
- * predates the re-seed).
+ * document (`messageRebase`): its unsaved edits are rebased onto a copy of
+ * the current document, and what that wrote goes through the admission as
+ * an update of its user (`room.reseed.rebase`: the quotas, access,
+ * validation, attribution), then it is closed `4410` too; one that may not
+ * write is closed at once. Any other epoch the room cannot rebase (older
+ * than the cuts kept, `graceDays`, or later than the room's) is closed
+ * `4410` at once, and a dial that names none, in a room that re-seeded,
+ * `1008` (a client that predates the re-seed). A current socket that sends
+ * an older epoch's content (a tab that took it from another) is closed
+ * `4410` too.
  */
 import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
 import { CLOSE } from '../../crdt/providers/room.js';
 import {
+	baseOf,
 	cutBetween,
 	decodeCut,
+	decodeMerged,
 	encodeCut,
+	encodeMerged,
+	hasEdits,
 	rebaseOnto,
 	seedFrom,
 	type Cut,
-	type Merged,
 	type Replica
 } from '../../crdt/reseed.js';
 import { asEngineDoc } from '../../crdt/structs.js';
@@ -35,6 +42,8 @@ import { suggestionsOf } from '../../crdt/doc/suggest.js';
 import { EPOCH_ROOT } from '../../crdt/schema.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Attachment, SocketIdentity } from '../DocumentRoom.js';
+import { allowance, type Bucket } from './admission.js';
+import type { Decoded } from './context.js';
 import {
 	DEFAULT_RESEED_FORCE,
 	DEFAULT_RESEED_GAIN,
@@ -45,8 +54,6 @@ import {
 } from './shared.js';
 import { DAY, crdt, now, type RoomContext } from './context.js';
 import { decode, epochFrame } from './frames.js';
-import * as encoding from 'lib0-v14/encoding';
-import * as decoding from 'lib0-v14/decoding';
 
 /** A share in (0, 1], else `fallback`. */
 const share = (value: unknown, fallback: number) => {
@@ -54,15 +61,11 @@ const share = (value: unknown, fallback: number) => {
 	return n > 0 && n <= 1 ? n : fallback;
 };
 
-const encodeMerged = (merged: Merged) =>
-	encoding.encode((e) => {
-		encoding.writeVarUint8Array(e, merged.sv);
-		encoding.writeVarUint8Array(e, merged.ds);
-	});
-const decodeMerged = (bytes: Uint8Array): Merged => {
-	const d = decoding.createDecoder(bytes);
-	return { sv: decoding.readVarUint8Array(d), ds: decoding.readVarUint8Array(d) };
-};
+/** A rebase is a full rebuild of the document: one per user every ten seconds. */
+const REBASES_PER_SECOND = 0.1;
+
+/** A failed re-seed runs again this much later. */
+const RESEED_RETRY = 60_000;
 
 /** An epoch a dial names (`?epoch=`; `new`: a document that holds nothing yet), or `null`. */
 export const parseEpoch = (raw: string | null): number | 'new' | null => {
@@ -72,6 +75,11 @@ export const parseEpoch = (raw: string | null): number | 'new' | null => {
 };
 
 export class RoomReseed {
+	/** Each user's rebase allowance (memory: a wake refills it). */
+	readonly #rebases = new Map<string, Bucket>();
+	/** The client ids of the epochs the cuts kept (`null`: not read since they changed). */
+	#oldClients: Set<number> | null = null;
+
 	constructor(private readonly room: RoomContext) {}
 
 	/** The re-seed's settings (`null`: off). */
@@ -113,8 +121,8 @@ export class RoomReseed {
 		);
 	}
 
-	/** Store `bytes` as epoch `epoch`'s `kind` (`cut`, `merged`), in rows ≤ `maxRowBytes`. */
-	#write(epoch: number, kind: 'cut' | 'merged', bytes: Uint8Array, at: number) {
+	/** Store `bytes` as epoch `epoch`'s `kind` (`cut`, `merged:<user>`), in rows ≤ `maxRowBytes`. */
+	#write(epoch: number, kind: string, bytes: Uint8Array, at: number) {
 		const { sql, tables, limits } = this.room;
 		this.#ensure();
 		sql.exec(`DELETE FROM ${tables.cuts} WHERE epoch = ? AND kind = ?`, epoch, kind);
@@ -133,7 +141,7 @@ export class RoomReseed {
 		}
 	}
 
-	#read(epoch: number, kind: 'cut' | 'merged'): { bytes: Uint8Array; at: number } | null {
+	#read(epoch: number, kind: string): { bytes: Uint8Array; at: number } | null {
 		const { sql, tables } = this.room;
 		this.#ensure();
 		const rows = sql
@@ -193,22 +201,46 @@ export class RoomReseed {
 		if (config === null) return;
 		const bytes = this.room.storage.documentBytes;
 		const { scheduler } = this.room;
+		// Under the floor a re-seed gave back too little: none until the document grows past it.
+		if (bytes < config.at || bytes < this.#floor()) return;
 		if (bytes >= config.force) scheduler.schedule('reseed', at, 'earlier');
-		else if (bytes >= config.at && bytes >= this.#floor())
-			scheduler.schedule('reseed', at + config.idleMs, 'replace');
+		else scheduler.schedule('reseed', at + config.idleMs, 'replace');
 	}
 
-	/** The `reseed` task: it runs when still due (past the threshold), else it clears itself. */
+	/**
+	 * The `reseed` task: the cuts past their grace go (`room.reseed.grace`),
+	 * then it re-seeds when still due (past the threshold and the floor); a
+	 * re-seed that failed runs again a minute later. It is due again when
+	 * the oldest cut left expires.
+	 */
 	task() {
 		const room = this.room;
 		noTimers(() => {
 			const config = this.config;
 			room.scheduler.unschedule('reseed');
-			if (config === null || room.live === null) return;
+			this.prune(room.clock());
 			const bytes = room.storage.documentBytes;
-			if (bytes < config.at) return;
-			this.run(bytes >= config.force ? 'full' : 'idle');
+			if (config !== null && room.live !== null && bytes >= config.at && bytes >= this.#floor()) {
+				try {
+					this.run(bytes >= config.force ? 'full' : 'idle');
+				} catch (error) {
+					room.note({ reason: 'internal', detail: `reseed: ${String(error)}` });
+					room.scheduler.schedule('reseed', room.clock() + RESEED_RETRY, 'earlier');
+				}
+			}
+			this.#prunesAt();
 		});
+	}
+
+	/** Due when the oldest cut kept passes its grace. */
+	#prunesAt() {
+		const { sql, tables, scheduler } = this.room;
+		this.#ensure();
+		const oldest = sql
+			.exec<{ at: number | null }>(`SELECT MIN(at) AS at FROM ${tables.cuts} WHERE kind = 'cut'`)
+			.toArray()[0]?.at;
+		const grace = (this.config?.graceDays ?? DEFAULT_RESEED_GRACE_DAYS) * DAY;
+		if (oldest != null) scheduler.schedule('reseed', oldest + grace, 'earlier');
 	}
 
 	/**
@@ -248,7 +280,8 @@ export class RoomReseed {
 			const fresh = room.facadeOf(scratch);
 			try {
 				const epoch = this.epoch + 1;
-				const document = seedFrom(old, (json): Replica => {
+				const base = baseOf(old.facade);
+				const document = seedFrom(old, base, (json): Replica => {
 					fresh.seed(json.children, json.data);
 					// The document says its epoch: a client dials with it (`room.reseed.protocol`).
 					asEngineDoc(scratch).get(EPOCH_ROOT).setAttr('n', epoch);
@@ -263,7 +296,7 @@ export class RoomReseed {
 					room.log({ edytor: 'reseed', skipped: 'gain', bytes: before, estimate: update.length });
 					return null;
 				}
-				const cut = cutBetween(old, document);
+				const cut = cutBetween(old, base, document);
 				const at = room.clock();
 				const { sql, tables } = room;
 				room.storage.replaceWith(update, () => {
@@ -273,6 +306,10 @@ export class RoomReseed {
 					sql.exec(`DELETE FROM ${tables.meta} WHERE key = 'reseed.floor'`);
 					this.#write(epoch, 'cut', encodeCut(cut), at);
 				});
+				this.#oldClients = null;
+				// The `onSave` mirror holds the new epoch, as the rows do.
+				room.storage.scheduleSave();
+				this.#prunesAt();
 				room.state.presence.clear();
 				room.storage.rebuild();
 				for (const ws of room.ctx.getWebSockets(SOCKET_TAG)) {
@@ -298,8 +335,10 @@ export class RoomReseed {
 	/**
 	 * The door (`RoomAccess.accept`, `room.reseed.protocol`): a dial of
 	 * epoch `asked` is current, stale (an older epoch whose cuts are kept),
-	 * or closed: a later epoch, or none in a room that re-seeded, `1008`;
-	 * an epoch past the cuts kept, `4411`.
+	 * or closed: none, in a room that re-seeded, `1008` (a client that
+	 * predates the re-seed); any other epoch the room cannot rebase (past
+	 * the cuts kept, or later than its own: the room lost it), `4410`, so
+	 * the client drops its copy and loads the room's.
 	 */
 	door(asked: number | 'new' | null): 'current' | 'stale' | { code: number; reason: string } {
 		const current = this.epoch;
@@ -307,10 +346,43 @@ export class RoomReseed {
 		if (asked === null)
 			return current === 0 ? 'current' : { code: CLOSE.refused, reason: 'refused: epoch' };
 		if (asked === current) return 'current';
-		if (asked > current) return { code: CLOSE.refused, reason: 'refused: epoch' };
-		if (this.#cutsSince(asked) === null)
-			return { code: CLOSE.epochExpired, reason: 'epoch expired' };
-		return 'stale';
+		if (asked < current && this.#cutsSince(asked) !== null) return 'stale';
+		return { code: CLOSE.reseeded, reason: String(current) };
+	}
+
+	/**
+	 * Whether `decoded`, from a socket of the current epoch, holds an older
+	 * epoch's content (`room.reseed.protocol`): a struct of a client the
+	 * cuts kept name, which the document holds nothing of (a tab took it
+	 * from another tab of the old epoch). Its socket is closed `4410`.
+	 */
+	holdsOld(decoded: Decoded, sv: Map<number, number>): boolean {
+		if (this.epoch === 0) return false;
+		if (this.#oldClients === null) {
+			const { sql, tables } = this.room;
+			this.#ensure();
+			const epochs = sql
+				.exec<{ epoch: number }>(`SELECT DISTINCT epoch FROM ${tables.cuts} WHERE kind = 'cut'`)
+				.toArray();
+			this.#oldClients = new Set();
+			for (const { epoch } of epochs) {
+				const found = this.#read(epoch, 'cut');
+				if (found === null) continue;
+				for (const client of Y.decodeStateVector(decodeCut(found.bytes).sv).keys())
+					this.#oldClients.add(client);
+			}
+		}
+		const old = this.#oldClients;
+		return decoded.structs.some(
+			(struct) =>
+				!(struct instanceof Y.Skip) && old.has(struct.id.client) && !sv.has(struct.id.client)
+		);
+	}
+
+	/** The largest frame a socket of an older epoch may send: its whole old document. */
+	get staleFrameBytes(): number {
+		const { maxInboundFrameBytes, maxDocumentBytes, maxBufferedBytes } = this.room.limits;
+		return Math.min(maxBufferedBytes, Math.max(maxInboundFrameBytes, 2 * maxDocumentBytes));
 	}
 
 	/**
@@ -328,78 +400,125 @@ export class RoomReseed {
 
 	/**
 	 * A stale socket's message: its old document (`messageRebase`) is
-	 * rebased onto the current one as one transaction of its user (the
-	 * socket its origin: the slot records the user, nothing is sent back to
-	 * it), then it is closed `4410`; anything else it sends is dropped.
+	 * rebased onto a copy of the current one, and what that wrote is
+	 * admitted as an update of its user, from a client id of its own (the
+	 * admission's quotas, access, validation and attribution, as any
+	 * update); then it is closed `4410`. The merged state is kept per user
+	 * and cut (`merged:<user>`), so another tab's upload merges nothing
+	 * twice and another user's cannot claim it. A hand-over that cannot be
+	 * read or rebased is dropped, its socket closed `4410` all the same (its
+	 * client loads the room's document); past the rebase rate (one per user
+	 * every ten seconds), `1011`, and the provider hands over again later.
+	 * Anything else a stale socket sends is dropped.
 	 */
 	onStale(ws: WebSocket, attachment: Attachment, type: number, decoder: E.Decoder) {
 		const room = this.room;
 		if (type !== E.messageRebase) return;
-		const upload = decode(() => E.readVarUint8Array(decoder));
 		const from = attachment.epoch!;
-		const cuts = this.#cutsSince(from);
-		if (cuts === null) return room.close(ws, CLOSE.epochExpired, 'epoch expired');
 		const started = now();
-		const doc = room.requireDoc();
-		const found = this.#read(from + 1, 'merged');
-		const merged = found === null ? undefined : decodeMerged(found.bytes);
-		const shadows: { doc: YDoc; facade: { dispose(): void } }[] = [];
-		const scratch = (update: Uint8Array): Replica => {
-			const shadow = crdt.createDoc();
-			Y.applyUpdate(shadow, update);
-			const facade = room.facadeOf(shadow);
-			shadows.push({ doc: shadow, facade });
-			return { doc: asEngineDoc(shadow), facade: facade as never };
+		const done = (status: 'noop' | 'applied' | 'refused' | 'failed', bytes: number) => {
+			room.log({
+				edytor: 'rebase',
+				user: attachment.user,
+				from,
+				epoch: this.epoch,
+				status,
+				bytes,
+				ms: now() - started
+			});
+			if (ws.readyState === WebSocket.OPEN) room.close(ws, CLOSE.reseeded, String(this.epoch));
 		};
-		const facade = room.facadeOf(doc, { id: attachment.user });
-		let result!: ReturnType<typeof rebaseOnto>;
-		room.history.closeSlotIfPast();
-		room.transacting = true;
+		let upload: Uint8Array;
+		let update: Uint8Array | null;
+		let writer: number;
+		let merged: ReturnType<typeof rebaseOnto>['merged'];
+		const kind = `merged:${attachment.user}`;
+		const cuts = this.#cutsSince(from);
+		if (cuts === null) return done('failed', 0);
+		const found = this.#read(from + 1, kind);
 		try {
-			facade.transact(() => {
-				result = rebaseOnto(
-					{ doc: asEngineDoc(doc), facade: facade as never },
-					cuts,
-					upload,
-					scratch,
-					merged
-				);
-			}, ws);
-		} finally {
-			room.transacting = false;
-			facade.dispose();
-			for (const shadow of shadows) {
-				shadow.facade.dispose();
-				shadow.doc.destroy();
+			upload = decode(() => E.readVarUint8Array(decoder));
+			const before = found === null ? undefined : decodeMerged(found.bytes);
+			if (!hasEdits(upload, before ?? { sv: cuts[0]!.sv, ds: cuts[0]!.ds, maps: [] }))
+				return done('noop', upload.length);
+			if (!allowance(this.#rebases, attachment.user, REBASES_PER_SECOND, room.clock())) {
+				room.note({ reason: 'quota', detail: { user: attachment.user, quota: 'rebase' } });
+				return room.close(ws, CLOSE.fault, 'rebase: rate');
 			}
+			({ update, writer, merged } = this.#rebase(attachment.user, cuts, upload, before));
+		} catch (error) {
+			room.note({ reason: 'internal', detail: `rebase: ${String(error)}` });
+			return done('failed', 0);
 		}
-		if (room.unstored !== null) {
-			const error = room.unstored;
-			room.storage.heal();
-			throw error;
-		}
+		if (update === null) return done('noop', upload.length);
+		const doc = room.requireDoc();
+		// The rebase's writes, from a client id of their own: the admission's, as any update's.
+		const admitted = room.admission.admitRebase(ws, attachment, doc, update, writer);
+		if (!admitted) return done('refused', upload.length);
 		room.ctx.storage.transactionSync(() =>
-			this.#write(from + 1, 'merged', encodeMerged(result.merged), this.#read(from + 1, 'cut')!.at)
+			this.#write(from + 1, kind, encodeMerged(merged), this.#read(from + 1, 'cut')!.at)
 		);
-		room.storage.compactIfDue();
-		room.log({
-			edytor: 'rebase',
-			user: attachment.user,
-			from,
-			epoch: this.epoch,
-			status: result.report.status,
-			bytes: upload.length,
-			ms: now() - started
-		});
-		room.close(ws, CLOSE.reseeded, String(this.epoch));
+		done('applied', upload.length);
 	}
 
-	/** Drop the cuts older than the grace (the purge's daily tick, `room.reseed.grace`). */
+	/**
+	 * Rebase `upload` onto a copy of the live document as `user`
+	 * (`crdt/reseed.ts`): the update the copy's writes make (`null`:
+	 * nothing to write), the client id they are under (the copy's own,
+	 * random) and what this rebase merged.
+	 */
+	#rebase(
+		user: string,
+		cuts: Cut[],
+		upload: Uint8Array,
+		merged: ReturnType<typeof rebaseOnto>['merged'] | undefined
+	): {
+		update: Uint8Array | null;
+		writer: number;
+		merged: ReturnType<typeof rebaseOnto>['merged'];
+	} {
+		const room = this.room;
+		const live = room.requireDoc();
+		const scratch: { doc: YDoc; facade: { dispose(): void } }[] = [];
+		const open = (update: Uint8Array, actor?: { id: string }): Replica => {
+			const doc = crdt.createDoc();
+			Y.applyUpdate(doc, update);
+			const facade = room.facadeOf(doc, actor);
+			scratch.push({ doc, facade });
+			return { doc: asEngineDoc(doc), facade: facade as never };
+		};
+		try {
+			const target = open(Y.encodeStateAsUpdate(live), { id: user });
+			const copy = scratch[0]!;
+			let result!: ReturnType<typeof rebaseOnto>;
+			(copy.facade as unknown as { transact(f: () => void): void }).transact(() => {
+				result = rebaseOnto(target, cuts, upload, (update) => open(update), merged);
+			});
+			const update =
+				result.report.status === 'noop'
+					? null
+					: Y.encodeStateAsUpdate(copy.doc, Y.encodeStateVector(live));
+			return { update, writer: copy.doc.clientID, merged: result.merged };
+		} finally {
+			for (const { doc, facade } of scratch) {
+				facade.dispose();
+				doc.destroy();
+			}
+		}
+	}
+
+	/** Drop the cuts older than the grace, with what their rebases merged (`room.reseed.grace`). */
 	prune(at: number) {
 		const config = this.config;
 		const { sql, tables } = this.room;
 		this.#ensure();
 		const cutoff = at - (config?.graceDays ?? DEFAULT_RESEED_GRACE_DAYS) * DAY;
-		sql.exec(`DELETE FROM ${tables.cuts} WHERE at < ?`, cutoff);
+		const gone = sql
+			.exec<{
+				epoch: number;
+			}>(`SELECT DISTINCT epoch FROM ${tables.cuts} WHERE kind = 'cut' AND at < ?`, cutoff)
+			.toArray();
+		for (const { epoch } of gone) sql.exec(`DELETE FROM ${tables.cuts} WHERE epoch = ?`, epoch);
+		if (gone.length > 0) this.#oldClients = null;
 	}
 }

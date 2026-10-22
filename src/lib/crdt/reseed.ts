@@ -7,24 +7,30 @@
  * the trigger and the protocol, this module the cut and the merge.
  *
  * The cut (`cutDocument`): the new epoch's document, seeded from the old
- * one's JSON (same block ids, kinds, data, content, marks, block
- * attribution), and what the room keeps of the old one: its state vector
- * and its deletes (which part of an uploaded old document the room had)
- * and the cut map (each seed character's old identity).
+ * one without its pending suggestions (`baseOf`: same block ids, kinds,
+ * data, content, marks, block attribution), and what the room keeps of
+ * the old one: its state vector and its deletes (which part of an
+ * uploaded old document the room had) and the cut map (each seed
+ * character's old identity, read from the same view as the seed).
  *
- * The rebase (`rebaseOnto`), from a client's old document:
+ * The rebase (`rebaseOnto`), from a client's old document, against what
+ * its user's earlier rebases from the same cut merged (`Merged`, the cut's
+ * own state at first):
  *
- * 1. its base, the part the room had at the cut (`Y.clipUpdate`, fork
- *    patch YP34), into a scratch document, the shadow; its own edits, the
- *    rest (`Y.diffUpdate`);
+ * 1. its base, the part already merged (`Y.clipUpdate`, fork patch YP34),
+ *    into a scratch document, the shadow, without its pending suggestions
+ *    (the cut dropped them); its own edits, the rest (`Y.diffUpdate`);
  * 2. the current document written onto the shadow by identity
  *    (`restoreByIdentity`): a seed character is its old character (the
- *    cut map), so the shadow keeps it and the client's edits still find
- *    it; the new document's splits and merges are written as splits and
- *    merges;
- * 3. the client's edits merged into the shadow by the CRDT;
+ *    cut map), a character an earlier rebase wrote the one it stood for
+ *    (the merged map), so the shadow keeps it and the client's edits still
+ *    find it; the new document's splits and merges are written as splits
+ *    and merges;
+ * 3. the client's edits merged into the shadow by the CRDT, its pending
+ *    suggestions dropped (`room.reseed.suggestions`);
  * 4. the shadow written onto the current document by identity, in the
- *    caller's transaction.
+ *    caller's transaction; each character it writes is added to the
+ *    merged map.
  *
  * Exact for text; when both sides restructured the same blocks the CRDT's
  * outcome can depend on the old document's structural history, which the
@@ -49,6 +55,7 @@ import { canonKey } from './text/model.js';
 import { restoreDocument, runsOf, unitsOf, type RestoreFacade, type Unit } from './restore.js';
 import { displayOf, isRowMark, openRangeCursor } from './text/model.js';
 import type { ModelView } from './placement/model.js';
+import { suggestionsOf, type SuggestContext, type SuggestFacade } from './doc/suggest.js';
 import type { JSONDoc } from '../utils/json.js';
 
 /** What the rebase reads and writes through: a facade over a document (structurally). */
@@ -56,8 +63,8 @@ export type ReseedFacade<Plan = unknown> = RestoreFacade<Plan> & {
 	order(): readonly BlockId[];
 	displayLength(id: BlockId): number;
 	toJSON(options?: { suggestions?: boolean }): JSONDoc;
-	/** The facade's reads beyond its operations: the index's view (`doc/suggest.ts` builds over it too). */
-	part: { view(): ModelView };
+	/** The facade's reads beyond its operations: the index's view, the base view (`doc/suggest.ts` builds over it too). */
+	part: { view(): ModelView; base?: SuggestContext['base'] };
 	prepare: RestoreFacade<Plan>['prepare'] & {
 		formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): Plan;
 		splitBlock(id: BlockId, offset: number, newId: BlockId): Plan;
@@ -102,12 +109,32 @@ const idsOf = (facade: ReseedFacade, id: BlockId): string[] => {
 
 /** Every displayed block's unit identities. */
 const identities = (facade: ReseedFacade) =>
-	new Map(
-		facade
-			.order()
-			.filter((id) => facade.displayLength(id) >= 0)
-			.map((id) => [id, idsOf(facade, id)])
-	);
+	new Map(facade.order().map((id) => [id, idsOf(facade, id)]));
+
+/** A unit's identity and what it is (its character, or its atom's id and kind): a wrong identity never keeps another unit. */
+const keyed = (ids: readonly string[], units: readonly Unit[]) =>
+	ids.map((id, i) => {
+		const item = units[i]?.item;
+		return `${id}|${item?.kind === 'text' ? item.text : `@${item?.id}|${item?.type}`}`;
+	});
+
+/**
+ * A document without its pending suggestions (`sugg.json.base`), its JSON
+ * and each unit's identity read from one view: what a cut is made from.
+ */
+export type Base = { json: JSONDoc; ids: Map<BlockId, string[]> };
+export const baseOf = (facade: ReseedFacade): Base =>
+	facade.part.base?.((other) => ({
+		json: other.toJSON({ suggestions: true }),
+		ids: identities(other as unknown as ReseedFacade)
+	})) ?? { json: facade.toJSON(), ids: identities(facade) };
+
+/** Reject every pending suggestion of `facade`'s document (`room.reseed.suggestions`). */
+const dropSuggestions = (facade: ReseedFacade) => {
+	const all = suggestionsOf(facade as unknown as SuggestFacade);
+	const pending = all.changes();
+	if (pending.length > 0) all.run(all.decide(pending, false));
+};
 
 /** The cut map: runs of seed items (client, clock, length) and the old items they stand for. */
 type CutRun = { c: number; k: number; len: number; oc: number; ok: number };
@@ -125,6 +152,22 @@ const decodeRuns = (bytes: Uint8Array): CutRun[] => {
 		const [c, k, len, oc, ok] = Array.from({ length: 5 }, () => decoding.readVarUint(d));
 		return { c: c!, k: k!, len: len!, oc: oc!, ok: ok! };
 	});
+};
+
+/** Add `id` (`client:clock`) standing for `was` to `runs`, joined to the last run when it continues it. */
+const addRun = (runs: CutRun[], id: string, was: string) => {
+	const [c, k] = id.split(':').map(Number) as [number, number];
+	const [oc, ok] = was.split(':').map(Number) as [number, number];
+	const last = runs.at(-1);
+	if (
+		last &&
+		last.c === c &&
+		last.k + last.len === k &&
+		last.oc === oc &&
+		last.ok + last.len === ok
+	)
+		last.len++;
+	else runs.push({ c, k, len: 1, oc, ok });
 };
 
 /** What the room keeps of a re-seed (`room.reseed.cut`). */
@@ -151,11 +194,12 @@ export const decodeCut = (bytes: Uint8Array): Cut => {
 
 /**
  * The new epoch's document (`room.reseed.cut`): `seed` builds it from the
- * old one's JSON (the caller's semantics and actor), then its blocks take
- * the old ones' attribution. Reads `old`, writes only the new document.
+ * old one's base (`baseOf`: the caller's semantics and actor), then its
+ * blocks take the old ones' attribution. Reads `old`, writes only the new
+ * document.
  */
-export const seedFrom = (old: Replica, seed: (json: JSONDoc) => Replica): Replica => {
-	const fresh = seed(old.facade.toJSON());
+export const seedFrom = (old: Replica, base: Base, seed: (json: JSONDoc) => Replica): Replica => {
+	const fresh = seed(base.json);
 	const { ensureRecord } = bindBlockAttribution(Y);
 	fresh.doc.transact(() => {
 		for (const id of fresh.facade.order()) {
@@ -175,27 +219,17 @@ export const seedFrom = (old: Replica, seed: (json: JSONDoc) => Replica): Replic
 	return fresh;
 };
 
-/** The cut between `old` and `fresh`, the new epoch seeded from it ({@link seedFrom}): each seed unit stands for the old unit at its place. */
-export const cutBetween = (old: Replica, fresh: Replica): Cut => {
-	const before = identities(old.facade);
+/**
+ * The cut between `old` and `fresh`, the new epoch seeded from its base
+ * ({@link seedFrom}): each seed unit stands for the base's unit at its
+ * place.
+ */
+export const cutBetween = (old: Replica, base: Base, fresh: Replica): Cut => {
 	const runs: CutRun[] = [];
 	for (const [block, ids] of identities(fresh.facade)) {
-		const was = before.get(block) ?? [];
+		const was = base.ids.get(block) ?? [];
 		ids.forEach((id, i) => {
-			const o = was[i];
-			if (o === undefined || id.startsWith('?') || o.startsWith('?')) return;
-			const [c, k] = id.split(':').map(Number) as [number, number];
-			const [oc, ok] = o.split(':').map(Number) as [number, number];
-			const last = runs.at(-1);
-			if (
-				last &&
-				last.c === c &&
-				last.k + last.len === k &&
-				last.oc === oc &&
-				last.ok + last.len === ok
-			)
-				last.len++;
-			else runs.push({ c, k, len: 1, oc, ok });
+			if (was[i] !== undefined) addRun(runs, id, was[i]);
 		});
 	}
 	const update = Y.encodeStateAsUpdate(asYDoc(old.doc));
@@ -205,14 +239,19 @@ export const cutBetween = (old: Replica, fresh: Replica): Cut => {
 
 /** Cut `old` (`room.reseed.cut`): the new epoch's document and the cut ({@link seedFrom}, {@link cutBetween}). */
 export const cutDocument = (old: Replica, seed: (json: JSONDoc) => Replica) => {
-	const document = seedFrom(old, seed);
-	return { document, cut: cutBetween(old, document) };
+	const base = baseOf(old.facade);
+	const document = seedFrom(old, base, seed);
+	return { document, cut: cutBetween(old, base, document) };
 };
 
-/** The cut map as a lookup: a seed item's id → the old item's (`undefined`: not a seed character). */
+/** A map of runs as a lookup: an item's id → the old item's it stands for (`undefined`: none). */
 const lookupOf = (map: Uint8Array) => {
 	const byClient = new Map<number, CutRun[]>();
-	for (const run of decodeRuns(map)) byClient.set(run.c, [...(byClient.get(run.c) ?? []), run]);
+	for (const run of decodeRuns(map)) {
+		const list = byClient.get(run.c);
+		if (list) list.push(run);
+		else byClient.set(run.c, [run]);
+	}
 	for (const list of byClient.values()) list.sort((a, b) => a.k - b.k);
 	return (id: string): string | undefined => {
 		const [c, k] = id.split(':').map(Number) as [number, number];
@@ -232,8 +271,9 @@ const lookupOf = (map: Uint8Array) => {
 /**
  * Make block `id`'s content read `want` keeping every unit whose identity
  * the two key lists share in order: each gap between kept units deleted
- * and written again, a kept unit whose marks differ formatted (runs of the
- * same change in one write). Edits through the display.
+ * and written again, a kept character whose marks differ formatted (runs
+ * of the same change in one write), a kept atom whose data differs written
+ * again. Edits through the display.
  */
 const rewriteKeyed = (
 	facade: ReseedFacade,
@@ -264,7 +304,13 @@ const rewriteKeyed = (
 		}
 		if (pi === have.length) break;
 		const [h, w] = [have[pi!]!, want[pj!]!];
-		if (h.key !== w.key && h.item.kind === 'text' && w.item.kind === 'text') {
+		if (h.key !== w.key && w.item.kind === 'inline') {
+			flush();
+			facade.apply(facade.prepare.deleteText(id, at, 1));
+			facade.apply(
+				facade.prepare.insertInline(id, at, { id: w.item.id, type: w.item.type, data: w.item.data })
+			);
+		} else if (h.key !== w.key && h.item.kind === 'text' && w.item.kind === 'text') {
 			const [hm, wm] = [h.item.marks ?? {}, w.item.marks ?? {}];
 			const marks: Record<string, unknown> = {};
 			for (const k of new Set([...Object.keys(hm), ...Object.keys(wm)]))
@@ -292,7 +338,9 @@ const rewriteKeyed = (
  * pieces in order (its first piece takes its id, the others are merged
  * into it; a unit `json` no longer shows stays in the piece before it).
  * Then `restoreDocument` writes the rest, its content by identity, and
- * keeps the pending suggestions. Runs inside the caller's transaction.
+ * keeps the pending suggestions. A `new:` identity names no unit of `doc`:
+ * any unit `ids` names nowhere else stands for it. Runs inside the
+ * caller's transaction.
  */
 export const restoreByIdentity = (
 	doc: EngineDoc,
@@ -337,8 +385,14 @@ export const restoreByIdentity = (
 		list.sort((a, b) => a.first - b.first);
 		if (list[0]!.id === '' && blockNodeOf(doc, x) === null) list[0]!.id = x;
 	}
+	const free = () => {
+		let id: BlockId;
+		do id = `~cut${temp++}`;
+		while (blockNodeOf(doc, id) !== null || ids.has(id));
+		return id;
+	};
 	for (const list of pieces.values())
-		for (const piece of list) if (piece.id === '') piece.id = `~cut${temp++}`;
+		for (const piece of list) if (piece.id === '') piece.id = free();
 	for (const [a, list] of pieces)
 		for (let k = list.length - 1; k >= 1; k--) {
 			const at = sum(unitsOf(facade.contentItems(a)).slice(0, list[k]!.start));
@@ -356,17 +410,22 @@ export const restoreByIdentity = (
 	const want = (id: BlockId) => [...(ids.get(id) ?? [])];
 	const report = restoreDocument(doc, facade, json, {
 		rewrite: (f, id, have, wanted) => {
-			rewriteKeyed(f as ReseedFacade, id, have, wanted, idsOf(f as ReseedFacade, id), want(id));
+			const r = f as ReseedFacade;
+			rewriteKeyed(r, id, have, wanted, keyed(idsOf(r, id), have), keyed(want(id), wanted));
 			return true;
 		},
 		suggestions: 'keep'
 	});
 	// Same text, another identity (a unit deleted and typed again): by identity too.
+	const named = new Set([...ids.values()].flat());
 	for (const [id, list] of ids) {
 		const have = idsOf(facade, id);
-		if (have.length === list.length && have.every((k, i) => k === list[i])) continue;
+		const wanted = list.map((k, i) =>
+			k.startsWith('new:') && have[i] !== undefined && !named.has(have[i]) ? have[i] : k
+		);
+		if (have.length === wanted.length && have.every((k, i) => k === wanted[i])) continue;
 		const units = unitsOf(facade.contentItems(id));
-		rewriteKeyed(facade, id, units, units, have, list);
+		rewriteKeyed(facade, id, units, units, keyed(have, units), keyed(wanted, units));
 	}
 	return report;
 };
@@ -377,57 +436,77 @@ export type RebaseReport =
 	| ({ status: 'applied' } & ReturnType<typeof restoreDocument>);
 
 /**
- * What the rebases from one cut merged so far: the state they covered (a
- * state vector, and the deletes as an update without structs), so a second
- * upload of the same edits (another tab's) merges nothing twice. Starts as
- * the cut's own.
+ * What one user's rebases from one cut merged so far (`room.reseed.rebase`):
+ * the old document's state they covered (a state vector, and the deletes
+ * as an update without structs), so a second upload of the same edits
+ * (another tab's) merges nothing twice, and the merged maps: `maps[i]`,
+ * written while the `i`th cut's epoch was current, reads each unit those
+ * rebases wrote as the old unit it stands for, so an edit that builds on
+ * them still finds it. Starts as the cut's own state, with no map.
  */
-export type Merged = { sv: Uint8Array; ds: Uint8Array };
+export type Merged = { sv: Uint8Array; ds: Uint8Array; maps: Uint8Array[] };
 
-/** `merged` grown by what `upload` holds. */
-const mergedWith = (merged: Merged, upload: Uint8Array): Merged => {
-	const sv = Y.decodeStateVector(merged.sv);
-	const { structs } = Y.decodeUpdate(upload);
-	for (const struct of structs)
-		if (!(struct instanceof Y.Skip))
-			sv.set(
-				struct.id.client,
-				Math.max(sv.get(struct.id.client) ?? 0, struct.id.clock + struct.length)
-			);
-	const all = Y.encodeStateVector(sv);
-	const parts = [merged.ds, diffUpdate(upload, all)] as Uint8Array<ArrayBuffer>[];
-	return { sv: all, ds: Y.mergeUpdates(parts) };
+export const encodeMerged = (merged: Merged) => {
+	const e = encoding.createEncoder();
+	for (const part of [merged.sv, merged.ds]) encoding.writeVarUint8Array(e, part);
+	encoding.writeVarUint(e, merged.maps.length);
+	for (const map of merged.maps) encoding.writeVarUint8Array(e, map);
+	return encoding.toUint8Array(e);
+};
+export const decodeMerged = (bytes: Uint8Array): Merged => {
+	const d = decoding.createDecoder(bytes);
+	const [sv, ds] = [decoding.readVarUint8Array(d), decoding.readVarUint8Array(d)];
+	const maps = Array.from({ length: decoding.readVarUint(d) }, () => decoding.readVarUint8Array(d));
+	return { sv, ds, maps };
+};
+
+/** Whether `upload` holds anything `merged` does not cover: what a rebase merges, if anything. */
+export const hasEdits = (upload: Uint8Array, merged: Merged): boolean => {
+	const own = Y.decodeUpdate(diffUpdate(upload, merged.sv));
+	return (
+		!own.structs.every((s) => s instanceof Y.Skip) ||
+		!Y.diffIdSet(own.ds, Y.decodeUpdate(merged.ds).ds).isEmpty()
+	);
 };
 
 /**
  * Merge a client's unsaved edits, `upload` (its old document, whole),
  * into `target`, the current document: `cuts` are the re-seeds since the
  * client's epoch, oldest first (each one's map reads the next epoch's seed
- * units as the previous epoch's), `merged` what earlier rebases from the
- * oldest cut merged (default: the cut's own state), `scratch` builds a
- * document from an update. Writes `target` inside the caller's
- * transaction; answers the report and `merged` grown by `upload`.
+ * units as the previous epoch's), `merged` what its user's earlier rebases
+ * from the oldest cut merged (default: the cut's own state), `scratch`
+ * builds a document from an update. Writes `target` inside the caller's
+ * transaction; answers the report and `merged` grown by this rebase.
  */
 export const rebaseOnto = (
 	target: Replica,
 	cuts: readonly Cut[],
 	upload: Uint8Array,
 	scratch: (update: Uint8Array) => Replica,
-	merged: Merged = { sv: cuts[0]!.sv, ds: cuts[0]!.ds }
+	merged: Merged = { sv: cuts[0]!.sv, ds: cuts[0]!.ds, maps: [] }
 ): { report: RebaseReport; merged: Merged } => {
-	const [first] = cuts as [Cut];
-	const next = mergedWith(merged, upload);
 	const mine = diffUpdate(upload, merged.sv);
 	const own = Y.decodeUpdate(mine);
-	if (own.structs.length === 0 && Y.diffIdSet(own.ds, Y.decodeUpdate(merged.ds).ds).isEmpty())
-		return { report: { status: 'noop' }, merged: next };
-	const shadow = scratch(clipUpdate(upload, first.sv, Y.decodeUpdate(first.ds).ds));
-	// 2 · The current document, each seed unit read down the cuts to its old one.
-	const lookups = cuts.map((cut) => lookupOf(cut.map));
+	const done = Y.decodeUpdate(merged.ds).ds;
+	if (own.structs.every((s) => s instanceof Y.Skip) && Y.diffIdSet(own.ds, done).isEmpty())
+		return { report: { status: 'noop' }, merged };
+	// 1 · The base, without the pending suggestions the cut dropped.
+	const shadow = scratch(clipUpdate(upload, merged.sv, done));
+	dropSuggestions(shadow.facade);
+	// 2 · The current document, each unit read down the cuts to its old one.
+	const cutLookups = cuts.map((cut) => lookupOf(cut.map));
+	const mapLookups = merged.maps.map(lookupOf);
 	const old = (k: string) => {
-		let id: string | undefined = k;
-		for (let i = lookups.length - 1; i >= 0 && id !== undefined; i--) id = lookups[i]!(id);
-		return id ?? k;
+		let id = k;
+		for (let i = cuts.length - 1; i >= 0; i--) {
+			const was = mapLookups[i]?.(id);
+			if (was !== undefined) return was;
+			const before = cutLookups[i]!(id);
+			// A unit of a later epoch the cuts do not name: no old unit stands for it.
+			if (before === undefined) return `~${k}`;
+			id = before;
+		}
+		return id;
 	};
 	const theirs = target.facade.toJSON({ suggestions: true });
 	const current = identities(target.facade);
@@ -441,8 +520,9 @@ export const rebaseOnto = (
 			if (now[i] !== undefined) toCurrent.set(k, now[i]!);
 		});
 	}
-	// 3 · The client's edits, merged by the CRDT.
+	// 3 · The client's edits, merged by the CRDT; its pending suggestions dropped.
 	Y.applyUpdate(asYDoc(shadow.doc), mine);
+	dropSuggestions(shadow.facade);
 	// 4 · Back onto the current document, by identity.
 	const result = shadow.facade.toJSON({ suggestions: true });
 	const ids = new Map(
@@ -452,5 +532,33 @@ export const rebaseOnto = (
 		])
 	);
 	const report = restoreByIdentity(target.doc, target.facade, result, ids);
-	return { report: { status: 'applied', ...report }, merged: next };
+	// What this rebase merged: the structs the shadow took in, the deletes, the units it wrote.
+	const took = Y.decodeStateVector(Y.encodeStateVector(asYDoc(shadow.doc)));
+	const sv = Y.decodeStateVector(merged.sv);
+	const top = new Map<number, number>();
+	for (const struct of own.structs) {
+		const { client, clock } = struct.id;
+		top.set(client, Math.max(top.get(client) ?? 0, clock + struct.length));
+		if ((took.get(client) ?? 0) > (sv.get(client) ?? 0)) sv.set(client, took.get(client)!);
+	}
+	// The upload's deletes alone: its structs past every one it holds.
+	const deletes = diffUpdate(mine, Y.encodeStateVector(top));
+	const runs = decodeRuns(merged.maps[cuts.length - 1] ?? encodeRuns([]));
+	for (const [id, list] of ids) {
+		const now = idsOf(target.facade, id);
+		if (now.length !== list.length) continue;
+		list.forEach((k, i) => {
+			if (k.startsWith('new:')) addRun(runs, now[i]!, k.slice(4));
+		});
+	}
+	const maps = Array.from({ length: cuts.length }, (_, i) => merged.maps[i] ?? encodeRuns([]));
+	maps[cuts.length - 1] = encodeRuns(runs);
+	return {
+		report: { status: 'applied', ...report },
+		merged: {
+			sv: Y.encodeStateVector(sv),
+			ds: Y.mergeUpdates([merged.ds, deletes] as Uint8Array<ArrayBuffer>[]),
+			maps
+		}
+	};
 };

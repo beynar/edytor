@@ -806,20 +806,22 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		 * decodes it). `''`, `.`, `..`, an id over 256 characters and one with a
 		 * lone surrogate are refused at construction ({@link assertRoomId}). `params` are read at every dial (a refreshed token
 		 * reaches the next connection), with `replica` = this document's
-		 * client id unless `params` names one: the room binds the socket's
-		 * writes to it.
+		 * client id unless `params` names one (the room binds the socket's
+		 * writes to it), and `epoch`, the document's, which no param replaces.
 		 */
 		get url(): string {
 			// The document's epoch (`new`: it holds nothing yet), which the room checks (`room.reseed.protocol`).
 			const epoch = this.doc.store.clients.size
 				? String(asEngineDoc(this.doc).get(EPOCH_ROOT).getAttr('n') ?? 0)
 				: 'new';
-			const query = url.encodeQueryParams({
+			const query: Record<string, string> = {
 				replica: String(this.doc.clientID),
 				epoch,
 				...this.params
-			});
-			return `${this.serverUrl}/${encodeURIComponent(this.roomname)}?${query}`;
+			};
+			// In its place, but no param of the app's names it instead.
+			query.epoch = epoch;
+			return `${this.serverUrl}/${encodeURIComponent(this.roomname)}?${url.encodeQueryParams(query)}`;
 		}
 
 		/** Updates of this document's actor the room has not acknowledged as persisted yet. */

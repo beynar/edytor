@@ -64,6 +64,9 @@ describe('a re-seed (4410) on <Edytor>', () => {
 	it('a view that owns its document builds itself again on a new one, and dials again', async () => {
 		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
 		refuse = (_url, n) => (n === 1 ? [4410, '1'] : undefined);
+		const deleted: string[] = [];
+		const deleteDatabase = indexedDB.deleteDatabase.bind(indexedDB);
+		indexedDB.deleteDatabase = (name: string) => (deleted.push(name), deleteDatabase(name));
 		const refusals: SyncRefusedError[] = [];
 		const view = render(Edytor, {
 			props: {
@@ -75,8 +78,12 @@ describe('a re-seed (4410) on <Edytor>', () => {
 		});
 		await waitFor(() => expect(dials).toHaveLength(2));
 		expect(refusals.map((refusal) => [refusal.code, refusal.reason])).toEqual([[4410, '1']]);
-		// The new view's document holds nothing yet: it names no epoch of its own.
+		// Its local copy is deleted, and the new view's document holds nothing yet: it names no epoch of its own.
+		expect(deleted).toEqual([
+			expect.stringMatching(/edytor:ws:\/\/rooms\.test\/rooms\/doc-reseeded$/)
+		]);
 		expect(dials[1]).toMatch(/epoch=new/);
+		indexedDB.deleteDatabase = deleteDatabase;
 		view.unmount();
 	});
 

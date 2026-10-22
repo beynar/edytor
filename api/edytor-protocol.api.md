@@ -49,7 +49,6 @@ declare const CLOSE: {
     readonly denied: 4403;
     readonly replicaTaken: 4409;
     readonly reseeded: 4410;
-    readonly epochExpired: 4411;
     readonly quota: 4413;
 };
 ```

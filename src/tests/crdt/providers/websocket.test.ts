@@ -313,6 +313,9 @@ describe('dial url', () => {
 		expect(p.url).toContain('token=t2');
 		p.params = { replica: 'mine' };
 		expect(p.url).toBe('ws://x/rooms/r?replica=mine&epoch=new');
+		// The epoch is the document's: no param replaces it.
+		p.params = { epoch: '9', token: 't3' };
+		expect(p.url).toBe(`ws://x/rooms/r?replica=${doc.clientID}&epoch=new&token=t3`);
 		p.destroy();
 	});
 });

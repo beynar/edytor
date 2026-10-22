@@ -409,7 +409,8 @@ export type Refusal = {
 		// limit): skipped; or a retention sweep that failed ({ retention, error }).
 		| 'history'
 		// A dial of an epoch the room does not serve ({ user, epoch, room }): none, in a room
-		// that re-seeded, or a later one (closed 1008); one past the cuts kept (closed 4411).
+		// that re-seeded (closed 1008); one past the cuts kept or a later one, or an older
+		// epoch's content on a socket of the current one ({ user, epoch }) (closed 4410).
 		| 'epoch';
 	detail: unknown;
 };
@@ -491,13 +492,14 @@ export type RoomLogEntry =
 	  }
 	| { edytor: 'reseed'; skipped: 'suggestions'; bytes: number; pending: number }
 	| { edytor: 'reseed'; skipped: 'gain'; bytes: number; estimate: number }
-	// An offline client's edits rebased onto the current epoch (`room.reseed.rebase`).
+	// An offline client's edits rebased onto the current epoch (`room.reseed.rebase`): nothing new,
+	// applied, refused by the admission (a quota, read-only), or a hand-over it could not rebase.
 	| {
 			edytor: 'rebase';
 			user: string;
 			from: number;
 			epoch: number;
-			status: 'noop' | 'applied';
+			status: 'noop' | 'applied' | 'refused' | 'failed';
 			bytes: number;
 			ms: number;
 	  }

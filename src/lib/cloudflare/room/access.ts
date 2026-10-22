@@ -14,6 +14,7 @@ import {
 	IDENTITY_HEADERS,
 	PROBE_HEADER,
 	SOCKET_TAG,
+	STALE_TAG,
 	closedSocket,
 	noTimers
 } from './shared.js';
@@ -145,7 +146,7 @@ export class RoomAccess {
 		}
 		if (door === 'stale') {
 			const pair = new WebSocketPair();
-			room.ctx.acceptWebSocket(pair[1], [SOCKET_TAG]);
+			room.ctx.acceptWebSocket(pair[1], [SOCKET_TAG, STALE_TAG]);
 			pair[1].serializeAttachment({
 				...identity,
 				clock: null,

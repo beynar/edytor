@@ -429,12 +429,13 @@ export const CLOSE = {
 	replicaTaken: 4409,
 	/**
 	 * The room re-seeded the document (`room.reseed.protocol`; the reason is
-	 * the new epoch): a refusal of this document, once a client with unsaved
-	 * edits redialed and handed them over. The new epoch is a new document's.
+	 * the room's epoch): a refusal of this document, once a client with
+	 * unsaved edits redialed and handed them over. The new epoch is a new
+	 * document's. Also the answer to a copy the room cannot rebase (an
+	 * epoch past the cuts it keeps, or a later one) and to an older epoch's
+	 * content on a socket of the current one.
 	 */
 	reseeded: 4410,
-	/** The client's epoch is older than the cuts the room keeps: its unsaved edits cannot merge. */
-	epochExpired: 4411,
 	/**
 	 * A room quota refused the socket's write (`quota: document`,
 	 * `quota: rate`, `quota: frame`): the frame was not applied, and a

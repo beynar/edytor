@@ -49,8 +49,6 @@ export class RoomPurge {
 				scheduler.schedule('purge', now + DAY, 'replace');
 				return null;
 			}
-			// The cuts past their grace go (`room.reseed.grace`).
-			room.reseed.prune(now);
 			const sv = Y.encodeStateVector(doc);
 			const newest = sql
 				.exec<{ sv: ArrayBuffer }>(`SELECT sv FROM ${tables.epochs} ORDER BY at DESC LIMIT 1`)

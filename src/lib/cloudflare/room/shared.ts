@@ -100,3 +100,5 @@ export const DEFAULT_RESEED_GRACE_DAYS = 30;
 
 /** The tag of the document's sockets: other sockets of the object are left to you. */
 export const SOCKET_TAG = 'edytor';
+/** A socket of an older epoch (`room.reseed.protocol`), tagged too: it hands over its old document, nothing is relayed to it. */
+export const STALE_TAG = 'edytor-stale';

@@ -2270,7 +2270,7 @@ export type SuggestContext = DocBase & DocReads & {
     config: EdytorDocConfig;
     create: (doc: EngineDoc, config: EdytorDocConfig) => SuggestFacade;
     v: number;
-    base: (() => JSONDoc | undefined) | undefined;
+    base: (<T>(read: (other: SuggestFacade) => T) => T | undefined) | undefined;
 };
 ```
 

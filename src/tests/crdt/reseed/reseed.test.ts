@@ -7,11 +7,15 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import type { EdytorDocument } from '../../../lib/crdt/document.js';
+import { suggestionsOf, type SuggestFacade } from '../../../lib/crdt/doc/suggest.js';
 import {
 	cutDocument,
 	decodeCut,
+	decodeMerged,
 	encodeCut,
+	encodeMerged,
 	rebaseOnto,
+	type Merged,
 	type Replica
 } from '../../../lib/crdt/reseed.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
@@ -37,9 +41,11 @@ const asReplica = (d: EdytorDocument): Replica => ({
 	doc: d.doc as never,
 	facade: d.facade as never
 });
+// Each epoch's seed writes under a client id of its own, as the room's (a random one) does.
+let seeds = 0;
 const seed = (json: JSONDoc) => {
 	const d = createDocument({ value: json, actor: { id: 'room' } });
-	d.doc.clientID = 9000;
+	d.doc.clientID = 9000 + 10 * seeds++;
 	return asReplica(d);
 };
 const scratch = (update: Uint8Array) => {
@@ -177,5 +183,115 @@ describe('the rebase (room.reseed.rebase)', () => {
 			rebaseOnto(epoch, [first.cut, second.cut], s.offline.encode(), scratch)
 		);
 		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'one and a half two three four' });
+	});
+});
+
+/** Rebase `upload` onto `epoch` in one transaction: the report and what it merged. */
+const rebase = (
+	epoch: Replica,
+	cuts: Parameters<typeof rebaseOnto>[1],
+	upload: Uint8Array,
+	merged?: Merged
+) =>
+	(epoch.doc as never as { transact: <R>(f: () => R) => R }).transact(() =>
+		rebaseOnto(epoch, cuts, upload, scratch, merged && decodeMerged(encodeMerged(merged)))
+	);
+const pending = (r: Replica) =>
+	suggestionsOf(r.facade as unknown as SuggestFacade).changes().length;
+
+describe('what a rebase merges and drops (room.reseed.rebase, room.reseed.suggestions)', () => {
+	it('pending suggestions at the cut: offline typing lands where it was typed', () => {
+		const s = setup(value('The quick brown fox'));
+		const shared = suggestionsOf(s.online.facade as unknown as SuggestFacade);
+		shared.apply(
+			shared.open({ label: 'AI', via: 'ai' }),
+			s.online.facade.prepare.insertText('b0', 4, 'very ')
+		);
+		s.offline.facade.insertText('b0', 9, 'X');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		// The cut drops the pending suggestion, and reads its map from the same view.
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'The quick brown fox' });
+		rebase(epoch, [cut], s.offline.encode());
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'The quickX brown fox' });
+	});
+
+	it("a client's pending suggestions are dropped, never accepted", () => {
+		const s = setup(value('The quick brown fox'));
+		const shared = suggestionsOf(s.offline.facade as unknown as SuggestFacade);
+		const writer = shared.open({ label: 'AI', via: 'ai' });
+		shared.apply(writer, s.offline.facade.prepare.insertText('b0', 4, 'very '));
+		shared.apply(writer, s.offline.facade.prepare.deleteText('b0', 15, 4));
+		s.offline.facade.insertText('b0', 0, '>');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		rebase(epoch, [cut], s.offline.encode());
+		expect(texts(epoch.facade.toJSON({ suggestions: true }))).toEqual({
+			b0: '>The quick brown fox'
+		});
+		expect(pending(epoch)).toBe(0);
+	});
+
+	it("offline data, marks and an atom's data reach the new epoch", () => {
+		const s = setup({
+			children: [
+				{ id: 'b0', type: 'paragraph', content: [{ text: 'alpha beta' }] },
+				{
+					id: 'b1',
+					type: 'paragraph',
+					content: [
+						{ text: 'hi ' },
+						{ id: 'm1', type: 'mention', data: { u: 'x' } },
+						{ text: ' there' }
+					]
+				}
+			]
+		} as JSONDoc);
+		s.offline.facade.patchData('b0', [{ path: ['color'], value: 'red' }]);
+		s.offline.facade.formatRange('b0', 0, 5, { bold: true });
+		s.offline.facade.patchData({ block: 'b1', atom: 'm1' }, [{ path: ['u'], value: 'y' }]);
+		const { want, got } = both(s);
+		expect(got).toEqual(want);
+	});
+
+	it('a rebased insertion is written once', () => {
+		const s = setup(value('alpha'));
+		const typed = ' ' + 'x'.repeat(2000);
+		s.offline.facade.insertText('b0', 5, typed);
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const sv = Y.encodeStateVector(epoch.doc as never);
+		rebase(epoch, [cut], s.offline.encode());
+		const { structs } = Y.decodeUpdate(Y.encodeStateAsUpdate(epoch.doc as never, sv));
+		const written = structs.reduce((n, struct) => n + struct.length, 0);
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'alpha' + typed });
+		// The text once, and the block's attribution: never the text deleted and written again.
+		expect(written).toBeLessThan(typed.length + 50);
+	});
+
+	it("a second tab's edits that build on the first tab's still find them", () => {
+		const s = setup(value('alpha'));
+		s.offline.facade.insertText('b0', 5, ' beta');
+		// Another tab opened from the same local copy, typing after the first tab's text.
+		const tab = loadDocument(s.offline.encode(), { actor: { id: 'ana' } });
+		tab.sync();
+		tab.doc.clientID = 1001;
+		tab.facade.insertText('b0', 10, ' gamma');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const first = rebase(epoch, [cut], s.offline.encode());
+		const second = rebase(epoch, [cut], tab.encode(), first.merged);
+		expect(second.report.status).toBe('applied');
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: 'alpha beta gamma' });
+	});
+
+	it('and after another re-seed: the merged map reads down the cuts', () => {
+		const s = setup(value('alpha'));
+		s.offline.facade.insertText('b0', 5, ' beta');
+		const tab = loadDocument(s.offline.encode(), { actor: { id: 'ana' } });
+		tab.sync();
+		tab.doc.clientID = 1001;
+		tab.facade.insertText('b0', 10, ' gamma');
+		const one = cutDocument(asReplica(s.online), seed);
+		const first = rebase(one.document, [one.cut], s.offline.encode());
+		const two = cutDocument(one.document, seed);
+		rebase(two.document, [one.cut, two.cut], tab.encode(), first.merged);
+		expect(texts(two.document.facade.toJSON())).toEqual({ b0: 'alpha beta gamma' });
 	});
 });

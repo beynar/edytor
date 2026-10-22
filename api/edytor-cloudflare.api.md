@@ -1139,7 +1139,7 @@ export type RoomLogEntry = {
     user: string;
     from: number;
     epoch: number;
-    status: 'noop' | 'applied';
+    status: 'noop' | 'applied' | 'refused' | 'failed';
     bytes: number;
     ms: number;
 } | {

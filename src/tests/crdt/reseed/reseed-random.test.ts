@@ -8,9 +8,9 @@
  * the CRDT gives when the two simply merge, with no re-seed.
  *
  * - Text edits only (typing, deleting, formatting) on both sides: every
- *   character the CRDT shows shows, in its block, and nothing else
- *   (`room.reseed.text`; the order of two inserts made at one place at once
- *   and a mark's edge can differ).
+ *   character the CRDT shows shows, in its block, and nothing else, in its
+ *   order (`room.reseed.text`; the order of two inserts made at one place
+ *   at once and a mark's edge can differ).
  * - With blocks split, merged, moved, inserted and deleted too: the
  *   characters that differ from the CRDT stay a small share (the residue,
  *   `room.reseed.residue`: both sides restructured the same blocks, and the
@@ -141,13 +141,41 @@ const score = (want: JSONDoc, got: JSONDoc) => {
 	for (const [ch, n] of wc) lost += Math.max(0, n - (gc.get(ch) ?? 0));
 	for (const [ch, n] of gc) extra += Math.max(0, n - (wc.get(ch) ?? 0));
 	if (!WORDS) for (const n of gc.values()) duplicated += n - 1;
+	let moved = 0;
 	if (!WORDS) {
 		const home = new Map<string, string>();
 		for (const b of g) for (const ch of b.text) home.set(ch, b.id);
 		for (const b of w)
 			for (const ch of b.text) if (home.has(ch) && home.get(ch) !== b.id) elsewhere++;
+		// Out of order in its block: the characters both show there, less their longest common order.
+		const byId = new Map(g.map((b) => [b.id, [...b.text]]));
+		for (const b of w) {
+			const mine = byId.get(b.id) ?? [];
+			const both = new Set([...b.text].filter((ch) => mine.includes(ch)));
+			const [x, y] = [[...b.text].filter((ch) => both.has(ch)), mine.filter((ch) => both.has(ch))];
+			moved += x.length - lcs(x, y);
+		}
 	}
-	return { chars: [...wc.values()].reduce((a, b) => a + b, 0), lost, extra, elsewhere, duplicated };
+	return {
+		chars: [...wc.values()].reduce((a, b) => a + b, 0),
+		lost,
+		extra,
+		elsewhere,
+		duplicated,
+		moved
+	};
+};
+
+/** The length of the longest common subsequence of `a` and `b`. */
+const lcs = (a: readonly string[], b: readonly string[]) => {
+	let row = new Array<number>(b.length + 1).fill(0);
+	for (const ch of a) {
+		const next = [0];
+		for (let j = 0; j < b.length; j++)
+			next.push(ch === b[j] ? row[j]! + 1 : Math.max(row[j + 1]!, next[j]!));
+		row = next;
+	}
+	return row[b.length]!;
 };
 
 const run = (seed: number, mix: Mix) => {
@@ -176,9 +204,8 @@ const run = (seed: number, mix: Mix) => {
 		const before = JSON.stringify(flatten(d.toJSON()));
 		edit(rng, d, mix, text, fresh);
 		if (process.env.RESEED_SEED)
-			console.log(
-				who,
-				before === JSON.stringify(flatten(d.toJSON())) ? '(no change)' : show(d.toJSON())
+			process.stderr.write(
+				`${who} ${before === JSON.stringify(flatten(d.toJSON())) ? '(no change)' : show(d.toJSON())}\n`
 			);
 	};
 	for (let k = 0, m = int(rng, 1, OPS); k < m; k++) trace('R', offline);
@@ -200,7 +227,7 @@ const run = (seed: number, mix: Mix) => {
 		})
 	);
 	if (process.env.RESEED_SEED)
-		console.log('WANT', show(oracle.toJSON()), '\nGOT ', show(epoch.facade.toJSON()));
+		process.stderr.write(`WANT ${show(oracle.toJSON())}\nGOT  ${show(epoch.facade.toJSON())}\n`);
 	return score(oracle.toJSON(), epoch.facade.toJSON());
 };
 const show = (doc: JSONDoc) =>
@@ -212,12 +239,13 @@ const show = (doc: JSONDoc) =>
 		.join(' | ');
 
 const total = (mix: Mix) => {
-	const sum = { chars: 0, lost: 0, extra: 0, elsewhere: 0, duplicated: 0, seeds: 0 };
+	const sum = { chars: 0, lost: 0, extra: 0, elsewhere: 0, duplicated: 0, moved: 0, seeds: 0 };
 	for (const seed of SEEDS) {
 		const s = run(seed, mix);
-		if (process.env.RESEED_REPORT && s.lost + s.extra > 0)
-			console.log('seed', seed, JSON.stringify(s));
-		for (const k of ['chars', 'lost', 'extra', 'elsewhere', 'duplicated'] as const) sum[k] += s[k];
+		if (process.env.RESEED_REPORT && s.lost + s.extra + s.moved > 0)
+			process.stderr.write(`seed ${seed} ${mix} ${JSON.stringify(s)}\n`);
+		for (const k of ['chars', 'lost', 'extra', 'elsewhere', 'duplicated', 'moved'] as const)
+			sum[k] += s[k];
 		if (s.lost + s.extra + s.elsewhere > 0) sum.seeds++;
 	}
 	return sum;
@@ -232,6 +260,7 @@ describe('re-seed under random edits (room.reseed.*)', () => {
 
 	it('text edits on both sides: every character the CRDT shows, in its block, nothing else', () => {
 		const sum = total('text');
+		if (process.env.RESEED_REPORT) process.stderr.write(`text ${JSON.stringify(sum)}\n`);
 		expect({
 			lost: sum.lost,
 			extra: sum.extra,
@@ -243,11 +272,14 @@ describe('re-seed under random edits (room.reseed.*)', () => {
 			elsewhere: 0,
 			duplicated: 0
 		});
+		// In order, but for two inserts at one place, one of them over a deleted character: the
+		// rebase writes the other side's after it, the CRDT may have it before (measured 0.26 %).
+		expect(sum.moved).toBeLessThan(sum.chars * 0.01);
 	});
 
 	it('structure too: the residue stays small', () => {
 		const sum = total('structure');
-		if (process.env.RESEED_REPORT) console.log('residue', sum);
+		if (process.env.RESEED_REPORT) process.stderr.write(`residue ${JSON.stringify(sum)}\n`);
 		// Measured on the default seeds: 1.3 % of the characters, in 17 % of them (a regression bound).
 		expect(sum.lost + sum.extra).toBeLessThan(sum.chars * 0.02);
 		expect(sum.seeds).toBeLessThan(SEEDS.length / 4);

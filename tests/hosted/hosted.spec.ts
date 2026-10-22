@@ -583,13 +583,15 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		expect(JSON.parse(left!)).toEqual({ persisted: false, released: 1 });
 		if (testInfo.project.name === 'firefox') {
 			// Firefox closes a page's sockets as it starts unloading, before
-			// `pagehide` (and the local store's write does not complete): the
-			// release never leaves the page, and the deletes wait for the purge
-			// horizon, as before. B, resynced with the room, holds no release.
+			// `pagehide`: the release never leaves the page by its socket. Its
+			// local store's write may complete or not as the page unloads: when
+			// it does, the reloaded page syncs the release to the room; when it
+			// does not, the deletes wait for the purge horizon, as before. B,
+			// resynced with the room, holds the release or none, never another.
 			await setOnline(b.page, false);
 			await setOnline(b.page, true);
 			await expectProvider(b.page, { wsconnected: true, synced: true });
-			expect(await released(b.page)).toEqual([]);
+			expect([[], [writer]]).toContainEqual(await released(b.page));
 		} else {
 			// The release was written before its provider left: the room relays it to B.
 			await expect.poll(() => released(b.page), { timeout: 15_000 }).toEqual([writer]);

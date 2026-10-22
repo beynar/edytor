@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 6.0.0
+
 #### Breaking changes
 
 - **A room that re-seeds refuses the clients before this release.** The room now rebuilds a document that grew past half its quota from its content (see New). A client names its document's epoch when it dials; one before this release names none, and a room that re-seeded refuses it (`1008`, `refused: epoch`), its edits kept in its local copy. Update the clients before the rooms: the new clients work with rooms that never re-seeded. To keep the previous behavior, set `reseed: false` (`EDYTOR_RESEED=off`).

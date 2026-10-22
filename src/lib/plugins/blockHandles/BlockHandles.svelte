@@ -71,6 +71,18 @@
 		return [...paths.keys()].sort((a, b) => before(paths.get(a)!, paths.get(b)!));
 	});
 
+	/**
+	 * The blocks whose handle a touch screen shows (no hover there): the ones
+	 * the selection is in or selects, the focused handle's, the dragged one.
+	 */
+	const active = $derived.by(() => {
+		const out = new Set<string>(edytor.selection.projection.blocks);
+		for (const block of edytor.selection.selectedBlocks) out.add(block.id);
+		if (focused !== null) out.add(focused);
+		if (controller.dragging) out.add(controller.dragging);
+		return out;
+	});
+
 	/** The blocks whose handle sits over a gap between two columns (`overGap`, measured). */
 	const overGaps = new SvelteSet<string>();
 
@@ -161,6 +173,7 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
+		data-active={active.has(id) ? 'true' : undefined}
 		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		data-selecting={edytor.selection.dragging ? 'true' : undefined}
@@ -237,10 +250,17 @@
 		opacity: 1;
 	}
 
+	/* A touch screen has no hover: a handle shows for the block the selection
+	 * is in (Notion's), and only a shown one takes a tap, so a tap in the
+	 * gutter never opens a hidden block's menu. */
 	@media (hover: none) {
 		[data-edytor-block-handle-host] {
-			opacity: 1;
 			padding-inline-end: 0;
+			pointer-events: none;
+		}
+		[data-edytor-block-handle-host][data-active='true'] {
+			opacity: 1;
+			pointer-events: auto;
 		}
 	}
 </style>

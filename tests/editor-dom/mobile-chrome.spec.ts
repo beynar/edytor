@@ -8,7 +8,8 @@ import {
 
 /**
  * The block chrome under a finger (`Pixel 5`, `iPhone 13`): a phone has no
- * hover, so every handle shows; a tap on a grip selects its block and opens
+ * hover, so the handle of the block the selection is in shows, and no other
+ * (a hidden one takes no tap); a tap on a grip selects its block and opens
  * the block menu, whose Move down moves it (one undo step); a tap on a `+`
  * opens the insert menu; a text selection shows the toolbar, whose Bold a
  * tap applies. A finger drag on a grip is the platform's long-press drag
@@ -39,17 +40,26 @@ const grip = (page: Page, id: string) =>
 	page.locator(`[data-testid="block-handle"][data-block-id="${id}"]`);
 
 test.describe('the block chrome under a finger', () => {
-	test('every handle shows without hover; the grip tapped opens the menu, Move down moves the block', async ({
+	test("the caret block's handle shows, no other; the grip tapped opens the menu, Move down moves the block", async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 1);
 		await expect(grip(page, 'A')).toBeVisible();
-		const opacity = await grip(page, 'A').evaluate(
-			(node) => getComputedStyle(node.closest('[data-edytor-block-handle-host]')!).opacity
-		);
-		expect(opacity).toBe('1');
+		const shown = (id: string) =>
+			grip(page, id).evaluate((node) => {
+				const style = getComputedStyle(node.closest('[data-edytor-block-handle-host]')!);
+				return [style.opacity, style.pointerEvents];
+			});
+		await expect.poll(() => shown('A')).toEqual(['1', 'auto']);
+		expect(await shown('B')).toEqual(['0', 'none']);
+		// The caret moves on: its block's handle shows instead.
+		await setSelectionByTextIndex(page, 1, 1);
+		await expect.poll(() => shown('B')).toEqual(['1', 'auto']);
+		expect(await shown('A')).toEqual(['0', 'none']);
+		await setSelectionByTextIndex(page, 0, 1);
+		await expect.poll(() => shown('A')).toEqual(['1', 'auto']);
 		await grip(page, 'A').tap();
 		await expect(page.getByTestId('block-menu')).toBeVisible();
 		await expectInView(page, page.getByTestId('block-menu'));

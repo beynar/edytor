@@ -19,6 +19,7 @@ import {
 	type Replica
 } from '../../../lib/crdt/reseed.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import type { EngineDoc } from '../../../lib/crdt/engine-api.js';
 
 const value = (...texts: string[]): JSONDoc => ({
 	children: texts.map((text, i) => ({ id: `b${i}`, type: 'paragraph', content: [{ text }] }))
@@ -80,10 +81,25 @@ const both = (s: ReturnType<typeof setup>, after?: (epoch: Replica) => void) => 
 describe('the cut (room.reseed.cut)', () => {
 	it('seeds the same document with fresh identities, its attribution kept', () => {
 		const s = setup(value('alpha', 'beta'));
+		s.online.attribution.setProfile({ name: 'Ben', color: '#c00' });
+		// Typing and deleting leaves structure the content does not need.
+		for (let i = 0; i < 20; i++) {
+			s.online.facade.insertText('b1', 0, `word${i} `);
+			s.online.facade.deleteText('b1', 0, `word${i} `.length);
+		}
 		s.online.facade.insertText('b0', 5, '!');
 		const { document, cut } = cutDocument(asReplica(s.online), seed);
 		expect(document.facade.toJSON()).toEqual(s.online.toJSON());
 		expect(document.facade.blockAttribution('b0')).toEqual(s.online.facade.blockAttribution('b0'));
+		// The actors' profiles (names, colors) come along.
+		const profiles = (doc: unknown) => {
+			const root = (doc as EngineDoc).get('attribution');
+			return Object.fromEntries(
+				[...root.attrKeys()].filter((k) => k.startsWith('u/')).map((k) => [k, root.getAttr(k)])
+			);
+		};
+		expect(profiles(document.doc)).toMatchObject(profiles(s.online.doc));
+		expect(Object.keys(profiles(s.online.doc))).toContain('u/ben');
 		expect(Y.encodeStateAsUpdate(document.doc as never).byteLength).toBeLessThan(
 			s.online.encode().byteLength
 		);
@@ -293,5 +309,67 @@ describe('what a rebase merges and drops (room.reseed.rebase, room.reseed.sugges
 		const two = cutDocument(one.document, seed);
 		rebase(two.document, [one.cut, two.cut], tab.encode(), first.merged);
 		expect(texts(two.document.facade.toJSON())).toEqual({ b0: 'alpha beta gamma' });
+	});
+
+	/** Another device of the same user: its own replica of the document before the re-seed. */
+	const device = (s: ReturnType<typeof setup>, clientID: number) => s.replica('ana', clientID);
+	/** The CRDT's merge of `docs` with the online side: what the rebases must give. */
+	const oracle = (s: ReturnType<typeof setup>, ...docs: EdytorDocument[]) => {
+		const o = s.replica('oracle', 4000);
+		for (const d of [s.online, ...docs]) Y.applyUpdate(o.doc, d.encode(), 'remote');
+		return o.toJSON();
+	};
+
+	it("an atom whose data changed keeps its identity: another device's typing beside it stays beside it", () => {
+		const s = setup({
+			children: [
+				{
+					id: 'b0',
+					type: 'paragraph',
+					content: [
+						{ text: 'hi ' },
+						{ id: 'm1', type: 'mention', data: { u: 'x' } },
+						{ text: ' there' }
+					]
+				}
+			]
+		} as JSONDoc);
+		s.offline.facade.patchData({ block: 'b0', atom: 'm1' }, [{ path: ['u'], value: 'y' }]);
+		const other = device(s, 1001);
+		other.facade.insertText('b0', 4, 'Q');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const first = rebase(epoch, [cut], s.offline.encode());
+		rebase(epoch, [cut], other.encode(), first.merged);
+		expect(epoch.facade.toJSON()).toEqual(oracle(s, s.offline, other));
+	});
+
+	it("a word deleted and typed again on one device: another device's typing after it stays after it", () => {
+		const s = setup(value('say hello now'));
+		s.offline.facade.deleteText('b0', 4, 5);
+		s.offline.facade.insertText('b0', 4, 'hello');
+		const other = device(s, 1001);
+		other.facade.insertText('b0', 9, '!');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const first = rebase(epoch, [cut], s.offline.encode());
+		rebase(epoch, [cut], other.encode(), first.merged);
+		expect(texts(epoch.facade.toJSON())).toEqual(texts(oracle(s, s.offline, other)));
+	});
+
+	it('text typed after the cut is written once into the shadow', () => {
+		const s = setup(value('alpha'));
+		s.offline.facade.insertText('b0', 0, '>');
+		const { document: epoch, cut } = cutDocument(asReplica(s.online), seed);
+		const later = ' ' + 'y'.repeat(500);
+		epoch.facade.apply(epoch.facade.prepare.insertText('b0', 5, later));
+		let shadow: Replica | undefined;
+		(epoch.doc as never as { transact: <R>(f: () => R) => R }).transact(() =>
+			rebaseOnto(epoch, [cut], s.offline.encode(), (update) => (shadow = scratch(update)))
+		);
+		const { structs } = Y.decodeUpdate(Y.encodeStateAsUpdate(shadow!.doc as never));
+		const written = structs
+			.filter((struct) => struct.id.client === 9001)
+			.reduce((n, struct) => n + struct.length, 0);
+		expect(texts(epoch.facade.toJSON())).toEqual({ b0: '>alpha' + later });
+		expect(written).toBeLessThan(later.length + 50);
 	});
 });

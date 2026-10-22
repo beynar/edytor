@@ -3481,9 +3481,10 @@ counts as theirs.
    suggestions are rejected (`room.reseed.suggestions`);
 4. the shadow, as shown, is written onto `target` the same way, each of
    its characters read as `target`'s, the client's own as new (written
-   once; an atom whose data changed is written again): every character
+   once; an atom whose data changed is patched in place): every character
    `target` holds keeps its identity (a later rebase's cut map still names
-   it), and `target`'s pending suggestions stay. Each new character goes
+   it), and `target`'s pending suggestions stay. Each character this
+   rebase wrote (the target's writer, past its state before step 4) goes
    into the merged map, and `merged` grows by the structs the shadow took
    in and the upload's deletes.
 
@@ -3491,9 +3492,12 @@ The room (`RoomReseed.onStale`) runs it on a copy of the live document,
 under a client id of the copy's own, and admits the update the copy's
 writes make as the user's (`Admission.admitRebase`: the document quota,
 access at that moment, validation and locks, attribution, forged marks);
-refused, nothing is written and `merged` is not stored. One rebase per user
-every ten seconds (`1011` past it); a hand-over that cannot be read or
-rebased is dropped, closed `4410`. Pins: `src/tests/crdt/reseed/`,
+closed by it (a quota, a fault) or read-only, nothing is written and
+`merged` is not stored; what validation reverts or attribution strips
+counts as merged, as for any update. A failed write of `merged` is noted,
+never a fault: the client still drops its copy. One rebase per user every
+ten seconds: past it the join closes `1011` before any upload. A hand-over
+that cannot be read or rebased is dropped, closed `4410`. Pins: `src/tests/crdt/reseed/`,
 `tests/do/reseed.test.ts`.
 
 ### `room.reseed.suggestions` — pending suggestions across a re-seed
@@ -3501,17 +3505,18 @@ rebased is dropped, closed `4410`. Pins: `src/tests/crdt/reseed/`,
 A re-seed in `idle` mode waits while a suggestion is pending; `full` and
 `manual` drop them (the seed is the base, `room.reseed.cut`). A client's
 pending suggestions in its hand-over are rejected in the shadow: neither
-accepted nor carried over. A suggest-only socket of an older epoch is
+accepted nor carried over; a decision it made offline on one the cut
+dropped is rejected with it. A suggest-only socket of an older epoch is
 closed `4410` at once (its offline work is suggestions). Pins: the
 suggestion rows of `src/tests/crdt/reseed/reseed.test.ts`.
 
 ### `room.reseed.timing` — when the room re-seeds
 
-`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above), past `force` too. A run that throws is due again a minute later. `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
+`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above), past `force` too. A run that throws is due again a minute later, and no change makes it due before (past `force` too). `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
 
 ### `room.reseed.protocol` — epochs, the hand-over and `4410`
 
-A re-seed's seed writes its epoch in the document (root `epoch`, attr `n`; only the room writes it: a client's struct there is stripped, `mark`); the room's epoch is its document's. A dial names its document's (`?epoch=<n>`, `new` for one that holds nothing); the door (`RoomReseed.door`): its own or `new` joins; none, in a room that re-seeded, `1008` `refused: epoch`; an earlier one whose cuts are kept is a stale socket (no replica bound, no Step1, tagged `edytor-stale`: nothing is relayed to it): a writer hears `messageEpoch` and only its `messageRebase` is read (`room.reseed.rebase`; its frame quota is up to twice the document quota), anything else closes `4410` at once; one past the cuts kept, or a later one, `4410`, its reason the room's epoch. A re-seed closes every socket `4410`, its reason the epoch. A socket of the current epoch whose update holds a struct of a client the kept cuts name, which the document holds nothing of (an older epoch's content), is closed `4410`. The provider hands its whole document over on `messageEpoch`; a `4410` that finds it with unsaved updates redials once (`_rebasing`); any other `4410` is a refusal of the document. `createWebsocketSync` dials once its local copy loaded, and deletes it on that refusal; `EdytorRoot` keys the view: an `<Edytor>` owning its document builds itself again on a new one. Pins: `tests/do/reseed.test.ts`, `src/tests/fixtures/dom/collaboration/reseed-props.test.tsx`, the hosted re-seed row.
+A re-seed's seed writes its epoch in the document (root `epoch`, attr `n`; only the room writes it: a client's struct there is stripped, `mark`); the room's epoch is its document's. A dial names its document's (`?epoch=<n>`, `new` for one that holds nothing); the door (`RoomReseed.door`): its own or `new` joins; none, in a room that re-seeded, `1008` `refused: epoch`; an earlier one whose cuts are kept is a stale socket (no replica bound, no Step1, tagged `edytor-stale`: nothing is relayed to it): a writer hears `messageEpoch` and only its `messageRebase` is read (`room.reseed.rebase`; its frame quota is up to twice the document quota), anything else closes `4410` at once; one past the cuts kept, or a later one, `4410`, its reason the room's epoch. A re-seed closes every socket of the current epoch `4410`, its reason the epoch; a stale socket stays (its hand-over reads down the new cut too). A view `EdytorRoot` builds again requires hydration: it never seeds its value over the room's. A socket of the current epoch whose update holds a struct of a client the kept cuts name, which the document holds nothing of (an older epoch's content), is closed `4410`. The provider hands its whole document over on `messageEpoch`; a `4410` that finds it with unsaved updates redials once (`_rebasing`); any other `4410` is a refusal of the document. `createWebsocketSync` dials once its local copy loaded, and deletes it on that refusal; `EdytorRoot` keys the view: an `<Edytor>` owning its document builds itself again on a new one. Pins: `tests/do/reseed.test.ts`, `src/tests/fixtures/dom/collaboration/reseed-props.test.tsx`, the hosted re-seed row.
 
 ### `room.reseed.grace` — how long an offline client's edits can merge
 

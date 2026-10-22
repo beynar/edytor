@@ -17,6 +17,8 @@ import { render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
 import Edytor from '$lib/components/EdytorRoot.svelte';
+import RootViews from '../../../dom/RootViews.svelte';
+import type { EdytorContext } from '$lib/components/Edytor.svelte';
 import { createDocument, SyncRefusedError } from '$lib/crdt/index.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
 import { richTextPlugin } from '$registry/edytor/chrome/plugins.js';
@@ -61,6 +63,25 @@ afterEach(() => {
 });
 
 describe('a re-seed (4410) on <Edytor>', () => {
+	it('the view built again waits for the room: it never seeds its value over it', async () => {
+		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
+		refuse = (_url, n) => (n === 1 ? [4410, '1'] : undefined);
+		const views: EdytorContext[] = [];
+		const view = render(RootViews, {
+			props: {
+				plugins: [richTextPlugin],
+				server: 'ws://rooms.test/rooms',
+				room: 'doc-rebuilt',
+				value: { children: [{ type: 'paragraph', content: [{ text: 'local seed' }] }] },
+				onView: (edytor: EdytorContext) => views.push(edytor)
+			}
+		});
+		await waitFor(() => expect(views).toHaveLength(2));
+		// A seed of the value would write under the epoch it was first seeded in (`room.reseed.protocol`).
+		expect(views.map((v) => v.document.requireHydration)).toEqual([false, true]);
+		view.unmount();
+	});
+
 	it('a view that owns its document builds itself again on a new one, and dials again', async () => {
 		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
 		refuse = (_url, n) => (n === 1 ? [4410, '1'] : undefined);

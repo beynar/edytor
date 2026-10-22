@@ -8,4 +8,10 @@
 	let epoch = $state(0);
 </script>
 
-{#key epoch}<Edytor {...props} adopt={(view) => (edytor = view)} rebuild={() => epoch++} />{/key}
+<!-- A view built again loads the room's document: it never seeds its value over it. -->
+{#key epoch}<Edytor
+		{...props}
+		requireHydration={epoch > 0 || props.requireHydration}
+		adopt={(view) => (edytor = view)}
+		rebuild={() => epoch++}
+	/>{/key}

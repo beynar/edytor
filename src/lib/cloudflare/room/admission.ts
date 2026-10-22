@@ -415,7 +415,7 @@ export class Admission {
 		const decoded = decode(() => Y.decodeUpdate(update));
 		// An older epoch's content (`room.reseed.protocol`): the socket's
 		// document took it from another tab; it loads the room's again.
-		if (room.reseed.holdsOld(decoded, stateVector(doc))) {
+		if (room.reseed.holdsOld(decoded, doc)) {
 			room.note({ reason: 'epoch', detail: { user: attachment.user, epoch: room.reseed.epoch } });
 			room.presence.depart(ws);
 			return room.close(ws, CLOSE.reseeded, String(room.reseed.epoch));

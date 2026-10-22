@@ -208,7 +208,8 @@ describe('an offline client after a re-seed (room.reseed.rebase)', () => {
 			p2: 'second line'
 		});
 		expect(await inRoom(room, (r) => r.facade.blockAttribution('p2')?.lastChangedBy)).toBe('ana');
-		// Another tab of hers hands the same document over: nothing merges twice.
+		// Another tab of hers hands the same document over (once her rebase rate allows): nothing merges twice.
+		await clockTo(room, T0 + 10_000);
 		const tab = await RawClient.connect(room, ana.document.doc, { user: 'ana', epoch: 0 });
 		await vi.waitFor(() => expect(tab.epoch).toBe(1));
 		tab.rebase();
@@ -305,6 +306,40 @@ describe('a hand-over goes through the admission (room.reseed.rebase)', () => {
 		back.rebase(new Uint8Array([0, 1, 2, 3, 250, 251]));
 		await vi.waitFor(() => expect(back.closed).toEqual({ code: CLOSE.reseeded, reason: '1' }));
 		expect(await rebases(room)).toEqual(['failed']);
+	});
+
+	it("past its user's rebase rate, a stale dial is closed 1011 before it uploads anything", async () => {
+		const room = 'reseed-rate';
+		const ana = await offlineAcrossReseed(room);
+		ana.facade.insertText('p1', 5, ' one');
+		const first = await stale(room, ana);
+		first.rebase();
+		await vi.waitFor(() => expect(first.closed?.code).toBe(CLOSE.reseeded));
+		// Another tab of hers, with an edit of its own, at once: not asked for its document yet.
+		ana.facade.insertText('p1', 0, '>');
+		const second = await RawClient.connect(room, ana.doc, { user: 'ana', epoch: 0 });
+		await vi.waitFor(() =>
+			expect(second.closed).toEqual({ code: CLOSE.fault, reason: 'rebase: rate' })
+		);
+		expect(second.epoch).toBe(null);
+		// Ten seconds later it is.
+		await clockTo(room, T0 + 10_000);
+		const later = await stale(room, ana);
+		later.rebase();
+		await vi.waitFor(() => expect(later.closed?.code).toBe(CLOSE.reseeded));
+		expect(texts(await roomJSON(room))).toEqual({ p1: '>hello one' });
+	});
+
+	it('a hand-over still in flight when the room re-seeds again merges across both cuts', async () => {
+		const room = 'reseed-twice';
+		const ana = await offlineAcrossReseed(room);
+		ana.facade.insertText('p1', 5, ' there');
+		const back = await stale(room, ana);
+		expect(await inRoom(room, (r) => r.reseed())).toBe(2);
+		expect(back.closed).toBe(null);
+		back.rebase();
+		await vi.waitFor(() => expect(back.closed).toEqual({ code: CLOSE.reseeded, reason: '2' }));
+		expect(texts(await roomJSON(room))).toEqual({ p1: 'hello there' });
 	});
 
 	it("one user's upload never claims another's edits", async () => {

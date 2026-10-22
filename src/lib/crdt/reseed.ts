@@ -49,8 +49,9 @@ import {
 	CONTRIBUTOR_PREFIX,
 	CREATED_KEY
 } from './attribution/block.js';
-import { LAST_CHANGED_ATTR } from './schema.js';
-import { common } from './data.js';
+import { ATTRIBUTION_ROOT, LAST_CHANGED_ATTR } from './schema.js';
+import { ACTOR_PREFIX } from './attribution/attribution.js';
+import { common, type DataPatch } from './data.js';
 import { canonKey } from './text/model.js';
 import { restoreDocument, runsOf, unitsOf, type RestoreFacade, type Unit } from './restore.js';
 import { displayOf, isRowMark, openRangeCursor } from './text/model.js';
@@ -66,6 +67,7 @@ export type ReseedFacade<Plan = unknown> = RestoreFacade<Plan> & {
 	/** The facade's reads beyond its operations: the index's view, the base view (`doc/suggest.ts` builds over it too). */
 	part: { view(): ModelView; base?: SuggestContext['base'] };
 	prepare: RestoreFacade<Plan>['prepare'] & {
+		patchData(target: { block: BlockId; atom: string }, ops: DataPatch[]): Plan;
 		formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): Plan;
 		splitBlock(id: BlockId, offset: number, newId: BlockId): Plan;
 		mergeBlocks(from: BlockId, into: BlockId): Plan;
@@ -195,13 +197,17 @@ export const decodeCut = (bytes: Uint8Array): Cut => {
 /**
  * The new epoch's document (`room.reseed.cut`): `seed` builds it from the
  * old one's base (`baseOf`: the caller's semantics and actor), then its
- * blocks take the old ones' attribution. Reads `old`, writes only the new
- * document.
+ * blocks take the old ones' attribution, and it takes the old one's actor
+ * profiles (`u/<actorId>`: names and colors). Reads `old`, writes only the
+ * new document.
  */
 export const seedFrom = (old: Replica, base: Base, seed: (json: JSONDoc) => Replica): Replica => {
 	const fresh = seed(base.json);
 	const { ensureRecord } = bindBlockAttribution(Y);
 	fresh.doc.transact(() => {
+		const [was, now] = [old.doc.get(ATTRIBUTION_ROOT), fresh.doc.get(ATTRIBUTION_ROOT)];
+		for (const key of was.attrKeys())
+			if (key.startsWith(ACTOR_PREFIX)) now.setAttr(key, was.getAttr(key));
 		for (const id of fresh.facade.order()) {
 			const node = blockNodeOf(fresh.doc, id);
 			if (node === null) continue;
@@ -272,8 +278,9 @@ const lookupOf = (map: Uint8Array) => {
  * Make block `id`'s content read `want` keeping every unit whose identity
  * the two key lists share in order: each gap between kept units deleted
  * and written again, a kept character whose marks differ formatted (runs
- * of the same change in one write), a kept atom whose data differs written
- * again. Edits through the display.
+ * of the same change in one write), a kept atom whose data differs patched
+ * in place (written again when it has no id, or another kind). Edits
+ * through the display.
  */
 const rewriteKeyed = (
 	facade: ReseedFacade,
@@ -306,10 +313,26 @@ const rewriteKeyed = (
 		const [h, w] = [have[pi!]!, want[pj!]!];
 		if (h.key !== w.key && w.item.kind === 'inline') {
 			flush();
-			facade.apply(facade.prepare.deleteText(id, at, 1));
-			facade.apply(
-				facade.prepare.insertInline(id, at, { id: w.item.id, type: w.item.type, data: w.item.data })
-			);
+			const { item } = h;
+			if (
+				item.kind === 'inline' &&
+				item.id !== '' &&
+				item.id === w.item.id &&
+				item.type === w.item.type
+			)
+				facade.apply(
+					facade.prepare.patchData({ block: id, atom: item.id }, [{ path: [], value: w.item.data }])
+				);
+			else {
+				facade.apply(facade.prepare.deleteText(id, at, 1));
+				facade.apply(
+					facade.prepare.insertInline(id, at, {
+						id: w.item.id,
+						type: w.item.type,
+						data: w.item.data
+					})
+				);
+			}
 		} else if (h.key !== w.key && h.item.kind === 'text' && w.item.kind === 'text') {
 			const [hm, wm] = [h.item.marks ?? {}, w.item.marks ?? {}];
 			const marks: Record<string, unknown> = {};
@@ -338,8 +361,9 @@ const rewriteKeyed = (
  * pieces in order (its first piece takes its id, the others are merged
  * into it; a unit `json` no longer shows stays in the piece before it).
  * Then `restoreDocument` writes the rest, its content by identity, and
- * keeps the pending suggestions. A `new:` identity names no unit of `doc`:
- * any unit `ids` names nowhere else stands for it. Runs inside the
+ * keeps the pending suggestions. An identity `doc` does not hold (`new:`,
+ * `~`, an old unit it never had) names no unit of it: any unit `ids` names
+ * nowhere else stands for it, so it is written once. Runs inside the
  * caller's transaction.
  */
 export const restoreByIdentity = (
@@ -421,7 +445,7 @@ export const restoreByIdentity = (
 	for (const [id, list] of ids) {
 		const have = idsOf(facade, id);
 		const wanted = list.map((k, i) =>
-			k.startsWith('new:') && have[i] !== undefined && !named.has(have[i]) ? have[i] : k
+			!srcOf.has(k) && have[i] !== undefined && !named.has(have[i]) ? have[i] : k
 		);
 		if (have.length === wanted.length && have.every((k, i) => k === wanted[i])) continue;
 		const units = unitsOf(facade.contentItems(id));
@@ -531,6 +555,9 @@ export const rebaseOnto = (
 			list.map((k) => toCurrent.get(k) ?? `new:${k}`)
 		])
 	);
+	// The units this rebase writes: the target's writer's, past its state now.
+	const writer = asYDoc(target.doc).clientID;
+	const from = Y.decodeStateVector(Y.encodeStateVector(asYDoc(target.doc))).get(writer) ?? 0;
 	const report = restoreByIdentity(target.doc, target.facade, result, ids);
 	// What this rebase merged: the structs the shadow took in, the deletes, the units it wrote.
 	const took = Y.decodeStateVector(Y.encodeStateVector(asYDoc(shadow.doc)));
@@ -548,7 +575,8 @@ export const rebaseOnto = (
 		const now = idsOf(target.facade, id);
 		if (now.length !== list.length) continue;
 		list.forEach((k, i) => {
-			if (k.startsWith('new:')) addRun(runs, now[i]!, k.slice(4));
+			const [c, clock] = now[i]!.split(':').map(Number) as [number, number];
+			if (k.startsWith('new:') && c === writer && clock >= from) addRun(runs, now[i]!, k.slice(4));
 		});
 	}
 	const maps = Array.from({ length: cuts.length }, (_, i) => merged.maps[i] ?? encodeRuns([]));

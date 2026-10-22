@@ -49,7 +49,6 @@ import {
 	DEFAULT_RESEED_GAIN,
 	DEFAULT_RESEED_GRACE_DAYS,
 	DEFAULT_RESEED_IDLE,
-	SOCKET_TAG,
 	noTimers
 } from './shared.js';
 import { DAY, crdt, now, type RoomContext } from './context.js';
@@ -77,6 +76,8 @@ export const parseEpoch = (raw: string | null): number | 'new' | null => {
 export class RoomReseed {
 	/** Each user's rebase allowance (memory: a wake refills it). */
 	readonly #rebases = new Map<string, Bucket>();
+	/** When the last re-seed failed: none again before {@link RESEED_RETRY} (memory). */
+	#failedAt = -Infinity;
 	/** The client ids of the epochs the cuts kept (`null`: not read since they changed). */
 	#oldClients: Set<number> | null = null;
 
@@ -201,8 +202,9 @@ export class RoomReseed {
 		if (config === null) return;
 		const bytes = this.room.storage.documentBytes;
 		const { scheduler } = this.room;
-		// Under the floor a re-seed gave back too little: none until the document grows past it.
-		if (bytes < config.at || bytes < this.#floor()) return;
+		// Under the floor a re-seed gave back too little: none until the document grows past it;
+		// after one that failed, none before its retry.
+		if (bytes < config.at || bytes < this.#floor() || at < this.#failedAt + RESEED_RETRY) return;
 		if (bytes >= config.force) scheduler.schedule('reseed', at, 'earlier');
 		else scheduler.schedule('reseed', at + config.idleMs, 'replace');
 	}
@@ -225,6 +227,7 @@ export class RoomReseed {
 					this.run(bytes >= config.force ? 'full' : 'idle');
 				} catch (error) {
 					room.note({ reason: 'internal', detail: `reseed: ${String(error)}` });
+					this.#failedAt = room.clock();
 					room.scheduler.schedule('reseed', room.clock() + RESEED_RETRY, 'earlier');
 				}
 			}
@@ -312,7 +315,8 @@ export class RoomReseed {
 				this.#prunesAt();
 				room.state.presence.clear();
 				room.storage.rebuild();
-				for (const ws of room.ctx.getWebSockets(SOCKET_TAG)) {
+				// A stale socket's hand-over still merges: the cuts it reads down are kept.
+				for (const ws of room.sockets()) {
 					room.presence.depart(ws);
 					room.close(ws, CLOSE.reseeded, String(epoch));
 				}
@@ -356,8 +360,8 @@ export class RoomReseed {
 	 * cuts kept name, which the document holds nothing of (a tab took it
 	 * from another tab of the old epoch). Its socket is closed `4410`.
 	 */
-	holdsOld(decoded: Decoded, sv: Map<number, number>): boolean {
-		if (this.epoch === 0) return false;
+	holdsOld(decoded: Decoded, doc: YDoc): boolean {
+		if (this.#oldClients?.size === 0 || this.epoch === 0) return false;
 		if (this.#oldClients === null) {
 			const { sql, tables } = this.room;
 			this.#ensure();
@@ -373,9 +377,10 @@ export class RoomReseed {
 			}
 		}
 		const old = this.#oldClients;
+		const held = doc.store.clients;
 		return decoded.structs.some(
 			(struct) =>
-				!(struct instanceof Y.Skip) && old.has(struct.id.client) && !sv.has(struct.id.client)
+				!(struct instanceof Y.Skip) && old.has(struct.id.client) && !held.has(struct.id.client)
 		);
 	}
 
@@ -388,14 +393,26 @@ export class RoomReseed {
 	/**
 	 * A stale socket joined: one that may write is told the room's epoch
 	 * (its provider then hands over its old document); any other has no
-	 * edit to merge and is closed `4410`.
+	 * edit to merge and is closed `4410`. Past its user's rebase rate it is
+	 * closed `1011` before it uploads anything: its provider dials again
+	 * later.
 	 */
 	join(ws: WebSocket, identity: SocketIdentity) {
 		const room = this.room;
 		if (identity.readOnly || identity.access === 'suggest') {
 			return room.close(ws, CLOSE.reseeded, String(this.epoch));
 		}
+		if (!this.#mayRebase(identity.user)) return room.close(ws, CLOSE.fault, 'rebase: rate');
 		room.send(ws, epochFrame(this.epoch));
+	}
+
+	/** Whether `user`'s rebase allowance holds a token now (it takes none). */
+	#mayRebase(user: string): boolean {
+		const held = this.#rebases.get(user);
+		if (held === undefined) return true;
+		const burst = REBASES_PER_SECOND * 10;
+		const elapsed = Math.max(0, this.room.clock() - held.at) / 1000;
+		return Math.min(burst, held.tokens + elapsed * REBASES_PER_SECOND) >= 1;
 	}
 
 	/**
@@ -433,9 +450,18 @@ export class RoomReseed {
 		let writer: number;
 		let merged: ReturnType<typeof rebaseOnto>['merged'];
 		const kind = `merged:${attachment.user}`;
-		const cuts = this.#cutsSince(from);
+		// Read-only now (a downgrade since it joined): nothing to rebuild.
+		if (attachment.readOnly) return done('refused', 0);
+		let cuts: Cut[] | null;
+		let found: { bytes: Uint8Array; at: number } | null;
+		try {
+			cuts = this.#cutsSince(from);
+			found = this.#read(from + 1, kind);
+		} catch (error) {
+			room.note({ reason: 'internal', detail: `rebase: ${String(error)}` });
+			return done('failed', 0);
+		}
 		if (cuts === null) return done('failed', 0);
-		const found = this.#read(from + 1, kind);
 		try {
 			upload = decode(() => E.readVarUint8Array(decoder));
 			const before = found === null ? undefined : decodeMerged(found.bytes);
@@ -455,9 +481,14 @@ export class RoomReseed {
 		// The rebase's writes, from a client id of their own: the admission's, as any update's.
 		const admitted = room.admission.admitRebase(ws, attachment, doc, update, writer);
 		if (!admitted) return done('refused', upload.length);
-		room.ctx.storage.transactionSync(() =>
-			this.#write(from + 1, kind, encodeMerged(merged), this.#read(from + 1, 'cut')!.at)
-		);
+		try {
+			room.ctx.storage.transactionSync(() =>
+				this.#write(from + 1, kind, encodeMerged(merged), this.#read(from + 1, 'cut')!.at)
+			);
+		} catch (error) {
+			// The edits are in: the client still drops its copy, never hands them over again.
+			room.note({ reason: 'storage', detail: `rebase: ${String(error)}` });
+		}
 		done('applied', upload.length);
 	}
 

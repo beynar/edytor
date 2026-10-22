@@ -68,7 +68,7 @@ export const PING = 'ping';
 export const PONG = 'pong';
 
 /** Seconds of the update rate a socket may spend at once. */
-const BURST_SECONDS = 10;
+export const BURST_SECONDS = 10;
 
 /** A token bucket: its tokens, refilled since `at` (ms). */
 export type Bucket = { tokens: number; at: number };

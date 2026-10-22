@@ -362,8 +362,9 @@ const rewriteKeyed = (
  * into it; a unit `json` no longer shows stays in the piece before it).
  * Then `restoreDocument` writes the rest, its content by identity, and
  * keeps the pending suggestions. An identity `doc` does not hold (`new:`,
- * `~`, an old unit it never had) names no unit of it: any unit `ids` names
- * nowhere else stands for it, so it is written once. Runs inside the
+ * `~`, an old unit it never had) names no unit of it: a unit this restore
+ * wrote and `ids` names nowhere else stands for it, so it is written once
+ * (a `new:` one, the caller's own new unit, any such unit). Runs inside the
  * caller's transaction.
  */
 export const restoreByIdentity = (
@@ -444,8 +445,16 @@ export const restoreByIdentity = (
 	const named = new Set([...ids.values()].flat());
 	for (const [id, list] of ids) {
 		const have = idsOf(facade, id);
+		// A unit this restore wrote stands for it; a unit `doc` held stands only for the
+		// caller's own new one (`new:`): another unit of `doc` would answer for a unit
+		// it is not, which a later edit of `doc`'s own unit would then hit.
 		const wanted = list.map((k, i) =>
-			!srcOf.has(k) && have[i] !== undefined && !named.has(have[i]) ? have[i] : k
+			!srcOf.has(k) &&
+			have[i] !== undefined &&
+			!named.has(have[i]) &&
+			(k.startsWith('new:') || !srcOf.has(have[i]))
+				? have[i]
+				: k
 		);
 		if (have.length === wanted.length && have.every((k, i) => k === wanted[i])) continue;
 		const units = unitsOf(facade.contentItems(id));

@@ -372,4 +372,24 @@ describe('what a rebase merges and drops (room.reseed.rebase, room.reseed.sugges
 		expect(texts(epoch.facade.toJSON())).toEqual({ b0: '>alpha' + later });
 		expect(written).toBeLessThan(later.length + 50);
 	});
+
+	it('a character one side deleted and typed again, the other side deleted: the typed one stays', () => {
+		const s = setup(value('abc'));
+		s.online.facade.deleteText('b0', 1, 1);
+		s.online.facade.insertText('b0', 1, 'b');
+		s.offline.facade.deleteText('b0', 1, 1);
+		const { want, got } = both(s);
+		expect(texts(want)).toEqual({ b0: 'abc' });
+		expect(texts(got)).toEqual(texts(want));
+	});
+
+	it('and typed again after the cut: the typed one stays', () => {
+		const s = setup(value('abc'));
+		s.offline.facade.deleteText('b0', 1, 1);
+		const { got } = both(s, (epoch) => {
+			epoch.facade.apply(epoch.facade.prepare.deleteText('b0', 1, 1));
+			epoch.facade.apply(epoch.facade.prepare.insertText('b0', 1, 'b'));
+		});
+		expect(texts(got)).toEqual({ b0: 'abc' });
+	});
 });

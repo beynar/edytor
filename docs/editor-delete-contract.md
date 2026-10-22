@@ -3495,7 +3495,9 @@ access at that moment, validation and locks, attribution, forged marks);
 closed by it (a quota, a fault) or read-only, nothing is written and
 `merged` is not stored; what validation reverts or attribution strips
 counts as merged, as for any update. A failed write of `merged` is noted,
-never a fault: the client still drops its copy. One rebase per user every
+never a fault: the client still drops its copy. A fault of the room's own
+storage reads before the rebase closes `1011`: the provider hands over
+again. One rebase per user every
 ten seconds: past it the join closes `1011` before any upload. A hand-over
 that cannot be read or rebased is dropped, closed `4410`. Pins: `src/tests/crdt/reseed/`,
 `tests/do/reseed.test.ts`.
@@ -3512,7 +3514,7 @@ suggestion rows of `src/tests/crdt/reseed/reseed.test.ts`.
 
 ### `room.reseed.timing` — when the room re-seeds
 
-`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above), past `force` too. A run that throws is due again a minute later, and no change makes it due before (past `force` too). `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
+`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above), past `force` too. A run that throws is not due again before a minute: the first change past it schedules it as usual (past `force` too). `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
 
 ### `room.reseed.protocol` — epochs, the hand-over and `4410`
 

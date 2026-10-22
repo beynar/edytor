@@ -42,7 +42,7 @@ import { suggestionsOf } from '../../crdt/doc/suggest.js';
 import { EPOCH_ROOT } from '../../crdt/schema.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Attachment, SocketIdentity } from '../DocumentRoom.js';
-import { allowance, type Bucket } from './admission.js';
+import { BURST_SECONDS, allowance, type Bucket } from './admission.js';
 import type { Decoded } from './context.js';
 import {
 	DEFAULT_RESEED_FORCE,
@@ -63,7 +63,7 @@ const share = (value: unknown, fallback: number) => {
 /** A rebase is a full rebuild of the document: one per user every ten seconds. */
 const REBASES_PER_SECOND = 0.1;
 
-/** A failed re-seed runs again this much later. */
+/** A failed re-seed is not due again before this much later. */
 const RESEED_RETRY = 60_000;
 
 /** An epoch a dial names (`?epoch=`; `new`: a document that holds nothing yet), or `null`. */
@@ -172,12 +172,17 @@ export class RoomReseed {
 	 * gone, or older than the grace: `room.reseed.grace`).
 	 */
 	#cutsSince(from: number): Cut[] | null {
+		return this.#cutBytesSince(from)?.map(decodeCut) ?? null;
+	}
+
+	/** {@link #cutsSince}, undecoded: a storage read, which may fault. */
+	#cutBytesSince(from: number): Uint8Array[] | null {
 		const grace = (this.config?.graceDays ?? DEFAULT_RESEED_GRACE_DAYS) * DAY;
-		const cuts: Cut[] = [];
+		const cuts: Uint8Array[] = [];
 		for (let epoch = from + 1; epoch <= this.epoch; epoch++) {
 			const found = this.#read(epoch, 'cut');
 			if (found === null || found.at < this.room.clock() - grace) return null;
-			cuts.push(decodeCut(found.bytes));
+			cuts.push(found.bytes);
 		}
 		return cuts;
 	}
@@ -212,8 +217,8 @@ export class RoomReseed {
 	/**
 	 * The `reseed` task: the cuts past their grace go (`room.reseed.grace`),
 	 * then it re-seeds when still due (past the threshold and the floor); a
-	 * re-seed that failed runs again a minute later. It is due again when
-	 * the oldest cut left expires.
+	 * re-seed that failed is due again at the first change a minute later or
+	 * more. It is due again when the oldest cut left expires.
 	 */
 	task() {
 		const room = this.room;
@@ -226,9 +231,9 @@ export class RoomReseed {
 				try {
 					this.run(bytes >= config.force ? 'full' : 'idle');
 				} catch (error) {
+					// Not again before a minute: the next change past it schedules it, as usual.
 					room.note({ reason: 'internal', detail: `reseed: ${String(error)}` });
 					this.#failedAt = room.clock();
-					room.scheduler.schedule('reseed', room.clock() + RESEED_RETRY, 'earlier');
 				}
 			}
 			this.#prunesAt();
@@ -410,7 +415,7 @@ export class RoomReseed {
 	#mayRebase(user: string): boolean {
 		const held = this.#rebases.get(user);
 		if (held === undefined) return true;
-		const burst = REBASES_PER_SECOND * 10;
+		const burst = REBASES_PER_SECOND * BURST_SECONDS;
 		const elapsed = Math.max(0, this.room.clock() - held.at) / 1000;
 		return Math.min(burst, held.tokens + elapsed * REBASES_PER_SECOND) >= 1;
 	}
@@ -452,17 +457,13 @@ export class RoomReseed {
 		const kind = `merged:${attachment.user}`;
 		// Read-only now (a downgrade since it joined): nothing to rebuild.
 		if (attachment.readOnly) return done('refused', 0);
-		let cuts: Cut[] | null;
-		let found: { bytes: Uint8Array; at: number } | null;
+		// The room's own reads: a storage fault closes `1011`, and the provider hands over again.
+		const kept = this.#cutBytesSince(from);
+		const found = this.#read(from + 1, kind);
+		if (kept === null) return done('failed', 0);
+		let cuts: Cut[];
 		try {
-			cuts = this.#cutsSince(from);
-			found = this.#read(from + 1, kind);
-		} catch (error) {
-			room.note({ reason: 'internal', detail: `rebase: ${String(error)}` });
-			return done('failed', 0);
-		}
-		if (cuts === null) return done('failed', 0);
-		try {
+			cuts = kept.map(decodeCut);
 			upload = decode(() => E.readVarUint8Array(decoder));
 			const before = found === null ? undefined : decodeMerged(found.bytes);
 			if (!hasEdits(upload, before ?? { sv: cuts[0]!.sv, ds: cuts[0]!.ds, maps: [] }))

@@ -23,16 +23,17 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SRC = join(ROOT, 'src/lib/crdt/vendor/yjs/src');
 
 // prettier-ignore
-const KEPT = ['AbstractStruct', 'ContentAny', 'ContentBinary', 'ContentDeleted', 'ContentFormat', 'ContentMove', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdSet', 'Item', 'Node', 'RangeCursor', 'Skip', 'Transaction', 'UpdateDecoder', 'UpdateEncoder', 'applyUpdate', 'compareIDs', 'createDeleteSetFromStructStore', 'createID', 'createIdSet', 'decodeStateVector', 'decodeUpdate', 'diffIdSet', 'diffUpdate', 'encodeStateAsUpdate', 'encodeStateVector', 'findIndexSS', 'findRootTypeKey', 'followRedone', 'getItemCleanEnd', 'getItemCleanStart', 'idAtIndex', 'indexOfId', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'keepItem', 'mergeIdSets', 'mergeUpdates', 'readIdSet', 'redoItem', 'transact', 'unhide', 'writeIdSet'];
+const KEPT = ['AbstractStruct', 'ContentAny', 'ContentBinary', 'ContentDeleted', 'ContentFormat', 'ContentMove', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdSet', 'Item', 'Node', 'RangeCursor', 'Skip', 'Transaction', 'UpdateDecoder', 'UpdateEncoder', 'applyUpdate', 'clipUpdate', 'compareIDs', 'createDeleteSetFromStructStore', 'createID', 'createIdSet', 'decodeStateVector', 'decodeUpdate', 'diffIdSet', 'diffUpdate', 'encodeStateAsUpdate', 'encodeStateVector', 'findIndexSS', 'findRootTypeKey', 'followRedone', 'getItemCleanEnd', 'getItemCleanStart', 'idAtIndex', 'indexOfId', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'keepItem', 'mergeIdSets', 'mergeUpdates', 'readIdSet', 'redoItem', 'transact', 'unhide', 'writeIdSet'];
 
 /**
  * Reached beyond the engine object: `mergeUpdates` (server coordinators
  * compact with it) and `intersectSets` (the IdSet algebra's intersection,
  * public; its engine caller, `YEvent#getDelta`, went with YP16, which also
  * removed the IdMap/ContentMap codec pair with `attribution.legacy()`, its
- * only reader).
+ * only reader), and `clipUpdate` (YP34: the room's re-seed reads an offline
+ * client's base with it, through `crdt/engine-room.js`).
  */
-const EXTRA = ['mergeUpdates', 'intersectSets'];
+const EXTRA = ['mergeUpdates', 'intersectSets', 'clipUpdate'];
 
 /** Unreachable by design: the duplicate-import guard (side effect), the content interface, wire type refs. */
 const ALLOW = new Set([

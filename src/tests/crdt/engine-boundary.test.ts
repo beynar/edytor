@@ -26,6 +26,8 @@ const CRDT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../lib/crdt'
 
 /** The single sanctioned runtime bridge into the vendored engine source. */
 const ENGINE_BRIDGE = join(CRDT_ROOT, 'engine.js');
+/** The room's own engine calls (a re-seed's cut and rebase), apart so apps keep none of them. */
+const ROOM_BRIDGE = join(CRDT_ROOT, 'engine-room.js');
 
 const collectSources = (dir) => {
 	const out = [];
@@ -75,7 +77,7 @@ describe('engine boundary: no v13 runtime imports under src/lib/crdt', () => {
 		for (const file of files) {
 			// `engine.js` IS the bridge — the one file whose whole job is a
 			// deep vendor import. Everything else must go through `bind*(Y)`.
-			if (file === ENGINE_BRIDGE) continue;
+			if (file === ENGINE_BRIDGE || file === ROOM_BRIDGE) continue;
 			const specs = runtimeSpecifiers(readFileSync(file, 'utf8'));
 			const bad = specs.filter((s) => s != null && /vendor\/yjs\/src/.test(s));
 			expect(bad, `${file} runtime-imports vendored engine JS: ${bad.join(', ')}`).toEqual([]);

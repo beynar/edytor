@@ -1,7 +1,7 @@
 /**
  * Forged writes: what a frame writes or deletes that its sender may not —
  * another writer's per-writer block mark (`room.marks.writer`), the purge
- * horizon (the room's alone), another replica's binding or another user's
+ * horizon and the epoch (the room's alone), another replica's binding or another user's
  * profile in the attribution root (`room.attribution.trust`). Pure reads of
  * the room document and the frame; `Admission` strips or drops what they
  * find.
@@ -10,6 +10,7 @@ import { Y } from '../../crdt/engine.js';
 import {
 	ATTRIBUTION_ROOT,
 	DEL_PREFIX,
+	EPOCH_ROOT,
 	HORIZON_ROOT,
 	REGISTRY_KEY,
 	SUGGEST_ROOT,
@@ -81,16 +82,20 @@ const isBlockNode = (doc: YDoc, frame: Map<number, Struct[]>, parent: unknown): 
 	return item?.parent === registry && registry !== undefined;
 };
 
-/** Is `parent` (a {@link Place}'s) the purge horizon's root, which only the room writes? */
-const isHorizon = (doc: YDoc, parent: unknown): boolean =>
-	parent === HORIZON_ROOT ||
-	(parent != null && parent === (doc.share.get(HORIZON_ROOT) as unknown));
+/**
+ * Is `parent` (a {@link Place}'s) a root only the room writes: the purge
+ * horizon's, or the epoch's (`room.reseed.protocol`)?
+ */
+const isRoomRoot = (doc: YDoc, parent: unknown): boolean =>
+	[HORIZON_ROOT, EPOCH_ROOT].some(
+		(root) => parent === root || (parent != null && parent === (doc.share.get(root) as unknown))
+	);
 
 /**
  * The clients of a frame (but `skip`) that write a per-writer block mark
  * of another writer: a struct whose key is `del.<n>` or `wd.<n>` on a
  * block node, from a client other than `n`. Only `n` writes its mark.
- * A struct in the purge horizon's root forges the room's.
+ * A struct in the purge horizon's root, or the epoch's, forges the room's.
  */
 export const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): Set<number> => {
 	const frame = runsOf(structs);
@@ -102,7 +107,7 @@ export const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): 
 		const place = placeOf(doc, frame, struct.id);
 		const writer = markWriter(place?.key);
 		if (
-			(place !== null && isHorizon(doc, place.parent)) ||
+			(place !== null && isRoomRoot(doc, place.parent)) ||
 			(writer !== null && writer !== client && isBlockNode(doc, frame, place!.parent))
 		) {
 			forged.add(client);
@@ -134,8 +139,8 @@ export const forgedDeletes = (
 				const struct = structs[i];
 				if (struct.id.clock >= clock + len) break;
 				if (!(struct instanceof Y.Item) || struct.deleted) continue;
-				// The purge horizon is the room's alone.
-				if (!isHorizon(doc, struct.parent)) {
+				// The purge horizon and the epoch are the room's alone.
+				if (!isRoomRoot(doc, struct.parent)) {
 					const writer = markWriter(struct.parentSub);
 					if (writer === null || mayDelete(writer)) continue;
 					const node = (struct.parent as { _item?: Item | null } | null)?._item;

@@ -10,7 +10,6 @@ import { semanticsMismatch } from '../../crdt/semantics.js';
 import type { AwarenessEntry } from '../../crdt/protocol.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Attachment } from '../DocumentRoom.js';
-import { SOCKET_TAG } from './shared.js';
 import { allowance, type Allowances } from './admission.js';
 import { encodeJSON, type RoomContext } from './context.js';
 import { encodePresenceEntry, presenceFrame, presenceFrameOf } from './frames.js';
@@ -141,9 +140,7 @@ export class RoomPresence {
 	 * replica, and {@link drain} sends each recipient's in one frame.
 	 */
 	private fanOut(entries: AwarenessEntry[]) {
-		const sockets = this.room.ctx
-			.getWebSockets(SOCKET_TAG)
-			.filter((socket) => socket.readyState === WebSocket.OPEN);
+		const sockets = this.room.sockets();
 		if (sockets.length === 0) return;
 		if (this.waiting.size === 0 && this.take(sockets.length)) {
 			return this.room.broadcast(presenceFrame(entries), null);

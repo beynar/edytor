@@ -373,7 +373,8 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		 */
 		const toJSON = (options?: { suggestions?: boolean }): JSONDoc => {
 			// A part's export first (the shared suggestions': without the pending ones, `sugg.json.base`).
-			const base = !options?.suggestions && part.base?.();
+			const base =
+				!options?.suggestions && part.base?.((other) => other.toJSON({ suggestions: true }));
 			if (base) return base;
 			const data = docData();
 			const children = childrenIds(null).map(blockJSON);

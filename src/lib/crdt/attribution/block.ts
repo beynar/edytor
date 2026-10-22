@@ -86,8 +86,9 @@ export type BlockAttribution = {
 export { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR };
 
 const REC_NODE = 'brec';
-const CREATED_KEY = 'c';
-const CONTRIBUTOR_PREFIX = 'k/';
+/** A record's `createdBy` key, and the prefix of its contributors' (a re-seed copies them: `crdt/reseed.ts`). */
+export const CREATED_KEY = 'c';
+export const CONTRIBUTOR_PREFIX = 'k/';
 /** Incarnation stamp on a record: the nonce `n` of the node it belongs to. */
 const INCARNATION_KEY = 'i';
 

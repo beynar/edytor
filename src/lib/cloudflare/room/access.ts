@@ -14,6 +14,7 @@ import {
 	IDENTITY_HEADERS,
 	PROBE_HEADER,
 	SOCKET_TAG,
+	STALE_TAG,
 	closedSocket,
 	noTimers
 } from './shared.js';
@@ -21,6 +22,7 @@ import { STORAGE_FAILURE, type RoomContext } from './context.js';
 import { accessFrame, readOnlyFrame, step1Frame } from './frames.js';
 import type { DocumentAccessLevel } from '../routeDocumentSocket.js';
 import { StorageFault } from './replicas.js';
+import { parseEpoch } from './reseed.js';
 import { stateVector } from './updates.js';
 
 /** The longest close reason the WebSocket API accepts, in UTF-8 bytes. */
@@ -120,14 +122,39 @@ export class RoomAccess {
 		const identity = readIdentity(request.headers);
 		if (identity === null) return new Response('verified identity required', { status: 401 });
 		await room.storage.retryStart();
-		return noTimers(() => this.accept(identity));
+		const epoch = parseEpoch(new URL(request.url).searchParams.get('epoch'));
+		return noTimers(() => this.accept(identity, epoch));
 	}
 
-	/** Accept a verified socket: its replica bound to its user, then the join (Step1, presence). */
-	private accept(identity: SocketIdentity): Response {
+	/**
+	 * Accept a verified socket: its replica bound to its user, then the join
+	 * (Step1, presence). A dial of another epoch than the room's is the
+	 * re-seed's (`room.reseed.protocol`): closed, or joined as stale (no
+	 * replica bound, no Step1: the room asks for its old document).
+	 */
+	private accept(identity: SocketIdentity, epoch: number | 'new' | null): Response {
 		const room = this.room;
 		room.storage.heal();
 		const doc = room.live;
+		const door = doc === null ? 'current' : room.reseed.door(epoch);
+		if (typeof door === 'object') {
+			room.note({
+				reason: 'epoch',
+				detail: { user: identity.user, epoch, room: room.reseed.epoch }
+			});
+			return closedSocket(door.code, door.reason);
+		}
+		if (door === 'stale') {
+			const pair = new WebSocketPair();
+			room.ctx.acceptWebSocket(pair[1], [SOCKET_TAG, STALE_TAG]);
+			pair[1].serializeAttachment({
+				...identity,
+				clock: null,
+				epoch: epoch as number
+			} satisfies Attachment);
+			room.reseed.join(pair[1], identity);
+			return new Response(null, { status: 101, webSocket: pair[0] });
+		}
 		if (doc !== null && identity.replica !== null) {
 			let bound: boolean;
 			try {

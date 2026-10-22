@@ -64,6 +64,7 @@ export {
 	messageSaved,
 	messageChunk,
 	messageComments,
+	messageRebase,
 	MAX_FRAME_BYTES,
 	chunkFrame,
 	createChunkReader,
@@ -81,9 +82,11 @@ export {
 
 export {
 	messageAccess,
+	messageEpoch,
 	messagePermissionDenied,
 	messageReadOnly,
 	writeAccess,
+	writeEpoch,
 	writePermissionDenied,
 	writeReadOnly
 } from './protocols/auth.js';

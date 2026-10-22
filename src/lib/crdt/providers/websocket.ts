@@ -47,6 +47,7 @@
  * there (TCP never does).
  */
 import * as decoding from 'lib0-v14/decoding';
+import * as encoding from 'lib0-v14/encoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
@@ -55,6 +56,7 @@ import { IsolatedObservable } from '../protocols/observable.js';
 import {
 	messagePermissionDenied,
 	messageAccess,
+	messageEpoch,
 	messageReadOnly,
 	READ_ONLY_DENIAL,
 	SUGGEST_ONLY_DENIAL,
@@ -85,6 +87,7 @@ import {
 	messageAuth,
 	messageChunk,
 	messageComments,
+	messageRebase,
 	messageSaved,
 	messageSync,
 	MAX_FRAME_BYTES,
@@ -96,7 +99,7 @@ import {
 } from './room.js';
 import type { EngineApi, YDoc } from '../engine-api.js';
 import { asEngineDoc } from '../structs.js';
-import { ATTRIBUTION_ROOT } from '../schema.js';
+import { ATTRIBUTION_ROOT, EPOCH_ROOT } from '../schema.js';
 import { ATTRIBUTION_ORIGIN, writerOf } from '../attribution/attribution.js';
 
 // @todo - this should depend on awareness.outdatedTime
@@ -268,12 +271,24 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 					// The room's notice at the join: a state, not a refusal (no event).
 					() => provider._writes.deny(),
 					// The room's word at the join, and at a change in place (`read`).
-					(access) => provider.emit('access', [access as 'read', provider])
+					(access) => provider.emit('access', [access as 'read', provider]),
+					// The room re-seeded since this document's epoch: it asks for the
+					// document, its unsaved edits in it (`room.reseed.protocol`).
+					() => {
+						provider._rebasing = true;
+						send(
+							provider,
+							frame(messageRebase, (e) =>
+								encoding.writeVarUint8Array(e, Y.encodeStateAsUpdate(provider.doc))
+							)
+						);
+					}
 				);
 				if (
 					authType !== messagePermissionDenied &&
 					authType !== messageReadOnly &&
-					authType !== messageAccess
+					authType !== messageAccess &&
+					authType !== messageEpoch
 				) {
 					// An auth type we do not speak inside a valid v14 envelope is
 					// protocol skew — reported, never dropped silently.
@@ -564,6 +579,13 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			for (const client of peers) provider.awareness.meta.delete(client);
 			provider.emit('status', [{ status: 'disconnected' }]);
 		}
+		// A re-seed (`room.reseed.protocol`): unsaved edits are handed over first,
+		// by a dial of this document's epoch, older now, which the room asks for
+		// them. Then, or with none, it is a refusal: the new epoch is a new document's.
+		if (event?.code === CLOSE.reseeded && provider.unsaved > 0 && !provider._rebasing) {
+			provider._rebasing = true;
+			return setupWS(provider);
+		}
 		if (event && isRefusal(event.code)) {
 			// Terminal: the next dial would be refused the same way.
 			provider.shouldConnect = false;
@@ -672,6 +694,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_chunks = createChunkReader();
 		/** This actor's writes pending the room's acknowledgement. */
 		_writes: OwnWrites;
+		/** @internal The room re-seeded: this document's unsaved edits are being handed over (`room.reseed.protocol`). */
+		_rebasing = false;
 		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
 		// The room lifecycle — installed by `initLifecycle`.
 		hasSynced!: boolean;
@@ -782,12 +806,22 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		 * decodes it). `''`, `.`, `..`, an id over 256 characters and one with a
 		 * lone surrogate are refused at construction ({@link assertRoomId}). `params` are read at every dial (a refreshed token
 		 * reaches the next connection), with `replica` = this document's
-		 * client id unless `params` names one: the room binds the socket's
-		 * writes to it.
+		 * client id unless `params` names one (the room binds the socket's
+		 * writes to it), and `epoch`, the document's, which no param replaces.
 		 */
 		get url(): string {
-			const query = url.encodeQueryParams({ replica: String(this.doc.clientID), ...this.params });
-			return `${this.serverUrl}/${encodeURIComponent(this.roomname)}?${query}`;
+			// The document's epoch (`new`: it holds nothing yet), which the room checks (`room.reseed.protocol`).
+			const epoch = this.doc.store.clients.size
+				? String(asEngineDoc(this.doc).get(EPOCH_ROOT).getAttr('n') ?? 0)
+				: 'new';
+			const query: Record<string, string> = {
+				replica: String(this.doc.clientID),
+				epoch,
+				...this.params
+			};
+			// In its place, but no param of the app's names it instead.
+			query.epoch = epoch;
+			return `${this.serverUrl}/${encodeURIComponent(this.roomname)}?${url.encodeQueryParams(query)}`;
 		}
 
 		/** Updates of this document's actor the room has not acknowledged as persisted yet. */

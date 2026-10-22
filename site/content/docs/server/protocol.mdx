@@ -14,17 +14,18 @@ Every frame is three parts, written with lib0 variable-length integers:
 varuint GENERATION | varuint messageType | payload
 ```
 
-`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14008` in this release (`generationWord(SCHEMA_VERSION)`; `14007` at schema generation 7, `14006` at 6, `14005` at 5). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
+`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14011` in this release (`generationWord(SCHEMA_VERSION)`; `14010` at schema generation 10, and so on down). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
 
 | Type | Constant | Direction | Payload |
 | --- | --- | --- | --- |
 | `0` | `messageSync` | both | A sync subtype, then a `varUint8Array`. See below. |
 | `1` | `messageAwareness` | both | A `varUint8Array` holding an awareness update. |
-| `2` | `messageAuth` | server to client | Subtype `0` (`messagePermissionDenied`), then a `varString` reason: a refused write. The reason `read-only` is not terminal: send it for each write of a read-only socket you drop; the provider emits `permission-denied`, keeps syncing and stops counting unsaved updates. Any other reason fails a provider that has not synced. Subtype `1` (`messageReadOnly`, no payload) is the read-only notice: send it when a read-only socket joins; the provider sets `readOnly` and stops counting, without an event. A provider older than this subtype reports it on `message-error` and keeps going. |
+| `2` | `messageAuth` | server to client | Subtype `0` (`messagePermissionDenied`), then a `varString` reason: a refused write. The reason `read-only` is not terminal: send it for each write of a read-only socket you drop; the provider emits `permission-denied`, keeps syncing and stops counting unsaved updates. Any other reason fails a provider that has not synced. Subtype `1` (`messageReadOnly`, no payload) is the read-only notice: send it when a read-only socket joins; the provider sets `readOnly` and stops counting, without an event. A provider older than this subtype reports it on `message-error` and keeps going. Subtype `2` (`messageAccess`, then a `varString`) is the socket's level (`write`, `suggest`, `comment`, `read`), sent as it joins. Subtype `3` (`messageEpoch`, then a `varuint`) is the room's epoch, sent instead of anything else to a socket that dialed an older one: see [re-seeds](#re-seeds). |
 | `3` | `messageQueryAwareness` | client to server | None. Asks for everyone's presence. |
 | `4` | `messageSaved` | server to client | The server's state vector (`varUint8Array`), then optionally the acknowledged deletes. |
 | `5` | `messageChunk` | server to client | One piece of a frame too large to send whole. |
 | `6` | `messageComments` | both | A comment subtype, then its body. See [Comments](#comments). |
+| `7` | `messageRebase` | client to server | A `varUint8Array`: the client's whole document of an earlier epoch, its unsaved edits in it. See [re-seeds](#re-seeds). |
 
 ### Sync
 
@@ -56,6 +57,18 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 - `createChunkReader(maxBytes?, admit?)` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before. A sequence announcing more than `maxBytes` throws `ChunkError` (with `total` and `limit`) at its `start`; a part or end with no start throws it too. The default limit is `MAX_FRAME_BYTES` (32 MiB).
 - The reader assembles a sequence into one buffer of the announced size, allocated at the `start`, and its `buffered` property is that size while the sequence is in flight (0 otherwise).
 - `admit(total)`, asked at each `start` before the allocation, may throw to refuse the sequence or return `false` to skip it (its parts are dropped and its `end` returns `null`). The edytor room uses it to skip a read-only socket's sequences and to bound what all its sockets buffer together.
+
+### Re-seeds
+
+A room that [re-seeds](/docs/server/room#re-seeding) its document starts a new epoch, which the document holds (root `epoch`, attr `n`; none before the first re-seed: epoch 0). A client names its document's epoch in its dial's query string, `epoch=<n>`, or `epoch=new` for a document that holds nothing yet. The room closes every socket `4410` at a re-seed, its reason the new epoch, and answers a dial:
+
+- **Its own epoch, or `new`:** the usual join.
+- **An earlier epoch whose cut it keeps, from a writer:** `messageAuth` subtype `3` (`messageEpoch`) with its epoch, and nothing else; it reads only a `messageRebase` from that socket (chunked like any large frame, up to twice the document quota), merges the edits it holds that the room did not have when it re-seeded, admits what that writes as the user's update (its quotas: `4413`), then closes it `4410`. Nothing is relayed to it. From any other socket: `4410` at once.
+- **An epoch older than the cuts kept, or a later one:** `4410`, its reason the room's epoch. **None, in a room that re-seeded:** `1008` (`refused: epoch`).
+
+A socket of the current epoch whose update holds an older epoch's content is closed `4410` too.
+
+The provider hands its document over when it hears `messageEpoch`, and redials once when a `4410` finds it with unsaved updates (they are handed over then); after that, `4410` is a refusal of its document. Only the room writes the `epoch` root.
 
 ### Comments
 

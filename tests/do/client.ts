@@ -33,6 +33,8 @@ export type Dial = {
 	access?: 'read' | 'comment' | 'suggest' | 'write';
 	/** When the credential expires (ms since the epoch; `?expires=`, WU-06). */
 	expires?: number | string;
+	/** The epoch the client's document is of (`?epoch=`, `room.reseed.protocol`). */
+	epoch?: number;
 };
 
 /** The `/rooms/<name>` URL for `dial` (query parameters only when given). */
@@ -42,6 +44,7 @@ export const roomUrl = (room: string, dial: Dial = {}) => {
 	if (dial.replica !== undefined) query.set('replica', String(dial.replica));
 	if (dial.access) query.set('access', dial.access);
 	if (dial.expires !== undefined) query.set('expires', String(dial.expires));
+	if (dial.epoch !== undefined) query.set('epoch', String(dial.epoch));
 	const search = query.size > 0 ? `?${query}` : '';
 	return `${ORIGIN}/rooms/${encodeURIComponent(room)}${search}`;
 };
@@ -154,6 +157,8 @@ export class RawClient {
 	readonly comments: CommentMessage[] = [];
 	/** Step1 frames the room sent (it asks write sockets only). */
 	step1s = 0;
+	/** The room's epoch, when it told this socket it dialed an older one (`room.reseed.protocol`). */
+	epoch: number | null = null;
 	synced = false;
 	private readonly chunks = E.createChunkReader();
 	closed: { code: number; reason: string } | null = null;
@@ -190,6 +195,12 @@ export class RawClient {
 	send(bytes: Uint8Array) {
 		if (this.closed) return;
 		this.ws.send(bytes);
+	}
+
+	/** Hand the room this client's whole (old) document, for a rebase (`room.reseed.protocol`). */
+	rebase(update: Uint8Array = Y.encodeStateAsUpdate(this.doc)) {
+		const whole = E.frame(E.messageRebase, (e) => E.writeVarUint8Array(e, update));
+		for (const piece of E.chunkFrame(whole, 16_384)) this.send(piece);
 	}
 
 	/** Start (or stop) hearing the room's comment changes. */
@@ -272,6 +283,10 @@ export class RawClient {
 			const sub = E.readVarUint(decoder);
 			if (sub === E.messageReadOnly) {
 				this.readOnly = true;
+				return;
+			}
+			if (sub === E.messageEpoch) {
+				this.epoch = E.readVarUint(decoder);
 				return;
 			}
 			const text = new TextDecoder().decode(E.readVarUint8Array(decoder));

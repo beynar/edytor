@@ -36,7 +36,7 @@ export const CONTEXTS = [
 	['session', /^selection\/(replaceSelection|visibility)\.ts$/],
 	['session', /^(block|text|clipboard)\//],
 	['session', /^(kinds|edytor\.utils)\.ts$/],
-	['root', /^(edytor\.svelte\.ts|index\.ts|components\/Edytor\.svelte)$/],
+	['root', /^(edytor\.svelte\.ts|index\.ts|components\/Edytor(Root)?\.svelte)$/],
 	['surface', /^(surface|events|components|selection|dnd)\//],
 	['plugins', /^plugins(\/|\.ts$)/],
 	['plugins', /^export\//]

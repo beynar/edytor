@@ -239,7 +239,8 @@ export class RoomStorage {
 					tables.editors,
 					tables.restore,
 					tables.moves,
-					tables.late
+					tables.late,
+					tables.cuts
 				])
 					sql.exec(`DROP TABLE IF EXISTS ${table}`);
 			});
@@ -601,6 +602,36 @@ export class RoomStorage {
 	}
 
 	/**
+	 * A re-seed (`room.reseed.cut`): `update`, the new epoch, replaces every
+	 * row (the generation record and one snapshot), in one storage
+	 * transaction with `within` (the re-seed's own rows). The live document
+	 * is not touched: the caller rebuilds it from the rows.
+	 */
+	replaceWith(update: Uint8Array, within: () => void) {
+		const room = this.room;
+		const measured = this.documentBytes;
+		let record = -1;
+		try {
+			room.ctx.storage.transactionSync(() => {
+				room.sql.exec(`DELETE FROM ${room.tables.rows}`);
+				this.documentBytes = 0;
+				// Record numbers keep growing, as at compaction: a compression of
+				// an earlier snapshot never lands on this one.
+				this.insert('generation', encodeJSON(GENERATION_RECORD));
+				record = this.insert('snapshot', update);
+				this.touch();
+				within();
+			});
+		} catch (error) {
+			this.documentBytes = measured;
+			throw error;
+		}
+		this.updates = 0;
+		this.storedWaiting = Y.createIdSet();
+		this.#compressLater(record, update);
+	}
+
+	/**
 	 * Automatic compaction, once the message that made it due is
 	 * acknowledged. A failure is logged and retried after half the
 	 * threshold; the edit is already stored and nobody is closed.
@@ -781,6 +812,7 @@ export class RoomStorage {
 	private noteChange(origin: unknown) {
 		const at = this.room.clock();
 		this.room.purge.noteChange(at);
+		this.room.reseed.noteChange(at);
 		this.room.history.noteChange(origin, at);
 	}
 

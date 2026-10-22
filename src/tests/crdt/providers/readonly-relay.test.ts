@@ -77,7 +77,7 @@ describe('a read-only socket', () => {
 			}
 		);
 		expect(provider.url).toBe(
-			`wss://h/rooms/a%2Fb%23c%3Fd%20100%25?replica=${document.doc.clientID}&token=t`
+			`wss://h/rooms/a%2Fb%23c%3Fd%20100%25?replica=${document.doc.clientID}&epoch=0&token=t`
 		);
 		provider.destroy();
 		document.destroy();

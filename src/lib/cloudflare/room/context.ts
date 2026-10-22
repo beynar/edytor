@@ -21,7 +21,7 @@ import type {
 	RoomLogEntry,
 	Timing
 } from '../DocumentRoom.js';
-import { MAX_REFUSALS, ROOM_ORIGIN, SOCKET_TAG, noTimers } from './shared.js';
+import { MAX_REFUSALS, ROOM_ORIGIN, SOCKET_TAG, STALE_TAG, noTimers } from './shared.js';
 import type { RoomAccess } from './access.js';
 import type { Admission } from './admission.js';
 import type { RoomComments } from './comments.js';
@@ -29,6 +29,7 @@ import type { RoomHistory } from './history.js';
 import type { RoomMoves } from './moves.js';
 import type { RoomPresence } from './presence.js';
 import type { RoomPurge } from './purge.js';
+import type { RoomReseed } from './reseed.js';
 import type { ReplicaRegistry } from './replicas.js';
 import type { Scheduler } from './scheduler.js';
 import type { RoomStorage } from './storage.js';
@@ -101,6 +102,7 @@ export type RoomTables = {
 	late: string;
 	threads: string;
 	comments: string;
+	cuts: string;
 };
 
 /** The room's public diagnostics, kept on the `AttachedDocument` itself. */
@@ -166,6 +168,7 @@ export class RoomContext {
 	presence!: RoomPresence;
 	access!: RoomAccess;
 	comments!: RoomComments;
+	reseed!: RoomReseed;
 
 	#_facade: EdytorDoc | null = null;
 	#_lookups: ReturnType<typeof lookups> | null = null;
@@ -195,7 +198,8 @@ export class RoomContext {
 			moves: `${prefix}moves`,
 			late: `${prefix}late`,
 			threads: `${prefix}threads`,
-			comments: `${prefix}comments`
+			comments: `${prefix}comments`,
+			cuts: `${prefix}cuts`
 		};
 		this.clock = options.now ?? Date.now;
 	}
@@ -220,9 +224,11 @@ export class RoomContext {
 	/**
 	 * A facade over `doc` obeying the room's block roles (`semantics`), its
 	 * shared suggestions built: its `toJSON()` leaves the pending ones out.
+	 * With `actor`, its writes are that actor's (a rebase's: `room.reseed.rebase`).
 	 */
-	facadeOf(doc: YDoc): EdytorDoc {
-		const facade = crdt.doc.create(asEngineDoc(doc), this.lookups) as EdytorDoc;
+	facadeOf(doc: YDoc, actor?: { id: string }): EdytorDoc {
+		const config = actor ? { ...this.lookups, actor: () => actor } : this.lookups;
+		const facade = crdt.doc.create(asEngineDoc(doc), config) as EdytorDoc;
 		suggestionsOf(facade);
 		return facade;
 	}
@@ -343,10 +349,18 @@ export class RoomContext {
 		for (const piece of E.chunkFrame(bytes, this.limits.maxFrameBytes)) ws.send(piece);
 	}
 
+	/** The open sockets of the current epoch: what the room relays to (`room.reseed.protocol`). */
+	sockets(): WebSocket[] {
+		const stale = new Set(this.ctx.getWebSockets(STALE_TAG));
+		return this.ctx
+			.getWebSockets(SOCKET_TAG)
+			.filter((ws) => ws.readyState === WebSocket.OPEN && !stale.has(ws));
+	}
+
 	broadcast(bytes: Uint8Array, except: unknown) {
 		const pieces = E.chunkFrame(bytes, this.limits.maxFrameBytes);
-		for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
-			if (ws === except || ws.readyState !== WebSocket.OPEN) continue;
+		for (const ws of this.sockets()) {
+			if (ws === except) continue;
 			try {
 				for (const piece of pieces) ws.send(piece);
 				this.counters.fanOut.messages += pieces.length;

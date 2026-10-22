@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
 import Edytor from '$lib/components/Edytor.svelte';
+import EdytorRoot from '$lib/components/EdytorRoot.svelte';
 import { createCodePlugin, createTablePlugin } from '$lib/index.js';
 
 const value = {
@@ -37,5 +38,32 @@ describe('the server render of an editable <Edytor>', () => {
 			expect(body).toContain('snapshot text');
 			expect(body).toContain('data-edytor-snapshot');
 		}
+	});
+	it('the public <Edytor> ends every view it renders on the server', () => {
+		// Its wrapper hands the view up by a callback: a bound prop would render
+		// the tree twice, and the discarded view (its awareness sweep) would never end.
+		let started = 0;
+		const live = new Set<unknown>();
+		const { setInterval: set, clearInterval: clear } = globalThis;
+		globalThis.setInterval = ((...args: Parameters<typeof set>) => {
+			const handle = set(...args);
+			started++;
+			live.add(handle);
+			return handle;
+		}) as typeof set;
+		globalThis.clearInterval = ((handle: Parameters<typeof clear>[0]) => {
+			live.delete(handle);
+			clear(handle);
+		}) as typeof clear;
+		try {
+			// `render()` is lazy: reading the body renders.
+			for (let i = 0; i < 3; i++)
+				expect(render(EdytorRoot, { props: { value } }).body).toContain('server text');
+		} finally {
+			globalThis.setInterval = set;
+			globalThis.clearInterval = clear;
+		}
+		expect(started).toBeGreaterThan(0);
+		expect(live.size).toBe(0);
 	});
 });

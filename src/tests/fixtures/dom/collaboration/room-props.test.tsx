@@ -43,7 +43,7 @@ describe('room props', () => {
 			}
 		});
 		await waitFor(() => expect(dials.length).toBe(1));
-		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-1\?replica=\d+&token=t1$/);
+		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-1\?replica=\d+&epoch=new&token=t1$/);
 		await waitFor(async () =>
 			expect(await databases()).toContain('edytor-v14-g11:edytor:u1@ws://rooms.test/rooms/doc-1')
 		);

@@ -77,6 +77,12 @@ export const messageChunk = 5;
  * room sends it only to a socket that subscribed.
  */
 export const messageComments = 6;
+/**
+ * Client → server, after a re-seed (`room.reseed.protocol`): the client's
+ * whole old document, its unsaved edits in it, for the room to rebase onto
+ * the current epoch. Sent only when the room asks (its epoch notice).
+ */
+export const messageRebase = 7;
 
 /** A WebSocket message limit on Cloudflare (32 MiB): a larger frame is sent as chunks. */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
@@ -421,6 +427,15 @@ export const CLOSE = {
 	denied: 4403,
 	/** The dialed replica is bound to another user. */
 	replicaTaken: 4409,
+	/**
+	 * The room re-seeded the document (`room.reseed.protocol`; the reason is
+	 * the room's epoch): a refusal of this document, once a client with
+	 * unsaved edits redialed and handed them over. The new epoch is a new
+	 * document's. Also the answer to a copy the room cannot rebase (an
+	 * epoch past the cuts it keeps, or a later one) and to an older epoch's
+	 * content on a socket of the current one.
+	 */
+	reseeded: 4410,
 	/**
 	 * A room quota refused the socket's write (`quota: document`,
 	 * `quota: rate`, `quota: frame`): the frame was not applied, and a

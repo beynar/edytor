@@ -68,7 +68,7 @@ export const PING = 'ping';
 export const PONG = 'pong';
 
 /** Seconds of the update rate a socket may spend at once. */
-const BURST_SECONDS = 10;
+export const BURST_SECONDS = 10;
 
 /** A token bucket: its tokens, refilled since `at` (ms). */
 export type Bucket = { tokens: number; at: number };
@@ -152,10 +152,10 @@ export class Admission {
 	/** One frame: whole as it came, or reassembled from its chunks. */
 	private onFrame(ws: WebSocket, attachment: Attachment, doc: YDoc, bytes: Uint8Array) {
 		const room = this.room;
-		const limit = room.limits.maxInboundFrameBytes;
+		const limit = this.#frameLimit(attachment);
 		// The frame quota: never decoded past it.
 		if (bytes.length > limit) {
-			return this.#overQuota(ws, attachment.user, 'frame', { bytes: bytes.length, limit });
+			return this.#overQuota(ws, attachment, 'frame', { bytes: bytes.length, limit });
 		}
 		const decoder = E.createDecoder(bytes);
 		// 1 · Admission: the generation word, before anything is decoded.
@@ -165,6 +165,8 @@ export class Admission {
 		try {
 			const type = decode(() => E.readVarUint(decoder));
 			if (type === E.messageChunk) return this.#onChunk(ws, attachment, doc, decoder);
+			// A socket of an older epoch hands over its old document, nothing else (`room.reseed.protocol`).
+			if (attachment.epoch != null) return room.reseed.onStale(ws, attachment, type, decoder);
 			if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
 			if (type === E.messageAwareness) {
 				const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
@@ -201,7 +203,7 @@ export class Admission {
 		const room = this.room;
 		let read = this.#chunkReaders.get(ws);
 		if (read === undefined) {
-			read = E.createChunkReader(room.limits.maxInboundFrameBytes, (total) =>
+			read = E.createChunkReader(this.#frameLimit(attachment), (total) =>
 				this.admitChunks(ws, total)
 			);
 			this.#chunkReaders.set(ws, read);
@@ -212,14 +214,14 @@ export class Admission {
 		} catch (error) {
 			this.#chunkReaders.delete(ws);
 			if (error instanceof ChunkError && error.limit !== undefined) {
-				return this.#overQuota(ws, attachment.user, 'frame', {
+				return this.#overQuota(ws, attachment, 'frame', {
 					bytes: error.total!,
 					limit: error.limit
 				});
 			}
 			if (error instanceof ChunksRefused) {
 				if (error.quota === 'rate') {
-					return this.#overQuota(ws, attachment.user, 'rate', error.detail);
+					return this.#overQuota(ws, attachment, 'rate', error.detail);
 				}
 				// The room's buffer is full, not the sender at fault: it redials.
 				room.note({
@@ -284,11 +286,13 @@ export class Admission {
 	 * reports (`onSyncRefused`) and does not redial. Never a dropped frame
 	 * on a live socket: the sender's later frames would build on it and
 	 * wait in the room's memory for good, unstored and unacknowledged; and
-	 * a redial would resend it and meet the same quota.
+	 * a redial would resend it and meet the same quota. A socket of an older
+	 * epoch whose hand-over is past the frame quota is closed `4410`: the
+	 * room cannot read it, its client loads the room's document.
 	 */
 	#overQuota(
 		ws: WebSocket,
-		user: string,
+		{ user, epoch }: Attachment,
 		quota: 'document' | 'rate' | 'frame',
 		detail: Record<string, number>
 	) {
@@ -297,7 +301,35 @@ export class Admission {
 		room.log({ edytor: 'quota', user, quota });
 		this.#chunkReaders.delete(ws);
 		room.presence.depart(ws);
+		if (epoch != null && quota === 'frame')
+			return room.close(ws, CLOSE.reseeded, String(room.reseed.epoch));
 		room.close(ws, CLOSE.quota, `quota: ${quota}`);
+	}
+
+	/** The frame quota of `attachment`'s socket: a stale one's hand-over is its whole old document. */
+	#frameLimit(attachment: Attachment): number {
+		const room = this.room;
+		return attachment.epoch != null
+			? room.reseed.staleFrameBytes
+			: room.limits.maxInboundFrameBytes;
+	}
+
+	/**
+	 * A stale socket's rebase (`room.reseed.rebase`): `update`, the writes
+	 * of a copy of the document under a client id of their own, admitted as
+	 * its user's update, from that id. `true` once applied; refused (a
+	 * quota, a read-only socket, a fault), `false`.
+	 */
+	admitRebase(
+		ws: WebSocket,
+		attachment: Attachment,
+		doc: YDoc,
+		update: Uint8Array,
+		writer: number
+	): boolean {
+		if (attachment.readOnly) return false;
+		this.onUpdate(ws, { ...attachment, replica: writer }, doc, update);
+		return ws.readyState === WebSocket.OPEN;
 	}
 
 	/**
@@ -343,7 +375,7 @@ export class Admission {
 		const syncType = decode(() => E.readVarUint(decoder));
 		// The rate quota counts every sync message, a Step1 too (it costs a Step2).
 		if (!this.allow(ws)) {
-			return this.#overQuota(ws, attachment.user, 'rate', {
+			return this.#overQuota(ws, attachment, 'rate', {
 				perSecond: room.limits.maxUpdatesPerSecond
 			});
 		}
@@ -381,6 +413,13 @@ export class Admission {
 		// 3 · Attribution: new structs only under client ids this user may
 		// write under; another user's are stripped, the rest applied.
 		const decoded = decode(() => Y.decodeUpdate(update));
+		// An older epoch's content (`room.reseed.protocol`): the socket's
+		// document took it from another tab; it loads the room's again.
+		if (room.reseed.holdsOld(decoded, doc)) {
+			room.note({ reason: 'epoch', detail: { user: attachment.user, epoch: room.reseed.epoch } });
+			room.presence.depart(ws);
+			return room.close(ws, CLOSE.reseeded, String(room.reseed.epoch));
+		}
 		// A storage outage (`room.storage.outage`): a frame that would write
 		// waits for storage to answer, unapplied, so the outage rebuilds once.
 		if (storage.outage !== null && writes(doc, decoded) && !storage.answers()) {
@@ -391,7 +430,7 @@ export class Admission {
 			decoded.structs.some((struct) => !(struct instanceof Y.Skip)) &&
 			this.#overDocument(update.length, freedBy(doc, decoded.ds))
 		) {
-			return this.#overQuota(ws, attachment.user, 'document', {
+			return this.#overQuota(ws, attachment, 'document', {
 				bytes: storage.documentBytes,
 				incoming: update.length,
 				limit: room.limits.maxDocumentBytes

@@ -1636,10 +1636,10 @@ export type EditorLabels = {
 ### Edytor
 
 ```ts
-// components/Edytor.svelte.d.ts
-declare const Edytor: import("svelte").Component<EdytorProps, {}, "edytor">;
-// components/Edytor.svelte.d.ts
-type Edytor = ReturnType<typeof Edytor>;
+// components/EdytorRoot.svelte.d.ts
+declare const EdytorRoot: import("svelte").Component<EdytorProps, {}, "edytor">;
+// components/EdytorRoot.svelte.d.ts
+type EdytorRoot = ReturnType<typeof EdytorRoot>;
 ```
 
 ### EdytorDocData
@@ -5538,6 +5538,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 deny(): void;
                 allow(): void;
             };
+            _rebasing: boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             hasSynced: boolean;
             whenSynced: Promise<unknown>;

@@ -12,7 +12,7 @@ import type { JSONDoc } from '../../utils/json.js';
 import type { Awareness } from '../protocols/awareness.js';
 import { keepingReplaced } from '../incarnations.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
-import { assertRoomId, SyncRefusedError } from './room.js';
+import { assertRoomId, CLOSE, SyncRefusedError } from './room.js';
 import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
 
 /**
@@ -205,7 +205,17 @@ export const bindProviders = (Y: EngineApi) => {
 				maxBackoffTime,
 				connectTimeout,
 				disableBc: disableBc || local !== undefined,
-				maxFrameBytes
+				maxFrameBytes,
+				// With a local copy, the dial waits for it: the epoch it names is the copy's.
+				connect: local === undefined
+			});
+			const dial = () => provider._destroyed || provider.connect();
+			// A re-seed (`room.reseed.protocol`, a `4410` refusal): the local copy goes,
+			// its deletion waiting for every tab's connection to close.
+			provider.on('refused', ({ code }) => {
+				if (code !== CLOSE.reseeded || !loaded) return;
+				void release?.();
+				void idb.clearDocument(persistName!);
 			});
 			if (onExpired) provider.on('expired', (state) => onExpired(state));
 			if (access) provider.on('access', access);
@@ -243,9 +253,22 @@ export const bindProviders = (Y: EngineApi) => {
 				});
 			}
 			let release: EdytorSyncCleanup | void = undefined;
+			// The store's load (or its failure) opens the dial.
+			const loaded =
+				local &&
+				Object.assign(
+					(p: EdytorSyncPayload) =>
+						local({
+							...p,
+							synced: (x) => (p.synced(x), dial()),
+							failed: (error, x) => (p.failed?.(error, x), dial())
+						}),
+					local
+				);
 			try {
 				// Called directly (no `attach`), the store only persists: readiness is the socket's.
-				release = local && (attach ? attach(local) : local({ doc, awareness, synced: () => {} }));
+				release =
+					loaded && (attach ? attach(loaded) : loaded({ doc, awareness, synced: () => {} }));
 			} catch (error) {
 				provider.destroy();
 				throw error;

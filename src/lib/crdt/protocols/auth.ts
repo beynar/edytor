@@ -44,6 +44,18 @@ export const writeAccess = (encoder: encoding.Encoder, access: string): void => 
 	encoding.writeVarString(encoder, access);
 };
 
+/**
+ * The room's epoch (`room.reseed.protocol`), sent to a socket that dialed an
+ * older one, instead of anything else: the room asks it for its old
+ * document (`messageRebase`), then closes it `4410`.
+ */
+export const messageEpoch = 3;
+
+export const writeEpoch = (encoder: encoding.Encoder, epoch: number): void => {
+	encoding.writeVarUint(encoder, messageEpoch);
+	encoding.writeVarUint(encoder, epoch);
+};
+
 export type PermissionDeniedHandler = (ydoc: unknown, reason: string) => void;
 
 /**
@@ -57,7 +69,8 @@ export const readAuthMessage = (
 	y: unknown,
 	permissionDeniedHandler: PermissionDeniedHandler,
 	readOnlyHandler?: (ydoc: unknown) => void,
-	accessHandler?: (access: string) => void
+	accessHandler?: (access: string) => void,
+	epochHandler?: (epoch: number) => void
 ): number => {
 	const authMessageType = decoding.readVarUint(decoder);
 	switch (authMessageType) {
@@ -70,6 +83,9 @@ export const readAuthMessage = (
 			break;
 		case messageAccess:
 			accessHandler?.(decoding.readVarString(decoder));
+			break;
+		case messageEpoch:
+			epochHandler?.(decoding.readVarUint(decoder));
 	}
 	return authMessageType;
 };

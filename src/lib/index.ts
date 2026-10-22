@@ -27,7 +27,7 @@
  */
 
 // ── The editor ─────────────────────────────────────────────────────────
-export { default as Edytor } from './components/Edytor.svelte';
+export { default as Edytor } from './components/EdytorRoot.svelte';
 export { useEdytor } from './edytor.svelte.js';
 /** The editor instance plugins, hotkeys and `bind:edytor` receive (`Edytor` names the component). */
 export type { Edytor as EdytorInstance, EdytorDocData } from './edytor.svelte.js';

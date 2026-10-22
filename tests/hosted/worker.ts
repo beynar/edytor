@@ -2,7 +2,8 @@
  * TEST FIXTURE — the hosted lane's Worker: the shipped room
  * (`edytor/cloudflare`) behind the `tests/do` route (`routeDocumentSocket`
  * with its query-string test `authorize`), plus
- * ONE test-only hook, `POST /rooms/<name>/evict`, which evicts the room's
+ * two test-only hooks: `POST /rooms/<name>/reseed`, which re-seeds the
+ * room's document (its `reseed()`), and `POST /rooms/<name>/evict`, which evicts the room's
  * Durable Object through `workerd:unsafe` (the same primitive
  * `@cloudflare/vitest-plugin`'s `evictDurableObject` uses). By default the
  * instance is torn down — memory gone — while its hibernatable WebSockets
@@ -16,10 +17,16 @@ import { DocumentRoom, routeRoom, type Env } from '../do/worker';
 export { DocumentRoom };
 
 const EVICT_ROUTE = /^\/rooms\/([^/]+)\/evict\/?$/;
+const RESEED_ROUTE = /^\/rooms\/([^/]+)\/reseed\/?$/;
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
+		const reseed = RESEED_ROUTE.exec(url.pathname);
+		if (reseed && request.method === 'POST')
+			return Response.json({
+				epoch: await env.ROOM.getByName(decodeURIComponent(reseed[1])).reseed()
+			});
 		const evict = EVICT_ROUTE.exec(url.pathname);
 		if (!evict) return routeRoom(request, env);
 		if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });

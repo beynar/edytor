@@ -5,6 +5,7 @@ export function writeStateAsUpdate(encoder: UpdateEncoder, doc: Doc, targetState
 export function encodeStateAsUpdate(doc: Doc, encodedTargetStateVector?: Uint8Array): Uint8Array<ArrayBuffer>;
 export function mergeUpdates(updates: Array<Uint8Array<ArrayBuffer>>): Uint8Array<ArrayBuffer>;
 export function diffUpdate(update: Uint8Array, sv: Uint8Array): Uint8Array<ArrayBuffer>;
+export function clipUpdate(update: Uint8Array, sv: Uint8Array, ds: import("./ids.js").IdSet): Uint8Array<ArrayBuffer>;
 export function decodeStateVector(decodedState: Uint8Array): Map<number, number>;
 export function encodeStateVector(doc: Doc | Map<number, number>): Uint8Array<ArrayBuffer>;
 import { UpdateEncoder } from './UpdateEncoder.js';

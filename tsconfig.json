@@ -35,6 +35,8 @@
 		// `engine.d.ts` (`Y: EngineApi`); keeping the .js out of the program
 		// stops vendored JS from being checked here (it is checked by
 		// tsconfig.vendor-dts.json instead).
-		"src/lib/crdt/engine.js"
+		"src/lib/crdt/engine.js",
+		// The same for the room's engine calls (`engine-room.d.ts`).
+		"src/lib/crdt/engine-room.js"
 	]
 }

@@ -194,6 +194,7 @@
 		onSyncExpired,
 		onSyncRefused,
 		rebuild,
+		adopt,
 		requireHydration,
 		snapshot,
 		actor,
@@ -212,6 +213,11 @@
 	}: EdytorProps & {
 		/** The view's own rebuild (`EdytorRoot`): a new view on a new document. */
 		rebuild?: () => void;
+		/**
+		 * Hands the view to `EdytorRoot`, which a binding cannot: on the server a
+		 * bound prop renders the tree twice, and the discarded view never ends.
+		 */
+		adopt?: (view: EdytorClass) => void;
 	} = $props();
 
 	const initialEdytorOptions = untrack(() => ({
@@ -231,6 +237,7 @@
 	}));
 
 	edytor = new EdytorClass(initialEdytorOptions);
+	untrack(() => adopt)?.(edytor);
 
 	// ONE attach path for owned and injected documents: `attachSync`
 	// tracks the provider on the DOCUMENT's lifetime (one provider per

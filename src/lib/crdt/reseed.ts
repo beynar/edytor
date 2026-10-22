@@ -37,7 +37,13 @@ import { asYDoc } from './structs.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import { blockNodeOf, view as modelView, type BlockId } from './placement/model.js';
-import { bindBlockAttribution, blockAttributionOf } from './attribution/block.js';
+import {
+	bindBlockAttribution,
+	blockAttributionOf,
+	CONTRIBUTOR_PREFIX,
+	CREATED_KEY
+} from './attribution/block.js';
+import { LAST_CHANGED_ATTR } from './schema.js';
 import { common } from './data.js';
 import { canonKey } from './text/model.js';
 import { restoreDocument, runsOf, unitsOf, type RestoreFacade, type Unit } from './restore.js';
@@ -150,12 +156,20 @@ export const decodeCut = (bytes: Uint8Array): Cut => {
  */
 export const seedFrom = (old: Replica, seed: (json: JSONDoc) => Replica): Replica => {
 	const fresh = seed(old.facade.toJSON());
-	const attribution = bindBlockAttribution(Y);
+	const { ensureRecord } = bindBlockAttribution(Y);
 	fresh.doc.transact(() => {
 		for (const id of fresh.facade.order()) {
 			const node = blockNodeOf(fresh.doc, id);
-			if (node !== null)
-				attribution.restoreRecord(fresh.doc, node, id, blockAttributionOf(old.doc, id));
+			if (node === null) continue;
+			// The record and `lastChangedBy` become the old block's, whatever the seed wrote.
+			const att = blockAttributionOf(old.doc, id);
+			const rec = ensureRecord(fresh.doc, id, node);
+			for (const key of rec.attrKeys()) if (key.startsWith(CONTRIBUTOR_PREFIX)) rec.deleteAttr(key);
+			for (const actor of att?.contributors ?? []) rec.setAttr(CONTRIBUTOR_PREFIX + actor, true);
+			if (att?.createdBy === undefined) rec.deleteAttr(CREATED_KEY);
+			else rec.setAttr(CREATED_KEY, att.createdBy);
+			if (att?.lastChangedBy === undefined) node.deleteAttr(LAST_CHANGED_ATTR);
+			else node.setAttr(LAST_CHANGED_ATTR, att.lastChangedBy);
 		}
 	});
 	return fresh;

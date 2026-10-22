@@ -21,7 +21,7 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { CLOSE } from '../../src/lib/crdt/providers/room.js';
 import type { JSONDoc } from '../../src/lib/crdt/index.js';
-import { E, RawClient, Y, para } from './client';
+import { E, ORIGIN, RawClient, SelfWebSocket, Y, crdt, para } from './client';
 import { setNow, type ReseedRoom } from './worker';
 
 declare global {
@@ -138,6 +138,25 @@ describe('a re-seed (room.reseed.cut)', () => {
 			await vi.waitFor(() => expect(refused.closed?.code).toBe(CLOSE.refused));
 			expect(refused.closed?.reason).toBe('refused: epoch');
 		}
+	});
+});
+
+describe('only the room writes the epoch (room.reseed.protocol)', () => {
+	it("a client's write of the epoch root is stripped (`mark`)", async () => {
+		const room = 'reseed-forge';
+		await clockTo(room, T0);
+		const { client } = await writer(room, 'ana', [para('p1', 'hello')]);
+		await vi.waitFor(() => expect(client.stored()).toBe(true));
+		await inRoom(room, (r) => r.reseed());
+		const mallory = E.createDocument({ actor: { id: 'mal' } }).doc;
+		const tab = await RawClient.connect(room, mallory, { user: 'mal', epoch: 1 });
+		await vi.waitFor(() => expect(tab.synced).toBe(true));
+		mallory.get('epoch').setAttr('n', 99);
+		await vi.waitFor(async () =>
+			expect(await inRoom(room, (r) => r.refusals.some((x) => x.reason === 'mark'))).toBe(true)
+		);
+		expect(await inRoom(room, (r) => r.doc!.get('epoch').getAttr('n'))).toBe(1);
+		tab.close();
 	});
 });
 
@@ -280,5 +299,81 @@ describe('when the room re-seeds (room.reseed.timing)', () => {
 		await clockTo(room, T0 + 61_000);
 		await runDurableObjectAlarm(stub(room));
 		expect(await inRoom(room, (r) => [r.metrics().epoch, r.reseed()])).toEqual([0, null]);
+	});
+});
+
+describe('the shipped client after a re-seed (room.reseed.protocol)', () => {
+	const url = `${ORIGIN.replace('https', 'wss')}/rooms`;
+	/** The shipped provider over `SELF`, for `user`. */
+	const provider = (room: string, doc: E.YDoc, user: string, connect = true) =>
+		new crdt.providers.WebsocketProvider(url, room, doc, {
+			params: { user },
+			WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket,
+			disableBc: true,
+			connect
+		});
+	const refusals = (p: ReturnType<typeof provider>) => {
+		const heard: { code: number; reason: string }[] = [];
+		p.on('refused', ({ code, reason }) => heard.push({ code, reason }));
+		return heard;
+	};
+
+	it('with nothing unsaved, hears the re-seed as a 4410 refusal; a new document syncs the new epoch', async () => {
+		const room = 'reseed-client-saved';
+		await clockTo(room, T0);
+		const a = E.createDocument({
+			value: { children: [para('p1', 'hello')] },
+			actor: { id: 'ana' }
+		});
+		const pa = provider(room, a.doc, 'ana');
+		const heard = refusals(pa);
+		await vi.waitFor(() => expect(pa.synced && pa.saved).toBe(true));
+		await inRoom(room, (r) => r.reseed());
+		await vi.waitFor(() => expect(heard).toEqual([{ code: CLOSE.reseeded, reason: '1' }]));
+		// A new document holds nothing: it dials as new, and syncs the epoch's document.
+		const b = E.createDocument({ actor: { id: 'ana' } });
+		const pb = provider(room, b.doc, 'ana');
+		await vi.waitFor(() => expect(pb.synced).toBe(true));
+		b.sync();
+		expect(b.facade.blockText('p1')).toBe('hello');
+		pa.destroy();
+		pb.destroy();
+	});
+
+	it('back online with unsaved edits, hands them over, then hears 4410', async () => {
+		const room = 'reseed-client-offline';
+		await clockTo(room, T0);
+		const a = E.createDocument({
+			value: { children: [para('p1', 'hello')] },
+			actor: { id: 'ana' }
+		});
+		const pa = provider(room, a.doc, 'ana');
+		const heard = refusals(pa);
+		await vi.waitFor(() => expect(pa.synced && pa.saved).toBe(true));
+		pa.disconnect();
+		a.facade.insertText('p1', 5, ' offline');
+		await inRoom(room, (r) => r.reseed());
+		pa.connect();
+		await vi.waitFor(() => expect(heard).toEqual([{ code: CLOSE.reseeded, reason: '1' }]));
+		expect(texts(await roomJSON(room))).toEqual({ p1: 'hello offline' });
+		pa.destroy();
+	});
+
+	it('an edit the room had not acknowledged when it re-seeded: the provider redials and hands it over', async () => {
+		const room = 'reseed-client-inflight';
+		await clockTo(room, T0);
+		const a = E.createDocument({
+			value: { children: [para('p1', 'hello')] },
+			actor: { id: 'ana' }
+		});
+		const pa = provider(room, a.doc, 'ana');
+		const heard = refusals(pa);
+		await vi.waitFor(() => expect(pa.synced && pa.saved).toBe(true));
+		a.facade.insertText('p1', 5, ' typed');
+		expect(pa.unsaved).toBeGreaterThan(0);
+		await inRoom(room, (r) => r.reseed());
+		await vi.waitFor(() => expect(heard).toEqual([{ code: CLOSE.reseeded, reason: '1' }]));
+		expect(texts(await roomJSON(room))).toEqual({ p1: 'hello typed' });
+		pa.destroy();
 	});
 });

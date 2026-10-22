@@ -103,6 +103,12 @@ export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }):
 /** The per-block `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
+/**
+ * The epoch a re-seed wrote (`room.reseed.protocol`): the root `epoch`, its
+ * attr `n` (none before the first re-seed). Apart from `meta`, whose keys
+ * are the schema stamp's alone.
+ */
+export const EPOCH_ROOT = 'epoch';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {

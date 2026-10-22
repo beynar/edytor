@@ -420,6 +420,61 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		for (const issue of issues) issue.assertClean();
 	});
 
+	test('a re-seed (room.reseed.protocol): a connected view builds itself again on the new epoch; an offline one hands its edits over on reconnect, exactly once', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('reseed', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		// Both peers on the library sync (`wssync=factory`): the socket and its local store.
+		const open = async () => {
+			const context = await browser.newContext({ baseURL });
+			const page = await context.newPage();
+			const control = { online: true, socket: undefined as WebSocketRoute | undefined };
+			await page.routeWebSocket(
+				(url) => url.href.startsWith(`${WS_SERVER}/${room}?`),
+				(route) => {
+					control.socket = route;
+					if (control.online) route.connectToServer();
+					else void route.close();
+				}
+			);
+			await gotoEditorRoute(page, `${peerPath(room)}&wssync=factory`, { requireRuntime: true });
+			return { context, page, control };
+		};
+		const a = await open();
+		const b = await open();
+		peers = [a, b];
+		const issues = [a.page, b.page].map((page) =>
+			trackPageIssues(page, { ignoreConsoleErrors: WS_NOISE, ignorePageErrors: WS_NOISE })
+		);
+		expect(await expectConverged([a.page, b.page])).toEqual(SEED);
+		// B offline types; A online types, and the room stores it.
+		b.control.online = false;
+		await b.control.socket?.close();
+		await insertViaFacade(b.page, 'collab-b1', 0, 'OFF>');
+		await insertViaFacade(a.page, 'collab-b3', 5, '<ON');
+		await expect
+			.poll(async () => {
+				const response = await fetch(`${HOSTED_ORIGIN}/rooms/${room}?snapshot&user=probe`);
+				return JSON.stringify(await response.json());
+			})
+			.toContain('<ON');
+		const reseeded = await fetch(`${HOSTED_ORIGIN}/rooms/${room}/reseed`, { method: 'POST' });
+		expect(await reseeded.json()).toEqual({ epoch: 1 });
+		// A's view is built again on the new epoch: the same document.
+		await expect.poll(() => readTexts(a.page)).toEqual(['alpha', 'beta', 'gamma<ON']);
+		// B back online hands its edits over, then builds itself again on the new epoch.
+		b.control.online = true;
+		const texts = await expectConverged([a.page, b.page]);
+		expect(texts).toEqual(['OFF>alpha', 'beta', 'gamma<ON']);
+		expect(occurrences(texts, 'OFF>')).toBe(1);
+		// Its local copy is the new epoch's: a reload loads it once.
+		await b.page.reload({ waitUntil: 'domcontentloaded' });
+		await waitForEditorReady(b.page, { requireRuntime: true });
+		expect(await expectConverged([a.page, b.page])).toEqual(['OFF>alpha', 'beta', 'gamma<ON']);
+		for (const issue of issues) issue.assertClean();
+	});
+
 	test('a readonly view is a live viewer: it loads the room, receives a peer edit, and edits after a flip on the same socket (D3)', async ({
 		browser
 	}, testInfo) => {

@@ -86,8 +86,9 @@ export type BlockAttribution = {
 export { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR };
 
 const REC_NODE = 'brec';
-const CREATED_KEY = 'c';
-const CONTRIBUTOR_PREFIX = 'k/';
+/** A record's `createdBy` key, and the prefix of its contributors' (a re-seed copies them: `crdt/reseed.ts`). */
+export const CREATED_KEY = 'c';
+export const CONTRIBUTOR_PREFIX = 'k/';
 /** Incarnation stamp on a record: the nonce `n` of the node it belongs to. */
 const INCARNATION_KEY = 'i';
 
@@ -259,27 +260,6 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 				addContributor(rec, actorId);
 			}
 			stampLastChanged(doc, node, actorId);
-		},
-		/**
-		 * A re-seed (`room.reseed.cut`): the block's record and `lastChangedBy`
-		 * become `att`, the old document's, whatever the seed wrote.
-		 */
-		restoreRecord: (
-			doc: EngineDoc,
-			node: EngineNode,
-			id: BlockId,
-			att: BlockAttribution | undefined
-		): void => {
-			const rec = ensureRecord(doc, id, node);
-			if (att?.createdBy === undefined) rec.deleteAttr(CREATED_KEY);
-			else if (rec.getAttr(CREATED_KEY) !== att.createdBy) rec.setAttr(CREATED_KEY, att.createdBy);
-			for (const key of rec.attrKeys())
-				if (key.startsWith(CONTRIBUTOR_PREFIX) && !att?.contributors.has(key.slice(2)))
-					rec.setAttr(key, false);
-			for (const a of att?.contributors ?? []) addContributor(rec, a);
-			if (att?.lastChangedBy === undefined) node.deleteAttr(LAST_CHANGED_ATTR);
-			else if (node.getAttr(LAST_CHANGED_ATTR) !== att.lastChangedBy)
-				node.setAttr(LAST_CHANGED_ATTR, att.lastChangedBy);
 		},
 		/**
 		 * Merge: the survivor unions the absorbed block's contributor set.

@@ -1013,6 +1013,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     deny(): void;
                     allow(): void;
                 };
+                _rebasing: boolean;
                 messageHandlers: Record<number, import("./providers/room.js").RoomMessageHandler<any>>;
                 hasSynced: boolean;
                 whenSynced: Promise<unknown>;
@@ -1702,6 +1703,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 deny(): void;
                 allow(): void;
             };
+            _rebasing: boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             hasSynced: boolean;
             whenSynced: Promise<unknown>;

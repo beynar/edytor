@@ -103,8 +103,12 @@ class Relay {
 
 let counter = 0;
 const uniqueUrl = () => `ws://g-e/${counter++}`;
-/** A dial URL without the default `replica` param. */
-const noReplica = (u) => u.replace(/replica=\d+&?/, '').replace(/\?$/, '');
+/** A dial URL without the default `replica` and `epoch` params (`room.reseed.protocol`). */
+const noReplica = (u) =>
+	u
+		.replace(/replica=\d+&?/, '')
+		.replace(/epoch=(new|\d+)&?/, '')
+		.replace(/\?$/, '');
 const socketsOf = (url) => Relay.sockets.filter((s) => s.url.startsWith(url));
 const until = async (cond, timeout = 4000) => {
 	const start = Date.now();

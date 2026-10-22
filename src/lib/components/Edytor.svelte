@@ -143,6 +143,8 @@
 		 * `document.syncRefusal`): a refusal standing at mount, then each new one.
 		 */
 		onSyncRefused?: (refusal: SyncRefusedError) => void;
+		/** @internal The view's own rebuild (`EdytorRoot`): a new view on a new document. */
+		rebuild?: () => void;
 		/** Advanced: a custom sync factory. Overrides `room`/`server`. */
 		sync?: EdytorSync;
 		/**
@@ -193,6 +195,7 @@
 		params,
 		onSyncExpired,
 		onSyncRefused,
+		rebuild,
 		requireHydration,
 		snapshot,
 		actor,
@@ -276,7 +279,11 @@
 		}
 		// Subscribe first, then replay the standing refusal isolated like the
 		// later ones: a throwing callback still hears the next refusal.
-		offRefused = document.onSyncRefused((next) => onSyncRefused?.(next));
+		offRefused = document.onSyncRefused((next) => {
+			onSyncRefused?.(next);
+			// A re-seed (`4410`): a view that owns its document builds itself again on a new one.
+			if (next.code === CLOSE.reseeded && !edytorDocument) rebuild?.();
+		});
 		if (refusal) {
 			try {
 				onSyncRefused?.(refusal);

@@ -307,11 +307,12 @@ describe('dial url', () => {
 			WebSocketPolyfill: FakeWebSocket,
 			disableBc: true
 		});
-		expect(p.url).toBe(`ws://x/rooms/r?replica=${doc.clientID}&token=t1`);
+		// The epoch the room checks (`room.reseed.protocol`): `new` for a document that holds nothing.
+		expect(p.url).toBe(`ws://x/rooms/r?replica=${doc.clientID}&epoch=new&token=t1`);
 		params.token = 't2';
 		expect(p.url).toContain('token=t2');
 		p.params = { replica: 'mine' };
-		expect(p.url).toBe('ws://x/rooms/r?replica=mine');
+		expect(p.url).toBe('ws://x/rooms/r?replica=mine&epoch=new');
 		p.destroy();
 	});
 });

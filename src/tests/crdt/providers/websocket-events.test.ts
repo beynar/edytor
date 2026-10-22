@@ -128,11 +128,11 @@ describe('websocket options + socket events', () => {
 		});
 		p.on('status', (s) => statuses.push(s.status));
 
-		expect(p.url).toBe(`${url}/room?replica=${doc.clientID}&token=abc&region=eu`);
+		expect(p.url).toBe(`${url}/room?replica=${doc.clientID}&epoch=new&token=abc&region=eu`);
 		p.connect();
 		await until(() => p.wsconnected, 4000);
 		expect(FakeWebSocket.instances.at(-1).url).toBe(
-			`${url}/room?replica=${doc.clientID}&token=abc&region=eu`
+			`${url}/room?replica=${doc.clientID}&epoch=new&token=abc&region=eu`
 		);
 		expect(statuses).toEqual(['connecting', 'connected']);
 		p.destroy();

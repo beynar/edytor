@@ -32,6 +32,7 @@ import {
 } from '../../crdt/reseed.js';
 import { asEngineDoc } from '../../crdt/structs.js';
 import { suggestionsOf } from '../../crdt/doc/suggest.js';
+import { EPOCH_ROOT } from '../../crdt/schema.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Attachment, SocketIdentity } from '../DocumentRoom.js';
 import {
@@ -63,8 +64,9 @@ const decodeMerged = (bytes: Uint8Array): Merged => {
 	return { sv: decoding.readVarUint8Array(d), ds: decoding.readVarUint8Array(d) };
 };
 
-/** An epoch a dial names (`?epoch=`), or `null`. */
-export const parseEpoch = (raw: string | null): number | null => {
+/** An epoch a dial names (`?epoch=`; `new`: a document that holds nothing yet), or `null`. */
+export const parseEpoch = (raw: string | null): number | 'new' | null => {
+	if (raw === 'new') return raw;
 	const n = raw !== null && /^\d{1,9}$/.test(raw) ? Number(raw) : NaN;
 	return Number.isSafeInteger(n) ? n : null;
 };
@@ -264,8 +266,11 @@ export class RoomReseed {
 			const scratch = crdt.createDoc();
 			const fresh = room.facadeOf(scratch);
 			try {
+				const epoch = this.epoch + 1;
 				const document = seedFrom(old, (json): Replica => {
 					fresh.seed(json.children, json.data);
+					// The document says its epoch: a client dials with it (`room.reseed.protocol`).
+					asEngineDoc(scratch).get(EPOCH_ROOT).setAttr('n', epoch);
 					return { doc: asEngineDoc(scratch), facade: fresh as never };
 				});
 				const update = Y.encodeStateAsUpdate(scratch);
@@ -278,7 +283,6 @@ export class RoomReseed {
 					return null;
 				}
 				const cut = cutBetween(old, document);
-				const epoch = this.epoch + 1;
 				const at = room.clock();
 				const { sql, tables } = room;
 				room.storage.replaceWith(update, () => {
@@ -317,8 +321,9 @@ export class RoomReseed {
 	 * or closed: a later epoch, or none in a room that re-seeded, `1008`;
 	 * an epoch past the cuts kept, `4411`.
 	 */
-	door(asked: number | null): 'current' | 'stale' | { code: number; reason: string } {
+	door(asked: number | 'new' | null): 'current' | 'stale' | { code: number; reason: string } {
 		const current = this.epoch;
+		if (asked === 'new') return 'current';
 		if (asked === null)
 			return current === 0 ? 'current' : { code: CLOSE.refused, reason: 'refused: epoch' };
 		if (asked === current) return 'current';

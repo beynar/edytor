@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
+	// The public `<Edytor>` (it builds itself again on a re-seed, `room.reseed.protocol`).
+	import Edytor from '$lib/components/EdytorRoot.svelte';
+	import type { EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '../../../tests/atMention.svelte';

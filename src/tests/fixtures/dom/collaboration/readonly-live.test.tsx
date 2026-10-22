@@ -100,7 +100,7 @@ describe('a readonly view is a live viewer (D3)', () => {
 			}
 		});
 		await waitFor(() => expect(dials.length).toBe(1));
-		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-ro\?replica=\d+$/);
+		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-ro\?replica=\d+&epoch=new$/);
 		view.unmount();
 	});
 

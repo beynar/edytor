@@ -13,7 +13,8 @@
  * for a page kept in the back/forward cache.
  *
  * The server is an opaque relay: every frame reaches every other socket
- * of the room.
+ * of the room, and a socket that joins later hears what the present ones
+ * sent (a room's join snapshot: a tab dials once its store loaded).
  *
  * A reconnect shows the room's present peers at once: the presences dropped
  * with the socket are forgotten, clock included, so the snapshot a room
@@ -35,6 +36,8 @@ const providers = bindProviders(Y);
 class Relay {
 	static OPEN = 1;
 	static rooms = new Map();
+	/** What each socket sent, replayed to a socket that joins later (a room's join snapshot does as much). */
+	static sent = new Map();
 	OPEN = 1;
 	binaryType = '';
 	readyState = 0;
@@ -49,14 +52,20 @@ class Relay {
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
 			if (!Relay.rooms.has(this.room)) Relay.rooms.set(this.room, new Set());
+			const present = [...Relay.rooms.get(this.room)];
 			Relay.rooms.get(this.room).add(this);
 			this.readyState = 1;
 			this.onopen?.({});
+			for (const peer of present)
+				for (const bytes of Relay.sent.get(peer) ?? [])
+					if (peer.readyState === 1) this.onmessage?.({ data: bytes.slice().buffer });
 		});
 	}
 
 	send(data) {
 		const bytes = new Uint8Array(data).slice();
+		if (!Relay.sent.has(this)) Relay.sent.set(this, []);
+		Relay.sent.get(this).push(bytes);
 		setTimeout(() => {
 			for (const peer of Relay.rooms.get(this.room) ?? []) {
 				if (peer !== this && peer.readyState === 1)

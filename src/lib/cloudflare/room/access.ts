@@ -131,7 +131,7 @@ export class RoomAccess {
 	 * re-seed's (`room.reseed.protocol`): closed, or joined as stale (no
 	 * replica bound, no Step1: the room asks for its old document).
 	 */
-	private accept(identity: SocketIdentity, epoch: number | null): Response {
+	private accept(identity: SocketIdentity, epoch: number | 'new' | null): Response {
 		const room = this.room;
 		room.storage.heal();
 		const doc = room.live;
@@ -146,7 +146,11 @@ export class RoomAccess {
 		if (door === 'stale') {
 			const pair = new WebSocketPair();
 			room.ctx.acceptWebSocket(pair[1], [SOCKET_TAG]);
-			pair[1].serializeAttachment({ ...identity, clock: null, epoch: epoch! } satisfies Attachment);
+			pair[1].serializeAttachment({
+				...identity,
+				clock: null,
+				epoch: epoch as number
+			} satisfies Attachment);
 			room.reseed.join(pair[1], identity);
 			return new Response(null, { status: 101, webSocket: pair[0] });
 		}

@@ -429,8 +429,8 @@ export const CLOSE = {
 	replicaTaken: 4409,
 	/**
 	 * The room re-seeded the document (`room.reseed.protocol`; the reason is
-	 * the new epoch): not a refusal. A client with unsaved edits redials to
-	 * hand them over; then, or with none, it loads the new epoch.
+	 * the new epoch): a refusal of this document, once a client with unsaved
+	 * edits redialed and handed them over. The new epoch is a new document's.
 	 */
 	reseeded: 4410,
 	/** The client's epoch is older than the cuts the room keeps: its unsaved edits cannot merge. */
@@ -463,8 +463,7 @@ export const assertRoomId = (id: string): void => {
 
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`) but `expired`. */
 export const isRefusal = (code: number): boolean =>
-	code === CLOSE.refused ||
-	(code >= 4000 && code < 5000 && code !== CLOSE.expired && code !== CLOSE.reseeded);
+	code === CLOSE.refused || (code >= 4000 && code < 5000 && code !== CLOSE.expired);
 
 /**
  * A terminal refusal: the server closed the socket with a policy code

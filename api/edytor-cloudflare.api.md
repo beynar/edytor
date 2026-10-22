@@ -817,9 +817,7 @@ export type LateEditBatch = {
 
 ```ts
 // cloudflare/DocumentRoom.d.ts
-export type LoadedDocument = JSONDoc | Uint8Array | (Pick<SavedDocument, 'update' | 'replicas'> & {
-    epoch?: number;
-});
+export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 ```
 
 ### LockOptions
@@ -1224,7 +1222,6 @@ export type SavedDocument = {
     value: JSONDoc;
     update: Uint8Array;
     replicas: ReplicaOwner[];
-    epoch: number;
 };
 ```
 

@@ -72,8 +72,6 @@ export const parseEpoch = (raw: string | null): number | 'new' | null => {
 };
 
 export class RoomReseed {
-	#epoch: number | null = null;
-
 	constructor(private readonly room: RoomContext) {}
 
 	/** The re-seed's settings (`null`: off). */
@@ -94,28 +92,11 @@ export class RoomReseed {
 		};
 	}
 
-	/** The room's epoch: 0 until it first re-seeds (meta `epoch`). */
+	/** The room's epoch: what its document says (`epoch.n`, which only the room writes), 0 before a re-seed. */
 	get epoch(): number {
-		if (this.#epoch === null) {
-			const { sql, tables } = this.room;
-			this.#epoch =
-				sql
-					.exec<{ value: number }>(`SELECT value FROM ${tables.meta} WHERE key = 'epoch'`)
-					.toArray()[0]?.value ?? 0;
-		}
-		return this.#epoch;
-	}
-
-	/** Forget what memory holds (a reset dropped the tables). */
-	forget() {
-		this.#epoch = null;
-	}
-
-	/** Set the epoch (inside the caller's storage transaction): a re-seed, or a seed from `onLoad`. */
-	setEpoch(epoch: number) {
-		const { sql, tables } = this.room;
-		sql.exec(`INSERT OR REPLACE INTO ${tables.meta} (key, value) VALUES ('epoch', ?)`, epoch);
-		this.#epoch = epoch;
+		const n =
+			this.room.live === null ? 0 : asEngineDoc(this.room.live).get(EPOCH_ROOT).getAttr('n');
+		return typeof n === 'number' ? n : 0;
 	}
 
 	#ensure() {
@@ -290,7 +271,6 @@ export class RoomReseed {
 					sql.exec(`DELETE FROM ${tables.epochs}`);
 					sql.exec(`DELETE FROM ${tables.restore}`);
 					sql.exec(`DELETE FROM ${tables.meta} WHERE key = 'reseed.floor'`);
-					this.setEpoch(epoch);
 					this.#write(epoch, 'cut', encodeCut(cut), at);
 				});
 				room.state.presence.clear();

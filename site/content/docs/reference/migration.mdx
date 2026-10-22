@@ -14,7 +14,22 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Breaking changes
+
+- **A room that re-seeds refuses the clients before this release.** The room now rebuilds a document that grew past half its quota from its content (see New). A client names its document's epoch when it dials; one before this release names none, and a room that re-seeded refuses it (`1008`, `refused: epoch`), its edits kept in its local copy. Update the clients before the rooms: the new clients work with rooms that never re-seeded. To keep the previous behavior, set `reseed: false` (`EDYTOR_RESEED=off`).
+- **The dial names the document's epoch.** The provider's URL carries `epoch=<n>` (`epoch=new` for a document that holds nothing yet) after `replica`, before your `params`. A host Worker that builds its own upgrade request must keep the dial's query string; `routeDocumentSocket` forwards the request's URL.
+- **With a local copy, the socket dials once the copy has loaded.** `createWebsocketSync` opens the socket after its IndexedDB store answered (or failed), so the epoch the dial names is the copy's. A first dial comes a few milliseconds later; the readiness bound still counts from the socket's open.
+- **A re-seed is a `4410` refusal of the document.** When the room re-seeds, every socket is closed `4410`, its reason the new epoch; a provider with unsaved edits first dials once more to hand them over. Then the provider stops and reports a `SyncRefusedError` with `code` `4410` (`refused`, `onSyncRefused`, `document.syncRefusal`), and `createWebsocketSync` deletes its local copy. `<Edytor>` that owns its document builds itself again on a new one; if you pass your own `document`, create a new one when `onSyncRefused` reports `4410`.
+
+#### New
+
+- **Re-seeding.** A document that grew past half its quota is rebuilt from its content, with fresh identities, once nobody wrote for ten minutes and when that gives back at least 40 % (past 80 % of the quota without waiting): the same blocks, data, text, marks and block attribution, stored at what its content takes. Clients reload it; an offline client's edits are merged into it when it comes back, for 30 days. The `reseed` option (`ReseedOptions`: `at`, `idleMs`, `gain`, `force`, `graceDays`; `false` never re-seeds; defaults `DEFAULT_RESEED_IDLE`, `DEFAULT_RESEED_GAIN`, `DEFAULT_RESEED_FORCE`, `DEFAULT_RESEED_GRACE_DAYS`), `DocumentRoom.reseeding()` and `EDYTOR_RESEED`; `reseed()` (also over RPC) runs one now; the room's `epoch` and `metrics().epoch`; the `reseed` and `rebase` log entries, the refusal reason `epoch`, the `reseed` alarm task and the `cuts` table. See [re-seeding](/docs/server/room#re-seeding).
+- **The re-seed's protocol** (`edytor/protocol`): `messageEpoch` and `writeEpoch` (the room's epoch, auth subtype `3`), `messageRebase` (the client's old document, message type `7`), `CLOSE.reseeded` (`4410`) and `CLOSE.epochExpired` (`4411`). See [re-seeds](/docs/server/protocol#re-seeds).
+- **`clipUpdate(update, sv, ds)`** (`edytor/crdt`): an update as it read at an earlier state, the counterpart of `diffUpdate`. `bindCrdt(Y).doc.restoreTo` takes options (`rewrite`, and `suggestions: 'keep'` to keep the pending suggestions).
+
+#### Fixed
+
+- **The protocol page's wire word** reads `14011`, this release's.
 
 ### From 5.0.0
 
@@ -1531,8 +1546,10 @@ Every public change since 0.0.11, by area.
 | `4401` | `authorize` returns `{ expired: true }` (`ExpiredCredential`), or the `expiresAt` it returned passed. | Redials, reading `params` again. |
 | `4403` | `authorize` returns `null` or an invalid identity (a `userId` empty, not a string, over 256 characters or with a lone surrogate, an invalid `replica`), the page's origin is not in `allowedOrigins`, or the room revoked the user's access (`closeUser`, `setAccess(user, 'none')`). | Stops. |
 | `4409` | A replica id another user holds. | Stops. |
+| `4410` | The room [re-seeded](/docs/server/room#re-seeding) the document; the reason is the new epoch. | With unsaved edits, dials once more to hand them over; then stops (a refusal of the document) and `createWebsocketSync` deletes its local copy. |
+| `4411` | `epoch expired`: the document is of an epoch older than the cuts the room keeps. | Stops; the document stays readable. |
 | `4413` | A room quota (`quota: document`, `quota: rate`, `quota: frame`): the write is not applied. | Stops. |
-| `1008` | `refused: <reason>`: a frame of another generation (`generation`), a replica the dial does not own (`replica`), a forged schema stamp (`schema`), undecodable bytes (`malformed`), a socket the room holds no user for (`identity`), or a stored document the room refuses (`container`). | Stops. |
+| `1008` | `refused: <reason>`: a frame of another generation (`generation`), a replica the dial does not own (`replica`), a forged schema stamp (`schema`), undecodable bytes (`malformed`), a socket the room holds no user for (`identity`), a stored document the room refuses (`container`), or a dial naming no epoch, or a later one, to a room that re-seeded (`epoch`). | Stops. |
 | `1011` | A fault of the room itself (`storage failure`, `internal error`, `room busy`, `room unavailable`). | Retries, backing off while it repeats. |
 | `1012` | `access changed`: the room changed the user's access level (`setAccess`), other than a writer's down to `read`. | Redials at once. |
 
@@ -1542,6 +1559,7 @@ Every public change since 0.0.11, by area.
 - **Document size warning.** `documentWarning` (`EDYTOR_DOCUMENT_WARNING`, default `DEFAULT_DOCUMENT_WARNING`, 0.8): the room logs `{ edytor: 'size', bytes, limit, share }` once when the document reaches that share of `maxDocumentBytes`; `metrics()` reports `documentLimit`.
 - **Room validation.** `AttachRoomOptions.validate(frame)` and `DocumentRoom.validate`, with a `FrameValidation`: `{ user, replica, touched, dataChanged, before, after, facade }`, `before`/`after` returning a `ValidatedBlock` (`{ id, type, data, content, parent }`) or `null`; `false` or a throw denies, and the room undoes the frame (refusal entry `denied`). Per-writer marks of another writer are stripped (refusal reason `mark`). `um.clear()` drops every step of a history `createUndoManager` made and releases what they kept, by the history limit's rule.
 - **Room metrics and log.** `metrics()`, `RoomMetrics` and `Timing`; the `log` option, `DocumentRoom.log`, `RoomLogEntry` and `EDYTOR_LOG`.
+- **Re-seeding.** The room rebuilds a document that grew from its content as a new epoch (the `reseed` option, `ReseedOptions`, `DocumentRoom.reseeding()`, `EDYTOR_RESEED`, `reseed()`, `epoch`, `metrics().epoch`, the `DEFAULT_RESEED_*` defaults, the `reseed` and `rebase` log entries); the dial names the document's epoch (`epoch=`), the room answers an earlier one with `messageEpoch` and reads its `messageRebase`, and closes `4410` (`CLOSE.reseeded`) or `4411` (`CLOSE.epochExpired`); `createWebsocketSync` dials once its local copy has loaded and deletes it after a re-seed; `<Edytor>` builds itself again on a new document. See [re-seeding](/docs/server/room#re-seeding).
 - **Version history.** The room keeps two versions a day (first in a KV namespace; see the history stores below): the `history` option of `attachDocument` (`HistoryOptions`: `{ store, retentionDays, timeZone, maxValueBytes }`), `DocumentRoom.history()` (the `EDYTOR_HISTORY` binding with `EDYTOR_HISTORY_RETENTION_DAYS` and `EDYTOR_HISTORY_TIME_ZONE` by default); `DEFAULT_RETENTION_DAYS` and `HISTORY_MAX_VALUE_BYTES`. See [History and purge](/docs/server/history).
   - The room's `listHistory()` (`HistoryEntry[]`), `readHistory(key)`, `restoreHistory(key, { user })` (`RestoreResult`, origin `RESTORE_ORIGIN`), `undoRestore({ user })` and `historyWritten()`, also over RPC, and `routeDocumentHistory(request, namespace, documentId, authorize)` for HTTP.
   - Refusal reason `history`; `RoomMetrics.history`; log entries `history` and `restore`. `bindCrdt(Y).doc.restoreTo(doc, facade, json)` is the restore itself.

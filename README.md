@@ -34,7 +34,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
 - **Real-time collaboration.** One `EdytorDocument` shared by any number of views, or none (headless). Presence cursors, identity-preserving moves, splits and merges, and undo that only takes back your own edits.
 - **Offline first.** A local IndexedDB copy and cross-tab sync; offline edits survive reloads and reach the server on reconnect.
-- **A Cloudflare Durable Object room.** `edytor/cloudflare` stores in SQLite, acknowledges after the write, binds identity to the socket and hibernates.
+- **A Cloudflare Durable Object room.** `edytor/cloudflare` stores in SQLite, acknowledges after the write, binds identity to the socket and hibernates. A busy document is [re-seeded](https://edytor.dev/docs/server/room#re-seeding) from its content when it grows, offline edits merged when their device comes back.
 - **Import and export.** `edytor/export` turns a document into HTML or Markdown and back (`toHTML`, `toMarkdown`, `fromHTML`, `textToBlocks`), by each kind's own forms, in the browser, Node or a Worker; HTML import is sanitized ([Import and export](https://edytor.dev/docs/editor/import-export)).
 - **Headless and Worker-safe.** `edytor/crdt/edytor` runs in Node and Workers without Svelte.
 

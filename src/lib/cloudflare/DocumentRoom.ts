@@ -269,22 +269,10 @@ export type SavedDocument = {
 	 * tell which user wrote under which id.
 	 */
 	replicas: ReplicaOwner[];
-	/**
-	 * The room's epoch (`room.reseed.protocol`): how many times it re-seeded.
-	 * Store it with `update`: a room restored without it refuses the clients
-	 * of a later epoch.
-	 */
-	epoch: number;
 };
 
-/**
- * What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }`
- * (a `SavedDocument`, its `epoch` too when it has one).
- */
-export type LoadedDocument =
-	| JSONDoc
-	| Uint8Array
-	| (Pick<SavedDocument, 'update' | 'replicas'> & { epoch?: number });
+/** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
+export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 
 /**
  * Optional knobs (strings, as `vars` arrive): row size, outgoing frame

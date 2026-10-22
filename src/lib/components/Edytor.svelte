@@ -143,8 +143,6 @@
 		 * `document.syncRefusal`): a refusal standing at mount, then each new one.
 		 */
 		onSyncRefused?: (refusal: SyncRefusedError) => void;
-		/** @internal The view's own rebuild (`EdytorRoot`): a new view on a new document. */
-		rebuild?: () => void;
 		/** Advanced: a custom sync factory. Overrides `room`/`server`. */
 		sync?: EdytorSync;
 		/**
@@ -211,7 +209,10 @@
 		autocapitalize = 'none',
 		inputmode,
 		enterkeyhint
-	}: EdytorProps = $props();
+	}: EdytorProps & {
+		/** The view's own rebuild (`EdytorRoot`): a new view on a new document. */
+		rebuild?: () => void;
+	} = $props();
 
 	const initialEdytorOptions = untrack(() => ({
 		readonly,

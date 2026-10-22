@@ -3473,6 +3473,18 @@ document of the epoch `cut` started, in the caller's transaction:
    character `target` holds keeps its identity (a later rebase's cut map
    still names it), and `target`'s pending suggestions stay.
 
+### `room.reseed.timing` — when the room re-seeds
+
+`RoomReseed.noteChange` (`cloudflare/room/reseed.ts`), at each stored change: past `at` of the stored bytes (half of `maxDocumentBytes` by default) the `reseed` alarm task is due `idleMs` after the change (ten minutes; each change pushes it back), past `force` of the quota (0.8) at the change. The task re-seeds when the stored bytes are still past `at`: `idle` mode below `force` (it waits an idle period more while a shared suggestion is pending), `full` past it (pending suggestions dropped); both write nothing when the new epoch would give back less than `gain` (0.4), and then not again until the stored bytes pass the floor (meta `reseed.floor`, a quarter of `at` above). `reseed()` runs `manual`: whatever it gives back. Pins: `tests/do/reseed.test.ts` (timing rows).
+
+### `room.reseed.protocol` — epochs, the hand-over and `4410`
+
+A re-seed's seed writes its epoch in the document (root `epoch`, attr `n`; only the room writes it: a client's struct there is stripped, `mark`); the room's epoch is its document's. A dial names its document's (`?epoch=<n>`, `new` for one that holds nothing); the door (`RoomReseed.door`): its own or `new` joins; none or a later one, in a room that re-seeded, `1008` `refused: epoch`; an earlier one whose cuts are kept is a stale socket (no replica bound, no Step1): a writer hears `messageEpoch` and only its `messageRebase` is read (`room.reseed.rebase`), anything else closes `4410` at once; one past the cuts kept, `4411`. A re-seed closes every socket `4410`, its reason the epoch. The provider hands its whole document over on `messageEpoch`; a `4410` that finds it with unsaved updates redials once (`_rebasing`); any other `4410` is a refusal of the document. `createWebsocketSync` dials once its local copy loaded, and deletes it on that refusal; `EdytorRoot` keys the view: an `<Edytor>` owning its document builds itself again on a new one. Pins: `tests/do/reseed.test.ts`, `src/tests/fixtures/dom/collaboration/reseed-props.test.tsx`, the hosted re-seed row.
+
+### `room.reseed.grace` — how long an offline client's edits can merge
+
+Each epoch's cut is kept `graceDays` (30): the purge's daily tick drops older ones (`RoomReseed.prune`), and the door reads one older than the grace as gone (`4411`).
+
 ### `room.reseed.text` — text edits merge exactly
 
 When neither side split, merged, moved, inserted or deleted blocks since

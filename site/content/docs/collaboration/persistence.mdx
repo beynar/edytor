@@ -53,7 +53,7 @@ const sync = createWebsocketSync({
 | `persist` | `true` | Keep a local copy. `false` makes the sync the socket alone. |
 | `persistName` | `edytor:<server>/<room>` | The local store's name. Trailing slashes are removed from `server`. |
 
-Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the sync is the socket alone.
+Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the sync is the socket alone. With a store, the socket dials once the store has loaded: the dial names the epoch of the document the copy holds ([re-seeds](/docs/server/room#re-seeding)), so a copy of an earlier epoch is handed over, never merged into the room's.
 
 ## Offline behavior
 
@@ -63,6 +63,7 @@ Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the
 - **Editing offline.** Every edit is written to the local copy. Closing every tab loses nothing.
 - **Reconnecting.** On every connection the client and the room exchange what the other lacks, so edits made offline, including those restored from the local copy after a reload, reach the room without any replay logic on your side.
 - **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).
+- **Re-seeded meanwhile.** When the room [re-seeded](/docs/server/room#re-seeding) the document while the device was away, the reconnecting client hands its document over: the room merges its edits into the new epoch, then the client loads the new epoch into a new document (an `<Edytor>` that owns its document does it by itself) and its local copy starts over. A copy older than the cuts the room keeps (30 days) is refused `4411` and stays readable.
 - **Offline for more than 30 days.** The room purges content deleted more than 30 days ago, from itself and every client. A device that comes back after that keeps its edits to content that still exists; what it typed into content deleted and purged meanwhile is dropped. See [the purge](/docs/server/history#the-purge).
 
 :::warning
@@ -131,7 +132,7 @@ const sync = createWebsocketSync({ server: 'wss://rooms.example.com/rooms', room
 if (sync.persistName) await clearDocument(sync.persistName);
 ```
 
-For `createIndexeddbSync(name)`, pass the same `name`. `sync.persistName` is `undefined` when the sync keeps no local copy.
+For `createIndexeddbSync(name)`, pass the same `name`. `sync.persistName` is `undefined` when the sync keeps no local copy. After a [re-seed](/docs/server/room#re-seeding) (`4410`), `createWebsocketSync` deletes its copy itself: the deletion waits until every tab let go of the database, so a tab still writing the previous epoch writes into the copy that goes.
 
 ## One user per browser profile
 

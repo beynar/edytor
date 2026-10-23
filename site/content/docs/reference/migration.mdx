@@ -18,7 +18,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 - **A shortcut right after a quick Shift+arrow selection acts on all of it.** Pressing Bold (or any key) right after several fast Shift+→ presses, as with the key held down, could act on the selection as it stood after the first press. A key now reads the selection the browser moved before it acts.
 - **A long word no longer widens the editor.** A word longer than the line (a pasted URL) wrapped, but an editor without the Notion theme, in a flex or grid layout sized by its content, grew to the word's whole width and the page scrolled sideways. The editor now lets such a word break anywhere (`overflow-wrap: anywhere`, a rule any of yours overrides).
-- **On a touch screen, only the selection's block shows its handle.** Every handle used to show at once on a phone or tablet (there is no hover to reveal one). Now the block the caret or selection is in shows its handle, as in Notion's mobile editor, and a hidden handle takes no tap.
+- **On a touch screen, only the selection's block shows its handle.** Every handle used to show at once on a phone or tablet (there is no hover to reveal one). Now the block the caret or selection is in shows its handle, as in Notion's mobile editor, and a hidden handle takes no tap. A touch on another block no longer reveals its handle either, so the first tap on a to-do's checkbox acts at once (iOS Safari took a tap that revealed content for a hover, and a second tap was needed).
 
 ### From 6.0.0
 

@@ -253,16 +253,21 @@
 	}
 
 	/* A touch screen has no hover: a handle shows for the block the selection
-	 * is in (Notion's), and only a shown one takes a tap, so a tap in the
-	 * gutter never opens a hidden block's menu. */
+	 * is in (Notion's), never for a touched one (the hover a touch leaves
+	 * behind), and only a shown one takes a tap, so a tap in the gutter never
+	 * opens a hidden block's menu. A touch that showed a handle would also
+	 * cost a tap: iOS Safari takes a touch whose hover reveals content as a
+	 * hover only, and sends no click. */
 	@media (hover: none) {
 		[data-edytor-block-handle-host] {
 			padding-inline-end: 0;
+		}
+		[data-edytor-block-handle-host]:not([data-active='true']) {
+			opacity: 0;
 			pointer-events: none;
 		}
 		[data-edytor-block-handle-host][data-active='true'] {
 			opacity: 1;
-			pointer-events: auto;
 		}
 	}
 </style>

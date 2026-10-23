@@ -47,9 +47,12 @@ test.describe('the block chrome under a finger', () => {
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 1);
 		await expect(grip(page, 'A')).toBeVisible();
+		// A handle fades (a transition): read it once the fade ended.
 		const shown = (id: string) =>
-			grip(page, id).evaluate((node) => {
-				const style = getComputedStyle(node.closest('[data-edytor-block-handle-host]')!);
+			grip(page, id).evaluate(async (node) => {
+				const host = node.closest<HTMLElement>('[data-edytor-block-handle-host]')!;
+				await Promise.all(host.getAnimations().map((animation) => animation.finished));
+				const style = getComputedStyle(host);
 				return [style.opacity, style.pointerEvents];
 			});
 		await expect.poll(() => shown('A')).toEqual(['1', 'auto']);
@@ -65,6 +68,17 @@ test.describe('the block chrome under a finger', () => {
 		await expectInView(page, page.getByTestId('block-menu'));
 		await page.getByRole('menuitem', { name: /Move down/ }).tap();
 		await expect.poll(() => ids(page)).toEqual(['B', 'A', 'C']);
+		// A touch leaves a hover behind: it shows no handle (iOS Safari takes a touch whose
+		// hover reveals content as a hover only, and sends no click).
+		await page.locator('[data-edytor-text="true"]').nth(2).hover();
+		await expect
+			.poll(() =>
+				page
+					.locator('[data-edytor-block-handle-host][data-block-id="C"][data-visible="true"]')
+					.count()
+			)
+			.toBe(1);
+		expect(await shown('C')).toEqual(['0', 'none']);
 		issues.assertClean();
 	});
 

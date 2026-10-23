@@ -96,6 +96,14 @@
 	[data-edytor-code-copy]:focus-visible {
 		opacity: 1;
 	}
+	/* A touch screen shows it: a touch that revealed it would cost the tap
+	 * (iOS Safari takes it for a hover and sends no click, the language
+	 * button's included). */
+	@media (hover: none) {
+		[data-edytor-code-copy] {
+			opacity: 1;
+		}
+	}
 	[data-edytor-code-copy]:hover {
 		background: var(--edytor-code-chrome-hover, var(--accent));
 	}

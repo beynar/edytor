@@ -12,16 +12,18 @@ import {
  * (a hidden one takes no tap); a tap on a grip selects its block and opens
  * the block menu, whose Move down moves it (one undo step); a tap on a `+`
  * opens the insert menu; a text selection shows the toolbar, whose Bold a
- * tap applies. A finger drag on a grip is the platform's long-press drag
+ * tap applies; a code block's Copy shows without a hover (a touch that
+ * revealed it would cost the tap: iOS Safari takes it for a hover and sends
+ * no click, the language button's included). A finger drag on a grip is the platform's long-press drag
  * and drop, which only a device runs (Platform support).
  */
 
 const para = (id: string, text: string) => ({ id, type: 'paragraph', content: [{ text }] });
 const DOC = [para('A', 'alpha'), para('B', 'bravo'), para('C', 'charlie')];
 
-const open = async (page: Page) => {
+const open = async (page: Page, children: unknown[] = DOC) => {
 	await page.goto(
-		`/test/dom?scenario=dst&handles=true&polish=1&dst=${encodeURIComponent(JSON.stringify({ children: DOC }))}`
+		`/test/dom?scenario=dst&handles=true&polish=1&dst=${encodeURIComponent(JSON.stringify({ children }))}`
 	);
 	await waitForEditorReady(page, { requireRuntime: true });
 };
@@ -102,6 +104,24 @@ test.describe('the block chrome under a finger', () => {
 		await expect
 			.poll(async () => (await readJsonByTestId<Value>(page, 'value')).children[1]?.content)
 			.toEqual([{ text: 'bravo', marks: { bold: true } }]);
+		issues.assertClean();
+	});
+
+	test("a code block's Copy shows without a hover", async ({ page }) => {
+		const issues = trackPageIssues(page);
+		const code = {
+			id: 'K',
+			type: 'code',
+			children: [{ id: 'L', type: 'codeLine', content: [{ text: 'let x = 1;' }] }]
+		};
+		await open(page, [...DOC, code]);
+		const copy = page.locator('[data-edytor-code-copy]');
+		await expect(copy).toBeAttached();
+		const opacity = await copy.evaluate(async (node) => {
+			await Promise.all(node.getAnimations().map((animation) => animation.finished));
+			return getComputedStyle(node).opacity;
+		});
+		expect(opacity).toBe('1');
 		issues.assertClean();
 	});
 });

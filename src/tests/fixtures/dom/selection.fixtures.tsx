@@ -31,7 +31,8 @@ export const fixtures = defineFixtures([
 			isCollapsed: true
 		},
 		expectNativeSelection: {
-			anchorNodeType: 'text',
+			// An empty text's caret: the element point before its `<br>`.
+			anchorNodeType: 'element',
 			anchorOffset: 0,
 			collapsed: true
 		},
@@ -113,7 +114,8 @@ export const fixtures = defineFixtures([
 			isCollapsed: true
 		},
 		expectNativeSelection: {
-			anchorNodeType: 'text',
+			// An empty text's caret: the element point before its `<br>`.
+			anchorNodeType: 'element',
 			anchorOffset: 0,
 			collapsed: true
 		}

@@ -2,7 +2,8 @@
  * arch-v2 R7 — the truth invariant (plan §8.7 F-O10, R12; §12.5 BI2-9): after
  * a settle, every block's content equals its cell's current text (a nonempty
  * content its kind renders keeps its text elements), every strict container
- * (the root, text elements) holds only what the cells render, and every
+ * (the root, text elements) holds only what the cells render (an empty text
+ * alone in its block: one `<br>`), and every
  * registered element is connected — except the live composition host, and
  * read-only text divergence until the flip back.
  *
@@ -82,9 +83,14 @@ export const truthOf = (edytor: any): string[] => {
 					out.push(`${id}: DOM ${JSON.stringify(text)} ≠ cell ${JSON.stringify(want)}`);
 				for (const part of parts) {
 					if (!part.hasAttribute('data-edytor-text')) continue;
-					for (const child of Array.from(part.childNodes))
+					const children = Array.from(part.childNodes).filter((child) => !isAnchor(child));
+					// An empty text alone in its block renders one `<br>` (the empty filler).
+					const filler =
+						children.length === 1 && children[0].nodeName === 'BR' && !part.textContent;
+					for (const child of children)
 						if (
 							child instanceof Element &&
+							!filler &&
 							!child.hasAttribute('data-edytor-mark') &&
 							!child.hasAttribute('data-edytor-trailing-newline')
 						)

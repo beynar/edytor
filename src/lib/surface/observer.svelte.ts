@@ -50,7 +50,7 @@ import { getDomSelectionSnapshot } from '../selection/domSelection.js';
 import { domOffsetIn } from '../selection/selection.utils.js';
 import { diverges, heal, ownText, ownedOf, type Kind, type Owned } from './attributes.js';
 import { getTextContentOffsetAtPoint, textLeaves } from '../events/domTextOffset.js';
-import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
+import { FILLER, rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
 
 /**
  * What a text divergence asks for: adopted (`attempt`: claimed by the
@@ -741,11 +741,12 @@ export class SurfaceObserver {
 
 	/**
 	 * Equal text, compared structurally: each text element (a strict
-	 * container) holds one node per render delta (the empty filler's one) — a
-	 * text node, or a registered mark element whose registered marks follow
-	 * the delta's chain and that renders one text node. Svelte's anchors and
-	 * the newline marker stand for none. Answers whether it differs; `write`:
-	 * a content that does not gets each delta's text back in its node.
+	 * container) holds one node per render delta — a text node, or a
+	 * registered mark element whose registered marks follow the delta's
+	 * chain and that renders one text node — and an empty one its filler's
+	 * (a `<br>`, or the zero-width text node). Svelte's anchors and the newline
+	 * marker stand for none. Answers whether it differs; `write`: a content
+	 * that does not gets each delta's text back in its node.
 	 */
 	#shape = (id: string, write?: boolean): boolean => {
 		const { edytor } = this;
@@ -754,7 +755,7 @@ export class SurfaceObserver {
 			const element = text.node;
 			if (!element) continue;
 			const deltas = edytor.deltasOf(text);
-			const shown = deltas.length ? deltas : [{ text: ZWSP, marks: [] }];
+			const shown = deltas.length ? deltas : FILLER;
 			const nodes = [...element.childNodes].filter(
 				(node) =>
 					!isAnchor(node) &&
@@ -776,7 +777,8 @@ export class SurfaceObserver {
 					// The snippet's markup is its own, but the delta renders one text node.
 					if (marks.join() !== chain.join() || leaves.length !== 1) return true;
 					leaf = leaves[0];
-				} else if (node.nodeType !== Node.TEXT_NODE) return true;
+				} else if (node.nodeName === 'BR' && shown === FILLER) continue;
+				else if (node.nodeType !== Node.TEXT_NODE) return true;
 				if (leaf.data !== delta.text) writes.push([leaf, delta.text]);
 			}
 		}
@@ -1008,8 +1010,15 @@ export const adopt = async (
 	if (!text.isInDocument) return;
 	// The render patches only the runs the command changed: when the one
 	// insertion rule (`marksForInsertion`) gave the text other marks than the
-	// node the browser wrote, that node keeps its copy — re-render.
-	if (!adopted || drifted || (insert && shown !== modelMarks(edytor, text, at)))
+	// node the browser wrote, or that node is not the render's (the text was
+	// empty, `grow` is all of it: the browser typed into its `<br>`), that
+	// node keeps its copy — re-render.
+	if (
+		grow === value.length ||
+		!adopted ||
+		drifted ||
+		(insert && shown !== modelMarks(edytor, text, at))
+	)
 		text.refreshFromModel();
 	// Deferred past the re-render (selecting in the same turn left the
 	// native caret at 0), so it checks the gesture serial: a gesture since the

@@ -900,7 +900,7 @@ export class Edytor {
 		const at = this.segmentOf(text);
 		if (!at) return [];
 		const { cell, segment } = at;
-		return this.pin.shown(cell, segment, this.definitionOf(cell.type).transformText).deltas;
+		return this.pin.shown(cell, segment, this.definitionOf(cell.type).transformText);
 	};
 
 	/** @internal The handle of inline atom `atom`, shown in block `id`. */

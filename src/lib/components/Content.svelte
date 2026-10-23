@@ -72,14 +72,12 @@
 					)
 	);
 	/** Session content, rendered from JSON as declared view values: no handle, no caret. */
-	const ghost = (segment: Segment) => ({
-		deltas: segmentDeltas(
+	const ghost = (segment: Segment) =>
+		segmentDeltas(
 			{ id, type: type ?? '', data: undefined } as Cell,
 			segment,
 			preview ? undefined : transform
-		),
-		empty: !segment.text
-	});
+		);
 
 	/** The parts this content renders: a preview's (session parts, no handle), else the cell's. */
 	const own = $derived(preview ? partsOf(preview) : parts);
@@ -137,12 +135,9 @@
 )}<!--
 	-->{#each parts as part, index (index)}<!--
 		-->{#if part.kind === 'text'}<!--
-			-->{@const shown =
-				ghost(part)}<!--
 --><RenderText
 				text={undefined}
-				deltas={shown.deltas}
-				empty={shown.empty}
+				deltas={ghost(part)}
 				newline={part.text.endsWith('\n')}
 			/><!--
 		-->{:else if rendersAtom(part)}<!--
@@ -155,19 +150,16 @@
 -->{/snippet}<!--
 -->{#key epoch}<RenderText
 		text={firstText}
-		deltas={firstShown.deltas}
-		empty={firstShown.empty}
+		deltas={firstShown}
+		line={!entries.length}
 		newline={first.text.endsWith('\n')}
 		placeholder={preview ? null : placeholder}
 	/>{/key}<!--
 -->{#each entries as entry (entry.key)}<!--
 	-->{#if entry.kind === 'text'}<!--
-		-->{@const shown =
-			preview ? ghost(entry.part) : view(entry.part)}<!--
 --><RenderText
 			text={preview ? undefined : edytor.textAt(id, entry.ordinal)}
-			deltas={shown.deltas}
-			empty={shown.empty}
+			deltas={preview ? ghost(entry.part) : view(entry.part)}
 			newline={entry.part.text.endsWith('\n')}
 			placeholder={preview ? null : placeholder}
 		/><!--
@@ -180,7 +172,6 @@
 --><RenderText
 			text={undefined}
 			deltas={entry.deltas}
-			empty={false}
 			newline={false}
 			rest
 		/><!--

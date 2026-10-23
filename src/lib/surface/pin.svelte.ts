@@ -12,6 +12,7 @@
  */
 import type { BlockId } from '../crdt/index.js';
 import {
+	FILLER,
 	partsOf,
 	renderDeltas,
 	segmentDeltas,
@@ -31,9 +32,8 @@ type Held = {
 	key: string;
 	/** The host cell's segment list at the start. */
 	parts: readonly Part[];
-	/** The host segment's render at the start, and whether it showed the empty filler. */
+	/** The host segment's render at the start. */
 	frozen: RenderDelta[];
-	empty: boolean;
 	/** The frozen render before and after the start target (the preview goes between). */
 	head: Item[];
 	tail: Item[];
@@ -78,7 +78,6 @@ export class Pin {
 			key: segment.key,
 			parts: partsOf(cell.runs),
 			frozen,
-			empty: segment.text === '',
 			head: cut(frozen, from)[0],
 			tail: cut(frozen, Math.max(from, to))[1],
 			merged: [],
@@ -121,22 +120,25 @@ export class Pin {
 	parts = (cell: Cell): readonly Part[] =>
 		this.#held?.block === cell.id ? this.#held.parts : partsOf(cell.runs);
 
-	/** The pinned render of segment `key` of `block`, or null when it is not the host. */
-	render = (block: BlockId, key: string): { deltas: RenderDelta[]; empty: boolean } | null => {
+	/**
+	 * The render of `segment` of `cell`: its kind's (`segmentDeltas`), or the
+	 * pinned one while it hosts the IME, an empty host's the filler text node
+	 * (never the `<br>` of an empty line): the IME composes into a node the
+	 * render owns.
+	 */
+	shown = (
+		cell: Cell,
+		segment: Segment,
+		transform: TextTransform | undefined
+	): readonly RenderDelta[] => {
 		const held = this.#held;
-		if (!held || held.block !== block || held.key !== key) return null;
+		if (held?.block !== cell.id || held.key !== segment.key)
+			return segmentDeltas(cell, segment, transform);
 		const { preview, head, tail } = held;
-		if (!preview || preview.native) return { deltas: [...held.frozen], empty: held.empty };
-		const items = [...head, preview, ...tail];
-		return { deltas: renderDeltas(items), empty: !textOf(items) };
+		const deltas =
+			!preview || preview.native ? held.frozen : renderDeltas([...head, preview, ...tail]);
+		return deltas.length ? deltas : FILLER;
 	};
-
-	/** The render of `segment` of `cell`: pinned while it hosts the IME, else its kind's (`segmentDeltas`). */
-	shown = (cell: Cell, segment: Segment, transform: TextTransform | undefined) =>
-		this.render(cell.id, segment.key) ?? {
-			deltas: segmentDeltas(cell, segment, transform),
-			empty: segment.text === ''
-		};
 
 	/** What follows the pinned segment `key` of `block` in its own element (`merge`). */
 	rest = (block: BlockId, key: string): RenderDelta[] => {

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './editorTest';
 import {
 	dispatchClipboardEvent,
+	dragSelectionByTextIndex,
 	dispatchPaste,
 	modKey,
 	readJsonByTestId,
@@ -34,7 +35,12 @@ import {
  * - thirty Enters at a heading's end make paragraphs; a to-do clicked 21
  *   times is checked; twenty-five lines nested with Tab come back out with
  *   Shift+Tab; Delete held from the page's start empties it; the slash menu
- *   dismissed ten times leaves its slashes, `/h2` Enter leaves no query.
+ *   dismissed ten times leaves its slashes, `/h2` Enter leaves no query;
+ * - typing and undo interleaved fifteen times; Windows line ends, tabs and
+ *   no-break spaces pasted; a 500-line paste undone in one step; Shift+Enter
+ *   three times inside a word and Backspace three times; a range across three
+ *   blocks typed over; two hundred spaces typed and erased; twenty Enters at
+ *   the page's start.
  */
 
 type Node = {
@@ -375,6 +381,97 @@ test.describe('silly stress', () => {
 		await expect
 			.poll(async () => [(await kinds(page))[1], (await texts(page))[1]])
 			.toEqual(['heading', '']);
+		issues.assertClean();
+	});
+
+	test('typing and undo interleaved fifteen times: undo is the start, redo the last character', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'base')]);
+		await setSelectionByTextIndex(page, 0, 4);
+		for (let i = 0; i < 15; i++) {
+			await page.keyboard.type(String.fromCharCode(97 + i));
+			await page.keyboard.press(`${modKey}+z`);
+		}
+		await expect.poll(() => texts(page)).toEqual(['base']);
+		await pressUntilStill(page, `${modKey}+Shift+z`);
+		await expect.poll(() => texts(page)).toEqual(['base' + String.fromCharCode(97 + 14)]);
+		issues.assertClean();
+	});
+
+	test('Windows line ends, tabs and no-break spaces pasted: lines split, no carriage return kept', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', '')]);
+		await setSelectionByTextIndex(page, 0, 0);
+		await dispatchPaste(page, { text: 'first\r\nsecond\tcolumn\u00a0nbsp\r\n\r\nthird' });
+		await expect
+			.poll(async () => (await texts(page)).filter(Boolean))
+			.toEqual(['first', 'second\tcolumn\u00a0nbsp', 'third']);
+		expect((await texts(page)).join('')).not.toContain('\r');
+		issues.assertClean();
+	});
+
+	test('a 500-line paste is one undo step', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'keep')]);
+		await setSelectionByTextIndex(page, 0, 4);
+		await dispatchPaste(page, { text: Array.from({ length: 500 }, (_, i) => `p${i}`).join('\n') });
+		await expect.poll(async () => (await texts(page)).length).toBe(500);
+		await page.keyboard.press(`${modKey}+z`);
+		await expect.poll(() => texts(page)).toEqual(['keep']);
+		issues.assertClean();
+	});
+
+	test('Shift+Enter three times inside a word breaks its line, Backspace three times joins it', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'hello')]);
+		await setSelectionByTextIndex(page, 0, 3);
+		for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+Enter');
+		await expect.poll(() => texts(page)).toEqual(['hel\n\n\nlo']);
+		for (let i = 0; i < 3; i++) await page.keyboard.press('Backspace');
+		await expect.poll(() => texts(page)).toEqual(['hello']);
+		issues.assertClean();
+	});
+
+	test('a range across three blocks, typed over, joins its ends around the typing', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'alpha'), para('B', 'bravo'), para('C', 'charlie')]);
+		await dragSelectionByTextIndex(page, 0, 2, 2, 2);
+		await page.keyboard.type('X');
+		await expect.poll(() => texts(page)).toEqual(['alXarlie']);
+		issues.assertClean();
+	});
+
+	test('two hundred spaces typed and erased leave the word as it was', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'ab')]);
+		await setSelectionByTextIndex(page, 0, 1);
+		await page.keyboard.type(' '.repeat(200));
+		await expect.poll(() => texts(page)).toEqual(['a' + ' '.repeat(200) + 'b']);
+		for (let i = 0; i < 200; i++) await page.keyboard.press('Backspace');
+		await expect.poll(() => texts(page)).toEqual(['ab']);
+		await page.keyboard.type('|');
+		await expect.poll(() => texts(page)).toEqual(['a|b']);
+		issues.assertClean();
+	});
+
+	test("twenty Enters at the page's start push it down; the caret stays with the text", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, [para('A', 'top'), para('B', 'next')]);
+		await setSelectionByTextIndex(page, 0, 0);
+		for (let i = 0; i < 20; i++) await page.keyboard.press('Enter');
+		await expect.poll(() => texts(page)).toEqual([...Array(20).fill(''), 'top', 'next']);
+		await page.keyboard.type('>');
+		await expect.poll(async () => (await texts(page))[20]).toBe('>top');
 		issues.assertClean();
 	});
 });

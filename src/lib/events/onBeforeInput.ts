@@ -380,6 +380,7 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 	if (!edytor.selection.projection.start) return edytor.attempts.close(attempt);
 	// A real `beforeinput` or a newer key may have taken over meanwhile.
 	if (edytor.attempts.key !== attempt) return;
+	edytor.attempts.ran = attempt.inputType;
 	await edytor.userInput(() =>
 		occur(
 			edytor,
@@ -396,6 +397,11 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	const [key, offered] = keyed(this);
 	const { inputType } = event;
 	const kind = kindOf(inputType);
+	// The key the deadline ran, announced late (iOS's software keyboard,
+	// `sel.key.late-announcement`): that occurrence again, never run twice.
+	const ran = this.attempts.ran;
+	this.attempts.ran = null;
+	if (ran === inputType) return event.preventDefault();
 	if (inputType === 'deleteByDrag' && event.isTrusted) {
 		event.preventDefault();
 		return this.selection.pointer.release();

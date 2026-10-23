@@ -14,7 +14,9 @@ import {
  * opens the insert menu; a text selection shows the toolbar, whose Bold a
  * tap applies; a code block's Copy shows without a hover (a touch that
  * revealed it would cost the tap: iOS Safari takes it for a hover and sends
- * no click, the language button's included). A finger drag on a grip is the platform's long-press drag
+ * no click, the language button's included); a tapped image is selected and
+ * opens no virtual keyboard (`inputmode="none"`), a tap in text gives it
+ * back. A finger drag on a grip is the platform's long-press drag
  * and drop, which only a device runs (Platform support).
  */
 
@@ -122,6 +124,35 @@ test.describe('the block chrome under a finger', () => {
 			return getComputedStyle(node).opacity;
 		});
 		expect(opacity).toBe('1');
+		issues.assertClean();
+	});
+
+	test('a tapped image opens no keyboard; a tap in text gives it back', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=image');
+		await waitForEditorReady(page, { requireRuntime: true });
+		const host = page.locator('[data-edytor]');
+		const img = page.locator('[data-edytor-image] img').first();
+		await img.scrollIntoViewIfNeeded();
+		const box = (await img.boundingBox())!;
+		await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+		await expect
+			.poll(() =>
+				page.evaluate(
+					() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection.value.kind
+				)
+			)
+			.toBe('blocks');
+		await expect(host).toHaveAttribute('inputmode', 'none');
+		await page.locator('[data-edytor-text="true"]', { hasText: 'after image' }).tap();
+		await expect
+			.poll(() =>
+				page.evaluate(
+					() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection.value.kind
+				)
+			)
+			.toBe('text');
+		await expect(host).not.toHaveAttribute('inputmode');
 		issues.assertClean();
 	});
 });

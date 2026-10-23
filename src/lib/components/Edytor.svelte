@@ -207,7 +207,7 @@
 		spellcheck = true,
 		autocorrect = 'off',
 		autocomplete = 'off',
-		autocapitalize = 'none',
+		autocapitalize,
 		inputmode,
 		enterkeyhint
 	}: EdytorProps & {
@@ -327,6 +327,8 @@
 
 	/** The chrome popup open on this view (`edytor.popups`): the root names it while it is. */
 	const popup = $derived(edytor.popups.current);
+	/** A block selection: no native highlight, and no virtual keyboard over it. */
+	const blocks = $derived(edytor.selection.value.kind === 'blocks');
 
 	// The display projector: the root `$effect.pre` notes the focused
 	// element before the flush writes the DOM; the root `$effect` — the last
@@ -368,11 +370,13 @@
 			autocorrect,
 			autocomplete,
 			autocapitalize,
-			inputmode,
+			// Selected blocks (a tapped image) open no virtual keyboard; the
+			// focus stays, so a hardware keyboard's keys still act on them.
+			inputmode: blocks ? 'none' : inputmode,
 			enterkeyhint
 		}}
 		data-edytor
-		data-edytor-selection={edytor.selection.value.kind === 'blocks' ? 'blocks' : undefined}
+		data-edytor-selection={blocks ? 'blocks' : undefined}
 		contenteditable={!readonly}
 		role="textbox"
 		{id}

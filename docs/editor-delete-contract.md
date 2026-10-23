@@ -2381,6 +2381,29 @@ throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
 
+### `sel.key.late-announcement` — a key announced after its deadline
+
+A structural key (Enter, Shift+Enter, Backspace or Delete at a block's
+edge) admits a keydown fallback (`admitKeyAttempt`): engines that never
+announce it get it at the missing-`beforeinput` deadline, a 0 ms timer.
+iOS's software keyboard announces it, but in a later task than the
+keydown (Return's `insertParagraph` about 40 ms after it, Backspace's
+`deleteContentBackward` about 13 ms), after the deadline already ran the
+key: the announcement used to run it again (one Return made two blocks; a
+Backspace at a block's start merged, then deleted a character of the
+block above).
+
+Rule: the deadline records the input type it ran (`attempts.ran`). The
+next `beforeinput` reads and clears it: of that input type, it is the same
+occurrence announced late, prevented, nothing run. Every keydown clears it
+first (`events/onKeyDown.ts`): an announcement comes before the next key's
+keydown, so a key pressed again (key repeat) is its own occurrence.
+
+Rows: `src/tests/fixtures/dom/input-attempts.test.tsx`
+"sel.key.late-announcement — …" (Return; Backspace at a block's start; a
+repeat inside the window; a `beforeinput` after another keydown), checked
+on the iOS Simulator (one Return, one block; Backspace merges once).
+
 ### `sel.press.nested-editable` — a press in a caption is the browser's
 
 A void block's text (an image's caption, a video's, a file's) is a nested

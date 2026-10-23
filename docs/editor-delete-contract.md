@@ -2404,6 +2404,25 @@ Rows: `src/tests/fixtures/dom/input-attempts.test.tsx`
 repeat inside the window; a `beforeinput` after another keydown), checked
 on the iOS Simulator (one Return, one block; Backspace merges once).
 
+### `sel.press.touch` — a tap's caret and a double tap's word are the platform's
+
+A text element places the caret at the pointer after a plain click (no
+drag, no Shift, `detail` 1: `restoreTextSelectionFromClick` in
+`components/Text.svelte`), over the browser's own placement. On a touch
+screen the platform's placement is the convention: iOS puts a tap's caret
+at the word's edge, and at a double tap's second tap it selects the word,
+then sends that tap's click with `detail` 1 (it counts taps one by one).
+Re-placing the caret there collapsed the word the user had just selected.
+
+Rule: a press whose `pointerType` is `touch` is never re-placed; its caret
+or range is the browser's, adopted as any other (`selection.onSelectionChange`).
+A mouse or pen click still places the caret at the pointer.
+
+Rows: `src/tests/fixtures/dom/touch-tap.test.tsx` (a touch press, the
+word the browser selected, then the second tap's click: the word stays; a
+mouse click collapses), checked on the iOS Simulator (a tap keeps iOS's
+caret at the word's end).
+
 ### `sel.press.nested-editable` — a press in a caption is the browser's
 
 A void block's text (an image's caption, a video's, a file's) is a nested

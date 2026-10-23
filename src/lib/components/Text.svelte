@@ -87,11 +87,16 @@
 		return items;
 	});
 
-	/** A plain click (no drag, no Shift, a single press) places the caret at the pointer. */
+	/**
+	 * A plain click (no drag, no Shift, a single press) places the caret at
+	 * the pointer. A tap's is the platform's (`sel.press.touch`): iOS puts it
+	 * at the word's edge, and selects the word at a double tap's second tap,
+	 * whose click still says `detail` 1.
+	 */
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
 		let pointerStart: { clientX: number; clientY: number } | null = null;
-		const pointerdown = ({ button, shiftKey, clientX, clientY }: PointerEvent) => {
-			pointerStart = button !== 0 || shiftKey ? null : { clientX, clientY };
+		const pointerdown = ({ button, shiftKey, clientX, clientY, pointerType }: PointerEvent) => {
+			pointerStart = button || shiftKey || pointerType === 'touch' ? null : { clientX, clientY };
 		};
 		const click = (event: MouseEvent) => {
 			const start = pointerStart;

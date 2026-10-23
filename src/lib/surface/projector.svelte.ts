@@ -249,17 +249,25 @@ export class Projector {
 	#unreported = () => {
 		const { edytor } = this;
 		const { selection } = edytor;
-		const at = this.#at;
-		const node = edytor.node;
-		if (!at || !node || selection.value.kind !== 'text' || edytor.intentSerial !== this.#serial)
-			return false;
+		if (selection.value.kind !== 'text' || edytor.intentSerial !== this.#serial) return false;
 		if (selection.request !== this.#request || selection.dragging || edytor.composition.live)
 			return false;
-		const dom = getDomSelection(node);
-		if (!dom || !isOwnPoint(node, dom.anchorNode)) return false;
-		return !(
-			samePoint(at.anchor, dom.anchorNode, dom.anchorOffset) &&
-			samePoint(at.focus, dom.focusNode, dom.focusOffset)
+		return this.#moved();
+	};
+
+	/** The DOM selection in the host is no longer where the last observation found it. */
+	#moved = () => {
+		const at = this.#at;
+		const node = this.edytor.node;
+		const dom = node && getDomSelection(node);
+		return (
+			!!at &&
+			!!dom &&
+			isOwnPoint(node, dom.anchorNode) &&
+			!(
+				samePoint(at.anchor, dom.anchorNode, dom.anchorOffset) &&
+				samePoint(at.focus, dom.focusNode, dom.focusOffset)
+			)
 		);
 	};
 
@@ -333,11 +341,14 @@ export class Projector {
 	};
 
 	/**
-	 * A press placed a DOM caret the model has not observed yet: its
-	 * `selectionchange` is still queued (`sel.key.before-adoption`; Chromium
-	 * runs input ahead of it on a busy main thread). A key reads the DOM first.
+	 * The DOM selection moved since the last observation, its
+	 * `selectionchange` still queued (`sel.key.before-adoption`; Chromium
+	 * runs input ahead of it on a busy main thread): a press placed a caret,
+	 * or the browser moved it for a key of its own (an arrow, Shift+arrow:
+	 * Mod+B right after Shift+→ held down acts on the whole extension). A key
+	 * reads the DOM first.
 	 */
-	unobserved = () => this.#press > this.#serial;
+	unobserved = () => this.#press > this.#serial || this.#moved();
 
 	/**
 	 * Whether the host holds a DOM caret a gesture may have placed: a range

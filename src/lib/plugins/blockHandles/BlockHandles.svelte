@@ -49,15 +49,27 @@
 		})
 	);
 	/**
+	 * The blocks whose handle stays mounted beyond the near and hovered ones,
+	 * and shows on a touch screen (no hover there): the selected blocks, the
+	 * focused handle's, the dragged one. The blocks the selection's text is in
+	 * show theirs too (`data-active`), mounted once near: a new block paints
+	 * before its handle mounts (`handles.after-paint`).
+	 */
+	const active = $derived.by(() => {
+		const out = new Set<string>();
+		for (const block of edytor.selection.selectedBlocks) out.add(block.id);
+		if (focused !== null) out.add(focused);
+		if (controller.dragging) out.add(controller.dragging);
+		return out;
+	});
+
+	/**
 	 * The few blocks that show a handle, sorted into document order: never a
 	 * walk of the whole document (a structural commit on a long page).
 	 */
 	const ids = $derived.by(() => {
 		void structure;
-		const shown = new Set([...near, ...hovered]);
-		for (const block of edytor.selection.selectedBlocks) shown.add(block.id);
-		if (focused !== null) shown.add(focused);
-		if (controller.dragging) shown.add(controller.dragging);
+		const shown = new Set([...near, ...hovered, ...active]);
 		// Document order by index paths (O(depth) each): no whole-document order is rebuilt.
 		const paths = new Map<string, number[]>();
 		for (const id of shown) {
@@ -69,18 +81,6 @@
 			return a.length - b.length;
 		};
 		return [...paths.keys()].sort((a, b) => before(paths.get(a)!, paths.get(b)!));
-	});
-
-	/**
-	 * The blocks whose handle a touch screen shows (no hover there): the ones
-	 * the selection is in or selects, the focused handle's, the dragged one.
-	 */
-	const active = $derived.by(() => {
-		const out = new Set<string>(edytor.selection.projection.blocks);
-		for (const block of edytor.selection.selectedBlocks) out.add(block.id);
-		if (focused !== null) out.add(focused);
-		if (controller.dragging) out.add(controller.dragging);
-		return out;
 	});
 
 	/** The blocks whose handle sits over a gap between two columns (`overGap`, measured). */
@@ -173,7 +173,9 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
-		data-active={active.has(id) ? 'true' : undefined}
+		data-active={active.has(id) || edytor.selection.projection.blocks.includes(id)
+			? 'true'
+			: undefined}
 		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		data-selecting={edytor.selection.dragging ? 'true' : undefined}

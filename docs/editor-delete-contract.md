@@ -2356,10 +2356,14 @@ slow device); a primary press's release reads the DOM again
 (`selection.svelte.ts` `#dropped`), a secondary press (a right-click) has
 no such read.
 
-Rule: a key reads the DOM first when a press inside the host (or a focus
-from outside it) is newer than the projector's last observation
-(`projector.unobserved()`: the press's gesture serial, `pressed`, above
-the serial of the last display or adopted `selectionchange`). It runs the
+Rule: a key reads the DOM first when the DOM selection moved since the
+projector's last observation (`projector.unobserved()`): a press inside
+the host (or a focus from outside it) is newer than it (the press's
+gesture serial, `pressed`, above the serial of the last display or
+adopted `selectionchange`), or the DOM range is no longer the one it
+noted then (a key the browser moved the selection for, an arrow or
+Shift+arrow: Mod+B right after Shift+→ held down acts on the whole
+extension, `tests/editor-dom/silly-stress.spec.ts`). It runs the
 one classifier (`selection.onSelectionChange`), as the queued event
 would, before the targetless admission, the bindings and the fallback
 (`events/onKeyDown.ts`). Any other key keeps the value: a key never

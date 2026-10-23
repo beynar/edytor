@@ -443,11 +443,16 @@
 
 	/*
 	 * Room below the last block, where a press puts the caret in a trailing
-	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. No
-	 * specificity, so any rule of the app's sets the padding instead.
+	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. A word
+	 * longer than the line (a pasted URL) breaks anywhere, and counts so in
+	 * the editor's minimum width: in a flex or grid track the editor never
+	 * grows past its container (`break-word`, an editing host's default,
+	 * wraps it too but sizes the track to the whole word). No specificity,
+	 * so any rule of the app's or a theme's wins.
 	 */
 	:global(:where([data-edytor])) {
 		padding-block-end: var(--edytor-trailing-space, 2em);
+		overflow-wrap: anywhere;
 	}
 	/*
 	 * Long pages, opt-in: the `edytor-long-page` class on the editor or an

@@ -217,7 +217,8 @@ export const fixtures = defineFixtures([
 			expect(editor.getAttribute('spellcheck')).toBe('true');
 			expect(editor.getAttribute('autocorrect')).toBe('off');
 			expect(editor.getAttribute('autocomplete')).toBe('off');
-			expect(editor.getAttribute('autocapitalize')).toBe('none');
+			// Unset: a phone's keyboard capitalizes sentences (its own default).
+			expect(editor.hasAttribute('autocapitalize')).toBe(false);
 		}
 	}),
 	defineDomFixture({

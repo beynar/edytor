@@ -49,15 +49,27 @@
 		})
 	);
 	/**
+	 * The blocks whose handle stays mounted beyond the near and hovered ones,
+	 * and shows on a touch screen (no hover there): the selected blocks, the
+	 * focused handle's, the dragged one. The blocks the selection's text is in
+	 * show theirs too (`data-active`), mounted once near: a new block paints
+	 * before its handle mounts (`handles.after-paint`).
+	 */
+	const active = $derived.by(() => {
+		const out = new Set<string>();
+		for (const block of edytor.selection.selectedBlocks) out.add(block.id);
+		if (focused !== null) out.add(focused);
+		if (controller.dragging) out.add(controller.dragging);
+		return out;
+	});
+
+	/**
 	 * The few blocks that show a handle, sorted into document order: never a
 	 * walk of the whole document (a structural commit on a long page).
 	 */
 	const ids = $derived.by(() => {
 		void structure;
-		const shown = new Set([...near, ...hovered]);
-		for (const block of edytor.selection.selectedBlocks) shown.add(block.id);
-		if (focused !== null) shown.add(focused);
-		if (controller.dragging) shown.add(controller.dragging);
+		const shown = new Set([...near, ...hovered, ...active]);
 		// Document order by index paths (O(depth) each): no whole-document order is rebuilt.
 		const paths = new Map<string, number[]>();
 		for (const id of shown) {
@@ -161,6 +173,9 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
+		data-active={active.has(id) || edytor.selection.projection.blocks.includes(id)
+			? 'true'
+			: undefined}
 		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		data-selecting={edytor.selection.dragging ? 'true' : undefined}
@@ -237,10 +252,22 @@
 		opacity: 1;
 	}
 
+	/* A touch screen has no hover: a handle shows for the block the selection
+	 * is in (Notion's), never for a touched one (the hover a touch leaves
+	 * behind), and only a shown one takes a tap, so a tap in the gutter never
+	 * opens a hidden block's menu. A touch that showed a handle would also
+	 * cost a tap: iOS Safari takes a touch whose hover reveals content as a
+	 * hover only, and sends no click. */
 	@media (hover: none) {
 		[data-edytor-block-handle-host] {
-			opacity: 1;
 			padding-inline-end: 0;
+		}
+		[data-edytor-block-handle-host]:not([data-active='true']) {
+			opacity: 0;
+			pointer-events: none;
+		}
+		[data-edytor-block-handle-host][data-active='true'] {
+			opacity: 1;
 		}
 	}
 </style>

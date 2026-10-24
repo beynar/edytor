@@ -93,8 +93,9 @@ const getStructuralFallbackInputType = (edytor: Edytor, event: KeyboardEvent) =>
 };
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
-	// A keydown the bindings are not offered offers no key to its `beforeinput`.
-	this.keymap.offered = null;
+	// A keydown the bindings are not offered offers no key to its `beforeinput`,
+	// and a key's late announcement comes before the next key's keydown.
+	this.keymap.offered = this.attempts.ran = null;
 	if (e.defaultPrevented) {
 		return;
 	}

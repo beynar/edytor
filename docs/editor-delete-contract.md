@@ -937,10 +937,12 @@ that fails either check is `delete-range-implausible` (e.g.
 delivered range covering a live (non-collapsed) selection is unanchored
 by design — the selection is the unit — and skips the anchor bound. The
 delivered offsets are judged in filler-free geometry, as production maps
-them: an empty text renders one zero-width filler, so offset 1 inside an
-empty text is its offset 0 (WebKit ends a word unit from an empty block's
-end inside the next empty block's filler, DST seed 39); any other offset
-past a text's length stays `delete-range-implausible`.
+them: an empty text beside an atom (and the IME's empty host) renders one
+zero-width filler, so offset 1 inside an empty text is its offset 0 (WebKit
+ended a word unit from an empty block's end inside the next empty block's
+filler, DST seed 39, when an empty block rendered one too; it renders a
+`<br>` now, `ime.empty.filler`); any other offset past a text's length
+stays `delete-range-implausible`.
 
 Fragment deletes (`deleteByCut`/`deleteByDrag`/`deleteByComposition`),
 generic `deleteContent`, and `deleteEntireSoftLine` still adopt the
@@ -2356,10 +2358,14 @@ slow device); a primary press's release reads the DOM again
 (`selection.svelte.ts` `#dropped`), a secondary press (a right-click) has
 no such read.
 
-Rule: a key reads the DOM first when a press inside the host (or a focus
-from outside it) is newer than the projector's last observation
-(`projector.unobserved()`: the press's gesture serial, `pressed`, above
-the serial of the last display or adopted `selectionchange`). It runs the
+Rule: a key reads the DOM first when the DOM selection moved since the
+projector's last observation (`projector.unobserved()`): a press inside
+the host (or a focus from outside it) is newer than it (the press's
+gesture serial, `pressed`, above the serial of the last display or
+adopted `selectionchange`), or the DOM range is no longer the one it
+noted then (a key the browser moved the selection for, an arrow or
+Shift+arrow: Mod+B right after Shift+→ held down acts on the whole
+extension, `tests/editor-dom/silly-stress.spec.ts`). It runs the
 one classifier (`selection.onSelectionChange`), as the queued event
 would, before the targetless admission, the bindings and the fallback
 (`events/onKeyDown.ts`). Any other key keeps the value: a key never
@@ -2376,6 +2382,48 @@ caret's) in three engines, and the secondary-click row under a 4× CPU
 throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
+
+### `sel.key.late-announcement` — a key announced after its deadline
+
+A structural key (Enter, Shift+Enter, Backspace or Delete at a block's
+edge) admits a keydown fallback (`admitKeyAttempt`): engines that never
+announce it get it at the missing-`beforeinput` deadline, a 0 ms timer.
+iOS's software keyboard announces it, but in a later task than the
+keydown (Return's `insertParagraph` about 40 ms after it, Backspace's
+`deleteContentBackward` about 13 ms), after the deadline already ran the
+key: the announcement used to run it again (one Return made two blocks; a
+Backspace at a block's start merged, then deleted a character of the
+block above).
+
+Rule: the deadline records the input type it ran (`attempts.ran`). The
+next `beforeinput` reads and clears it: of that input type, it is the same
+occurrence announced late, prevented, nothing run. Every keydown clears it
+first (`events/onKeyDown.ts`): an announcement comes before the next key's
+keydown, so a key pressed again (key repeat) is its own occurrence.
+
+Rows: `src/tests/fixtures/dom/input-attempts.test.tsx`
+"sel.key.late-announcement — …" (Return; Backspace at a block's start; a
+repeat inside the window; a `beforeinput` after another keydown), checked
+on the iOS Simulator (one Return, one block; Backspace merges once).
+
+### `sel.press.touch` — a tap's caret and a double tap's word are the platform's
+
+A text element places the caret at the pointer after a plain click (no
+drag, no Shift, `detail` 1: `restoreTextSelectionFromClick` in
+`components/Text.svelte`), over the browser's own placement. On a touch
+screen the platform's placement is the convention: iOS puts a tap's caret
+at the word's edge, and at a double tap's second tap it selects the word,
+then sends that tap's click with `detail` 1 (it counts taps one by one).
+Re-placing the caret there collapsed the word the user had just selected.
+
+Rule: a press whose `pointerType` is `touch` is never re-placed; its caret
+or range is the browser's, adopted as any other (`selection.onSelectionChange`).
+A mouse or pen click still places the caret at the pointer.
+
+Rows: `src/tests/fixtures/dom/touch-tap.test.tsx` (a touch press, the
+word the browser selected, then the second tap's click: the word stays; a
+mouse click collapses), checked on the iOS Simulator (a tap keeps iOS's
+caret at the word's end).
 
 ### `sel.press.nested-editable` — a press in a caption is the browser's
 
@@ -2682,6 +2730,59 @@ block; the host is its cells' projection), `composition-session.test.tsx`
 first write, one undo step; a cancel before the first preview) and
 `composition.spec.ts` ("keeps a cross-block composition-start range after
 selection drift").
+
+### `ime.empty.filler` — an empty block shows a `<br>`; the IME composes into a filler node of the render's
+
+An empty text renders a filler that keeps its line (`FILLER` in
+`surface/cells.ts`, `components/Text.svelte`): a `<br>` when the text is
+its block's whole content (nothing follows it: no atom, no inline
+suggestion), else a text node holding one zero-width space, where a `<br>`
+would break the line before or between atoms. The `<br>` leaves nothing
+before the caret: iOS's keyboard reads the text before the caret its own
+tap placed (a script's caret does not update it) and capitalizes only at a
+sentence start, so a zero-width character there made the first letter of a
+tapped empty block lowercase (`insertText "a"`, checked on the iOS
+Simulator; Slate's FEFF filler has the same open issue). ProseMirror,
+Lexical, CodeMirror 6 and Quill render a `<br>` alone too.
+
+The browser types into a `<br>` in a node of its own (Chromium and WebKit
+replace the `<br>` with it, at the text element's start). Two rules keep
+that node out of the render:
+
+- A composition that starts in an empty host gets the filler text node
+  first (`Pin.shown`: an empty host renders `FILLER`, never the `<br>`),
+  rendered at once (`flushSync`) and the DOM caret parked in it
+  (`projector.park`) at `compositionstart`, before the IME writes
+  (`Composition.#pin`, as `ime.range.blocks` parks): the IME composes into
+  a node the render owns, the one the commit's render writes. Lexical seeds
+  its own node the same way; Slate, whose Android leaf had no node, saw the
+  IME's node cancelled by a later render (its #5883).
+- Text the browser typed into an empty text outside a composition (an
+  Android `insertText` it performs) is adopted, then the text is
+  re-created (`adopt` in `surface/observer.svelte.ts`: `refreshFromModel`):
+  the render would otherwise add its own node beside the browser's and
+  show the character twice.
+
+A cancelable `insertText` (every key on iOS, desktop typing) is the
+model's, as anywhere: the render replaces the `<br>` with the text's node,
+and a delete back to empty brings the `<br>` back. The DOM caret of an
+empty text is its element's start, before the `<br>` (`domPointOf`); a
+point after it reads offset 0 too.
+
+Rows: `composition-pin.test.tsx` ("ime.empty.filler": the `<br>` at rest,
+the filler node and the parked caret at the start, the same node after the
+commit; typing and deleting back; an empty text beside an atom keeps the
+zero-width node), `observer-divergence.test.tsx` ("F-I22": the browser's
+node in the `<br>`'s place is adopted once), `selection.fixtures.tsx` (the
+caret of an empty paragraph is the element point), the truth oracle
+(`src/tests/oracles/truth.ts`: one `<br>` in an empty text alone in its
+block, nothing else) and `ime-baseline.cdp.spec.ts` ("empty block":
+Chromium's real IME composes into the filler node from the start to the
+commit, after one DOM-selection write, the park). Checked on the iOS
+Simulator: a tapped empty block's first letter arrives as `insertText "A"`,
+a Japanese composition (`か`, then `き`) commits once, and a delete back
+to empty brings the `<br>` back with the keyboard capitalized; on Android
+Chrome's Gboard the first letter is a capital too.
 
 ## Host DOM ownership (D-25)
 

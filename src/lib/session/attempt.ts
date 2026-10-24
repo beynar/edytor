@@ -235,6 +235,12 @@ export class Attempts {
 	#timers = new Map<Attempt, ReturnType<typeof setTimeout>>();
 	/** The last attempt admitted. */
 	last: Attempt | null = null;
+	/**
+	 * The intent the missing-`beforeinput` deadline ran for the keydown: its
+	 * `beforeinput` may still come, before the next keydown
+	 * (`sel.key.late-announcement`).
+	 */
+	ran?: string | null;
 
 	/** `closed`: an attempt closed (its deadline, a newer one): the observer compares again. */
 	constructor(private closed: () => void = () => {}) {}

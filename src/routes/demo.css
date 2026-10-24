@@ -1,4 +1,8 @@
 /* The demo's app chrome, Notion style. The editor itself is edytor/themes/notion.css. */
+/* The sticky top bar hides the page's top 44px: the caret scrolls and the menus float below it. */
+:root {
+	scroll-padding-top: 44px;
+}
 .demo-shell {
 	min-height: 100vh;
 	display: flex;

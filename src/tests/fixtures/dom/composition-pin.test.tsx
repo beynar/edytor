@@ -457,9 +457,9 @@ describe('F-I12 (b) — Chromium’s shape: the dropped composition commits as a
 	});
 });
 
-describe('F-I15 — filler and text in one node (BI-15, BI-9)', () => {
+describe('ime.empty.filler — an empty block shows a `<br>`; the IME composes into a filler node', () => {
 	row(
-		'the empty block’s text node before the first preview is the node after release',
+		'the `<br>` gives way to the filler node at the start, the DOM caret in it; that node is the text after release',
 		async () => {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
@@ -469,13 +469,19 @@ describe('F-I15 — filler and text in one node (BI-15, BI-9)', () => {
 				{ placeholder: 'Start writing' }
 			);
 			const element = blockOf(edytor, 0).firstText!.node!;
-			const [filler] = allTextNodes(element);
-			expect(filler?.data).toBe('\u200B');
+			const texts = () => allTextNodes(element).filter((node) => node.data);
+			// At rest: one `<br>`, no character before the caret (a phone's keyboard capitalizes).
+			expect(texts()).toEqual([]);
+			expect(element.querySelectorAll('br')).toHaveLength(1);
 			expect(placeholders(editor)).toBe(1);
 			// The placeholder is an attribute on the one text element, not a node beside it.
 			expect(element.getAttribute('data-placeholder')).toBe('Start writing');
 
 			await start(editor);
+			const [filler] = texts();
+			expect(filler?.data).toBe('\u200B');
+			expect(element.querySelector('br')).toBeNull();
+			expect(document.getSelection()?.anchorNode).toBe(filler);
 			await flushDomUpdates();
 			expect(placeholders(editor)).toBe(0);
 			await preview(editor, 's');
@@ -494,7 +500,7 @@ describe('F-I15 — filler and text in one node (BI-15, BI-9)', () => {
 	);
 
 	row(
-		'typing the first character keeps the filler node; deleting it back keeps it too',
+		'typing the first character replaces the `<br>` with the text; deleting it back brings the `<br>` back',
 		async () => {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
@@ -502,14 +508,34 @@ describe('F-I15 — filler and text in one node (BI-15, BI-9)', () => {
 				</root>
 			);
 			const element = blockOf(edytor, 0).firstText!.node!;
-			const [filler] = allTextNodes(element);
 			await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'a' });
 			await flushDomUpdates();
-			expect(filler!.isConnected && filler!.data === 'a').toBe(true);
+			expect(element.querySelector('br')).toBeNull();
+			expect(element.textContent).toBe('a');
 			await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 			await flushDomUpdates();
 			expect(shape(edytor)).toEqual(['paragraph:']);
-			expect(filler!.isConnected && filler!.data === '\u200B').toBe(true);
+			expect(element.querySelectorAll('br')).toHaveLength(1);
+			expect(element.textContent).toBe('');
+		}
+	);
+
+	row(
+		'an empty text beside an atom keeps the zero-width node: no `<br>` breaks its line',
+		async () => {
+			const { edytor } = await renderDomEdytor(
+				<root>
+					<paragraph>
+						<mention />
+					</paragraph>
+				</root>
+			);
+			const elements = textElements(blockOf(edytor, 0).node!);
+			expect(elements).toHaveLength(2);
+			for (const element of elements) {
+				expect(element.querySelector('br')).toBeNull();
+				expect(element.textContent).toBe('\u200B');
+			}
 		}
 	);
 

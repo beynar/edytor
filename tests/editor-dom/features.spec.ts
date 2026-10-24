@@ -93,7 +93,8 @@ test.describe('browser feature-route parity', () => {
 		await expect(editor).toHaveAttribute('spellcheck', 'true');
 		await expect(editor).toHaveAttribute('autocorrect', 'off');
 		await expect(editor).toHaveAttribute('autocomplete', 'off');
-		await expect(editor).toHaveAttribute('autocapitalize', 'none');
+		// Unset: a phone's keyboard capitalizes sentences (its own default).
+		await expect(editor).not.toHaveAttribute('autocapitalize');
 
 		issues.assertClean();
 	});

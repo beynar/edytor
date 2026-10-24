@@ -191,16 +191,18 @@ export class Composition {
 		// With no target, the caret the browser parked for the IME.
 		const parked = targetless && dom?.anchorNode;
 		const point = parked ? this.edytor.ports.surface.pointAt(parked, dom.anchorOffset) : null;
+		// With no target the value is `none`: nothing to replace.
+		const replaced = shown === 'blocks' || shown === 'atom' || blocks;
 		const at = targetless
 			? point && { text: point.text, from: point.offset, to: point.offset }
-			: shown === 'blocks' || shown === 'atom' || blocks
+			: replaced
 				? this.#rangeless()
 				: startText && {
 						text: startText,
 						from: yStart,
 						to: endText === startText ? yEnd : startText.length
 					};
-		if (at) this.#pin(at.text, at.from, at.to);
+		if (at) this.#pin(at.text, at.from, at.to, replaced);
 		this.host = at?.text ?? null;
 		this.#where = this.#place();
 	};
@@ -364,8 +366,8 @@ export class Composition {
 	 * and remove the render's anchors between them before the change renders
 	 * (Firefox, `ime.range.blocks`). Its start target is replaced now (blocks:
 	 * `flow.slot`, one empty block in their place; an atom: removed; a range:
-	 * its blocks merged around the caret), the change rendered and the DOM
-	 * caret parked where the preview goes before the IME writes
+	 * its blocks merged around the caret) and the change rendered; `#pin`
+	 * parks the DOM caret where the preview goes before the IME writes
 	 * (`projector.park`, the DOM-selection writer). When the replacement is
 	 * refused, the IME writes where Escape leaves for (`selectedBlocksExit`;
 	 * an atom or a range: before it) and the tail restores it: nothing is
@@ -382,7 +384,6 @@ export class Composition {
 		if (!at) return null;
 		flushSync();
 		if (!at.text.node) return null;
-		edytor.ports.surface.park(at.text, at.offset);
 		return { text: at.text, from: at.offset, to: at.offset };
 	}
 
@@ -485,13 +486,23 @@ export class Composition {
 		this.#own.clear();
 	}
 
-	/** Pin the host's cell and segment: the renderer never rewrites the IME's node (`surface/pin`). */
-	#pin(host: Text, from: number, to: number) {
+	/**
+	 * Pin the host's cell and segment: the renderer never rewrites the IME's
+	 * node (`surface/pin`). The DOM caret is parked where the preview goes
+	 * when the start target was `replaced` (`#rangeless`), and in an empty
+	 * host, which shows its filler text node from now on, not the `<br>` of
+	 * an empty line: the IME composes into a node the render owns
+	 * (`ime.empty.filler`).
+	 */
+	#pin(host: Text, from: number, to: number, replaced: boolean) {
 		const { edytor } = this;
 		const at = edytor.segmentOf(host);
 		if (!at) return;
 		const transform = edytor.definitionOf(at.cell.type).transformText;
 		edytor.pin.acquire(at.cell, at.segment, transform, from, to, host.node ?? null);
+		if (!replaced && at.segment.text) return;
+		flushSync();
+		edytor.ports.surface.park(host, from);
 	}
 
 	/** A mechanical tracked write: the region holds `value`. */

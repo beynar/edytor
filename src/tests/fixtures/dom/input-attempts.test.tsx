@@ -17,6 +17,11 @@
  *   to hooks, the same result (reader C8).
  * - F-I19 — one text: a prevented Backspace plus late drift, then within one
  *   frame a non-cancelable `insertText` → both effects land exactly once (BI-7).
+ * - `sel.key.late-announcement` — the keydown's fallback ran at the
+ *   missing-`beforeinput` deadline, then its `beforeinput` arrives (iOS's
+ *   software keyboard, tens of milliseconds after the keydown) → prevented,
+ *   the key performed once (Return: one new block; Backspace at a block's
+ *   start: one merge, no character lost).
  *
  * Expected values come from the plan rows, never from running the code.
  */
@@ -370,4 +375,91 @@ describe('F-I19 — attempts queue per host; drift is attributed by expectation'
 			expect(domText(edytor)).toBe('hello X');
 		}
 	);
+});
+
+describe('sel.key.late-announcement — a beforeinput after the keydown deadline', () => {
+	const texts = (edytor: Edytor) =>
+		edytor.root!.children.map((block) => block.firstText?.stringContent ?? '');
+	/** The DOM caret's element: where the browser dispatches the late `beforeinput`. */
+	const caretTarget = (edytor: Edytor) =>
+		window.getSelection()?.anchorNode?.parentElement ?? edytor.node!;
+
+	row('Return: one split, the late insertParagraph prevented', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>note|</paragraph>
+				<paragraph>tail</paragraph>
+			</root>
+		);
+		const down = keydown(firstText(edytor).node ?? editor, { key: 'Enter' });
+		expect(down.defaultPrevented).toBe(false);
+		// The deadline runs the key before the browser announces it.
+		await wait(10);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['note', '', 'tail']);
+		const late = beforeinput(caretTarget(edytor), 'insertParagraph');
+		await flushDomUpdates();
+		await wait(200);
+		await flushDomUpdates();
+		expect(late.defaultPrevented).toBe(true);
+		expect(texts(edytor)).toEqual(['note', '', 'tail']);
+	});
+
+	row('Backspace at a block start: one merge, the late delete removes nothing', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>ab</paragraph>
+				<paragraph>|cd</paragraph>
+			</root>
+		);
+		keydown(edytor.root!.children[1]!.firstText!.node ?? editor, { key: 'Backspace' });
+		await wait(10);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['abcd']);
+		const late = beforeinput(caretTarget(edytor), 'deleteContentBackward');
+		await flushDomUpdates();
+		await wait(200);
+		await flushDomUpdates();
+		expect(late.defaultPrevented).toBe(true);
+		expect(texts(edytor)).toEqual(['abcd']);
+	});
+
+	row('a key again inside the window (key repeat) is its own occurrence', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>ab</paragraph>
+				<paragraph>|cd</paragraph>
+			</root>
+		);
+		keydown(edytor.root!.children[1]!.firstText!.node ?? editor, { key: 'Backspace' });
+		await wait(10);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['abcd']);
+		// The repeat: inside the text now, announced at once (no fallback).
+		const down = keydown(caretTarget(edytor), { key: 'Backspace' });
+		if (!down.defaultPrevented) beforeinput(caretTarget(edytor), 'deleteContentBackward');
+		await flushDomUpdates();
+		await wait(200);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['acd']);
+	});
+
+	pin('a beforeinput after the next keydown is its own occurrence', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>note|</paragraph>
+				<paragraph>tail</paragraph>
+			</root>
+		);
+		keydown(firstText(edytor).node ?? editor, { key: 'Enter' });
+		await wait(10);
+		await flushDomUpdates();
+		// Another key (an IME's \`Unidentified\` keydown), then its own line break.
+		keydown(caretTarget(edytor), { key: 'Unidentified' });
+		beforeinput(caretTarget(edytor), 'insertParagraph');
+		await flushDomUpdates();
+		await wait(200);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['note', '', '', 'tail']);
+	});
 });

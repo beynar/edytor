@@ -51,7 +51,9 @@ import {
  *   F-I6, F-I16 (a, b, d), F-I17 and the F-S12 session contracts: the
  *   session writes no DOM selection while it lives and keeps the host's
  *   render frozen while the browser shows the preview. I4 flipped F-I15:
- *   the empty block's filler and its text share one node (BI-15).
+ *   the empty block's filler and its text share one node (BI-15); an
+ *   empty block now shows a `<br>`, and its filler node is rendered at the
+ *   composition's start, the caret parked in it (`ime.empty.filler`).
  *
  * Updates are sent at a human IME pace (`KEY_PACE_MS`) — back-to-back CDP
  * calls finish before any deferred editor write and hide it (the smoke
@@ -150,16 +152,28 @@ const composeObserved = async (
 const expectNoSelectionWrite = (observed: SessionObservation) =>
 	expect(observed.selectionWrites, 'no DOM-selection write while the session lives').toEqual([]);
 
-const expectSessionContract = (observed: SessionObservation, liveDom: string) => {
+/**
+ * One DOM-selection write in an empty block (`ime.empty.filler`): at
+ * `compositionstart` its `<br>` gives way to the filler text node and the
+ * caret is parked in it (`projector.park`), before the IME writes.
+ */
+const PARK = ['removeAllRanges', 'addRange'];
+
+const expectSessionContract = (
+	observed: SessionObservation,
+	liveDom: string,
+	{ empty = false } = {}
+) => {
 	expect.soft(observed.liveDom, 'the preview renders once, at the caret').toBe(liveDom);
 	expect
-		.soft(observed.selectionWrites, 'no DOM-selection write while the session lives')
-		.toEqual([]);
+		.soft(observed.selectionWrites, 'no DOM-selection write while the session lives, but the park')
+		.toEqual(empty ? PARK : []);
 	expect.soft(observed.compositionStarts, 'one composition, never restarted').toBe(1);
 	expect.soft(observed.compositionEnds, 'one commit').toBe(1);
+	// An empty block holds no text node before the start: the IME writes into the filler's.
 	expect
 		.soft(observed.previewInExistingNode, 'the IME writes into the existing text node')
-		.toBe(true);
+		.toBe(!empty);
 	expect.soft(observed.liveNode, 'the IME node survives the live session').toMatchObject({
 		connected: true,
 		hostIntact: true,
@@ -344,17 +358,17 @@ test.describe('cdp IME baseline — single editor', () => {
 		issues.assertClean();
 	});
 
-	test('empty block: session contract — the host text node is kept (F-I15, BI-15)', async ({
+	test('empty block: session contract — the filler node is the IME’s, from the start to the commit (ime.empty.filler)', async ({
 		page
 	}) => {
 		const { observed } = await driveEmptyBlock(page);
-		expectSessionContract(observed, 'す');
+		expectSessionContract(observed, 'す', { empty: true });
 	});
 
-	test('empty block: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+	test('empty block: one DOM-selection write, the park at the start (ime.empty.filler, F-S12)', async ({
 		page
 	}) => {
-		expectNoSelectionWrite((await driveEmptyBlock(page)).observed);
+		expect((await driveEmptyBlock(page)).observed.selectionWrites).toEqual(PARK);
 	});
 
 	test('undo right after an IME commit removes exactly the composed text (F-I16a, §1.3 COMP-02)', async ({

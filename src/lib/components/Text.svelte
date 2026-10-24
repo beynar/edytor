@@ -1,29 +1,32 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { rendersMark, type RenderDelta } from '$lib/surface/cells.js';
+	import { FILLER, rendersMark, type RenderDelta } from '$lib/surface/cells.js';
 	import { Text } from '../text/text.svelte.js';
 	import Mark, { customAt } from './Mark.svelte';
 	import CustomMark from './CustomMark.svelte';
 
 	/**
-	 * One segment of a cell: its render deltas, the empty filler, the
-	 * trailing-newline marker and the placeholder attribute (shown
-	 * by the `::before` rule below). `text` is the handle the element maps to
-	 * for the operations and the selection; a segment re-keyed or
-	 * shifted rebinds it without remounting the element.
+	 * One segment of a cell: its render deltas, the empty filler (`FILLER`;
+	 * a `<br>` for a text alone on its `line`), the trailing-newline marker
+	 * and the placeholder attribute (shown by the `::before` rule below).
+	 * `text` is the handle the element maps to for the operations and the
+	 * selection; a segment re-keyed or shifted rebinds it without remounting
+	 * the element. The optional props are read as given (no default: a
+	 * default costs a prop call per text).
 	 */
 	let {
 		text,
 		deltas,
-		empty,
+		line,
 		newline,
-		placeholder = null,
-		rest = false
+		placeholder,
+		rest
 	}: {
 		text: Text | undefined;
 		deltas: readonly RenderDelta[];
-		empty: boolean;
+		/** Nothing follows it in its block's content: empty, it renders a `<br>`. */
+		line?: boolean;
 		newline: boolean;
 		placeholder?: string | null;
 		/** The rest a live composition merged into its host, shown after it (`pin.rest`). */
@@ -32,17 +35,15 @@
 
 	const edytor = getContext<Edytor>('edytor');
 
-	const attachText = (node: HTMLElement, initialText: Text | undefined) => {
-		let attachedText = initialText;
+	const attachText = (node: HTMLElement, attached: Text | undefined) => {
 		// A suggestion's ghost text has no handle and attaches nothing.
-		let attachment = attachedText?.attach(node);
+		let attachment = attached?.attach(node);
 
 		return {
-			update(nextText: Text | undefined) {
-				if (!nextText || nextText === attachedText) return;
+			update(next: Text | undefined) {
+				if (!next || next === attached) return;
 				attachment?.destroy();
-				attachedText = nextText;
-				attachment = attachedText.attach(node);
+				attachment = (attached = next).attach(node);
 			},
 			destroy() {
 				attachment?.destroy();
@@ -52,19 +53,16 @@
 
 	const getDeltaKey = (delta: RenderDelta, index: number) =>
 		`${index}:${JSON.stringify(delta.marks)}`;
-	/**
-	 * An empty text renders the filler as its first unmarked delta: the same
-	 * text node, so the first character typed or composed into an empty
-	 * block lands in the node the browser (and the IME) already holds.
-	 */
-	const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
 
 	/** A delta's marks this view renders (an unknown mark renders its text only). */
 	const rendered = (delta: RenderDelta): RenderDelta => {
 		const known = delta.marks.filter(([name]) => rendersMark(edytor.marks, name));
 		return known.length === delta.marks.length ? delta : { text: delta.text, marks: known };
 	};
-	const shown = $derived(empty ? FILLER : deltas);
+	/** No deltas, or the IME pin's filler (`Pin.shown`): the text holds no character. */
+	const empty = $derived(!deltas.length || deltas === FILLER);
+	/** Empty, beside an atom or a suggestion: the zero-width filler; alone on its line, the `<br>`. */
+	const shown = $derived(deltas.length || line ? deltas : FILLER);
 	/**
 	 * The first delta's text when it is unmarked: the element's own first
 	 * text node, never re-created while the text starts unmarked (a plain
@@ -87,18 +85,23 @@
 		return items;
 	});
 
-	/** A plain click (no drag, no Shift, a single press) places the caret at the pointer. */
+	/**
+	 * A plain click (no drag, no Shift, a single press) places the caret at
+	 * the pointer. A tap's is the platform's (`sel.press.touch`): iOS puts it
+	 * at the word's edge, and selects the word at a double tap's second tap,
+	 * whose click still says `detail` 1.
+	 */
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
 		let pointerStart: { clientX: number; clientY: number } | null = null;
-		const pointerdown = ({ button, shiftKey, clientX, clientY }: PointerEvent) => {
-			pointerStart = button !== 0 || shiftKey ? null : { clientX, clientY };
+		const pointerdown = ({ button, shiftKey, clientX, clientY, pointerType }: PointerEvent) => {
+			pointerStart = button || shiftKey || pointerType === 'touch' ? null : { clientX, clientY };
 		};
 		const click = (event: MouseEvent) => {
 			const start = pointerStart;
 			pointerStart = null;
-			if (event.button !== 0 || event.detail !== 1 || event.shiftKey || !start) return;
-			const movement = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
-			if (movement < 4 && text)
+			if (event.button || event.detail !== 1 || event.shiftKey || !start || !text) return;
+			// Moved less than 4px: no drag.
+			if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) < 4)
 				edytor.selection.pointer.placeAt(text, event.clientX, event.clientY);
 		};
 		node.addEventListener('pointerdown', pointerdown);
@@ -118,15 +121,15 @@
 <span
 	use:attachText={text}
 	use:restoreTextSelectionFromClick
-	data-edytor-text-empty={empty ? 'true' : 'false'}
+	data-edytor-text-empty={String(empty)}
 	data-placeholder={placeholder ?? undefined}
 	data-edytor-composition-rest={rest || undefined}
 	style:white-space="break-spaces"
-	>{#if head !== null}{head}{/if}<!--
+	>{#if head !== null}{head}{:else if !shown.length}<br
+		/>{/if}<!--
 	-->{#each tail as item (item.key)}<!--
 -->{#if item.delta === null}<!--
 --><span
-				class="newline"
 				data-edytor-trailing-newline>&#8203;</span
 			><!--
 -->{:else if customAt(edytor, item.delta, 0)}<!--

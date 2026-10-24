@@ -760,7 +760,11 @@ describe('F-P17 / F-P20 — read-only views and extension attributes', () => {
 // ── F-I22 ────────────────────────────────────────────────────────────────
 
 describe('F-I22 — Android types natively into an empty block', () => {
-	/** A non-cancelable `insertText` the browser performs in the text's first text node. */
+	/**
+	 * A non-cancelable `insertText` the browser performs in the text's first
+	 * text node; in an empty text's `<br>`, in a node of its own that takes
+	 * the `<br>`'s place (Chromium and WebKit).
+	 */
 	const typeNatively = async (edytor: Edytor, value: string, caret: number, data: string) => {
 		const element = hostOf(edytor, 0).node!;
 		const event = new Event('beforeinput', { bubbles: true, cancelable: false }) as InputEvent;
@@ -770,8 +774,13 @@ describe('F-I22 — Android types natively into an empty block', () => {
 			dataTransfer: { value: null }
 		});
 		element.dispatchEvent(event);
-		const leaf = textNodes(element)[0]!;
-		leaf.data = value;
+		let leaf = textNodes(element)[0];
+		const br = element.querySelector('br');
+		if (!leaf && br) {
+			leaf = document.createTextNode('');
+			br.replaceWith(leaf);
+		}
+		leaf!.data = value;
 		const range = document.createRange();
 		range.setStart(leaf, caret);
 		range.collapse(true);
@@ -787,12 +796,12 @@ describe('F-I22 — Android types natively into an empty block', () => {
 		await flushDomUpdates();
 	};
 
-	row('each character is adopted once; the filler never reaches the model', async () => {
+	row('each character is adopted once; the browser’s node never doubles it', async () => {
 		const restore = asAndroid();
 		try {
 			const { edytor } = await mount({ children: [paragraph('|')] });
-			// The first character lands in the filler's node, beside the filler.
-			await typeNatively(edytor, '\u200Ba', 2, 'a');
+			// The first character lands in a node of the browser's, in the `<br>`'s place.
+			await typeNatively(edytor, 'a', 1, 'a');
 			expect(modelText(edytor, 0)).toBe('a');
 			await typeNatively(edytor, 'ab', 2, 'b');
 			expect(modelText(edytor, 0)).toBe('ab');

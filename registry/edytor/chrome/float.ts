@@ -3,7 +3,8 @@
  * `anchor` (the caret, the selection, a handle, a button: the package's
  * `ChromeAnchor`, a virtual element read live), fixed in the viewport,
  * `gap` from it, flipping to the other side when there is no room, kept
- * 8px inside the viewport, and following scrolls, resizes and the caret.
+ * 8px inside the viewport and below what a sticky header hides (the root's
+ * `scroll-padding-top`), and following scrolls, resizes and the caret.
  */
 import {
 	autoUpdate,
@@ -35,14 +36,17 @@ export const float =
 		const reference = anchor();
 		if (!reference) return;
 		Object.assign(node.style, { position: 'fixed', left: '0px', top: '0px' });
+		const root = node.ownerDocument.documentElement;
+		const header = parseFloat(getComputedStyle(root).scrollPaddingTop) || 0;
+		const padding = { top: 8 + header, right: 8, bottom: 8, left: 8 };
 		const update = () =>
 			computePosition(reference, node, {
 				strategy: 'fixed',
 				placement,
 				middleware: [
 					offset(gap),
-					flip({ fallbackPlacements: fallback, padding: 8 }),
-					shift({ padding: 8, crossAxis: true })
+					flip({ fallbackPlacements: fallback, padding }),
+					shift({ padding, crossAxis: true })
 				]
 			}).then(({ x, y }) => Object.assign(node.style, { left: `${x}px`, top: `${y}px` }));
 		// Every frame: a caret's or a selection's box moves with the typing.

@@ -55,8 +55,8 @@ Most props are read once, when the component is created. Changing them later has
 | `spellcheck` | `boolean` | `true` | Yes | The root's `spellcheck` attribute. |
 | `autocorrect` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocorrect` attribute. |
 | `autocomplete` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocomplete` attribute. |
-| `autocapitalize` | `'off' \| 'none' \| 'on' \| 'sentences' \| 'words' \| 'characters'` | `'none'` | Yes | The root's `autocapitalize` attribute. |
-| `inputmode` | `'none' \| 'text' \| 'decimal' \| 'numeric' \| 'tel' \| 'search' \| 'email' \| 'url'` | unset | Yes | Virtual keyboard hint. Omitted from the DOM when unset. |
+| `autocapitalize` | `'off' \| 'none' \| 'on' \| 'sentences' \| 'words' \| 'characters'` | unset | Yes | The root's `autocapitalize` attribute. Unset, a phone's keyboard capitalizes sentences (its own default; a desktop browser ignores it). On iOS it applies to the whole editor, code blocks included, and is read when the editor takes the focus; pass `'none'` to keep the keyboard lowercase. |
+| `inputmode` | `'none' \| 'text' \| 'decimal' \| 'numeric' \| 'tel' \| 'search' \| 'email' \| 'url'` | unset | Yes | Virtual keyboard hint. Omitted from the DOM when unset. While the selection is a block selection (a tapped image), the root says `none`: a phone shows no keyboard over selected blocks, and a hardware keyboard's keys still act on them. |
 | `enterkeyhint` | `'enter' \| 'done' \| 'go' \| 'next' \| 'previous' \| 'search' \| 'send'` | unset | Yes | Label of the virtual keyboard's action key. Omitted when unset. |
 | `translate` | `'yes' \| 'no'` | `'no'` | Yes | The root's `translate` attribute. `'no'` keeps page translators from rewriting the editable text. |
 | `presence` | `{ share?: 'caret' \| 'block' \| 'none'; throttle?: number }` | `{ share: 'caret', throttle: 50 }` | | What this view shares of its selection with peers, and the least ms between two writes. Follows changes. See [Sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale). |

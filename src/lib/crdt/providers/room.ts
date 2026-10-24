@@ -458,7 +458,7 @@ export const validRoomId = (id: string): boolean =>
 export const assertRoomId = (id: string): void => {
 	if (validRoomId(id)) return;
 	throw new TypeError(
-		`room id ${JSON.stringify(id)} cannot be dialed: it must be 1-256 characters, not "." or ".." (a URL collapses those path segments), with no lone surrogate`
+		`room id ${JSON.stringify(id)} cannot be dialed: 1-256 characters, not "." or "..", no lone surrogate`
 	);
 };
 

@@ -369,6 +369,13 @@
 .edytor-notion button[data-edytor-callout-icon][data-empty]:focus-visible::before {
 	opacity: 1;
 }
+/* A touch screen shows it: a touch that revealed it would cost the tap (iOS
+ * Safari takes it for a hover and sends no click). */
+@media (hover: none) {
+	.edytor-notion button[data-edytor-callout-icon][data-empty]::before {
+		opacity: 1;
+	}
+}
 /* No icon in a readonly view: the text starts at the panel's edge. */
 .edytor-notion [data-edytor-type='callout']:not(:has(> [data-edytor-callout-icon])) {
 	grid-template-columns: minmax(0, 1fr);

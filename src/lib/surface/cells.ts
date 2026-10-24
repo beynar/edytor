@@ -201,6 +201,14 @@ export type RenderDelta = {
 	readonly marks: readonly (readonly [string, unknown])[];
 };
 
+/**
+ * The text node an empty text renders where a `<br>` would break its line
+ * (beside an atom or a suggestion), or where the IME composes (`Pin.shown`):
+ * a zero-width space. An empty text alone in its block renders a `<br>`, so
+ * a phone's keyboard finds nothing before the caret and capitalizes.
+ */
+export const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
+
 /** Mark payloads compare by canonical value: key-sorted, `undefined` values dropped. */
 const marksKey = (marks: Record<string, unknown> | undefined) =>
 	marks

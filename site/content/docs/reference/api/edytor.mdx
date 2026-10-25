@@ -2217,7 +2217,9 @@ declare const deleteTableRows: (doc: Omit<DocumentOperations, "transact">, rows:
 
 ## Destination
 
-Where a block goes: `parent` = logical block id or `null` for root.
+Where a block goes: `parent` = logical block id or `null` for root;
+`index` among its children. `moveBlocks` counts them without the moved
+blocks (within one parent, one place right of index `i` is `i + 1`).
 
 ```ts
 export type Destination = {
@@ -2625,6 +2627,9 @@ export interface DocumentWrites {
 }
 ```
 
+- `moveBlocks`: Move `ids` (with their children), in order, to `dest`.
+- `deleteBlock`: Delete block `id`.
+- `deleteBlocks`: Delete `ids` as a block selection: only the members leave; a member's children that are not members take its place.
 - `duplicateBlock`: `freshId` names each copy (fresh ids by default).
 - `insertInline`: An atom without an id gets a fresh one.
 

@@ -118,7 +118,11 @@ import { ownerOfNode, slotOwner, type Edge, type SlotRef } from './resolve.js';
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
 
-/** Where a block goes: `parent` = logical block id or `null` for root. */
+/**
+ * Where a block goes: `parent` = logical block id or `null` for root;
+ * `index` among its children. `moveBlocks` counts them without the moved
+ * blocks (within one parent, one place right of index `i` is `i + 1`).
+ */
 export type Destination = { parent: BlockId | null; index: number };
 
 /** One inline content element in a block spec / projection. */

@@ -64,7 +64,7 @@ Every value is escaped, a link's href and an image's or a media block's source g
 | Table | a GFM table, its first row the header |
 | Divider | `---` |
 | Image | `![alt](src "caption")` |
-| Callout | a GitHub alert: `> [!NOTE]`, then the icon and the text, then the content |
+| Callout | a GitHub alert: `> [!NOTE]`, then the icon and the callout's text (its title), then a blank `>` line and its content. Read back, an alert's first paragraph is the title and the rest the content: a one-paragraph alert is a title with no content, which shows the empty callout's hint |
 | Toggle | `<details>` and `<summary>`, which GitHub and most readers show folded |
 | Equation | `$$ … $$`; an inline equation `$…$` |
 | Bookmark, file, embed, video, audio | a link to it, then its caption |
@@ -81,6 +81,23 @@ Marks: `**bold**`, `*italic*` (both: `***x***`), `~~strike~~`, `` `code` ``, `[t
 - **Raw HTML is text.** `<img onerror>`, `<script>` or `<b>` inside markdown is kept as the characters it is, never as markup.
 - **Links and images go through the sanitizers.** A `javascript:` link is its text, an image whose source is not `http(s)`, `blob:`, an inline image or a relative path is its alt text.
 - **Reference links** (`[text][ref]` with `[ref]: url` below) are links; **footnotes** are text (`[^1]`, and `[^1]: …` paragraphs at the end).
+
+The blocks are the bundled kinds: a GFM table is a `table`, a fence a `code` block of `codeLine`s, an alert a `callout`. To read into kinds of your own, map what `fromMarkdown` or `textToBlocks` returns, plain JSON, before you insert it (change the shape there too when your kind's differs):
+
+```ts title="src/lib/importMarkdown.ts" check
+import { textToBlocks } from 'edytor/export';
+import type { JSONBlock } from 'edytor';
+
+/** A block and its children with this app's kinds: a table is its `simpleTable`. */
+const ownKinds = (block: JSONBlock): JSONBlock => ({
+	...block,
+	type: block.type === 'table' ? 'simpleTable' : block.type,
+	...(block.children ? { children: block.children.map(ownKinds) } : {})
+});
+
+export const importMarkdown = (markdown: string): JSONBlock[] =>
+	textToBlocks(markdown).map(ownKinds);
+```
 
 ## MDX-lite
 

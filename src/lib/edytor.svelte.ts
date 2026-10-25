@@ -778,8 +778,11 @@ export class Edytor {
 				if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
 					// A failed async handler (a command's hook or write) surfaces
 					// through the platform's error reporting; the DOM ignores
-					// the listener's promise.
-					void Promise.resolve(result).finally(clear).catch(reportError);
+					// the listener's promise. Read when one fails: a test DOM
+					// without it (happy-dom) only meets it then.
+					void Promise.resolve(result)
+						.finally(clear)
+						.catch((error) => reportError(error));
 				} else {
 					clear();
 				}

@@ -30,7 +30,7 @@ import { suggestionsOf, type DocSuggest, type SuggestedChange } from '$lib/crdt/
 import type { BlockId } from '$lib/crdt/index.js';
 import type { OpResult, Plan, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DocPosition } from '$lib/crdt/rangeDelete.js';
-import type { InlineSpec } from '$lib/crdt/placement/model.js';
+import type { BlockSpec, Destination, InlineSpec } from '$lib/crdt/placement/model.js';
 import { canonKey } from '$lib/crdt/text/ranges.js';
 import { labelsOf, suggestionsEnglish } from '$lib/labels.js';
 import { jsonBlockToSpec, type JSONBlock, type JSONText } from '$lib/utils/json.js';
@@ -58,9 +58,32 @@ import SuggestionRuns from './SuggestionRuns.svelte';
 /** A block change's mark (`marked`): its kind's, but for these. */
 const MARKS: Record<string, string> = { block: 'inserted', remove: 'removed' };
 
+/** `block` without its ids (its children's too). */
+const bare = ({ id: _, children, ...block }: JSONBlock): JSONBlock => ({
+	...block,
+	...(children ? { children: children.map(bare) } : {})
+});
+/**
+ * A block's canonical key without its ids, kept per block object: a written
+ * block is never changed (its update is a new object), so each update keys
+ * only the new content.
+ */
+const keys = new WeakMap<JSONBlock, string>();
+const keyOf = (block: JSONBlock) => {
+	let key = keys.get(block);
+	if (key === undefined) keys.set(block, (key = canonKey(bare(block))));
+	return key;
+};
 /** Two blocks alike but for their ids. */
-const same = (a: JSONBlock, b: JSONBlock) =>
-	canonKey({ ...a, id: 0 }) === canonKey({ ...b, id: 0 });
+const same = (a: JSONBlock, b: JSONBlock) => keyOf(a) === keyOf(b);
+/** `block` as written: with the ids `spec` gave it and its children. */
+const withIds = (block: JSONBlock, spec: BlockSpec): JSONBlock => ({
+	...block,
+	id: spec.id,
+	...(block.children
+		? { children: block.children.map((child, i) => withIds(child, spec.children![i]!)) }
+		: {})
+});
 /**
  * The runs `next` adds after `prev`'s content when it extends it (one kind
  * and data, `prev`'s content its start), else `null`.
@@ -140,8 +163,10 @@ class Shared extends Suggestion {
 	get by(): string | undefined {
 		return this.#record?.by;
 	}
+	/** Its record's (none for one a member typed), else, before this view's first write, its option's. */
 	get via(): string | undefined {
-		return this.#record?.via ?? this.#via;
+		const record = this.#record;
+		return record ? record.via : this.#via;
 	}
 	get changes(): readonly SuggestedChange[] {
 		return this.#c.changes().filter((c) => c.suggestion === this.id);
@@ -181,7 +206,7 @@ export class SharedSuggestionsController {
 	/** A decision runs: its writes are the decider's, never suggested. */
 	#deciding = false;
 	/** The ones this view added (`add`), and the ones other views made, as this view lists them. */
-	#mine = $state.raw<readonly SharedSuggestion[]>([]);
+	#mine = $state.raw<readonly Shared[]>([]);
 	#others = new Map<string, SharedSuggestion>();
 
 	/** @internal */
@@ -234,11 +259,15 @@ export class SharedSuggestionsController {
 			parent === null ? null : (facade.blockTypeOf(parent) ?? null)
 		);
 		const status = options.status ?? (content === undefined ? 'streaming' : 'ready');
-		const suggestion = make(suggestions, resolved, kind, options, status);
-		this.#mine = [...this.#mine.filter((s) => s.id !== suggestion.id), suggestion];
+		const suggestion = new Shared(suggestions, resolved, kind, options, status);
+		// Added again under its id, it continues what the earlier one wrote: those
+		// blocks are brought to the new content, never left beside it.
+		const earlier = this.#mine.find((s) => s.id === suggestion.id);
+		if (earlier) suggestion.written = earlier.written;
+		this.#mine = [...this.#mine.filter((s) => s !== earlier), suggestion];
 		if (content !== undefined) suggestion.update(content);
 		suggestions.revision++;
-		return suggestion;
+		return suggestion as unknown as SharedSuggestion;
 	};
 
 	/** @internal Drop `suggestion` from this view's own. */
@@ -247,10 +276,20 @@ export class SharedSuggestionsController {
 		this.edytor.suggestions.revision++;
 	};
 
-	/** @internal The list with the shared ones (`Suggestions.shared`): this view's while pending or streaming, then the others'. */
+	/**
+	 * @internal The list with the shared ones (`Suggestions.shared`): this
+	 * view's while it streams, has pending changes or has written nothing yet
+	 * (no block, no proposed deletion: it waits for its content), so a decided
+	 * one leaves; then the others'.
+	 */
 	list = (mine: readonly Suggestion[]): readonly AnySuggestion[] => {
 		const shared = new Set(this.changes().map((c) => c.suggestion));
-		const own = this.#mine.filter((s) => s.status === 'streaming' || shared.has(s.id));
+		const own = this.#mine.filter(
+			(s) =>
+				s.status === 'streaming' ||
+				shared.has(s.id) ||
+				!(s.written.length || (s.at && 'replace' in s.at))
+		) as unknown as SharedSuggestion[];
 		for (const s of own) shared.delete(s.id);
 		const others = [...shared].map(
 			(id) =>
@@ -368,9 +407,8 @@ export class SharedSuggestionsController {
 	/**
 	 * @internal Write shared `suggestion`'s content as it is now (`update`,
 	 * `append`), live (`sugg.ai.live`): the first time at its position (a
-	 * `replace` proposed for deletion), then only what changed — its equal
-	 * blocks kept, its last block's text extended when the new one extends
-	 * it, the rest replaced. Its own writer's blocks, outside the undo history.
+	 * `replace` proposed for deletion), then only what changed (`#sync`). Its
+	 * own writer's blocks, outside the undo history.
 	 */
 	write = (suggestion: Shared) => {
 		const { facade, dispatcher } = this.edytor;
@@ -393,11 +431,38 @@ export class SharedSuggestionsController {
 					}
 				}
 			}
-			let p = 0;
-			while (p < prev.length && p < next.length && same(prev[p]!, next[p]!)) p++;
-			const runs = p === prev.length - 1 && p < next.length ? grown(prev[p]!, next[p]!) : null;
-			if (runs) {
-				const block = prev[p]!.id!;
+			this.#sync(put, prev, next, () => this.#slot(at));
+		});
+	};
+
+	/**
+	 * Bring `prev` (the blocks written, with their ids) to `next`: the equal
+	 * blocks kept; the last one grown in place, its text extended when the new
+	 * one extends it, or, the same block but for its children, its children
+	 * brought along the same way (a code block's lines); the rest replaced,
+	 * deleted with their children and the new ones inserted after the kept
+	 * ones, else at `start`.
+	 */
+	#sync = (
+		put: (plan: Prepared) => void,
+		prev: JSONBlock[],
+		next: readonly JSONBlock[],
+		start: () => Destination | null
+	) => {
+		const { facade } = this.edytor;
+		const { prepare } = facade;
+		let p = 0;
+		while (p < prev.length && p < next.length && same(prev[p]!, next[p]!)) p++;
+		if (p === prev.length - 1 && p < next.length) {
+			const [old, now] = [prev[p]!, next[p]!];
+			const block = old.id!;
+			// Its own fields alike (its children aside) and children still: those grow.
+			const children =
+				now.children?.length && same({ ...old, children: [] }, { ...now, children: [] })
+					? [...(old.children ?? [])]
+					: null;
+			const runs = children ? null : grown(old, now);
+			if (runs)
 				for (const run of runs) {
 					const offset = facade.displayLength(block);
 					put(
@@ -406,18 +471,21 @@ export class SharedSuggestionsController {
 							: prepare.insertInline(block, offset, run as InlineSpec)
 					);
 				}
-				prev[p] = { ...next[p]!, id: block };
-				p++;
+			else if (children)
+				this.#sync(put, children, now.children ?? [], () => ({ parent: block, index: 0 }));
+			if (runs || children) {
+				const kept = children ?? old.children;
+				prev[p++] = { ...now, id: block, ...(kept ? { children: kept } : {}) };
 			}
-			const doomed = prev.splice(p).map((b) => b.id!);
-			if (doomed.length) put(prepare.deleteBlocks(doomed));
-			const specs = next.slice(p).map((b) => jsonBlockToSpec(b, true));
-			const dest = p ? facade.positionOf(prev[p - 1]!.id!) : this.#slot(at);
-			if (specs.length && dest) {
-				put(prepare.insertBlocks({ parent: dest.parent, index: dest.index + (p ? 1 : 0) }, specs));
-				prev.push(...specs.map((spec, i) => ({ ...next[p + i]!, id: spec.id })));
-			}
-		});
+		}
+		// The replaced blocks go whole: a code block's lines are its own.
+		for (const { id } of prev.splice(p)) put(prepare.deleteBlock(id!, { keepChildren: false }));
+		const specs = next.slice(p).map((b) => jsonBlockToSpec(b, true));
+		const dest = p ? facade.positionOf(prev[p - 1]!.id!) : start();
+		if (specs.length && dest) {
+			put(prepare.insertBlocks({ parent: dest.parent, index: dest.index + (p ? 1 : 0) }, specs));
+			prev.push(...specs.map((spec, i) => withIds(next[p + i]!, spec)));
+		}
 	};
 
 	/** Where a shared suggestion's blocks go: its position's slot (a `replace`: after what it replaces). */

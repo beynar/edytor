@@ -76,4 +76,25 @@ No screen-reader or keyboard-only audit has been made yet. The editor is a `cont
 | Node.js | Node.js 22 or later (`engines`) | `edytor/crdt/edytor` (headless documents) and the packed consumer's smoke test run there. |
 | Cloudflare Workers | Durable Objects with SQLite storage, compatibility date `2026-09-26` | `edytor/cloudflare` runs in `workerd` (storage, hibernation, identity, acknowledgements, chunking) and, bundled from the packed tarball, in Miniflare. See the [server quick start](/docs/server/quick-start). |
 
+### Test DOMs
+
+The editor's own unit tests mount it in jsdom. A DOM emulation (jsdom, happy-dom) lacks some APIs every supported browser has, and the editor detects none of them: define what yours lacks in your test setup, as the repository's does. Without `reportError`, a failed input handler (a command's hook that throws) shows as `reportError is not defined` instead of its own error; typing that does not fail works either way.
+
+```ts title="vitest.setup.ts" check
+globalThis.reportError ??= (error: unknown) => console.error(error);
+globalThis.ResizeObserver ??= class {
+	observe() {}
+	unobserve() {}
+	disconnect() {}
+};
+Element.prototype.checkVisibility ??= () => true;
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+HTMLElement.prototype.scrollIntoView ??= () => {};
+HTMLElement.prototype.showPopover ??= () => {};
+HTMLElement.prototype.hidePopover ??= () => {};
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+```
+
 Other JavaScript runtimes (Deno, Bun, other serverless platforms) can import `edytor/crdt/edytor`, which has no Svelte and no browser globals in its import graph, but no lane runs them. The room itself needs a Durable Object; for another platform, see [Protocol](/docs/server/protocol).

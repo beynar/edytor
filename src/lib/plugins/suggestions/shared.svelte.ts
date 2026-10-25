@@ -63,8 +63,19 @@ const bare = ({ id: _, children, ...block }: JSONBlock): JSONBlock => ({
 	...block,
 	...(children ? { children: children.map(bare) } : {})
 });
+/**
+ * A block's canonical key without its ids, kept per block object: a written
+ * block is never changed (its update is a new object), so each update keys
+ * only the new content.
+ */
+const keys = new WeakMap<JSONBlock, string>();
+const keyOf = (block: JSONBlock) => {
+	let key = keys.get(block);
+	if (key === undefined) keys.set(block, (key = canonKey(bare(block))));
+	return key;
+};
 /** Two blocks alike but for their ids. */
-const same = (a: JSONBlock, b: JSONBlock) => canonKey(bare(a)) === canonKey(bare(b));
+const same = (a: JSONBlock, b: JSONBlock) => keyOf(a) === keyOf(b);
 /** `block` as written: with the ids `spec` gave it and its children. */
 const withIds = (block: JSONBlock, spec: BlockSpec): JSONBlock => ({
 	...block,
@@ -195,7 +206,7 @@ export class SharedSuggestionsController {
 	/** A decision runs: its writes are the decider's, never suggested. */
 	#deciding = false;
 	/** The ones this view added (`add`), and the ones other views made, as this view lists them. */
-	#mine = $state.raw<readonly SharedSuggestion[]>([]);
+	#mine = $state.raw<readonly Shared[]>([]);
 	#others = new Map<string, SharedSuggestion>();
 
 	/** @internal */
@@ -248,14 +259,15 @@ export class SharedSuggestionsController {
 			parent === null ? null : (facade.blockTypeOf(parent) ?? null)
 		);
 		const status = options.status ?? (content === undefined ? 'streaming' : 'ready');
-		// This view's own is listed while it streams or once written: given its
-		// content, it streams for its first write, then takes its status.
-		const suggestion = make(suggestions, resolved, kind, options, 'streaming');
-		this.#mine = [...this.#mine.filter((s) => s.id !== suggestion.id), suggestion];
+		const suggestion = new Shared(suggestions, resolved, kind, options, status);
+		// Added again under its id, it continues what the earlier one wrote: those
+		// blocks are brought to the new content, never left beside it.
+		const earlier = this.#mine.find((s) => s.id === suggestion.id);
+		if (earlier) suggestion.written = earlier.written;
+		this.#mine = [...this.#mine.filter((s) => s !== earlier), suggestion];
 		if (content !== undefined) suggestion.update(content);
-		if (status === 'ready') suggestion.done();
 		suggestions.revision++;
-		return suggestion;
+		return suggestion as unknown as SharedSuggestion;
 	};
 
 	/** @internal Drop `suggestion` from this view's own. */
@@ -264,10 +276,20 @@ export class SharedSuggestionsController {
 		this.edytor.suggestions.revision++;
 	};
 
-	/** @internal The list with the shared ones (`Suggestions.shared`): this view's while pending or streaming, then the others'. */
+	/**
+	 * @internal The list with the shared ones (`Suggestions.shared`): this
+	 * view's while it streams, has pending changes or has written nothing yet
+	 * (no block, no proposed deletion: it waits for its content), so a decided
+	 * one leaves; then the others'.
+	 */
 	list = (mine: readonly Suggestion[]): readonly AnySuggestion[] => {
 		const shared = new Set(this.changes().map((c) => c.suggestion));
-		const own = this.#mine.filter((s) => s.status === 'streaming' || shared.has(s.id));
+		const own = this.#mine.filter(
+			(s) =>
+				s.status === 'streaming' ||
+				shared.has(s.id) ||
+				!(s.written.length || (s.at && 'replace' in s.at))
+		) as unknown as SharedSuggestion[];
 		for (const s of own) shared.delete(s.id);
 		const others = [...shared].map(
 			(id) =>
@@ -434,11 +456,12 @@ export class SharedSuggestionsController {
 		if (p === prev.length - 1 && p < next.length) {
 			const [old, now] = [prev[p]!, next[p]!];
 			const block = old.id!;
-			const runs = grown(old, now);
+			// Its own fields alike (its children aside) and children still: those grow.
 			const children =
-				!runs && same({ ...old, children: [] }, { ...now, children: [] })
+				now.children?.length && same({ ...old, children: [] }, { ...now, children: [] })
 					? [...(old.children ?? [])]
 					: null;
+			const runs = children ? null : grown(old, now);
 			if (runs)
 				for (const run of runs) {
 					const offset = facade.displayLength(block);

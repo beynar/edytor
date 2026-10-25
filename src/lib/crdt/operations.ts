@@ -44,7 +44,8 @@ export interface DocumentWrites {
 	/**
 	 * Move `ids` (with their children), in order, to `dest`. Its `index`
 	 * counts the parent's children without the moved blocks: to move a block
-	 * one place right, give its index plus one (not plus two).
+	 * one place right within its parent, give its index plus one (not plus
+	 * two).
 	 */
 	moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
 	nestBlock(id: BlockId, parent: BlockId): OpResult;

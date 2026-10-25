@@ -264,7 +264,7 @@ The document's operations, the same on `edytor` (dispatched) and on `edytor.docu
 | Operation | Arguments |
 | --- | --- |
 | `insertBlocks` | `(dest: { parent, index }, blocks: JSONBlock[])`; ids are minted where missing |
-| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks: one place right of index `i` is `{ parent, index: i + 1 }` |
+| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks: within one parent, one place right of index `i` is `{ parent, index: i + 1 }` |
 | `nestBlock` | `(id, parent)`: the last child of `parent` (under its last item when it is a list) |
 | `unNestBlock`, `unNestBlocks` | `(id)`, `(ids)`: after their parent, the siblings after the last one becoming its children |
 | `liftOut` | `(id, kind, { keep?, after? })`: out of the containers a `kind` cannot sit in |

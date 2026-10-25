@@ -165,4 +165,99 @@ describe('sugg.ai.live — the shared suggestions app API', () => {
 		expect(list[0]!.shared && list[0]!.via).toBeUndefined();
 		expect(list[0]!.shared && list[0]!.by).toBe(edytor.document.actor.id);
 	});
+
+	/** A view with one anchor paragraph, and its shared suggestions' controller. */
+	const mounted = async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>Anchor|</paragraph>
+			</root>,
+			options()
+		);
+		return { edytor, anchor: edytor.root!.children[0]!.id };
+	};
+	const listed = (edytor: Edytor) => edytor.suggestions.list.filter((s) => s.shared);
+
+	it('add(at, []) waits for its content: listed, then an update writes it', async () => {
+		const { edytor, anchor } = await mounted();
+		const suggestion = shared(edytor).add({ after: anchor }, []);
+		await flushDomUpdates();
+		expect(suggestion.live).toBe(true);
+		suggestion.update([paragraph('Later')]);
+		await flushDomUpdates();
+		expect(listed(edytor)).toEqual([suggestion]);
+		expect(shownAfterFirst(edytor)).toEqual([paragraph('Later')]);
+	});
+
+	it("add(at, undefined, { status: 'ready' }) then update writes and lists it", async () => {
+		const { edytor, anchor } = await mounted();
+		const suggestion = shared(edytor).add({ after: anchor }, undefined, { status: 'ready' });
+		suggestion.update([paragraph('Hello')]);
+		await flushDomUpdates();
+		expect(suggestion.status).toBe('ready');
+		expect(listed(edytor)).toEqual([suggestion]);
+		expect(shownAfterFirst(edytor)).toEqual([paragraph('Hello')]);
+	});
+
+	it('added again under its id, it replaces what the earlier one wrote', async () => {
+		const { edytor, anchor } = await mounted();
+		shared(edytor).add({ after: anchor }, [paragraph('First'), paragraph('Draft')], { id: 'ans' });
+		await flushDomUpdates();
+		const again = shared(edytor).add({ after: anchor }, [paragraph('First'), paragraph('Final')], {
+			id: 'ans'
+		});
+		await flushDomUpdates();
+		expect(shownAfterFirst(edytor)).toEqual([paragraph('First'), paragraph('Final')]);
+		expect(listed(edytor)).toEqual([again]);
+		expect(suggestionsOf(edytor.facade).records()).toHaveLength(1);
+	});
+
+	it('a decided suggestion leaves the list', async () => {
+		const { edytor, anchor } = await mounted();
+		const suggestion = shared(edytor).add({ after: anchor }, [paragraph('Kept')]);
+		await flushDomUpdates();
+		expect(suggestion.accept().status).toBe('applied');
+		await flushDomUpdates();
+		expect(listed(edytor)).toEqual([]);
+		expect(edytor.facade.toJSON().children.slice(1).map(plain)).toEqual([paragraph('Kept')]);
+	});
+
+	it('a container whose children grow grows in place, and accepting gives the answer', async () => {
+		const { edytor, anchor } = await mounted();
+		const toggle = (...children: string[]): JSONBlock => ({
+			type: 'toggle',
+			content: [{ text: 'Steps' }],
+			children: children.map(paragraph)
+		});
+		const suggestion = shared(edytor).add({ after: anchor }, undefined);
+		const shownToggle = () => edytor.facade.toJSON({ suggestions: true }).children[1]!;
+		suggestion.update([toggle('One')]);
+		await flushDomUpdates();
+		const first = shownToggle();
+		suggestion.update([toggle('One', 'Tw')]);
+		await flushDomUpdates();
+		suggestion.update([toggle('One', 'Two')]);
+		await flushDomUpdates();
+		const last = shownToggle();
+		suggestion.done();
+		// The toggle and its first child are the ones first written; the second child grew.
+		expect(last.id).toBe(first.id);
+		expect(last.children![0]!.id).toBe(first.children![0]!.id);
+		expect(shownAfterFirst(edytor)).toEqual([toggle('One', 'Two')]);
+		expect(suggestion.accept().status).toBe('applied');
+		expect(edytor.facade.toJSON().children.slice(1).map(plain)).toEqual([toggle('One', 'Two')]);
+	});
+
+	it('a code block shrinking to no lines is replaced, never left with stray lines', async () => {
+		const { edytor, anchor } = await mounted();
+		const suggestion = shared(edytor).add({ after: anchor }, undefined);
+		suggestion.update([code('const a')]);
+		await flushDomUpdates();
+		suggestion.update([code()]);
+		await flushDomUpdates();
+		suggestion.update([code('const a = 1;')]);
+		await flushDomUpdates();
+		suggestion.done();
+		expect(shownAfterFirst(edytor)).toEqual([code('const a = 1;')]);
+	});
 });

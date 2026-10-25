@@ -120,8 +120,8 @@ export type BlockId = string;
 
 /**
  * Where a block goes: `parent` = logical block id or `null` for root;
- * `index` among its children (for `moveBlocks`, counted without the moved
- * blocks: one place right of its own index `i` is `i + 1`).
+ * `index` among its children. `moveBlocks` counts them without the moved
+ * blocks (within one parent, one place right of index `i` is `i + 1`).
  */
 export type Destination = { parent: BlockId | null; index: number };
 

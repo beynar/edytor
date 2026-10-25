@@ -492,6 +492,41 @@ describe("textToBlocks — the parser's reading", () => {
 	});
 });
 
+describe('textToBlocks — blockquotes (CommonMark)', () => {
+	const quote = (text: string, ...children: JSONBlock[]): JSONBlock => ({
+		type: 'quote',
+		content: [{ text }],
+		...(children.length ? { children } : {})
+	});
+
+	test('a blank line ends a quote: two quotes, never one', () => {
+		expect(textToBlocks('> a\n\n> b')).toEqual([quote('a'), quote('b')]);
+	});
+
+	test('an alert right after a quote is a callout', () => {
+		expect(textToBlocks('> quote\n\n> [!TIP]\n> Title\n>\n> Body')).toEqual([
+			quote('quote'),
+			{ type: 'callout', content: [{ text: 'Title' }], children: [p({ text: 'Body' })] }
+		]);
+	});
+
+	test('an empty quote line keeps one quote; a lazy line continues its paragraph', () => {
+		expect(textToBlocks('> a\n>\n> b')).toEqual([quote('a', p({ text: 'b' }))]);
+		// A soft break reads as a space, as in any paragraph.
+		expect(textToBlocks('> a\nb\n\nafter')).toEqual([quote('a b'), p({ text: 'after' })]);
+	});
+
+	test('a heading after a quote is no lazy line; nested quotes nest', () => {
+		expect(textToBlocks('> a\n# H')).toEqual([
+			quote('a'),
+			{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'H' }] }
+		]);
+		expect(textToBlocks('> > deep')).toEqual([
+			{ type: 'quote', content: [], children: [quote('deep')] }
+		]);
+	});
+});
+
 describe('MDX-lite', () => {
 	const components = { Endpoint: 'endpoint', Callout: 'callout' };
 

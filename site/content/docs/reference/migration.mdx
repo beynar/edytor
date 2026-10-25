@@ -16,6 +16,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 Nothing yet.
 
+### From 7.0.2
+
+#### Fixed
+
+- **Two quotes a blank line apart stay two.** `fromMarkdown` and `textToBlocks` read `> a`, a blank line, then `> b` as one quote (`b` its child), and a GitHub alert right after a quote as part of it (its `[!TIP]` line as text, no callout). A blank line now ends a quote, as in CommonMark.
+
 ### From 7.0.1
 
 #### Fixed
@@ -1459,6 +1465,7 @@ Every public change since 0.0.11, by area.
 - **Presses on chrome.** A press on a void block's chrome selects the block (Shift or Mod adds it); a control there (a native control, a link, an interactive role, `tabindex`, `data-edytor-control`, `data-edytor-keep-selection`) owns its whole press, keys and input; a press in a caption is the browser's caret at the press.
 - **Shared suggestions.** The plugin `createSharedSuggestionsPlugin()` and its controller `sharedSuggestionsController(edytor)` (`SharedSuggestionsController`): `suggesting` (suggesting mode: the view's writes are a suggestion in the document, of text and blocks only, the rest refused with the `suggestions.notSuggested` announcement, `SuggestionsLabels`), `add(at, content, { via })` (an AI answer written live), `changes()`, `decide(changes, accept)`, `acceptAll()`, `rejectAll()`; `edytor.suggestions.list` holds `SharedSuggestion`s (`shared: true`, `by`, `via`, `changes`, `canDecide`, `mine`, `reject()`; `discard()` rejects it, its author's too) beside the view-local `Suggestion`s (`shared: false`), `AnySuggestion` either; the commands `acceptSuggestion` (`{ changes }` for a shared one) and `rejectSuggestion`; `SuggestedChange`; `adoptSharedSuggestions(document)` in `edytor/crdt/edytor`. With them built over the document, `toJSON(options?)` and `edytor.value` leave pending suggestions out (`{ suggestions: true }` keeps them). See [shared suggestions](/docs/editor/suggestions#shared-suggestions).
 - **A shared answer's live updates.** Each `update` keeps the equal blocks and grows the last one in place (its text extended, or a code block's lines: the last extended, the new ones added); the replaced blocks go with their children. `add(at, content)` writes the content at once; this view's own suggestion is listed until its changes are decided, and added again under its `id` it continues what the earlier one wrote. `via` is the suggestion's record's: `undefined` for one a member typed.
+- **Markdown blockquotes.** A blank line ends a quote (CommonMark): two quotes a blank line apart, or an alert after a quote, read as written.
 - **Suggestions.** `edytor.suggestions` proposes content at a position, session-only until `accept()` (one command, `acceptSuggestion`, one undo step), with the default suggestions plugin's keys, `createSuggestionBarPlugin`'s bar and `textToBlocks` ([Suggestions](/docs/editor/suggestions)); `BlockView.handle` is `undefined` in a suggestion's preview. An `{ end }` suggestion survives selection changes. `block.suggestText`, `block.suggestions`, `block.acceptSuggestedText`, `edytor.selection.suggestions`, `rawSuggestions` and the readonly Proxy wrappers are removed.
 - **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see [clipboard](/docs/editor/clipboard)). A plugin's `onPaste` still runs first. The code plugin highlights through TanStack Highlight, and the package declares `sideEffects` so it (and its CSS) ships only in apps that import `createCodePlugin`.
 - **Notion behavior.** See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).

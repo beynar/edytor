@@ -41,6 +41,11 @@ import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '../utils/jso
 /** The document's writes: each one transaction, answering what it did (`OpResult`). */
 export interface DocumentWrites {
 	insertBlocks(dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]): OpResult;
+	/**
+	 * Move `ids` (with their children), in order, to `dest`. Its `index`
+	 * counts the parent's children without the moved blocks: to move a block
+	 * one place right, give its index plus one (not plus two).
+	 */
 	moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
 	nestBlock(id: BlockId, parent: BlockId): OpResult;
 	unNestBlock(id: BlockId): OpResult;
@@ -61,7 +66,16 @@ export interface DocumentWrites {
 	mergeBlocks(fromId: BlockId, intoId: BlockId): OpResult;
 	mergeBackward(id: BlockId): OpResult;
 	mergeForward(id: BlockId): OpResult;
+	/**
+	 * Delete block `id`. Its children take its place (promoted into its
+	 * parent) unless `keepChildren: false`, which deletes them with it, the
+	 * whole subtree.
+	 */
 	deleteBlock(id: BlockId, options?: { keepChildren?: boolean }): OpResult;
+	/**
+	 * Delete `ids` as a block selection: only the members leave; a member's
+	 * children that are not members take its place.
+	 */
 	deleteBlocks(ids: readonly BlockId[]): OpResult;
 	setBlock(
 		id: BlockId,

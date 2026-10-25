@@ -264,7 +264,7 @@ The document's operations, the same on `edytor` (dispatched) and on `edytor.docu
 | Operation | Arguments |
 | --- | --- |
 | `insertBlocks` | `(dest: { parent, index }, blocks: JSONBlock[])`; ids are minted where missing |
-| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks |
+| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks: one place right of index `i` is `{ parent, index: i + 1 }` |
 | `nestBlock` | `(id, parent)`: the last child of `parent` (under its last item when it is a list) |
 | `unNestBlock`, `unNestBlocks` | `(id)`, `(ids)`: after their parent, the siblings after the last one becoming its children |
 | `liftOut` | `(id, kind, { keep?, after? })`: out of the containers a `kind` cannot sit in |
@@ -273,7 +273,7 @@ The document's operations, the same on `edytor` (dispatched) and on `edytor.docu
 | `splitBlock` | `(id, offset, newId, tail?)`: the content after `offset` into a new block `newId` of `tail`'s kind (the block's by default) |
 | `mergeBlocks` | `(from, into)` |
 | `mergeBackward`, `mergeForward` | `(id)`: into the block before it, or the block after it into it |
-| `deleteBlock` | `(id, { keepChildren? })`: its children take its place unless `keepChildren: false` |
+| `deleteBlock` | `(id, { keepChildren? })`: its children take its place unless `keepChildren: false`, which deletes the whole subtree (a container whose children belong to it, a tab of a tabs block) |
 | `deleteBlocks` | `(ids)`: a block selection; only the members leave |
 | `setBlock` | `(id, { type?, data?, content?, children? })`: content and children (JSON or specs) replace the block's |
 | `setBlockType` | `(id, type)` |

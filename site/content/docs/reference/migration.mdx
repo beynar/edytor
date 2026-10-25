@@ -14,7 +14,13 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Fixed
+
+- **A shared answer streamed live keeps its code blocks whole.** Each `update` of a shared suggestion replaces the blocks that changed; a code block growing across updates left its earlier lines behind as paragraphs, so the answer showed the wrong blocks and accepting it kept them. The replaced blocks now go with their children.
+- **A shared suggestion added with its content is listed.** `add(at, blocks)` returned a suggestion that never wrote its content, so it had no bar and nothing to accept. It is now written at once and listed, `ready` (or the `status` you pass).
+- **A suggestion a member typed has no agent.** `via` read `'ai'` for every suggestion this view did not add, those typed in suggesting mode included. It is now the suggestion's own: `undefined` unless an agent wrote it.
+- **A shared answer's code block grows in place.** A live `update` that adds to a code block now extends its last line and adds the new ones, as it extends a paragraph's text, instead of writing the whole code block again: a long code block syncs only what changed.
+- **Typing works in a test DOM without `reportError`.** An async input handler's promise was chained to the global `reportError` at once, so in a DOM emulation without it (happy-dom) every key threw. It is now read only when a handler fails.
 
 ### From 7.0.0
 
@@ -1411,6 +1417,8 @@ Every public change since 0.0.11, by area.
 - **Virtual paragraph.** A view reads its document through a lens: `edytor.facade` is a per-view object whose prototype is `document.facade`, and `edytor.facade.virtual()` names the virtual paragraph while the document shows no block (`edytor.root.children` then holds its handle; `edytor.value.children` is empty). Every facade op the view issues on it creates it first, in the same plan. An emptied root no longer gets a replacement paragraph written by normalization.
 - **Dragging text (`moveText`).** Selected text dragged inside the editor moves to the drop point, one command and one undo step (<kbd>Alt</kbd>: a copy); the drag carries the range's fragment, HTML and plain text.
 
+- **Input handlers in a test DOM.** An async input handler's failure goes to the platform's `reportError`, read only when a handler fails: a DOM emulation without it (happy-dom) types normally.
+
 ### Plugins and the extension API
 
 - **Mention kinds.** `createMentionPlugin({ kind })` (default `mention`) defines one inline kind per instance, rendered and copied with its `char`, with the kind in `data-edytor-mention` and an HTML form that pastes back; `Trigger.name` names a trigger's menu (`controller.trigger.name`).
@@ -1446,6 +1454,7 @@ Every public change since 0.0.11, by area.
 - **Marks at insertion** follow one rule (explicit → a replaced range's common marks → pending → the neighbour → the mark's `edge`); `insertText` without marks resolves them by that rule; plain paste inherits the caret's marks; Mod+B at the start of a bold run toggles bold off.
 - **Presses on chrome.** A press on a void block's chrome selects the block (Shift or Mod adds it); a control there (a native control, a link, an interactive role, `tabindex`, `data-edytor-control`, `data-edytor-keep-selection`) owns its whole press, keys and input; a press in a caption is the browser's caret at the press.
 - **Shared suggestions.** The plugin `createSharedSuggestionsPlugin()` and its controller `sharedSuggestionsController(edytor)` (`SharedSuggestionsController`): `suggesting` (suggesting mode: the view's writes are a suggestion in the document, of text and blocks only, the rest refused with the `suggestions.notSuggested` announcement, `SuggestionsLabels`), `add(at, content, { via })` (an AI answer written live), `changes()`, `decide(changes, accept)`, `acceptAll()`, `rejectAll()`; `edytor.suggestions.list` holds `SharedSuggestion`s (`shared: true`, `by`, `via`, `changes`, `canDecide`, `mine`, `reject()`; `discard()` rejects it, its author's too) beside the view-local `Suggestion`s (`shared: false`), `AnySuggestion` either; the commands `acceptSuggestion` (`{ changes }` for a shared one) and `rejectSuggestion`; `SuggestedChange`; `adoptSharedSuggestions(document)` in `edytor/crdt/edytor`. With them built over the document, `toJSON(options?)` and `edytor.value` leave pending suggestions out (`{ suggestions: true }` keeps them). See [shared suggestions](/docs/editor/suggestions#shared-suggestions).
+- **A shared answer's live updates.** Each `update` keeps the equal blocks and grows the last one in place (its text extended, or a code block's lines: the last extended, the new ones added); the replaced blocks go with their children. `add(at, content)` writes the content at once and lists the suggestion. `via` is the suggestion's record's: `undefined` for one a member typed.
 - **Suggestions.** `edytor.suggestions` proposes content at a position, session-only until `accept()` (one command, `acceptSuggestion`, one undo step), with the default suggestions plugin's keys, `createSuggestionBarPlugin`'s bar and `textToBlocks` ([Suggestions](/docs/editor/suggestions)); `BlockView.handle` is `undefined` in a suggestion's preview. An `{ end }` suggestion survives selection changes. `block.suggestText`, `block.suggestions`, `block.acceptSuggestedText`, `edytor.selection.suggestions`, `rawSuggestions` and the readonly Proxy wrappers are removed.
 - **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see [clipboard](/docs/editor/clipboard)). A plugin's `onPaste` still runs first. The code plugin highlights through TanStack Highlight, and the package declares `sideEffects` so it (and its CSS) ships only in apps that import `createCodePlugin`.
 - **Notion behavior.** See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).

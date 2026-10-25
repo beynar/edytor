@@ -3009,7 +3009,15 @@ time at its position (a `replace` proposed for deletion), then at each
 update only what changed: the blocks equal to the ones it wrote are kept,
 its last block's text is extended when the new one extends it (an
 insertion of the new runs only), and the rest is replaced (the writer's
-own pending blocks deleted, the new ones inserted after the kept ones).
+own pending blocks deleted with their children, a code block with its
+lines, the new ones inserted after the kept ones). Given its content,
+`add` writes it at once and lists it (`ready`, or the status asked for).
+A suggestion's `via` is its record's: none for one a member typed in
+suggesting mode; this view's option only before its first write.
+
+Rows: `shared-suggestions-api.test.tsx` (a code block growing across
+updates stays one code block, its lines its own; `add` with content is
+listed and reviewable; a typed suggestion has no agent).
 
 ### `sugg.json.base` — the document without its pending suggestions
 

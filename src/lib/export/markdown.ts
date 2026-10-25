@@ -164,6 +164,33 @@ const callouts: MarkdownExtension = {
 	}
 };
 
+const QUOTED = /^ {0,3}>\s?(.*)$/;
+/** A line a lazy continuation stops at: blank, or a block's start. */
+const BLOCK_START = /^\s*$|^ {0,3}(?:[#>`~*+-]|\d+[.)]|\|)/;
+
+/**
+ * A blockquote as CommonMark reads it: its `>` lines and their lazy
+ * continuation lines, a blank line its end (the parser would merge two
+ * quotes a blank line apart, and swallow an alert after a quote).
+ */
+const quotes: MarkdownExtension = {
+	name: 'edytor-quotes',
+	parseBlock(context) {
+		if (!QUOTED.test(context.lines[context.index] ?? '')) return undefined;
+		const body: string[] = [];
+		let i = context.index;
+		for (; i < context.lines.length; i++) {
+			const line = context.lines[i]!;
+			const quoted = QUOTED.exec(line);
+			if (quoted) body.push(quoted[1]!);
+			else if (!BLOCK_START.test(line) && body.at(-1)?.trim()) body.push(line);
+			else break;
+		}
+		context.consume(i - context.index);
+		return { type: 'blockquote', children: context.parseBlocks(body.join('\n')) };
+	}
+};
+
 /** A to-do box without its bullet (`[ ] task`) as a to-do item, as the editor's paste reads it. */
 const bareTodos: MarkdownExtension = {
 	name: 'edytor-bare-todos',
@@ -628,7 +655,7 @@ const hardBreaks = (text: string) => {
 };
 
 const STREAMING = streamingMarkdownExtension();
-const OWN = [autolinks, callouts, details, equations, bareTodos];
+const OWN = [autolinks, callouts, quotes, details, equations, bareTodos];
 
 /** `text` as blocks (see the module comment). */
 export const textToBlocks = (

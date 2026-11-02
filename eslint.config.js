@@ -219,6 +219,7 @@ const repoConfig = [
 			'.codex/**',
 			'.playwright-mcp/**',
 			'.svelte-kit/**',
+			'.svelte-kit-async/**',
 			'build/**',
 			'dist/**',
 			// generated consumer build output (tests/packed-consumer/svelte-app)

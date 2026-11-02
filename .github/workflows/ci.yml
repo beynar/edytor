@@ -85,6 +85,15 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm test:dom
 
+  dom-async:
+    name: dom (jsdom, Svelte async mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:dom:async
+
   do:
     name: room (workerd)
     runs-on: ubuntu-latest
@@ -139,7 +148,7 @@ jobs:
   passed:
     name: ${{ github.event_name == 'pull_request' && 'CI passed' || format('CI passed ({0})', github.event_name) }}
     if: always()
-    needs: [static, unit, crdt, dom, do, size, chromium]
+    needs: [static, unit, crdt, dom, dom-async, do, size, chromium]
     runs-on: ubuntu-latest
     steps:
       - name: Every lane passed (the Chromium lane is skipped unless a pull request or a caller asks)

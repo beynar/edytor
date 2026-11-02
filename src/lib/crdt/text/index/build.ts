@@ -88,7 +88,7 @@ import {
 	SEQ_FACET,
 	typeAttr
 } from './shared.js';
-import { cloneJsonSafe, sameIds } from '../../../utils/json.js';
+import { cloneJsonSafe, sameItems } from '../../../utils/json.js';
 import {
 	byId,
 	canonKey,
@@ -2549,7 +2549,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 				continue;
 			}
 			const ids = ks.map((k) => k.id);
-			if (prev === undefined || !sameIds(prev, ids)) {
+			if (prev === undefined || !sameItems(prev, ids)) {
 				const frozen = Object.freeze(ids);
 				order.set(p, frozen);
 				r.order.set(p, frozen);
@@ -2635,7 +2635,7 @@ const buildIndex = (doc: EngineDoc): RunView => {
 		else if (after !== before) {
 			for (const [parent, ids] of after.order) {
 				const prev = before.order.get(parent);
-				if (prev === undefined || !sameIds(prev, ids)) r.order.set(parent, ids);
+				if (prev === undefined || !sameItems(prev, ids)) r.order.set(parent, ids);
 			}
 			for (const parent of before.order.keys()) {
 				if (!after.order.has(parent)) r.order.set(parent, EMPTY_IDS);

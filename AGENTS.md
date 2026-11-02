@@ -22,7 +22,7 @@ The normative contract rows (`del.range.*`, `layout.*`, `table.*`, `room.*`, …
 
 ## Project identity
 
-- Name `edytor`, version `7.0.3` (`latest` on npm; the API report is the reviewed surface: a change to it is semver-major unless it only adds).
+- Name `edytor`, version `7.0.4` (`latest` on npm; the API report is the reviewed surface: a change to it is semver-major unless it only adds).
 - Stack: Svelte 5, SvelteKit, TypeScript, **vendored Yjs v14** (`@y/y@14.0.0-rc.26`, an owned fork under `src/lib/crdt/vendor/yjs/`, patches listed in `UPSTREAM.md`; the `yjs` npm package is a dev dependency for the v13 boundary tests only), **vendored Pragmatic drag and drop** (the parts the drags use, under `src/lib/dnd/vendor/pragmatic/`, changes listed in its `UPSTREAM.md`), Vitest, Playwright.
 - The architecture below is the result of the arch-v2 plan (`docs/archive/architecture-v2/plan.md`); `docs/archive/architecture-v2/execution-ledger.md` records every checkpoint, the lane results and the measured numbers.
 - Docs, install, the packed tarball and the release process: [`docs/agents/release.md`](docs/agents/release.md).
@@ -161,8 +161,10 @@ pnpm test:hosted --project=chromium|firefox|webkit  # real browsers through the 
 pnpm exec vitest --run       # unit + model fixtures
 pnpm test:crdt               # engine, facade, sync (restore src/tests/crdt/random/failures/seed-37.json and seed-59.json after it; delete stray seed-*.doc.json)
 pnpm test:dom                # jsdom-mounted editors (truth check after every test; a Svelte dev warning fails the test)
+pnpm test:dom:async          # the same, compiled with Svelte's async mode (EDYTOR_SVELTE_ASYNC=1 in svelte.config.js: an app may turn it on, and it switches the editor's scheduling too)
 pnpm test:typecheck; pnpm test:dom:typecheck
 pnpm exec playwright test --project=chromium|firefox|webkit|mobile-chromium|mobile-webkit|cdp
+pnpm test:integration:async --project=chromium  # the app built with Svelte's async mode (playwright.async.config.ts, port PW_ASYNC_PORT, default 4174; nightly)
 pnpm test:dst                # editor-input corpus: solo in three engines, collab in Chromium (+ the pinned rows in tests/editor-dst/replays/); test:dst:extensive widens both
 tests/packed-consumer/run.sh # packed tarball: node smoke, edytor/cloudflare Worker in Miniflare, Svelte build/SSR/mount, strict tsc
 pnpm bench:crdt; pnpm bench:scale; pnpm census; node scripts/xloc.mjs src/lib --dirs

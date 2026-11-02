@@ -298,9 +298,9 @@ export const sanitizeWireJson = <T>(value: T): T => {
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null;
 
-/** Two id lists hold the same ids in the same order. */
-export const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
-	a.length === b.length && a.every((id, i) => id === b[i]);
+/** Two lists hold the same items (`===`) in the same order: ids, nodes. */
+export const sameItems = <T>(a: readonly T[], b: readonly T[]): boolean =>
+	a.length === b.length && a.every((item, i) => item === b[i]);
 
 /**
  * Order-insensitive JSON structural equality: the same-value guard of attr

@@ -47,6 +47,7 @@ pnpm test:do:typecheck
 pnpm exec vitest --run     # unit and model fixtures (the JSX fixture DSL is src/tests/jsx)
 pnpm test:crdt             # engine, facade, sync
 pnpm test:dom              # editors mounted in jsdom (a Svelte dev warning fails the test)
+pnpm test:dom:async        # the same rows, compiled with Svelte's async mode (an app may turn it on)
 pnpm test:do               # the edytor/cloudflare room in workerd
 ```
 
@@ -70,6 +71,7 @@ pnpm test:integration --project=firefox
 pnpm test:integration --project=webkit
 pnpm test:integration --project=mobile-chromium
 pnpm test:integration --project=mobile-webkit
+pnpm test:integration:async --project=chromium  # the app built with Svelte's async mode (playwright.async.config.ts)
 pnpm test:cdp              # Chromium through the DevTools IME path
 pnpm test:dst              # the editor-input corpus: solo in three engines, collab in Chromium
 pnpm test:registry-install # the starter registry added to a fresh SvelteKit + shadcn-svelte app, built, server-rendered (network)

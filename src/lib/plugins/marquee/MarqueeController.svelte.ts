@@ -14,6 +14,7 @@ import type { SelectionValue } from '$lib/session/selection.js';
 import { blockSelection, noSelection } from '$lib/session/selection.js';
 import type { MarginPoint } from '$lib/selection/pointer.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { sameItems } from '$lib/utils/json.js';
 import { marqueeBlocks, type MarqueeRect } from './marquee.js';
 
 /** Within this distance (px) of the scroller's top or bottom edge, the page scrolls. */
@@ -47,9 +48,6 @@ type Press = {
 	/** Ends the gesture's listeners. */
 	listening: AbortController;
 };
-
-const sameIds = (a: readonly string[], b: readonly string[]) =>
-	a.length === b.length && a.every((id, i) => id === b[i]);
 
 export class MarqueeController {
 	/** The rectangle while the marquee shows (client coordinates), else `null` (reactive). */
@@ -183,7 +181,7 @@ export class MarqueeController {
 			area.right - area.left,
 			area.bottom - area.top
 		);
-		if (!sameIds(ids, this.ids)) {
+		if (!sameItems(ids, this.ids)) {
 			this.ids = ids;
 			this.edytor.selection.select(ids.length ? blockSelection(ids) : noSelection);
 		}

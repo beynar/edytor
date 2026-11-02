@@ -3,6 +3,7 @@ import { expect, test } from './editorTest';
 import {
 	dispatchBeforeInput,
 	expectSelection,
+	modKey,
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
@@ -332,6 +333,121 @@ test.describe('native format beforeinput behavior', () => {
 			.poll(() => page.locator('[data-edytor-type="paragraph"]').first().locator('p').textContent())
 			.toBe('Alpha beta');
 
+		issues.assertClean();
+	});
+});
+
+/**
+ * A commit that replaces a text's runs renders once: the old runs' text
+ * nodes give way to the new ones before the observer compares (Svelte's
+ * async mode writes a flush's structure before any `$effect.pre`; the async
+ * lanes, `playwright.async.config.ts`, run these rows there too).
+ */
+test.describe("a commit that replaces a text's runs renders once", () => {
+	type Page = import('@playwright/test').Page;
+	const open = async (page: Page, text: string) => {
+		const doc = { children: [{ id: 'p', type: 'paragraph', content: [{ text }] }] };
+		await page.goto(`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify(doc))}`);
+		await waitForEditorReady(page, { requireRuntime: true });
+	};
+	const content = async (page: Page) =>
+		(await readJsonByTestId<{ children: Array<{ content?: unknown }> }>(page, 'value')).children[0]
+			?.content;
+	const shown = (page: Page) => page.locator('[data-edytor-text]').first();
+
+	test('Mod+B over the selected last word bolds it once', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'hello world');
+		await setSelectionByTextIndex(page, 0, 6, 0, 11);
+		await page.keyboard.press(`${modKey}+b`);
+		await expect
+			.poll(() => content(page))
+			.toEqual([{ text: 'hello ' }, { text: 'world', marks: { bold: true } }]);
+		await expect(shown(page)).toHaveText('hello world');
+		issues.assertClean();
+	});
+
+	test('Shift+Arrow from the end selects the word, then Mod+B bolds it once', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'hello world');
+		await setSelectionByTextIndex(page, 0, 11);
+		for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowLeft');
+		await expectSelection(page, { yStart: 6, yEnd: 11, isCollapsed: false });
+		await page.keyboard.press(`${modKey}+b`);
+		await expect
+			.poll(() => content(page))
+			.toEqual([{ text: 'hello ' }, { text: 'world', marks: { bold: true } }]);
+		await expect(shown(page)).toHaveText('hello world');
+		issues.assertClean();
+	});
+
+	test('Mod+B over a middle word bolds it once; the rest of the line stays', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'hello world again');
+		await setSelectionByTextIndex(page, 0, 6, 0, 11);
+		await page.keyboard.press(`${modKey}+b`);
+		await expect
+			.poll(() => content(page))
+			.toEqual([{ text: 'hello ' }, { text: 'world', marks: { bold: true } }, { text: ' again' }]);
+		await expect(shown(page)).toHaveText('hello world again');
+		issues.assertClean();
+	});
+
+	test('a link over a middle range renders once', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'see docs here');
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					__EDYTOR__: { formatRange: (...args: unknown[]) => unknown };
+				}
+			).__EDYTOR__.formatRange('p', 4, 4, { link: { href: 'https://example.com' } })
+		);
+		await expect
+			.poll(() => content(page))
+			.toEqual([
+				{ text: 'see ' },
+				{ text: 'docs', marks: { link: { href: 'https://example.com' } } },
+				{ text: ' here' }
+			]);
+		await expect(shown(page)).toHaveText('see docs here');
+		issues.assertClean();
+	});
+
+	test('insertFlow of one line of several runs after a text keeps their order', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'Start: ');
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					__EDYTOR__: { insertFlow: (...args: unknown[]) => unknown };
+				}
+			).__EDYTOR__.insertFlow(
+				{ block: 'p', offset: 7 },
+				{
+					lines: [
+						{
+							id: 'flow-line',
+							content: [
+								{ kind: 'text', text: 'bold', marks: { bold: true } },
+								{ kind: 'text', text: ' and ' },
+								{ kind: 'inline', id: 'flow-atom', type: 'mention', data: {} }
+							]
+						}
+					]
+				}
+			)
+		);
+		await expect
+			.poll(async () =>
+				((await content(page)) as Array<{ text?: string; type?: string }>).map(
+					(part) => part.text ?? `@${part.type}`
+				)
+			)
+			.toEqual(['Start: ', 'bold', ' and ', '@mention']);
+		await expect(page.locator('[data-edytor-block]').first()).toContainText('Start: bold and');
 		issues.assertClean();
 	});
 });

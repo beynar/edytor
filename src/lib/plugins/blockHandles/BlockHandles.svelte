@@ -64,6 +64,19 @@
 	});
 
 	/**
+	 * A listed id's block, as it was while registered: a block that leaves
+	 * (its element gone) is deleted from `blocks` by its own teardown, inside
+	 * the flush that removes it, and under Svelte's async mode this list's
+	 * render runs after that, before the list drops the id.
+	 */
+	const listed = new Map<string, Block>();
+	const handleOf = (id: string) => {
+		const block = blocks.get(id);
+		if (block) listed.set(id, block);
+		return block ?? listed.get(id)!;
+	};
+
+	/**
 	 * The few blocks that show a handle, sorted into document order: never a
 	 * walk of the whole document (a structural commit on a long page).
 	 */
@@ -80,6 +93,7 @@
 			for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
 			return a.length - b.length;
 		};
+		for (const id of listed.keys()) if (!paths.has(id)) listed.delete(id);
 		return [...paths.keys()].sort((a, b) => before(paths.get(a)!, paths.get(b)!));
 	});
 
@@ -182,7 +196,7 @@
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
-		><BlockHandle block={blocks.get(id)!} {controller} {handle} /></span
+		><BlockHandle block={handleOf(id)} {controller} {handle} /></span
 	>
 {/each}
 

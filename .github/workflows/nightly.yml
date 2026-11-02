@@ -1,5 +1,6 @@
 # The lanes too slow for every pull request (decision D9): Firefox, WebKit,
-# the two mobile projects, the CDP IME lane and the DST editor-input corpus,
+# the two mobile projects, the CDP IME lane, Chromium on an app built with
+# Svelte's async mode (`playwright.async.config.ts`) and the DST editor-input corpus,
 # every night on `master` (and on demand). A red night is an issue to fix,
 # not a gate: CI (`ci.yml`) is the gate. CONTRIBUTING.md lists the lanes.
 # WebKit's projects, CDP and DST run on macOS: Apple's WebKit (the engine
@@ -20,7 +21,7 @@ concurrency:
 
 jobs:
   browsers:
-    name: ${{ matrix.project }}
+    name: ${{ matrix.name || matrix.project }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -42,6 +43,11 @@ jobs:
           - project: cdp
             browser: chromium
             os: macos-latest
+          - project: chromium
+            name: chromium (Svelte async mode)
+            config: playwright.async.config.ts
+            browser: chromium
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -53,11 +59,11 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ matrix.browser }}
       - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
-      - run: pnpm test:integration --project=${{ matrix.project }}
+      - run: pnpm test:integration ${{ matrix.config && format('-c {0}', matrix.config) || '' }} --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: ${{ matrix.project }}-report
+          name: ${{ matrix.config && format('{0}-async', matrix.project) || matrix.project }}-report
           path: |
             playwright-report/
             test-results/

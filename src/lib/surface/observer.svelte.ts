@@ -42,7 +42,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import type { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { diffText } from '../utils/diffText.js';
-import { jsonEquals } from '../utils/json.js';
+import { jsonEquals, sameItems } from '../utils/json.js';
 import { activeMarks, marksForInsertion } from '../session/editing/text.js';
 import { INTENTS } from '../session/attempt.js';
 import { runOccurrence } from '../events/onBeforeInput.js';
@@ -196,8 +196,12 @@ export class SurfaceObserver {
 	#replacements = new Map<Node, Replacement>();
 	/** Contents patched since the last pass: their DOM shows an older cell. */
 	#patched = new Set<string>();
-	/** Of those, the ones a commit re-rendered (a remount discards its DOM: never snapshotted). */
-	#rerendered = new Set<string>();
+	/**
+	 * Of those, the ones a commit re-rendered (a remount discards its DOM:
+	 * never snapshotted), with their text nodes as the first patch since the
+	 * last flush found them (`#snapshot`).
+	 */
+	#rerendered = new Map<string, Node[]>();
 	#bases = new Map<string, Base>();
 	/** A snapshotted edit: where it lands, or the verdict an expectation gave it. */
 	#snapshots = new Map<string, Place | Verdict>();
@@ -282,9 +286,15 @@ export class SurfaceObserver {
 			if (id !== null) this.#patched.add(id);
 		}
 		for (const [id, cell] of before) {
-			this.#rerendered.add(id);
+			if (!this.#rerendered.has(id)) this.#rerendered.set(id, this.#leavesOf(id));
 			if (!this.#bases.has(id)) this.#bases.set(id, { text: textOf(cell), edit: null });
 		}
+		// The flush this patch schedules has not written yet (it is a microtask):
+		// what it would overwrite is read now, and what the host records from
+		// here to the compare pass is its render (`dom.render.before`). The root
+		// `$effect.pre` comes too late for it under Svelte's async mode, which
+		// writes a flush's structure (its blocks and lists) before any of them.
+		this.#pre();
 		this.epoch++;
 	};
 
@@ -308,14 +318,18 @@ export class SurfaceObserver {
 
 	pre = () => {
 		this.#deps();
+		// A browser edit since the patch (in its task): only where the flush
+		// has not written the structure yet (it has, under async mode).
+		this.#pre(true);
+	};
+
+	#pre = (unwritten?: boolean) =>
 		untrack(() => {
 			this.#take();
-			if (!this.edytor.readonly) this.#restore();
-			this.#snapshot();
+			if (!this.edytor.readonly) (this.#restore(), this.#snapshot(unwritten));
 			// From here to the end of the compare pass, what the host records is the flush's.
 			this.#rendering = true;
 		});
-	};
 
 	post = () => {
 		this.#deps();
@@ -327,8 +341,14 @@ export class SurfaceObserver {
 
 	#deps = () => {
 		const { edytor } = this;
-		void [this.epoch, this.records, edytor.readonly, edytor.composition.phase];
-		void [edytor.selection.value, edytor.suggestions.revision];
+		void [
+			this.epoch,
+			this.records,
+			edytor.readonly,
+			edytor.composition.phase,
+			edytor.selection.value,
+			edytor.suggestions.revision
+		];
 	};
 
 	/**
@@ -497,11 +517,18 @@ export class SurfaceObserver {
 		this.#replaced.clear();
 	};
 
-	/** Only a content this flush re-renders can lose an edit to its writes: snapshot it. */
-	#snapshot = () => {
+	/**
+	 * Only a content this flush re-renders can lose an edit to its writes:
+	 * snapshot it, at its patch (the DOM is the render it replaces) and again
+	 * before the flush writes (an edit the browser made since, in the patch's
+	 * task). `unwritten`: only a content whose text nodes are still the ones
+	 * the patch found (under Svelte's async mode the flush has written its
+	 * structure by then: its marks and runs, never an edit).
+	 */
+	#snapshot = (unwritten?: boolean) => {
 		const { edytor } = this;
-		if (edytor.readonly) return;
-		for (const id of this.#rerendered) {
+		for (const [id, then] of this.#rerendered) {
+			if (unwritten && !sameItems(this.#leavesOf(id), then)) continue;
 			const base = this.#bases.get(id);
 			const read = base && id !== this.#host && this.#read(id);
 			const cell = edytor.cells?.get(id);
@@ -714,12 +741,18 @@ export class SurfaceObserver {
 		return adopt(this.edytor, text, value, undefined, local + insert.length);
 	};
 
+	/** `id`'s registered content elements (its text, atom and mark elements). */
+	#elements = (id: string) => [...(this.#contents.get(id) ?? [])];
+
+	/** The text nodes of `id`'s text elements, in order. */
+	#leavesOf = (id: string): Node[] => this.#elements(id).flatMap(textLeaves);
+
 	#texts = (id: string): Text[] =>
-		[...(this.#contents.get(id) ?? [])].flatMap((element) => this.handleOf(element, 'text') ?? []);
+		this.#elements(id).flatMap((element) => this.handleOf(element, 'text') ?? []);
 
 	/** A content's DOM: its registered text and atom elements in order; null when not shown. */
 	#read = (id: string): { text: string; broken: boolean } | null => {
-		const elements = [...(this.#contents.get(id) ?? [])];
+		const elements = this.#elements(id);
 		if (!elements.length) return null;
 		elements.sort((a, b) =>
 			a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1

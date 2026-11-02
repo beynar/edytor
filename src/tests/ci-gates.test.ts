@@ -66,6 +66,7 @@ const EVERY_PUSH = [
 	'pnpm exec vitest --run',
 	'pnpm test:crdt',
 	'pnpm test:dom',
+	'pnpm test:dom:async',
 	'pnpm test:do',
 	'pnpm check:size'
 ];

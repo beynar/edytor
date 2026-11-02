@@ -1,7 +1,7 @@
 {
 	"name": "edytor",
 	"license": "MIT",
-	"version": "7.0.3",
+	"version": "7.0.4",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/beynar/edytor.git"
@@ -15,6 +15,7 @@
 		"prepublishOnly": "pnpm package",
 		"test": "vitest",
 		"test:dom": "vitest --config ./vitest.dom.config.ts --run",
+		"test:dom:async": "EDYTOR_SVELTE_ASYNC=1 vitest --config ./vitest.dom.config.ts --run",
 		"test:dom:watch": "vitest --config ./vitest.dom.config.ts",
 		"test:dom:typecheck": "svelte-check --tsconfig ./tsconfig.dom-tests.json",
 		"test:typecheck": "svelte-check --tsconfig ./tsconfig.tests.json",
@@ -30,6 +31,7 @@
 		"format": "prettier --write .",
 		"test:integration": "env -u FORCE_COLOR -u NO_COLOR playwright test",
 		"test:integration:serial": "env -u FORCE_COLOR -u NO_COLOR playwright test --workers=1",
+		"test:integration:async": "env -u FORCE_COLOR -u NO_COLOR playwright test -c playwright.async.config.ts",
 		"test:cdp": "env -u FORCE_COLOR -u NO_COLOR playwright test --project=cdp",
 		"test:dst": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=playwright.dst.config.ts",
 		"test:dst:solo": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=playwright.dst.config.ts editor-dst.spec.ts",

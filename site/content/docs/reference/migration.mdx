@@ -16,6 +16,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 Nothing yet.
 
+### From 7.0.3
+
+#### Fixed
+
+- **The editor works in an app that turns on Svelte's async mode.** With `compilerOptions.experimental.async` (a setting that switches every component's scheduling, the editor's included), formatting a range in the middle or at the end of a text duplicated the text after it (`hello worldworld`), `insertFlow` of several runs scrambled them, and removing a block with its handle shown could break the render. The editor no longer reads a render Svelte has only half written.
+
 ### From 7.0.2
 
 #### Fixed
@@ -1428,6 +1434,8 @@ Every public change since 0.0.11, by area.
 - **Dragging text (`moveText`).** Selected text dragged inside the editor moves to the drop point, one command and one undo step (<kbd>Alt</kbd>: a copy); the drag carries the range's fragment, HTML and plain text.
 
 - **Input handlers in a test DOM.** An async input handler's failure goes to the platform's `reportError`, read only when a handler fails: a DOM emulation without it (happy-dom) types normally.
+
+- **Svelte's async mode.** The editor runs in an app compiled with `compilerOptions.experimental.async`: it reads what a render would overwrite before Svelte writes it, whatever the order Svelte runs its effects in.
 
 ### Plugins and the extension API
 

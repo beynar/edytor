@@ -2833,6 +2833,39 @@ foreign delete across two blocks keeps the render's anchors" (top level and
 nested, three engines: the anchors' count, then a child added and three
 blocks deleted, the host its cells' projection after each).
 
+### `dom.render.before` — what a render overwrites is read before it writes
+
+The observer reads what the flush's render would overwrite, and decides
+whose the host's records are, before that render writes anything: at the
+patch (`SurfaceObserver.patched`, called as the commit patches the cells;
+Svelte's flush is a later microtask, so the DOM still shows the render the
+cells replace). There it takes the records so far (the browser's, a
+script's), inverts the foreign removals they hold (`#restore`), snapshots
+an edit in each content the flush re-renders (`#snapshot`), and counts the
+records from there to the compare pass as the render's. The root
+`$effect.pre` does the same again for a flush no patch scheduled, and
+snapshots an edit the browser made after the patch in its task, but only
+in a content whose text nodes are still those the patch found.
+
+Why: Svelte's async mode (`compilerOptions.experimental.async`, global to
+the runtime: one component compiled with it switches every component's
+scheduling, the editor's included) writes a flush's structure (its `{#if}`
+and `{#each}` blocks: a text's marks and runs) before any `$effect.pre`.
+Read there, a text whose runs a format replaced showed its old run's text
+node beside the new mark element (`hello worldworld`), which the compare
+pass then adopted as typed text; a removal the render made was taken as a
+foreign one. A teardown's write (the handles' `blocks` map losing a block)
+is visible to the same flush's render too: the handles' list reads the
+block an id had when it was listed (`BlockHandles.svelte`, `handleOf`).
+
+Rows: `runs-replaced.test.tsx` (bold over the last word and a middle one,
+a link over a middle range, `insertFlow` of several runs after a text) and
+`format-beforeinput.spec.ts` (the same through the keys, Shift+Arrow
+included), both run in Svelte's async mode too: `pnpm test:dom:async` (CI,
+every push) and `pnpm test:integration:async` (`playwright.async.config.ts`,
+nightly in Chromium); `observer-divergence.test.tsx` ("F-O13": a browser
+edit after a remote patch in its task is adopted, in both modes).
+
 ## Oracle and checkpoint contract
 
 - The wire-replay reference proves delivery/convergence, not editing

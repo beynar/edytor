@@ -70,7 +70,7 @@ No screen-reader or keyboard-only audit has been made yet. The editor is a `cont
 
 | Runtime | Version | Tested by |
 | --- | --- | --- |
-| Svelte | `^5.0.0` (peer dependency) | Svelte 5.55, the version the repository builds with. Earlier Svelte 5 releases are not tested. Svelte 4 is not supported. |
+| Svelte | `^5.0.0` (peer dependency) | Svelte 5.55, the version the repository builds with, with and without its async mode (`compilerOptions.experimental.async`, which switches every component's scheduling, the editor's included): the jsdom rows run in both on every push, the Chromium suite in async mode every night. Earlier Svelte 5 releases are not tested. Svelte 4 is not supported. |
 | SvelteKit, Vite | Any setup that compiles the package's `.svelte` files | SvelteKit 2.55 and Vite 8; a packed-tarball consumer builds, server-renders and mounts the editor. See [SvelteKit](/docs/getting-started/sveltekit). |
 | TypeScript | 5.9 | The packed consumer type-checks in strict mode, and every complete example in these docs is type-checked. |
 | Node.js | Node.js 22 or later (`engines`) | `edytor/crdt/edytor` (headless documents) and the packed consumer's smoke test run there. |

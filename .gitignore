@@ -5,6 +5,7 @@ node_modules
 /build
 /dist
 /.svelte-kit
+/.svelte-kit-async
 /package
 .artifacts/
 .env

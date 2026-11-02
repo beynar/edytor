@@ -5,7 +5,7 @@
  * state, and after every report the published tree equals a fresh walk; the
  * first difference throws.
  */
-import { sameIds } from '../../lib/utils/json.js';
+import { sameItems } from '../../lib/utils/json.js';
 import {
 	type BlockId,
 	type ChildSlot,
@@ -173,7 +173,7 @@ export const indexSelfChecks = (ix: IndexFacts) => {
 		for (const [p, list] of wantOrder) {
 			const mine = haveOrder.get(p) ?? [];
 			if (
-				!sameIds(
+				!sameItems(
 					list.map((x) => x.id),
 					mine.map((x) => x.id)
 				)
@@ -224,7 +224,7 @@ export const indexSelfChecks = (ix: IndexFacts) => {
 		};
 		if (want.order.size !== pub.order.size) fail('lists');
 		for (const [p, ids] of want.order)
-			if (!sameIds(ids, pub.order.get(p) ?? [])) fail(`list of ${p}`);
+			if (!sameItems(ids, pub.order.get(p) ?? [])) fail(`list of ${p}`);
 		if (want.nodes.size !== pub.nodes.size) fail('blocks');
 		for (const [id, n] of want.nodes) {
 			const m = pub.nodes.get(id);

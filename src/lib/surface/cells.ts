@@ -21,7 +21,7 @@
  */
 import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';
-import { jsonContentToItems, sameIds, type JSONBlock, type JSONText } from '../utils/json.js';
+import { jsonContentToItems, sameItems, type JSONBlock, type JSONText } from '../utils/json.js';
 
 type Data = Readonly<Record<string, unknown>> | undefined;
 
@@ -118,7 +118,7 @@ export const createCells = (
 		for (const [parent, ids] of report.order) {
 			if (parent === null) continue;
 			const current = named.get(parent)?.childIds ?? cells.get(parent)?.childIds ?? ids;
-			if (!sameIds(current, ids)) name(parent, { childIds: ids });
+			if (!sameItems(current, ids)) name(parent, { childIds: ids });
 		}
 		for (const [id, meta] of report.meta) name(id, { type: meta.type, data: meta.data });
 		for (const [id, runs] of report.content) name(id, { runs });
@@ -131,7 +131,7 @@ export const createCells = (
 			patched.add(id);
 		}
 		const root = report.order.get(null);
-		if (root && !sameIds(rootIds, root)) {
+		if (root && !sameItems(rootIds, root)) {
 			rootIds = root;
 			patched.add(null);
 			notifyRoot();
